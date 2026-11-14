@@ -1,0 +1,15 @@
+{
+  "name": "clubhub-collector",
+  "version": "1.0.0",
+  "description": "Collects UCSC club info (events, meetings, announcements, links) from Instagram for ClubHub",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "collect": "node src/index.js",
+    "demo": "node src/index.js --demo",
+    "search": "node src/search.js"
+  },
+  "dependencies": {
+    "chrono-node": "^2.10.3"
+  }
+}

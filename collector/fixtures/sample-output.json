@@ -1,0 +1,290 @@
+{
+  "collectedAt": "2026-11-14T21:34:07.525Z",
+  "clubs": [
+    {
+      "id": "demo_ucsc_csclub",
+      "name": "Computer Science Club",
+      "instagram": "demo_ucsc_csclub",
+      "instagramUrl": "https://www.instagram.com/demo_ucsc_csclub/",
+      "category": "academic",
+      "bio": "Computer Science Club at UC Santa Cruz 💻 Weekly meetings Tuesdays 6pm @ Baskin Engineering 152",
+      "website": "https://linktr.ee/demo_csclub",
+      "profilePictureUrl": null,
+      "followers": 1240,
+      "lastPostAt": "2026-11-14T01:34:07.526Z"
+    },
+    {
+      "id": "demo_ucsc_debate",
+      "name": "Debate Society",
+      "instagram": "demo_ucsc_debate",
+      "instagramUrl": "https://www.instagram.com/demo_ucsc_debate/",
+      "category": "social",
+      "bio": "UCSC's competitive and casual debate club 🎤 All majors welcome",
+      "website": null,
+      "profilePictureUrl": null,
+      "followers": 410,
+      "lastPostAt": "2026-11-14T11:34:07.526Z"
+    },
+    {
+      "id": "demo_ucsc_artcollective",
+      "name": "Art Collective",
+      "instagram": "demo_ucsc_artcollective",
+      "instagramUrl": "https://www.instagram.com/demo_ucsc_artcollective/",
+      "category": "arts",
+      "bio": "Open studio for all artists 🎨",
+      "website": "https://demo-artcollective.example.com",
+      "profilePictureUrl": null,
+      "followers": 650,
+      "lastPostAt": "2026-11-13T15:34:07.526Z"
+    }
+  ],
+  "posts": [
+    {
+      "id": "demo_cs_1",
+      "clubId": "demo_ucsc_csclub",
+      "postedAt": "2026-11-14T01:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_cs_1/",
+      "imageUrl": null,
+      "caption": "🚀 Intro to React Workshop!\n\nLearn to build your first web app from scratch. No experience needed, bring a laptop!\n\n📅 Nov 17\n⏰ 6-8pm\n📍 Baskin Engineering 152\n\nRSVP: forms.gle/demoReactRSVP\n#ucsc #slugs #webdev",
+      "type": "event",
+      "important": false,
+      "title": "Intro to React Workshop!",
+      "summary": "Intro to React Workshop! Learn to build your first web app from scratch. No experience needed, bring a laptop! Nov 17 6-8pm Baskin Engineering 152 RSVP: forms.gle/demoReactRSVP",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_cs_2",
+      "clubId": "demo_ucsc_csclub",
+      "postedAt": "2026-11-12T19:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_cs_2/",
+      "imageUrl": null,
+      "caption": "⚠️ ROOM CHANGE ⚠️\nThis week's general meeting is moved to E2 192 (same time, 6pm Tuesday). See you there!",
+      "type": "meeting",
+      "important": true,
+      "title": "ROOM CHANGE",
+      "summary": "ROOM CHANGE This week's general meeting is moved to E2 192 (same time, 6pm Tuesday). See you there!",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_cs_3",
+      "clubId": "demo_ucsc_csclub",
+      "postedAt": "2026-11-09T21:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_cs_3/",
+      "imageUrl": null,
+      "caption": "Officer applications are OPEN for winter quarter! 🐌\nApply by Nov 18 at the link in bio. Join our Discord for updates: discord.gg/demoCSclub",
+      "type": "announcement",
+      "important": false,
+      "title": "Officer applications are OPEN for winter quarter!",
+      "summary": "Officer applications are OPEN for winter quarter! Apply by Nov 18 at the link in bio. Join our Discord for updates: discord.gg/demoCSclub",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_debate_1",
+      "clubId": "demo_ucsc_debate",
+      "postedAt": "2026-11-14T11:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_debate_1/",
+      "imageUrl": null,
+      "caption": "We practice every Thursday at 4:30pm in Humanities 1 room 110! Drop in anytime, no sign up needed 🗣️",
+      "type": "meeting",
+      "important": false,
+      "title": "We practice every Thursday at 4:30pm in Humanities 1 room 110!",
+      "summary": "We practice every Thursday at 4:30pm in Humanities 1 room 110! Drop in anytime, no sign up needed",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_debate_2",
+      "clubId": "demo_ucsc_debate",
+      "postedAt": "2026-11-11T21:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_debate_2/",
+      "imageUrl": null,
+      "caption": "Fall Showcase Tournament 🏆 this Saturday from 10am to 3pm at Stevenson Event Center. Free food! Register: https://forms.gle/demoDebateTourney",
+      "type": "event",
+      "important": false,
+      "title": "Fall Showcase Tournament this Saturday from 10am to 3pm at Stevenson Event Center.",
+      "summary": "Fall Showcase Tournament this Saturday from 10am to 3pm at Stevenson Event Center. Free food! Register: https://forms.gle/demoDebateTourney",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_art_1",
+      "clubId": "demo_ucsc_artcollective",
+      "postedAt": "2026-11-13T15:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_art_1/",
+      "imageUrl": null,
+      "caption": "Studio session tomorrow at 1pm\nLocation: Porter D-Building studio 3B\nMaterials provided 🖌️",
+      "type": "event",
+      "important": false,
+      "title": "Studio session tomorrow at 1pm",
+      "summary": "Studio session tomorrow at 1pm Location: Porter D-Building studio 3B Materials provided",
+      "extractedBy": "rules"
+    },
+    {
+      "id": "demo_art_2",
+      "clubId": "demo_ucsc_artcollective",
+      "postedAt": "2026-11-06T13:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_art_2/",
+      "imageUrl": null,
+      "caption": "Huge thank you to everyone who came out to our gallery night!! 💜 Photos up on our site",
+      "type": "other",
+      "important": false,
+      "title": "Huge thank you to everyone who came out to our gallery night!!",
+      "summary": "Huge thank you to everyone who came out to our gallery night!! Photos up on our site",
+      "extractedBy": "rules"
+    }
+  ],
+  "events": [
+    {
+      "id": "demo_debate_2-0",
+      "clubId": "demo_ucsc_debate",
+      "clubName": "Debate Society",
+      "postId": "demo_debate_2",
+      "permalink": "https://www.instagram.com/p/demo_debate_2/",
+      "title": "Fall Showcase Tournament this Saturday from 10am to 3pm at Stevenson Event Center.",
+      "kind": "event",
+      "start": "2026-11-14T18:00:00.000Z",
+      "end": "2026-11-14T23:00:00.000Z",
+      "allDay": false,
+      "recurring": null,
+      "location": "Stevenson Event Center"
+    },
+    {
+      "id": "demo_art_1-0",
+      "clubId": "demo_ucsc_artcollective",
+      "clubName": "Art Collective",
+      "postId": "demo_art_1",
+      "permalink": "https://www.instagram.com/p/demo_art_1/",
+      "title": "Studio session tomorrow at 1pm",
+      "kind": "event",
+      "start": "2026-11-14T21:00:00.000Z",
+      "end": null,
+      "allDay": false,
+      "recurring": null,
+      "location": "Porter D-Building studio 3B"
+    },
+    {
+      "id": "demo_cs_1-0",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "postId": "demo_cs_1",
+      "permalink": "https://www.instagram.com/p/demo_cs_1/",
+      "title": "Intro to React Workshop!",
+      "kind": "event",
+      "start": "2026-11-18T02:00:00.000Z",
+      "end": "2026-11-18T04:00:00.000Z",
+      "allDay": false,
+      "recurring": null,
+      "location": "Baskin Engineering 152"
+    },
+    {
+      "id": "demo_cs_2-0",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "postId": "demo_cs_2",
+      "permalink": "https://www.instagram.com/p/demo_cs_2/",
+      "title": "ROOM CHANGE",
+      "kind": "meeting",
+      "start": "2026-11-18T02:00:00.000Z",
+      "end": null,
+      "allDay": false,
+      "recurring": null,
+      "location": "E2 192"
+    },
+    {
+      "id": "demo_cs_3-0",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "postId": "demo_cs_3",
+      "permalink": "https://www.instagram.com/p/demo_cs_3/",
+      "title": "Deadline: Officer applications are OPEN for winter quarter!",
+      "kind": "deadline",
+      "start": "2026-11-18T08:00:00.000Z",
+      "end": null,
+      "allDay": true,
+      "recurring": null,
+      "location": null
+    },
+    {
+      "id": "demo_debate_1-0",
+      "clubId": "demo_ucsc_debate",
+      "clubName": "Debate Society",
+      "postId": "demo_debate_1",
+      "permalink": "https://www.instagram.com/p/demo_debate_1/",
+      "title": "We practice every Thursday at 4:30pm in Humanities 1 room 110!",
+      "kind": "meeting",
+      "start": "2026-11-20T00:30:00.000Z",
+      "end": null,
+      "allDay": false,
+      "recurring": "thursday",
+      "location": "Humanities 1 room 110"
+    }
+  ],
+  "announcements": [
+    {
+      "id": "demo_cs_2",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "title": "ROOM CHANGE",
+      "summary": "ROOM CHANGE This week's general meeting is moved to E2 192 (same time, 6pm Tuesday). See you there!",
+      "important": true,
+      "postedAt": "2026-11-12T19:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_cs_2/"
+    },
+    {
+      "id": "demo_cs_3",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "title": "Officer applications are OPEN for winter quarter!",
+      "summary": "Officer applications are OPEN for winter quarter! Apply by Nov 18 at the link in bio. Join our Discord for updates: discord.gg/demoCSclub",
+      "important": false,
+      "postedAt": "2026-11-09T21:34:07.526Z",
+      "permalink": "https://www.instagram.com/p/demo_cs_3/"
+    }
+  ],
+  "links": [
+    {
+      "id": "demo_ucsc_csclub:https://linktr.ee/demo_csclub",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "url": "https://linktr.ee/demo_csclub",
+      "label": "Link in bio",
+      "kind": "website",
+      "postId": null
+    },
+    {
+      "id": "demo_ucsc_csclub:https://forms.gle/demoReactRSVP",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "url": "https://forms.gle/demoReactRSVP",
+      "kind": "form",
+      "label": "Sign-up form",
+      "postId": "demo_cs_1"
+    },
+    {
+      "id": "demo_ucsc_csclub:https://discord.gg/demoCSclub",
+      "clubId": "demo_ucsc_csclub",
+      "clubName": "Computer Science Club",
+      "url": "https://discord.gg/demoCSclub",
+      "kind": "discord",
+      "label": "Discord",
+      "postId": "demo_cs_3"
+    },
+    {
+      "id": "demo_ucsc_debate:https://forms.gle/demoDebateTourney",
+      "clubId": "demo_ucsc_debate",
+      "clubName": "Debate Society",
+      "url": "https://forms.gle/demoDebateTourney",
+      "kind": "form",
+      "label": "Sign-up form",
+      "postId": "demo_debate_2"
+    },
+    {
+      "id": "demo_ucsc_artcollective:https://demo-artcollective.example.com",
+      "clubId": "demo_ucsc_artcollective",
+      "clubName": "Art Collective",
+      "url": "https://demo-artcollective.example.com",
+      "label": "Link in bio",
+      "kind": "website",
+      "postId": null
+    }
+  ],
+  "errors": []
+}
