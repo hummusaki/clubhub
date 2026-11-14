@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import {
   LayoutGrid, Heart, Search, Calendar, Users, Link, Moon, Sun, Sparkles, Clock, X, LogIn,
 } from 'lucide-react'
@@ -7,13 +8,18 @@ import { Avatar, ClubHubLogo } from './ui'
 import { getUserButtonAppearance } from '../clerkTheme'
 
 const iconMap = { LayoutGrid, Heart, Search, Calendar, Users, Link }
+=======
+import { Moon, Sun, X } from 'lucide-react'
+import { navItems } from '../data/sampleData'
+import { Avatar, ClubHubLogo } from './ui'
+import { NavIcon } from './icons'
+>>>>>>> Stashed changes
 
 export default function Sidebar({
   activeNav,
   onNav,
   dark,
   onToggleDark,
-  joinedCount = 5,
   mobileOpen = false,
   onCloseMobile,
   user = null,
@@ -29,38 +35,22 @@ export default function Sidebar({
   const sidebarContent = (
     <>
       {/* ── Brand Logo ── */}
-      <div className="flex items-center justify-between px-2 mb-6">
+      <div className="flex items-center justify-between px-2.5 mb-7">
         <div
           onClick={() => handleSelect('overview')}
-          className="flex items-center gap-3 cursor-pointer group"
+          className="flex items-center gap-2.5 cursor-pointer"
         >
-          <ClubHubLogo
-            size={42}
-            className="transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-2"
-          />
+          <ClubHubLogo size={36} />
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-[17px] tracking-tight text-[var(--text)] leading-none">
-                Club
-                <span style={{ color: 'var(--blue-ink)' }}>Hub</span>
-              </span>
-              <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none"
-                style={{
-                  background: 'var(--blue-light)',
-                  color: 'var(--blue-ink)',
-                }}
-              >
-                2.0
-              </span>
+            <div className="font-bold text-[16px] tracking-tight text-[var(--text)] leading-tight">
+              ClubHub
             </div>
-            <div className="text-[11px] font-medium text-[var(--text-muted)] mt-1">
-              Campus Community OS
+            <div className="text-[11px] text-[var(--text-muted)]">
+              Campus Dashboard
             </div>
           </div>
         </div>
 
-        {/* Close button on mobile drawer */}
         {onCloseMobile && (
           <button
             type="button"
@@ -74,89 +64,35 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* ── Navigation Section ── */}
-      <div className="px-2.5 mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
-        Navigation
-      </div>
-
-      <nav className="flex-1 flex flex-col gap-1">
+      {/* ── Navigation Links ── */}
+      <nav className="flex-1 flex flex-col gap-0.5">
         {navItems.map(item => {
-          const Icon = iconMap[item.icon]
           const isActive = activeNav === item.id
-          const badgeVal = item.id === 'myclubs' ? String(joinedCount) : item.badge
 
           return (
             <button
               key={item.id}
               onClick={() => handleSelect(item.id)}
-              className={`group relative flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-sm)]
-                text-[13.5px] cursor-pointer transition-all duration-200 border-none text-left
+              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-[var(--radius-sm)]
+                text-[13.5px] cursor-pointer transition-colors duration-200 border-none text-left
                 ${
                   isActive
-                    ? 'font-semibold text-[var(--blue-ink)]'
-                    : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)]'
+                    ? 'font-semibold text-[var(--blue-ink)] bg-[var(--blue-light)]'
+                    : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)] bg-transparent'
                 }`}
-              style={{
-                background: isActive ? 'var(--blue-light)' : undefined,
-              }}
             >
-              <div className="flex items-center gap-3">
-                {Icon && (
-                  <Icon
-                    size={18}
-                    strokeWidth={isActive ? 2.3 : 1.9}
-                    className="transition-transform duration-200 group-hover:scale-105"
-                  />
-                )}
-                <span>{item.label}</span>
-              </div>
-
-              {badgeVal && (
-                <span
-                  className="text-[10.5px] font-bold font-mono-num px-2 py-0.5 rounded-full"
-                  style={{
-                    background: isActive ? 'var(--bg-card)' : 'var(--bg-subtle)',
-                    color: isActive ? 'var(--blue-ink)' : 'var(--text-muted)',
-                  }}
-                >
-                  {badgeVal}
-                </span>
-              )}
+              <NavIcon name={item.icon} active={isActive} size={19} />
+              <span>{item.label}</span>
             </button>
           )
         })}
 
-        {/* ── Up Next Compact Callout ── */}
-        <div
-          onClick={() => handleSelect('calendar')}
-          className="mt-auto mb-3 p-3.5 rounded-[var(--radius-sm)] border border-[var(--border)]
-            bg-[var(--bg-surface)] hover:border-[var(--blue)] transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[var(--blue-ink)]">
-              <span className="w-2 h-2 rounded-full bg-[var(--blue)] pulse-dot" />
-              Up Next · 2:00 PM
-            </span>
-            <Clock
-              size={13}
-              className="text-[var(--text-light)] group-hover:text-[var(--blue)] transition-colors"
-            />
-          </div>
-          <div className="text-[12.5px] font-bold text-[var(--text)] leading-snug">
-            CS Club — Weekly Standup
-          </div>
-          <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-            Engineering Hall 204 · 45m
-          </div>
-        </div>
-
-        {/* ── Bottom Controls ── */}
-        <div className="pt-3 border-t border-[var(--border)] flex flex-col gap-1">
-          {/* Dark mode toggle */}
-          <div className="flex items-center justify-between px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
-            <div className="flex items-center gap-2.5 text-[13px] font-medium text-[var(--text-muted)]">
-              {dark ? <Sun size={16} className="text-[var(--yellow)]" /> : <Moon size={16} />}
-              <span>{dark ? 'Warm Dark' : 'Dark Mode'}</span>
+        {/* ── Bottom Section ── */}
+        <div className="mt-auto pt-4 border-t border-[var(--border)] flex flex-col gap-1">
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-2.5 text-[13px] text-[var(--text-muted)]">
+              {dark ? <Sun size={16} /> : <Moon size={16} />}
+              <span>Dark Mode</span>
             </div>
             <button
               onClick={onToggleDark}
@@ -168,12 +104,13 @@ export default function Sidebar({
             >
               <div
                 className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform duration-300
-                  shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+                  shadow-[0_1px_3px_rgba(0,0,0,0.18)]"
                 style={{ left: 2, transform: dark ? 'translateX(20px)' : 'translateX(0)' }}
               />
             </button>
           </div>
 
+<<<<<<< Updated upstream
           {/* User profile */}
           {hasClerkKey && user ? (
             <div
@@ -252,6 +189,21 @@ export default function Sidebar({
               <Sparkles size={14} className="text-[var(--text-light)] shrink-0" />
             </div>
           )}
+=======
+          <div className="flex items-center gap-2.5 px-3 py-2">
+            <Avatar
+              initials="JD"
+              bg="linear-gradient(135deg, var(--teal), var(--green))"
+              size={32}
+            />
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-[var(--text)] truncate">Jane Doe</div>
+              <div className="text-[11px] text-[var(--text-muted)] truncate">
+                jdoe@university.edu
+              </div>
+            </div>
+          </div>
+>>>>>>> Stashed changes
         </div>
       </nav>
     </>
@@ -261,8 +213,8 @@ export default function Sidebar({
     <>
       {/* ── Desktop Sticky Sidebar ── */}
       <aside
-        className="hidden lg:flex w-[264px] sticky top-0 h-screen bg-[var(--bg-card)] border-r border-[var(--border)]
-          flex-col px-4 py-5 shrink-0 transition-colors duration-300 select-none overflow-y-auto z-30"
+        className="hidden lg:flex w-[252px] sticky top-0 h-screen bg-[var(--bg-card)] border-r border-[var(--border)]
+          flex-col px-3.5 py-5 shrink-0 transition-colors duration-300 select-none overflow-y-auto z-30"
       >
         {sidebarContent}
       </aside>
@@ -272,11 +224,11 @@ export default function Sidebar({
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div
             onClick={onCloseMobile}
-            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
+            className="fixed inset-0 bg-black/35 backdrop-blur-[2px]"
           />
           <aside
-            className="relative w-[280px] max-w-[82vw] h-full bg-[var(--bg-card)] border-r border-[var(--border)]
-              flex flex-col px-4 py-5 select-none overflow-y-auto z-10 shadow-[var(--shadow-lg)]"
+            className="relative w-[264px] max-w-[82vw] h-full bg-[var(--bg-card)] border-r border-[var(--border)]
+              flex flex-col px-3.5 py-5 select-none overflow-y-auto z-10 shadow-[var(--shadow-lg)]"
           >
             {sidebarContent}
           </aside>
@@ -292,10 +244,9 @@ export default function Sidebar({
         }}
       >
         {navItems.slice(0, 5).map(item => {
-          const Icon = iconMap[item.icon]
           const isActive = activeNav === item.id
           const shortLabels = {
-            overview: 'Home',
+            overview: 'Overview',
             myclubs: 'Clubs',
             discover: 'Discover',
             calendar: 'Schedule',
@@ -307,20 +258,13 @@ export default function Sidebar({
               type="button"
               onClick={() => onNav(item.id)}
               className="flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl
-                border-none bg-transparent cursor-pointer transition-all"
+                border-none bg-transparent cursor-pointer"
               style={{
                 color: isActive ? 'var(--blue-ink)' : 'var(--text-muted)',
               }}
             >
-              <div
-                className="px-3 py-1 rounded-full transition-colors flex items-center justify-center"
-                style={{
-                  background: isActive ? 'var(--blue-light)' : 'transparent',
-                }}
-              >
-                {Icon && <Icon size={18} strokeWidth={isActive ? 2.4 : 1.9} />}
-              </div>
-              <span className={`text-[10.5px] ${isActive ? 'font-bold' : 'font-medium'}`}>
+              <NavIcon name={item.icon} active={isActive} size={18} />
+              <span className={`text-[10.5px] ${isActive ? 'font-semibold' : 'font-medium'}`}>
                 {shortLabels[item.id] || item.label}
               </span>
             </button>

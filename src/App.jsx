@@ -11,7 +11,11 @@ import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
 import SourceFeedHub from './components/SourceFeedHub'
+<<<<<<< Updated upstream
 import SignInPage from './components/SignInPage'
+=======
+import { cleanText } from './components/ui'
+>>>>>>> Stashed changes
 import { clubs as initialClubs } from './data/sampleData'
 import {
   getClubHub,
@@ -36,6 +40,7 @@ const KIND_COLOR_MAP = {
   website: 'green',
 }
 
+<<<<<<< Updated upstream
 function MainDashboard({
   dark,
   toggleDark,
@@ -44,13 +49,25 @@ function MainDashboard({
   onExitDemo,
   hasClerkKey = false,
 }) {
+=======
+const CLUB_AVATAR_GRADIENTS = [
+  'linear-gradient(135deg, var(--blue), #4B7BE5)',
+  'linear-gradient(135deg, var(--red), #D46B6B)',
+  'linear-gradient(135deg, var(--purple), #8565C4)',
+  'linear-gradient(135deg, var(--green), #4CA868)',
+  'linear-gradient(135deg, var(--teal), #3E9B92)',
+  'linear-gradient(135deg, var(--yellow), #E09F2D)',
+]
+
+export default function App() {
+  const [dark, setDark] = useState(false)
+>>>>>>> Stashed changes
   const [activeNav, setActiveNav] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData, setClubsData] = useState(initialClubs)
   const [linksCount, setLinksCount] = useState(24)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Live SQLite / Collector backend state
   const [hubDict, setHubDict] = useState({})
   const [rawDict, setRawDict] = useState({})
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
@@ -71,7 +88,7 @@ function MainDashboard({
 
     if (hub) {
       setHubDict(hub)
-      const mappedClubs = Object.values(hub).map(c => {
+      const mappedClubs = Object.values(hub).map((c, idx) => {
         const nextEvent = (c.events || [])[0]
         const scheduleStr = nextEvent
           ? `${new Date(nextEvent.start).toLocaleDateString('en-US', {
@@ -81,9 +98,18 @@ function MainDashboard({
             })}${nextEvent.location ? ' · ' + nextEvent.location : ''}`
           : `@${c.instagram}`
 
+        const nameLower = `${c.name || ''} ${c.id || ''}`.toLowerCase()
+        const gradient = nameLower.includes('debate')
+          ? CLUB_AVATAR_GRADIENTS[1]
+          : nameLower.includes('art')
+            ? CLUB_AVATAR_GRADIENTS[2]
+            : nameLower.includes('cs') || nameLower.includes('computer')
+              ? CLUB_AVATAR_GRADIENTS[0]
+              : CLUB_AVATAR_GRADIENTS[idx % CLUB_AVATAR_GRADIENTS.length]
+
         return {
           id: c.id,
-          name: c.name,
+          name: cleanText(c.name),
           abbr: (c.name || 'CL')
             .split(' ')
             .map(w => w[0])
@@ -92,16 +118,12 @@ function MainDashboard({
             .toUpperCase(),
           members: c.followers || 0,
           category: c.category || 'academic',
-          role: 'Member',
-          room: nextEvent?.location || 'Campus',
-          nextEvent: nextEvent?.title ? `${nextEvent.title} · ${scheduleStr}` : null,
-          description: c.bio || c.description || '',
           tags: [
             ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
             ...(c.category ? [{ label: c.category, color: 'purple' }] : []),
           ],
-          schedule: scheduleStr,
-          avatarBg: 'linear-gradient(135deg, var(--blue), #5B8DEF)',
+          schedule: cleanText(scheduleStr),
+          avatarBg: gradient,
           active: true,
           joined: true,
         }
@@ -127,16 +149,13 @@ function MainDashboard({
               })
           return {
             id: e.id,
-            club: e.clubName || e.clubId,
-            event: e.title,
+            club: cleanText(e.clubName || e.clubId),
+            event: cleanText(e.title),
             time: timeLabel,
-            location: e.location || 'TBD',
+            location: cleanText(e.location || 'TBD'),
             duration: e.recurring ? `Every ${e.recurring}` : e.kind || 'event',
             color: palette[i % palette.length],
-            status: i === 0 ? 'Next Up' : 'Scheduled',
-            rsvp: i < 2,
             upcoming: false,
-            day: 'today',
           }
         })
       )
@@ -148,12 +167,9 @@ function MainDashboard({
           id: a.id,
           type: a.important ? 'Urgent' : 'Announcement',
           color: a.important ? 'red' : 'yellow',
-          club: a.clubName || a.clubId || 'Campus',
           time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
-          title: `${a.clubName ? a.clubName + ': ' : ''}${a.title}`,
-          description: a.summary || '',
-          pinned: Boolean(a.important),
-          unread: true,
+          title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
+          description: cleanText(a.summary || ''),
         }))
       )
     }
@@ -162,10 +178,9 @@ function MainDashboard({
       setLiveLinks(
         lnks.map(l => ({
           id: l.id,
-          title: `${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`,
+          title: cleanText(`${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`),
           subtitle: l.url,
           url: l.url,
-          category: l.kind || 'Resource',
           color: KIND_COLOR_MAP[l.kind] || 'blue',
           icon: KIND_ICON_MAP[l.kind] || 'Globe',
         }))
@@ -174,42 +189,10 @@ function MainDashboard({
 
     if (dbStats) {
       setLiveStats([
-        {
-          label: 'Active Clubs',
-          value: dbStats.clubs ?? 0,
-          color: 'blue',
-          icon: 'Users',
-          delta: 'Live DB',
-          subtitle: 'Synced organizations',
-          navTarget: 'discover',
-        },
-        {
-          label: 'Connected Sources',
-          value: dbStats.sources ?? 0,
-          color: 'green',
-          icon: 'Heart',
-          delta: 'Multi-source',
-          subtitle: 'IG, Discord & Cal',
-          navTarget: 'myclubs',
-        },
-        {
-          label: 'Upcoming Events',
-          value: dbStats.events ?? 0,
-          color: 'yellow',
-          icon: 'Calendar',
-          delta: 'Extracted',
-          subtitle: 'From club feeds',
-          navTarget: 'calendar',
-        },
-        {
-          label: 'Shared Links',
-          value: dbStats.links ?? 0,
-          color: 'purple',
-          icon: 'Link',
-          delta: 'Verified',
-          subtitle: 'Forms, docs & servers',
-          navTarget: 'links',
-        },
+        { label: 'Active Clubs',      value: dbStats.clubs ?? 0,   color: 'blue',   icon: 'Users' },
+        { label: 'Connected Sources', value: dbStats.sources ?? 0, color: 'green',  icon: 'Heart' },
+        { label: 'Upcoming Events',   value: dbStats.events ?? 0,  color: 'yellow', icon: 'Calendar' },
+        { label: 'Shared Links',      value: dbStats.links ?? 0,   color: 'purple', icon: 'Link' },
       ])
     }
   }, [])
@@ -229,7 +212,10 @@ function MainDashboard({
             ? {
                 ...c,
                 joined: c.joined === false ? true : false,
-                members: c.joined === false ? (c.members || 0) + 1 : Math.max(0, (c.members || 1) - 1),
+                members:
+                  c.joined === false
+                    ? (c.members || 0) + 1
+                    : Math.max(0, (c.members || 1) - 1),
               }
             : c
         )
@@ -242,7 +228,6 @@ function MainDashboard({
                 ...c,
                 joined: !c.joined,
                 members: c.joined ? c.members - 1 : c.members + 1,
-                role: c.joined ? 'Open to Join' : 'Member',
               }
             : c
         )
@@ -259,7 +244,6 @@ function MainDashboard({
         onNav={setActiveNav}
         dark={dark}
         onToggleDark={toggleDark}
-        joinedCount={joinedCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
         user={user}
@@ -268,7 +252,7 @@ function MainDashboard({
         hasClerkKey={hasClerkKey}
       />
 
-      <main className="flex-1 min-w-0 overflow-y-auto px-3.5 sm:px-6 lg:px-9 pt-3.5 pb-24 sm:py-7 lg:pb-8 max-w-[1440px]">
+      <main className="flex-1 w-full min-w-0 overflow-y-auto px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-24 sm:py-7 lg:pb-8">
         <Header
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -319,15 +303,6 @@ function MainDashboard({
           </div>
         )}
 
-        {/* Multi-Source Feed & Dictionary Hub */}
-        {(showAll || activeNav === 'discover') && (
-          <SourceFeedHub
-            hubDict={hubDict}
-            rawDict={rawDict}
-            onRefresh={loadBackendData}
-          />
-        )}
-
         {/* My Clubs / Discover */}
         {(showAll || activeNav === 'myclubs' || activeNav === 'discover') && (
           <MyClubs
@@ -337,6 +312,15 @@ function MainDashboard({
             onToggleJoin={toggleJoinClub}
             defaultTab={activeNav === 'discover' ? 'Discover' : 'All'}
             searchQuery={searchQuery}
+          />
+        )}
+
+        {/* Multi-Source Feed (shown in Discover view or when backend data is connected) */}
+        {(activeNav === 'discover' || Object.keys(hubDict).length > 0) && (
+          <SourceFeedHub
+            hubDict={hubDict}
+            rawDict={rawDict}
+            onRefresh={loadBackendData}
           />
         )}
 

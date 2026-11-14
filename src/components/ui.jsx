@@ -1,7 +1,23 @@
+import { X } from 'lucide-react'
+import { ClubEmblemSvg } from './icons'
+
 /** Reusable UI primitives used across the ClubHub dashboard. */
 
+// ── Text sanitizer (strips emojis & redundant bracket prefixes from backend payloads) ──
+const EMOJI_REGEX = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu
+const SOURCE_PREFIX_REGEX = /^\s*\[(?:Discord[^\]]*|Google Calendar|Club Website|Mailing List:[^\]]*)\]\s*/i
+
+export function cleanText(str) {
+  if (!str || typeof str !== 'string') return str || ''
+  return str
+    .replace(EMOJI_REGEX, '')
+    .replace(SOURCE_PREFIX_REGEX, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 // ── Custom ClubHub Brand Logo (SVG) ──
-export function ClubHubLogo({ size = 40, className = '' }) {
+export function ClubHubLogo({ size = 38, className = '' }) {
   return (
     <svg
       width={size}
@@ -10,9 +26,6 @@ export function ClubHubLogo({ size = 40, className = '' }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={`shrink-0 select-none ${className}`}
-      style={{
-        filter: 'drop-shadow(0 4px 10px rgba(74, 138, 244, 0.25))',
-      }}
     >
       <defs>
         <linearGradient id="clubhub-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
@@ -21,7 +34,7 @@ export function ClubHubLogo({ size = 40, className = '' }) {
           <stop offset="100%" stopColor="#46B8AE" />
         </linearGradient>
         <linearGradient id="clubhub-shine" x1="12" y1="6" x2="44" y2="38" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.42" />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.38" />
           <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
         </linearGradient>
         <linearGradient id="clubhub-warm" x1="36" y1="16" x2="50" y2="28" gradientUnits="userSpaceOnUse">
@@ -30,78 +43,127 @@ export function ClubHubLogo({ size = 40, className = '' }) {
         </linearGradient>
       </defs>
 
-      {/* Sculpted Squircle Base */}
-      <rect x="3" y="3" width="58" height="58" rx="16.5" fill="url(#clubhub-bg)" />
+      <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#clubhub-bg)" />
       <rect
-        x="3.75"
-        y="3.75"
-        width="56.5"
-        height="56.5"
-        rx="15.75"
+        x="4.75"
+        y="4.75"
+        width="54.5"
+        height="54.5"
+        rx="15.25"
         stroke="url(#clubhub-shine)"
         strokeWidth="1.5"
       />
 
-      {/* Orbital C-Hub Ring */}
       <path
-        d="M43 22.5A14.5 14.5 0 1 0 43 41.5"
+        d="M42.5 22.5A14.5 14.5 0 1 0 42.5 41.5"
         stroke="#FFFFFF"
-        strokeWidth="4.4"
+        strokeWidth="4.2"
         strokeLinecap="round"
         strokeOpacity="0.94"
       />
 
-      {/* Four Interconnected Community Nodes */}
-      <circle cx="23.5" cy="21.5" r="5.5" fill="#FFFFFF" />
-      <circle cx="23.5" cy="42.5" r="5.5" fill="#BFF7D8" />
-      <circle cx="43.5" cy="22.5" r="5.5" fill="url(#clubhub-warm)" />
-      <circle cx="43.5" cy="41.5" r="5.5" fill="#DCEAFF" />
+      <circle cx="24" cy="22" r="5.2" fill="#FFFFFF" />
+      <circle cx="24" cy="42" r="5.2" fill="#BFF7D8" />
+      <circle cx="43.5" cy="22.5" r="5.2" fill="url(#clubhub-warm)" />
+      <circle cx="43.5" cy="41.5" r="5.2" fill="#DCEAFF" />
 
-      {/* Central Hub Star Core */}
       <path
-        d="M32 24.5C32.7 28.6 35.4 31.3 39.5 32C35.4 32.7 32.7 35.4 32 39.5C31.3 35.4 28.6 32.7 24.5 32C28.6 31.3 31.3 28.6 32 24.5Z"
+        d="M32 25C32.6 28.7 35.3 31.4 39 32C35.3 32.6 32.6 35.3 32 39C31.4 35.3 28.7 32.6 25 32C28.7 31.4 31.4 28.7 32 25Z"
         fill="#FFFFFF"
       />
     </svg>
   )
 }
 
+// ── Sculpted Icon Badge Container ──
+export function IconBadge({
+  children,
+  color = 'blue',
+  size = 40,
+  radius = 12,
+  className = '',
+}) {
+  return (
+    <div
+      className={`flex items-center justify-center shrink-0 select-none ${className}`}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        background: `linear-gradient(145deg, var(--${color}-light), color-mix(in srgb, var(--${color}-light) 68%, var(--bg-card)))`,
+        color: `var(--${color}-ink, var(--${color}))`,
+        border: `1px solid color-mix(in srgb, var(--${color}) 22%, transparent)`,
+        boxShadow: `inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 2px 5px -1px color-mix(in srgb, var(--${color}) 14%, transparent)`,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+// ── Bespoke Club Emblem Avatar (Vector Illustration inside Sculpted Squircle) ──
+export function ClubAvatar({ club, size = 42, className = '' }) {
+  const bg = club?.avatarBg || 'linear-gradient(135deg, var(--blue), #4B7BE5)'
+  const iconSize = Math.round(size * 0.54)
+
+  return (
+    <div
+      className={`rounded-[13px] flex items-center justify-center text-white shrink-0 select-none ${className}`}
+      style={{
+        width: size,
+        height: size,
+        background: bg,
+        boxShadow:
+          'inset 0 1px 1px rgba(255, 255, 255, 0.42), 0 3px 8px -2px rgba(38, 33, 27, 0.18)',
+      }}
+    >
+      <ClubEmblemSvg
+        clubName={club?.name}
+        clubId={club?.id}
+        abbr={club?.abbr}
+        category={club?.category}
+        size={iconSize}
+      />
+    </div>
+  )
+}
+
 // ── Bubble Tag ──
-export function BubbleTag({ label, color = 'blue', size = 'md', dot = false, pulse = false, className = '' }) {
+export function BubbleTag({ label, color = 'blue', size = 'md', dot = false, icon = null, className = '' }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 font-semibold rounded-full transition-colors select-none
+      className={`inline-flex items-center gap-1.5 font-medium rounded-full transition-colors select-none
         ${size === 'sm' ? 'px-2.5 py-0.5 text-[11px] leading-4' : 'px-3 py-1 text-xs leading-4'}
         ${className}`}
       style={{
         background: `var(--${color}-light)`,
         color: `var(--${color}-ink, var(--${color}))`,
-        border: `1px solid color-mix(in srgb, var(--${color}) 22%, transparent)`,
       }}
     >
       {dot && (
         <span
-          className={`w-1.5 h-1.5 rounded-full shrink-0 ${pulse ? 'pulse-dot' : ''}`}
+          className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{ background: `var(--${color})` }}
         />
       )}
-      {label}
+      {icon}
+      {cleanText(label)}
     </span>
   )
 }
 
-// ── Avatar ──
+// ── Member Avatar ──
 export function Avatar({ initials, bg, size = 36, className = '' }) {
   return (
     <div
-      className={`rounded-full flex items-center justify-center font-bold text-white shrink-0 select-none
-        shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_2px_4px_rgba(38,33,27,0.08)] ${className}`}
+      className={`rounded-full flex items-center justify-center font-semibold text-white shrink-0 select-none ${className}`}
       style={{
         width: size,
         height: size,
         background: bg,
         fontSize: Math.round(size * 0.36),
-        letterSpacing: '-0.02em',
+        boxShadow:
+          'inset 0 1px 1px rgba(255, 255, 255, 0.38), 0 2px 5px -1px rgba(38, 33, 27, 0.14)',
       }}
     >
       {initials}
@@ -128,15 +190,13 @@ export function Card({ children, className = '', style = {}, delay = 0, onClick 
 export function ProgressBar({ value, color }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="w-24 h-2 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] overflow-hidden">
+      <div className="w-20 h-1.5 rounded-full bg-[var(--bg-subtle)] overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-600"
           style={{ width: `${value}%`, background: color }}
         />
       </div>
-      <span className="text-xs font-semibold font-mono-num text-[var(--text-muted)] w-9">
-        {value}%
-      </span>
+      <span className="text-xs font-mono-num text-[var(--text-muted)]">{value}%</span>
     </div>
   )
 }
@@ -147,16 +207,14 @@ export function SearchBox({
   width = '100%',
   value,
   onChange,
-  shortcut,
   inputRef,
 }) {
   const isControlled = value !== undefined
   return (
     <div
       className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[var(--bg-card)]
-        border border-[var(--border)] shadow-[var(--shadow-xs)] transition-all duration-200
-        focus-within:border-[var(--blue)]
-        focus-within:shadow-[0_0_0_3px_var(--blue-light)]"
+        border border-[var(--border)] transition-all duration-200
+        focus-within:border-[var(--blue)]"
       style={{ width }}
     >
       <svg
@@ -164,14 +222,26 @@ export function SearchBox({
         height="15"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="var(--text-light)"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="shrink-0"
+        className="shrink-0 text-[var(--text-light)]"
       >
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        <circle
+          cx="11"
+          cy="11"
+          r="7.5"
+          fill="currentColor"
+          fillOpacity="0.14"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="20.5"
+          y1="20.5"
+          x2="16.4"
+          y2="16.4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
       <input
         ref={inputRef}
@@ -180,25 +250,18 @@ export function SearchBox({
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
         className="border-none outline-none bg-transparent text-[var(--text)] text-[13px] w-full
-          placeholder:text-[var(--text-light)] font-medium"
+          placeholder:text-[var(--text-light)]"
       />
-      {isControlled && value ? (
+      {isControlled && value && (
         <button
           type="button"
           onClick={() => onChange && onChange('')}
-          className="text-[var(--text-light)] hover:text-[var(--text)] text-xs leading-none px-1 cursor-pointer"
+          className="text-[var(--text-light)] hover:text-[var(--text)] p-0.5 cursor-pointer bg-transparent border-none flex items-center"
           aria-label="Clear search"
         >
-          ✕
+          <X size={13} />
         </button>
-      ) : shortcut ? (
-        <kbd
-          className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono-num
-            font-semibold text-[var(--text-light)] bg-[var(--bg-subtle)] rounded border border-[var(--border)]"
-        >
-          {shortcut}
-        </kbd>
-      ) : null}
+      )}
     </div>
   )
 }

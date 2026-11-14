@@ -1,168 +1,55 @@
-import { useState } from 'react'
-import { Pin, Plus, Megaphone } from 'lucide-react'
 import { announcements as defaultAnnouncements } from '../data/sampleData'
-import { Card, BubbleTag } from './ui'
+import { Card, BubbleTag, IconBadge, cleanText } from './ui'
+import { AnnouncementTypeIcon } from './icons'
 
 export default function Announcements({ items }) {
-  const [addedList, setAddedList] = useState([])
-  const [pinnedIds, setPinnedIds] = useState({})
-  const [composing, setComposing] = useState(false)
-  const [title, setTitle] = useState('')
-  const [desc, setDesc] = useState('')
-
-  const baseList = items && items.length > 0 ? items : defaultAnnouncements
-  const list = [...addedList, ...baseList]
-    .map(item => ({
-      ...item,
-      pinned: pinnedIds[item.id] !== undefined ? pinnedIds[item.id] : Boolean(item.pinned),
-    }))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-
-  function togglePin(item) {
-    setPinnedIds(prev => ({
-      ...prev,
-      [item.id]: !(prev[item.id] !== undefined ? prev[item.id] : Boolean(item.pinned)),
-    }))
-  }
-
-  function handleAdd(e) {
-    e.preventDefault()
-    if (!title.trim()) return
-    const next = {
-      id: Date.now(),
-      type: 'Update',
-      color: 'blue',
-      club: 'CS Club',
-      time: 'Just now',
-      title: title.trim(),
-      description: desc.trim() || 'Posted from the ClubHub dashboard.',
-      pinned: false,
-      unread: true,
-    }
-    setAddedList(prev => [next, ...prev])
-    setTitle('')
-    setDesc('')
-    setComposing(false)
-  }
+  const announcements = items && items.length > 0 ? items : defaultAnnouncements
 
   return (
-    <Card className="p-4 sm:p-[22px] flex flex-col" delay={4}>
+    <Card className="p-4 sm:p-[22px]" delay={4}>
       <div className="flex items-center justify-between mb-4 sm:mb-[18px]">
-        <div className="flex items-center gap-2">
-          <Megaphone size={16} className="text-[var(--red)]" />
-          <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
-            Announcements
-          </h2>
-          <span
-            className="min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold font-mono-num
-              flex items-center justify-center"
-            style={{
-              background: 'var(--red-light)',
-              color: 'var(--red-ink)',
-              border: '1px solid color-mix(in srgb, var(--red) 25%, transparent)',
-            }}
-          >
-            {list.length}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setComposing(c => !c)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-bold
-            cursor-pointer border transition-colors"
+        <h2 className="text-base font-bold text-[var(--text)]">Announcements</h2>
+        <span
+          className="min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold font-mono-num
+            flex items-center justify-center"
           style={{
-            background: composing ? 'var(--bg-subtle)' : 'var(--bg-surface)',
-            color: 'var(--text-muted)',
-            borderColor: 'var(--border)',
+            background: 'var(--red-light)',
+            color: 'var(--red-ink)',
           }}
         >
-          <Plus size={12} />
-          {composing ? 'Cancel' : 'Post'}
-        </button>
+          {announcements.length}
+        </span>
       </div>
 
-      {composing && (
-        <form
-          onSubmit={handleAdd}
-          className="mb-3.5 p-3 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col gap-2"
-        >
-          <input
-            type="text"
-            placeholder="Announcement title…"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]
-              text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
-          />
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Short details…"
-              value={desc}
-              onChange={e => setDesc(e.target.value)}
-              className="flex-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]
-                text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
-            />
-            <button
-              type="submit"
-              className="px-3 py-1.5 rounded-lg bg-[var(--blue)] text-white text-xs font-bold border-none cursor-pointer"
+      <div className="flex flex-col gap-3.5">
+        {announcements.map((item, i) => {
+          const color = item.color || 'blue'
+          return (
+            <div
+              key={item.id}
+              className={`flex items-start gap-3 ${
+                i < announcements.length - 1 ? 'pb-3.5 border-b border-[var(--border)]' : ''
+              }`}
             >
-              Publish
-            </button>
-          </div>
-        </form>
-      )}
+              <IconBadge color={color} size={34} radius={10} className="mt-0.5">
+                <AnnouncementTypeIcon type={item.type} size={17} />
+              </IconBadge>
 
-      <div className="flex flex-col gap-3">
-        {list.map(item => (
-          <div
-            key={item.id}
-            className="group relative p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-card)]
-              border border-[var(--border)] shadow-[var(--shadow-xs)]
-              hover:border-[var(--border-strong)] hover:shadow-[var(--shadow)] transition-all duration-200"
-            style={{
-              borderLeftWidth: '3.5px',
-              borderLeftColor: `var(--${item.color || 'blue'})`,
-            }}
-          >
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <BubbleTag label={item.type} color={item.color || 'blue'} size="sm" />
-                {item.club && (
-                  <span className="text-[11px] font-semibold text-[var(--text-muted)]">
-                    · {item.club}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-mono-num text-[var(--text-light)]">
-                  {item.time}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => togglePin(item)}
-                  title={item.pinned ? 'Unpin' : 'Pin announcement'}
-                  className={`p-1 rounded-md cursor-pointer border-none bg-transparent transition-opacity ${
-                    item.pinned
-                      ? 'opacity-100 text-[var(--blue-ink)]'
-                      : 'opacity-0 group-hover:opacity-100 text-[var(--text-light)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <Pin size={12} className={item.pinned ? 'fill-current' : ''} />
-                </button>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <BubbleTag label={item.type} color={color} size="sm" />
+                  <span className="text-[11px] text-[var(--text-light)]">{item.time}</span>
+                </div>
+                <p className="text-[13px] font-semibold text-[var(--text)]">
+                  {cleanText(item.title)}
+                </p>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                  {cleanText(item.description)}
+                </p>
               </div>
             </div>
-
-            <p className="text-[13.5px] font-bold text-[var(--text)] leading-snug">
-              {item.title}
-            </p>
-            <p className="text-[12px] text-[var(--text-muted)] mt-1 leading-relaxed">
-              {item.description}
-            </p>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </Card>
   )

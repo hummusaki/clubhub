@@ -1,12 +1,9 @@
 import { useState } from 'react'
-import {
-  FileText, Table, MessageCircle, PlayCircle, CheckCircle, ArrowUpRight, Plus, Globe,
-} from 'lucide-react'
+import { ExternalLink, Plus } from 'lucide-react'
 import { links as defaultLinks } from '../data/sampleData'
-import { Card, BubbleTag } from './ui'
+import { Card, IconBadge, cleanText } from './ui'
+import { PlatformIcon } from './icons'
 import { createLink } from '../api/client'
-
-const iconMap = { FileText, Table, MessageCircle, PlayCircle, CheckCircle, Globe }
 
 const KIND_COLOR_MAP = {
   discord: 'purple',
@@ -16,10 +13,10 @@ const KIND_COLOR_MAP = {
 }
 
 const KIND_ICON_MAP = {
-  discord: 'MessageCircle',
-  form: 'CheckCircle',
-  document: 'FileText',
-  website: 'Globe',
+  discord: 'discord',
+  form: 'form',
+  document: 'document',
+  website: 'website',
 }
 
 export default function LinksResources({ items, clubs = [], onRefresh, onCountChange }) {
@@ -56,9 +53,8 @@ export default function LinksResources({ items, clubs = [], onRefresh, onCountCh
           title: label.trim(),
           subtitle: cleanUrl === '#' ? 'Shared link · Added just now' : cleanUrl,
           url: cleanUrl,
-          category: kind,
           color: KIND_COLOR_MAP[kind] || 'teal',
-          icon: KIND_ICON_MAP[kind] || 'Globe',
+          icon: KIND_ICON_MAP[kind] || 'website',
         },
         ...prev,
       ])
@@ -71,25 +67,18 @@ export default function LinksResources({ items, clubs = [], onRefresh, onCountCh
   }
 
   return (
-    <Card className="p-4 sm:p-[22px] flex flex-col" delay={6}>
+    <Card className="p-4 sm:p-[22px]" delay={6}>
       <div className="flex items-center justify-between mb-4 sm:mb-[18px]">
-        <div>
-          <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
-            Links &amp; Resources
-          </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Pinned club docs, sheets &amp; channels
-          </p>
-        </div>
+        <h2 className="text-base font-bold text-[var(--text)]">Links &amp; Resources</h2>
 
         <button
           type="button"
           onClick={() => setShowAdd(prev => !prev)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--blue)]
-            text-white border-none text-xs font-bold cursor-pointer hover:opacity-90
-            transition-opacity shadow-xs"
+          className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-[var(--blue)]
+            text-white border-none text-xs font-semibold cursor-pointer hover:opacity-90
+            transition-opacity"
         >
-          <Plus size={13} strokeWidth={2.5} />
+          <Plus size={13} />
           {showAdd ? 'Cancel' : 'Add Link'}
         </button>
       </div>
@@ -135,7 +124,7 @@ export default function LinksResources({ items, clubs = [], onRefresh, onCountCh
             />
             <button
               type="submit"
-              className="px-3.5 py-1.5 rounded-lg bg-[var(--blue)] text-white text-xs font-bold border-none cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
             >
               Save
             </button>
@@ -146,62 +135,34 @@ export default function LinksResources({ items, clubs = [], onRefresh, onCountCh
       <div className="flex flex-col gap-2.5">
         {links.map(link => {
           const c = link.color || 'blue'
-          const Icon = iconMap[link.icon] || Globe
           return (
             <a
               key={link.id}
-              href={link.url || '#resource'}
+              href={link.url || '#'}
               target={link.url && link.url !== '#' ? '_blank' : undefined}
               rel="noreferrer"
               onClick={e => {
                 if (!link.url || link.url === '#') e.preventDefault()
               }}
-              className="group flex items-center gap-3.5 px-3.5 py-2.5 rounded-[var(--radius-sm)]
-                bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-xs)]
-                hover:border-[var(--border-strong)] hover:shadow-[var(--shadow)]
-                no-underline transition-all duration-200"
+              className="flex items-center gap-3 px-3.5 py-3 rounded-[var(--radius-sm)]
+                bg-[var(--bg-surface)] border border-[var(--border-subtle)]
+                hover:bg-[var(--blue-light)] no-underline transition-colors duration-200"
               style={{ textDecoration: 'none' }}
             >
-              <div
-                className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0
-                  transition-transform duration-200 group-hover:scale-105"
-                style={{
-                  background: `var(--${c}-light)`,
-                  border: `1px solid color-mix(in srgb, var(--${c}) 22%, transparent)`,
-                }}
-              >
-                <Icon
-                  size={17}
-                  strokeWidth={2.2}
-                  style={{ color: `var(--${c}-ink, var(--${c}))` }}
-                />
-              </div>
+              <IconBadge color={c} size={38} radius={11}>
+                <PlatformIcon type={link.icon} size={19} />
+              </IconBadge>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13.5px] font-bold text-[var(--text)] truncate group-hover:text-[var(--blue-ink)] transition-colors">
-                    {link.title}
-                  </span>
-                  {link.category && (
-                    <BubbleTag label={link.category} color={c} size="sm" />
-                  )}
+                <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                  {cleanText(link.title)}
                 </div>
-                <div className="text-[11.5px] text-[var(--text-muted)] truncate mt-0.5">
-                  {link.subtitle}
+                <div className="text-[11px] text-[var(--text-muted)] truncate">
+                  {cleanText(link.subtitle)}
                 </div>
               </div>
 
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0
-                  bg-[var(--bg-surface)] border border-[var(--border-subtle)]
-                  text-[var(--text-light)] group-hover:text-[var(--blue-ink)]
-                  group-hover:border-[var(--blue)] transition-all"
-              >
-                <ArrowUpRight
-                  size={14}
-                  className="transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
-              </div>
+              <ExternalLink size={15} className="text-[var(--text-light)] shrink-0" />
             </a>
           )
         })}
