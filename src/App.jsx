@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useUser } from '@clerk/react'
+import { Sparkles } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
@@ -9,6 +11,7 @@ import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
 import SourceFeedHub from './components/SourceFeedHub'
+import SignInPage from './components/SignInPage'
 import { clubs as initialClubs } from './data/sampleData'
 import {
   getClubHub,
@@ -33,8 +36,14 @@ const KIND_COLOR_MAP = {
   website: 'green',
 }
 
-export default function App() {
-  const [dark, setDark] = useState(false)
+function MainDashboard({
+  dark,
+  toggleDark,
+  user = null,
+  isDemo = false,
+  onExitDemo,
+  hasClerkKey = false,
+}) {
   const [activeNav, setActiveNav] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData, setClubsData] = useState(initialClubs)
@@ -212,14 +221,6 @@ export default function App() {
   const effectiveClubs = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
   const joinedCount = effectiveClubs.filter(c => c.joined !== false).length
 
-  function toggleDark() {
-    setDark(prev => {
-      const next = !prev
-      document.documentElement.classList.toggle('dark', next)
-      return next
-    })
-  }
-
   function toggleJoinClub(clubId) {
     if (liveClubs && liveClubs.length > 0) {
       setLiveClubs(prev =>
@@ -261,6 +262,10 @@ export default function App() {
         joinedCount={joinedCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
+        user={user}
+        isDemo={isDemo}
+        onExitDemo={onExitDemo}
+        hasClerkKey={hasClerkKey}
       />
 
       <main className="flex-1 min-w-0 overflow-y-auto px-3.5 sm:px-6 lg:px-9 pt-3.5 pb-24 sm:py-7 lg:pb-8 max-w-[1440px]">
@@ -272,7 +277,30 @@ export default function App() {
           dark={dark}
           onToggleDark={toggleDark}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          user={user}
+          isDemo={isDemo}
+          hasClerkKey={hasClerkKey}
         />
+
+        {isDemo && (
+          <div className="mb-4 px-4 py-2.5 rounded-[var(--radius-sm)] bg-[var(--blue-light)] border border-[rgba(123,170,247,0.3)] flex items-center justify-between text-xs text-[var(--blue-ink)] fade-in">
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} />
+              <span>
+                You are viewing ClubHub in <strong>Demo Preview Mode</strong>.
+              </span>
+            </div>
+            {onExitDemo && (
+              <button
+                type="button"
+                onClick={onExitDemo}
+                className="font-bold underline cursor-pointer bg-transparent border-none text-[var(--blue-ink)] hover:opacity-80"
+              >
+                Sign In with Clerk &rarr;
+              </button>
+            )}
+          </div>
+        )}
 
         {showAll && (
           <StatCards
@@ -333,3 +361,96 @@ export default function App() {
     </div>
   )
 }
+
+function ClerkAppWrapper({ dark, toggleDark }) {
+  const { isLoaded, isSignedIn, user } = useUser()
+  const [demoMode, setDemoMode] = useState(false)
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+        <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-semibold text-[var(--text-muted)]">Loading ClubHub…</span>
+      </div>
+    )
+  }
+
+  if (isSignedIn) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={toggleDark}
+        user={user}
+        isDemo={false}
+        hasClerkKey={true}
+      />
+    )
+  }
+
+  if (demoMode) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={toggleDark}
+        user={null}
+        isDemo={true}
+        onExitDemo={() => setDemoMode(false)}
+        hasClerkKey={true}
+      />
+    )
+  }
+
+  return (
+    <SignInPage
+      dark={dark}
+      onToggleDark={toggleDark}
+      hasPublishableKey={true}
+      onEnterDemo={() => setDemoMode(true)}
+    />
+  )
+}
+
+function FallbackApp({ dark, toggleDark }) {
+  const [demoMode, setDemoMode] = useState(false)
+
+  if (demoMode) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={toggleDark}
+        user={null}
+        isDemo={true}
+        onExitDemo={() => setDemoMode(false)}
+        hasClerkKey={false}
+      />
+    )
+  }
+
+  return (
+    <SignInPage
+      dark={dark}
+      onToggleDark={toggleDark}
+      hasPublishableKey={false}
+      onEnterDemo={() => setDemoMode(true)}
+    />
+  )
+}
+
+export default function App({ hasClerkKey = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) }) {
+  const [dark, setDark] = useState(false)
+
+  function toggleDark() {
+    setDark(prev => {
+      const next = !prev
+      document.documentElement.classList.toggle('dark', next)
+      return next
+    })
+  }
+
+  if (hasClerkKey) {
+    return <ClerkAppWrapper dark={dark} toggleDark={toggleDark} />
+  }
+
+  return <FallbackApp dark={dark} toggleDark={toggleDark} />
+}
+

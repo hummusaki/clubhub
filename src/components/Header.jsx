@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Bell, Calendar, CheckCheck, Sparkles, Menu, Moon, Sun } from 'lucide-react'
+import { UserButton } from '@clerk/react'
 import { SearchBox, BubbleTag, ClubHubLogo } from './ui'
 import { announcements as initialAnnouncements } from '../data/sampleData'
+import { getUserButtonAppearance } from '../clerkTheme'
 
 export default function Header({
   searchQuery = '',
@@ -11,6 +13,9 @@ export default function Header({
   dark = false,
   onToggleDark,
   onOpenMobileMenu,
+  user = null,
+  isDemo = false,
+  hasClerkKey = false,
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [items, setItems] = useState(initialAnnouncements)
@@ -46,8 +51,11 @@ export default function Header({
     setItems(prev => prev.map(item => ({ ...item, unread: false })))
   }
 
+  const firstName = user?.firstName || (user?.fullName ? user.fullName.split(' ')[0] : null)
+  const greetingName = firstName || (isDemo ? 'Guest' : 'Jane')
+
   const viewTitles = {
-    overview: 'Good afternoon, Jane 👋',
+    overview: `Good afternoon, ${greetingName} 👋`,
     myclubs: 'My Campus Clubs',
     discover: 'Discover Campus Clubs',
     calendar: 'Schedule & Events',
@@ -136,6 +144,12 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-2">
+          {hasClerkKey && user && (
+            <div className="flex items-center">
+              <UserButton appearance={getUserButtonAppearance(dark)} />
+            </div>
+          )}
+
           <button
             type="button"
             onClick={onToggleDark}
@@ -259,6 +273,13 @@ export default function Header({
               )}
             </button>
           </div>
+
+          {/* Desktop User Avatar / Account (lg+) */}
+          {hasClerkKey && user && (
+            <div className="hidden lg:flex items-center pl-1">
+              <UserButton appearance={getUserButtonAppearance(dark)} />
+            </div>
+          )}
         </div>
       </div>
 

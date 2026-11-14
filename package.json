@@ -11,6 +11,8 @@
     "dev:full": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
+    "@clerk/react": "^6.18.8",
+    "@clerk/themes": "^2.4.57",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
