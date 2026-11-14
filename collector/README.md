@@ -29,18 +29,29 @@ npm run collect -- --club ucsc_somehandle   # one club
 npm run collect -- --watch 360              # keep running, refresh every 6 hours
 ```
 
-## Adding clubs
+## The club list
 
-Edit `clubs.json`:
+`clubs.json` already holds **134 official UCSC clubs** from the
+[UCSC student organization directory](https://getinvolved.ucsc.edu/student-organizations/join/),
+each with its Instagram handle and a guessed category (cultural, greek, pre-professional, tech & science,
+performing arts, media & arts, gaming, faith, service & advocacy, other).
 
-```json
-[
-  { "name": "Computer Science Club", "instagram": "their_handle", "category": "academic" }
-]
+To refresh it when clubs change:
+
+```bash
+npm run update-clubs
 ```
 
-Instagram has no API for "search all accounts named UCSC", so the club list has to come from
-somewhere. Good sources: the UCSC student organization directory, or clubs signing up on ClubHub.
+This downloads the directory, skips suspended/dismissed clubs and clubs with no Instagram, and merges
+clubs that share one account. Your edits survive a refresh: a changed `category` is kept, and clubs you add
+yourself stay if you mark them `"manual": true`:
+
+```json
+{ "name": "Some New Club", "instagram": "their_handle", "category": "gaming", "manual": true }
+```
+
+Only clubs with an Instagram **Business or Creator** account can be read (see below). The rest are listed
+under `errors` after a run, so you can see which clubs to ask to switch (it's free and takes a minute).
 
 ## Instagram setup (one time, about 20 minutes)
 
@@ -71,6 +82,10 @@ By default, a rule-based extractor reads captions. Many club posts put the date 
 flyer image**, which captions can't capture. Set `ANTHROPIC_API_KEY` in `.env` and each post's caption and image
 are read by Claude instead. If a call fails, it falls back to the rules automatically.
 
+Cost tip: with 134 clubs × `POSTS_PER_CLUB` posts, the first run reads a lot of posts. Posts are cached in
+`output/claude-cache.json`, so later runs only pay for new posts. For a first test, try
+`POSTS_PER_CLUB=5` or `npm run collect -- --club ucscbsu`.
+
 ## Output format (for the database)
 
 `output/clubhub-data.json`, also POSTed as JSON to `DB_WEBHOOK_URL` if set.
@@ -79,7 +94,7 @@ database should **upsert by id**: re-running the collector updates records inste
 
 | Collection | Fields |
 |---|---|
-| `clubs` | `id` (= Instagram handle), `name`, `instagram`, `instagramUrl`, `category`, `bio`, `website`, `profilePictureUrl`, `followers`, `lastPostAt` |
+| `clubs` | `id` (= Instagram handle), `name`, `alsoKnownAs`, `instagram`, `instagramUrl`, `category`, `bio`, `website`, `profilePictureUrl`, `followers`, `lastPostAt` |
 | `events` | `id`, `clubId`, `clubName`, `postId`, `permalink`, `title`, `kind` (`meeting` / `event` / `deadline`), `start`, `end`, `allDay`, `recurring` (weekday or null), `location` |
 | `announcements` | `id`, `clubId`, `clubName`, `title`, `summary`, `important`, `postedAt`, `permalink` |
 | `links` | `id`, `clubId`, `clubName`, `url`, `label`, `kind` (`discord` / `form` / `linktree` / `document` / `event` / `social` / `website`), `postId` |
@@ -106,7 +121,8 @@ const results = searchClubs(data, 'debate')
 
 ```
 collector/
-  clubs.json               list of clubs to collect
+  clubs.json               the 134 UCSC clubs to collect
+  src/update-clubs.js      refreshes clubs.json from the UCSC directory
   .env.example             settings template
   src/index.js             main pipeline + CLI
   src/instagram.js         Instagram Business Discovery API

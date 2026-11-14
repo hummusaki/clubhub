@@ -70,10 +70,24 @@ async function* demoSource() {
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
 
+// Posts already read by Claude are cached, so re-runs only pay for new posts.
+const CACHE_FILE = path.join(ROOT, 'output', 'claude-cache.json')
+let cache = null
+function loadCache() {
+  if (cache) return cache
+  try { cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) } catch { cache = {} }
+  return cache
+}
+
 async function analyze(post, profile) {
   if (llmEnabled()) {
+    const c = loadCache()
+    const key = `${post.id}:${(post.caption || '').length}` // re-read if the caption was edited
+    if (c[key]) return c[key]
     try {
-      return await extractWithClaude(post, profile)
+      const info = await extractWithClaude(post, profile)
+      c[key] = info
+      return info
     } catch (err) {
       console.warn(`  ! Claude extraction failed for ${post.id}, using rules: ${err.message}`)
     }
@@ -100,6 +114,7 @@ export async function collect({ demo = false, only } = {}) {
     const clubId = profile.username
     const clubName = club.name || profile.name || profile.username
     console.log(`✓ @${clubId}: ${posts.length} posts`)
+    if (club.alsoKnownAs) console.log(`    (shared account, also: ${club.alsoKnownAs.join(', ')})`)
 
     out.clubs.push({
       id: clubId,
@@ -107,6 +122,7 @@ export async function collect({ demo = false, only } = {}) {
       instagram: clubId,
       instagramUrl: `https://www.instagram.com/${clubId}/`,
       category: club.category || null,
+      alsoKnownAs: club.alsoKnownAs || [],
       bio: profile.biography,
       website: profile.website,
       profilePictureUrl: profile.profilePictureUrl,
@@ -152,6 +168,8 @@ async function save(data) {
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, 'clubhub-data.json')
   fs.writeFileSync(file, JSON.stringify(data, null, 2))
+  if (cache) fs.writeFileSync(CACHE_FILE, JSON.stringify(cache))
+  if (data.errors.length) console.log(`\n${data.errors.length} clubs skipped (usually personal or private accounts). See "errors" in the output.`)
   console.log(`\nSaved ${data.clubs.length} clubs, ${data.events.length} events, ${data.announcements.length} announcements, ${data.links.length} links -> ${path.relative(process.cwd(), file)}`)
 
   const hook = process.env.DB_WEBHOOK_URL
