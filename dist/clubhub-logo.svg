@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="ch-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4A8AF4" />
+      <stop offset="52%" stop-color="#7C65E0" />
+      <stop offset="100%" stop-color="#46B8AE" />
+    </linearGradient>
+    <linearGradient id="ch-shine" x1="12" y1="6" x2="44" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.38" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="ch-warm" x1="20" y1="16" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE59E" />
+      <stop offset="100%" stop-color="#FF9E9E" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#ch-bg)" />
+  <rect x="4.75" y="4.75" width="54.5" height="54.5" rx="15.25" stroke="url(#ch-shine)" stroke-width="1.5" />
+
+  <!-- Connecting Hub Ring (C-shaped orbital arc) -->
+  <path
+    d="M42.5 22.5A14.5 14.5 0 1 0 42.5 41.5"
+    stroke="#FFFFFF"
+    stroke-width="4.2"
+    stroke-linecap="round"
+    stroke-opacity="0.92"
+  />
+
+  <!-- Interconnected Club Nodes -->
+  <circle cx="24" cy="22" r="5.5" fill="#FFFFFF" />
+  <circle cx="24" cy="42" r="5.5" fill="#B8F5D4" />
+  <circle cx="43.5" cy="22.5" r="5.5" fill="url(#ch-warm)" />
+  <circle cx="43.5" cy="41.5" r="5.5" fill="#D9E8FF" />
+
+  <!-- Central Hub Sparkle Core -->
+  <path
+    d="M32 24.5C32.7 28.6 35.4 31.3 39.5 32C35.4 32.7 32.7 35.4 32 39.5C31.3 35.4 28.6 32.7 24.5 32C28.6 31.3 31.3 28.6 32 24.5Z"
+    fill="#FFFFFF"
+  />
+</svg>
