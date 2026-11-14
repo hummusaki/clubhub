@@ -1,7 +1,8 @@
-import { todaySchedule } from '../data/sampleData'
+import { todaySchedule as defaultSchedule } from '../data/sampleData'
 import { Card, BubbleTag } from './ui'
 
-export default function TodaySchedule() {
+export default function TodaySchedule({ items }) {
+  const todaySchedule = items && items.length > 0 ? items : defaultSchedule
   return (
     <Card className="p-[22px]" delay={3}>
       <div className="flex items-center justify-between mb-[18px]">

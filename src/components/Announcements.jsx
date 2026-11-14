@@ -1,7 +1,8 @@
-import { announcements } from '../data/sampleData'
+import { announcements as defaultAnnouncements } from '../data/sampleData'
 import { Card, BubbleTag } from './ui'
 
-export default function Announcements() {
+export default function Announcements({ items }) {
+  const announcements = items && items.length > 0 ? items : defaultAnnouncements
   return (
     <Card className="p-[22px]" delay={4}>
       <div className="flex items-center justify-between mb-[18px]">

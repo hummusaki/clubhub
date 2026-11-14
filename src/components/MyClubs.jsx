@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { clubs } from '../data/sampleData'
+import { clubs as defaultClubs } from '../data/sampleData'
 import { Card, Avatar, BubbleTag } from './ui'
 
 const tabs = ['All', 'Academic', 'Social', 'Arts']
 
-export default function MyClubs() {
+export default function MyClubs({ items }) {
+  const clubs = items && items.length > 0 ? items : defaultClubs
   const [filter, setFilter] = useState('All')
 
   const filtered = filter === 'All'
