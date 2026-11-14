@@ -1,0 +1,106 @@
+{
+  "_note": "Made-up clubs and posts for demos and testing. {{date+N}} becomes the date N days after the post.",
+  "clubs": [
+    {
+      "name": "Computer Science Club",
+      "instagram": "demo_ucsc_csclub",
+      "category": "academic",
+      "profile": {
+        "username": "demo_ucsc_csclub",
+        "name": "UCSC CS Club",
+        "biography": "Computer Science Club at UC Santa Cruz 💻 Weekly meetings Tuesdays 6pm @ Baskin Engineering 152",
+        "website": "https://linktr.ee/demo_csclub",
+        "profilePictureUrl": null,
+        "followers": 1240
+      },
+      "posts": [
+        {
+          "id": "demo_cs_1",
+          "hoursAgo": 20,
+          "permalink": "https://www.instagram.com/p/demo_cs_1/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "🚀 Intro to React Workshop!\n\nLearn to build your first web app from scratch. No experience needed, bring a laptop!\n\n📅 {{date+4}}\n⏰ 6-8pm\n📍 Baskin Engineering 152\n\nRSVP: forms.gle/demoReactRSVP\n#ucsc #slugs #webdev"
+        },
+        {
+          "id": "demo_cs_2",
+          "hoursAgo": 50,
+          "permalink": "https://www.instagram.com/p/demo_cs_2/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "⚠️ ROOM CHANGE ⚠️\nThis week's general meeting is moved to E2 192 (same time, 6pm Tuesday). See you there!"
+        },
+        {
+          "id": "demo_cs_3",
+          "hoursAgo": 120,
+          "permalink": "https://www.instagram.com/p/demo_cs_3/",
+          "mediaType": "CAROUSEL_ALBUM",
+          "imageUrl": null,
+          "caption": "Officer applications are OPEN for winter quarter! 🐌\nApply by {{date+9}} at the link in bio. Join our Discord for updates: discord.gg/demoCSclub"
+        }
+      ]
+    },
+    {
+      "name": "Debate Society",
+      "instagram": "demo_ucsc_debate",
+      "category": "social",
+      "profile": {
+        "username": "demo_ucsc_debate",
+        "name": "Slug Debate Society",
+        "biography": "UCSC's competitive and casual debate club 🎤 All majors welcome",
+        "website": null,
+        "profilePictureUrl": null,
+        "followers": 410
+      },
+      "posts": [
+        {
+          "id": "demo_debate_1",
+          "hoursAgo": 10,
+          "permalink": "https://www.instagram.com/p/demo_debate_1/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "We practice every Thursday at 4:30pm in Humanities 1 room 110! Drop in anytime, no sign up needed 🗣️"
+        },
+        {
+          "id": "demo_debate_2",
+          "hoursAgo": 72,
+          "permalink": "https://www.instagram.com/p/demo_debate_2/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "Fall Showcase Tournament 🏆 this Saturday from 10am to 3pm at Stevenson Event Center. Free food! Register: https://forms.gle/demoDebateTourney"
+        }
+      ]
+    },
+    {
+      "name": "Art Collective",
+      "instagram": "demo_ucsc_artcollective",
+      "category": "arts",
+      "profile": {
+        "username": "demo_ucsc_artcollective",
+        "name": "Art Collective UCSC",
+        "biography": "Open studio for all artists 🎨",
+        "website": "https://demo-artcollective.example.com",
+        "profilePictureUrl": null,
+        "followers": 650
+      },
+      "posts": [
+        {
+          "id": "demo_art_1",
+          "hoursAgo": 30,
+          "permalink": "https://www.instagram.com/p/demo_art_1/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "Studio session tomorrow at 1pm\nLocation: Porter D-Building studio 3B\nMaterials provided 🖌️"
+        },
+        {
+          "id": "demo_art_2",
+          "hoursAgo": 200,
+          "permalink": "https://www.instagram.com/p/demo_art_2/",
+          "mediaType": "IMAGE",
+          "imageUrl": null,
+          "caption": "Huge thank you to everyone who came out to our gallery night!! 💜 Photos up on our site"
+        }
+      ]
+    }
+  ]
+}
