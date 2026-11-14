@@ -1,6 +1,5 @@
 // ── ClubHub API & Dictionary Client ──
-// Fetches and sends data to/from the backend dictionary & SQLite database.
-// Automatically falls back to http://localhost:3001/api if Vite proxy isn't active.
+// Clean frontend client for the SQLite database, Collector API & Multi-Source Sync.
 
 const API_BASE = 'http://localhost:3001/api';
 
@@ -18,117 +17,63 @@ async function fetchJSON(path, options = {}) {
   }
 }
 
-// ── 1. Dictionary API (stores & sends info like a dictionary) ──
-export async function getDictionary(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/dict${query ? `?${query}` : ''}`);
-}
+const withQuery = (base, params = {}) => {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  ).toString();
+  return `${base}${qs ? `?${qs}` : ''}`;
+};
 
-export async function getDictKey(key) {
-  return fetchJSON(`/dict/${encodeURIComponent(key)}`);
-}
+// ── 1. Collector Data, Webhook & Search ──
+export const getCollectorData = (params = {}) => fetchJSON(withQuery('/data', params));
+export const searchClubs = q => fetchJSON(withQuery('/search', { q }));
+export const sendWebhook = payload => fetchJSON('/webhook', { method: 'POST', body: JSON.stringify(payload) });
+export const importCollectorFile = file => fetchJSON('/import-file', { method: 'POST', body: JSON.stringify({ file }) });
 
-export async function setDictKey(key, value, options = {}) {
-  return fetchJSON(`/dict/${encodeURIComponent(key)}`, {
+// ── 2. Unified ClubHub Dictionary (/api/hub) & Key-Value Store (/api/dict) ──
+export const getClubHub = () => fetchJSON('/hub');
+export const getClubHubEntry = clubId => fetchJSON(`/hub/${encodeURIComponent(clubId)}`);
+export const getDictionary = (params = {}) => fetchJSON(withQuery('/dict', params));
+export const getDictKey = key => fetchJSON(`/dict/${encodeURIComponent(key)}`);
+export const setDictKey = (key, value, options = {}) =>
+  fetchJSON(`/dict/${encodeURIComponent(key)}`, {
     method: 'PUT',
     body: JSON.stringify({ value, ...options }),
   });
-}
+export const deleteDictKey = key => fetchJSON(`/dict/${encodeURIComponent(key)}`, { method: 'DELETE' });
 
-export async function deleteDictKey(key) {
-  return fetchJSON(`/dict/${encodeURIComponent(key)}`, {
-    method: 'DELETE',
-  });
-}
-
-// ── 2. Unified ClubHub Dictionary (all clubs + meeting times + sources) ──
-export async function getClubHub() {
-  return fetchJSON('/hub');
-}
-
-export async function getClubHubEntry(clubKey) {
-  return fetchJSON(`/hub/${encodeURIComponent(clubKey)}`);
-}
-
-// ── 3. Ingest from Instagram, Discord, Email, Google Calendar, Website ──
-export async function ingestFromSource(platform, payload) {
-  return fetchJSON(`/ingest/${encodeURIComponent(platform)}`, {
+// ── 3. Multi-Source Sync & Ingestion (Instagram, Discord, Email, Google Calendar, Website) ──
+export const ingestFromSource = (source, payload) =>
+  fetchJSON(`/ingest/${encodeURIComponent(source)}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-}
 
-// ── 4. Clubs, Events, Announcements, Members, Links, Sources ──
-export async function getClubs() {
-  return fetchJSON('/clubs');
-}
-
-export async function getClub(id) {
-  return fetchJSON(`/clubs/${id}`);
-}
-
-export async function createClub(data) {
-  return fetchJSON('/clubs', {
+export const getSources = (params = {}) => fetchJSON(withQuery('/sources', params));
+export const registerSource = data => fetchJSON('/sources', { method: 'POST', body: JSON.stringify(data) });
+export const syncAllSources = (platform = 'all', clubId = null) =>
+  fetchJSON('/sources/sync', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ platform, clubId }),
   });
-}
 
-export async function getTodaySchedule() {
-  return fetchJSON('/events/today');
-}
+// ── 4. Core Collector Tables (clubs, events, announcements, links, posts) ──
+export const getClubs = (params = {}) => fetchJSON(withQuery('/clubs', params));
+export const getClub = id => fetchJSON(`/clubs/${encodeURIComponent(id)}`);
+export const createClub = data => fetchJSON('/clubs', { method: 'POST', body: JSON.stringify(data) });
 
-export async function getUpcomingEvents() {
-  return fetchJSON('/events/upcoming');
-}
+export const getEvents = (params = {}) => fetchJSON(withQuery('/events', params));
+export const getTodaySchedule = () => fetchJSON('/events/today');
+export const getUpcomingEvents = () => fetchJSON('/events/upcoming');
+export const createEvent = data => fetchJSON('/events', { method: 'POST', body: JSON.stringify(data) });
 
-export async function getEvents(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/events${query ? `?${query}` : ''}`);
-}
+export const getAnnouncements = (params = {}) => fetchJSON(withQuery('/announcements', params));
+export const createAnnouncement = data => fetchJSON('/announcements', { method: 'POST', body: JSON.stringify(data) });
 
-export async function createEvent(data) {
-  return fetchJSON('/events', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
+export const getLinks = (params = {}) => fetchJSON(withQuery('/links', params));
+export const createLink = data => fetchJSON('/links', { method: 'POST', body: JSON.stringify(data) });
 
-export async function getAnnouncements(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/announcements${query ? `?${query}` : ''}`);
-}
+export const getPosts = (params = {}) => fetchJSON(withQuery('/posts', params));
+export const createPost = data => fetchJSON('/posts', { method: 'POST', body: JSON.stringify(data) });
 
-export async function createAnnouncement(data) {
-  return fetchJSON('/announcements', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function getMembers() {
-  return fetchJSON('/members');
-}
-
-export async function getClubMembers(clubId) {
-  return fetchJSON(`/members/club/${clubId}`);
-}
-
-export async function getLinks(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/links${query ? `?${query}` : ''}`);
-}
-
-export async function getStats() {
-  return fetchJSON('/stats');
-}
-
-export async function getDataSources(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/sources${query ? `?${query}` : ''}`);
-}
-
-export async function searchItems(params = {}) {
-  const query = new URLSearchParams(params).toString();
-  return fetchJSON(`/sources/items/search${query ? `?${query}` : ''}`);
-}
+export const getStats = () => fetchJSON('/stats');

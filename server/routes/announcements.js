@@ -1,52 +1,67 @@
-// ── Announcements API Routes ──
+// ── Announcements API Routes (id, clubId, title, summary, important, postedAt, permalink) ──
 import { Router } from 'express';
-import { getDb } from '../database.js';
+import {
+  getDb,
+  formatAnnouncementRow,
+  normalizeClubId,
+  upsertCollectorData,
+  deleteRecord,
+} from '../database.js';
 
 const router = Router();
 
-// GET /api/announcements — all announcements
+// GET /api/announcements — filterable by ?clubId=, ?important=, ?limit=
 router.get('/', (req, res) => {
   const db = getDb();
-  const { club_id, type, source, limit } = req.query;
+  const { clubId, club_id, important, limit } = req.query;
+  const cid = normalizeClubId(clubId || club_id);
 
-  let sql = `
-    SELECT a.*, c.name AS club_name
-    FROM announcements a
-    LEFT JOIN clubs c ON a.club_id = c.id
-    WHERE 1=1
-  `;
+  let sql = 'SELECT * FROM announcements WHERE 1=1';
   const params = [];
 
-  if (club_id) { sql += ' AND a.club_id = ?'; params.push(club_id); }
-  if (type)    { sql += ' AND a.type = ?'; params.push(type); }
-  if (source)  { sql += ' AND a.source = ?'; params.push(source); }
+  if (cid) {
+    sql += ' AND lower(clubId) = lower(?)';
+    params.push(cid);
+  }
+  if (important !== undefined) {
+    sql += ' AND important = ?';
+    params.push(important === 'true' || important === '1' ? 1 : 0);
+  }
 
-  sql += ' ORDER BY a.created_at DESC';
-  if (limit) { sql += ' LIMIT ?'; params.push(parseInt(limit)); }
+  sql += ' ORDER BY postedAt DESC';
+  const parsedLimit = parseInt(limit, 10);
+  if (parsedLimit > 0) {
+    sql += ' LIMIT ?';
+    params.push(parsedLimit);
+  }
 
-  res.json(db.prepare(sql).all(...params));
+  res.json(db.prepare(sql).all(...params).map(formatAnnouncementRow));
 });
 
-// POST /api/announcements
+// POST /api/announcements — upsert an announcement by id
 router.post('/', (req, res) => {
-  const db = getDb();
-  const { club_id, title, body, type } = req.body;
-
-  if (!title) return res.status(400).json({ error: 'Title is required' });
-
-  const result = db.prepare(`
-    INSERT INTO announcements (club_id, title, body, type, source)
-    VALUES (?, ?, ?, ?, 'manual')
-  `).run(club_id || null, title, body || '', type || 'info');
-
-  res.status(201).json({ id: result.lastInsertRowid });
+  const ann = req.body || {};
+  const clubId = normalizeClubId(ann.clubId || ann.club_id);
+  if (!clubId || !ann.title) {
+    return res.status(400).json({ error: 'clubId and title are required' });
+  }
+  const id = String(ann.id || `${clubId}_ann_${Date.now()}`);
+  upsertCollectorData({
+    announcements: [
+      {
+        ...ann,
+        id,
+        clubId,
+        postedAt: ann.postedAt || new Date().toISOString(),
+      },
+    ],
+  });
+  res.status(201).json({ id, clubId });
 });
 
 // DELETE /api/announcements/:id
 router.delete('/:id', (req, res) => {
-  const db = getDb();
-  db.prepare('DELETE FROM announcements WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  res.json(deleteRecord('announcements', req.params.id));
 });
 
 export default router;

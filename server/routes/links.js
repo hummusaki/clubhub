@@ -1,49 +1,45 @@
-// ── Links & Resources API Routes ──
+// ── Links API Routes (id, clubId, clubName, url, label, kind, postId) ──
 import { Router } from 'express';
-import { getDb } from '../database.js';
+import {
+  getDb,
+  normalizeClubId,
+  upsertCollectorData,
+  deleteRecord,
+} from '../database.js';
 
 const router = Router();
 
-// GET /api/links
+// GET /api/links — filterable by ?clubId= or ?kind=
 router.get('/', (req, res) => {
   const db = getDb();
-  const { club_id } = req.query;
+  const { clubId, club_id, kind } = req.query;
+  const cid = normalizeClubId(clubId || club_id);
 
-  let sql = `
-    SELECT l.*, c.name AS club_name FROM links l
-    LEFT JOIN clubs c ON l.club_id = c.id
-  `;
+  let sql = 'SELECT * FROM links WHERE 1=1';
   const params = [];
 
-  if (club_id) {
-    sql += ' WHERE l.club_id = ?';
-    params.push(club_id);
-  }
-  sql += ' ORDER BY l.created_at DESC';
+  if (cid)  { sql += ' AND lower(clubId) = lower(?)'; params.push(cid); }
+  if (kind) { sql += ' AND kind = ?';                params.push(kind); }
 
+  sql += ' ORDER BY id ASC';
   res.json(db.prepare(sql).all(...params));
 });
 
-// POST /api/links
+// POST /api/links — upsert a link by id (`${clubId}:${url}`)
 router.post('/', (req, res) => {
-  const db = getDb();
-  const { club_id, title, url, description, icon, color } = req.body;
-
-  if (!title || !url) return res.status(400).json({ error: 'title and url are required' });
-
-  const result = db.prepare(`
-    INSERT INTO links (club_id, title, url, description, icon, color)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(club_id || null, title, url, description || '', icon || 'Link', color || 'blue');
-
-  res.status(201).json({ id: result.lastInsertRowid });
+  const link = req.body || {};
+  const clubId = normalizeClubId(link.clubId || link.club_id);
+  if (!clubId || !link.url) {
+    return res.status(400).json({ error: 'clubId and url are required' });
+  }
+  const id = String(link.id || `${clubId}:${link.url}`);
+  upsertCollectorData({ links: [{ ...link, id, clubId }] });
+  res.status(201).json({ id, clubId });
 });
 
 // DELETE /api/links/:id
 router.delete('/:id', (req, res) => {
-  const db = getDb();
-  db.prepare('DELETE FROM links WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  res.json(deleteRecord('links', req.params.id));
 });
 
 export default router;

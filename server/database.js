@@ -1,37 +1,64 @@
-// ── ClubHub Database – Built-in node:sqlite schema, connection & dictionary helpers ──
-// Uses Node's built-in `node:sqlite` (DatabaseSync) for a zero-config, zero-native-build embedded database.
-// The DB file lives at server/clubhub.db (gitignored).
+// ── ClubHub Database – Built-in node:sqlite schema matching the Collector spec ──
+// Tables: clubs, posts, events, announcements, links (+ dictionary_store).
+// Every table links back to clubs(id) via `clubId` (= the club's Instagram handle).
+// Every record has a unique string `id` and is upserted on conflict.
 
 import { DatabaseSync } from 'node:sqlite';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, 'clubhub.db');
+const COLLECTOR_OUTPUT_PATH = path.resolve(__dirname, '../collector/output/clubhub-data.json');
+const COLLECTOR_SAMPLE_PATH = path.resolve(__dirname, '../collector/fixtures/sample-output.json');
+
+const VALID_TABLES = new Set(['clubs', 'posts', 'events', 'announcements', 'links']);
 
 let db;
 
 /**
- * Wraps Node's built-in DatabaseSync so it supports `.pragma(...)` and `.transaction(fn)`
- * just like better-sqlite3, plus dictionary-style helper methods.
+ * Normalize an Instagram handle / clubId (strips leading '@' and whitespace).
+ */
+export function normalizeClubId(id) {
+  return String(id || '').trim().replace(/^@+/, '');
+}
+
+/**
+ * Wraps Node's built-in DatabaseSync with:
+ * - `.pragma(...)` helper
+ * - `.stmt(sql)` prepared statement cache
+ * - `.transaction(fn)` supporting nested transactions via SAVEPOINT
  */
 function createDatabaseWrapper(rawDb) {
-  rawDb.pragma = function (statement) {
-    return rawDb.exec(`PRAGMA ${statement}`);
+  let txDepth = 0;
+  const stmtCache = new Map();
+
+  rawDb.pragma = statement => rawDb.exec(`PRAGMA ${statement}`);
+
+  rawDb.stmt = sql => {
+    let cached = stmtCache.get(sql);
+    if (!cached) {
+      cached = rawDb.prepare(sql);
+      stmtCache.set(sql, cached);
+    }
+    return cached;
   };
 
-  rawDb.transaction = function (fn) {
-    return (...args) => {
-      rawDb.exec('BEGIN');
-      try {
-        const result = fn(...args);
-        rawDb.exec('COMMIT');
-        return result;
-      } catch (err) {
-        rawDb.exec('ROLLBACK');
-        throw err;
-      }
-    };
+  rawDb.transaction = fn => (...args) => {
+    const depth = txDepth++;
+    const sp = `sp_${depth}`;
+    rawDb.exec(depth === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${sp}`);
+    try {
+      const result = fn(...args);
+      rawDb.exec(depth === 0 ? 'COMMIT' : `RELEASE SAVEPOINT ${sp}`);
+      return result;
+    } catch (err) {
+      rawDb.exec(depth === 0 ? 'ROLLBACK' : `ROLLBACK TO SAVEPOINT ${sp}; RELEASE SAVEPOINT ${sp}`);
+      throw err;
+    } finally {
+      txDepth--;
+    }
   };
 
   return rawDb;
@@ -39,405 +66,584 @@ function createDatabaseWrapper(rawDb) {
 
 export function getDb() {
   if (!db) {
-    const rawDb = new DatabaseSync(DB_PATH);
-    db = createDatabaseWrapper(rawDb);
+    db = createDatabaseWrapper(new DatabaseSync(DB_PATH));
     db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
+    db.pragma('temp_store = MEMORY');
+    db.pragma('cache_size = -16000');
     initSchema(db);
   }
   return db;
 }
 
-// ── Schema ──────────────────────────────────────────────────────────
+export function closeDb() {
+  if (db) {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      db.close();
+    } catch {
+      // Ignore close errors during shutdown
+    }
+    db = null;
+  }
+}
+
+// ── Schema (1 table per collector list + dictionary_store) ──────────
 function initSchema(db) {
   db.exec(`
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  DICTIONARY STORE – key-value JSON store ("like a dict")     ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS dictionary_store (
-      key         TEXT    PRIMARY KEY,
-      namespace   TEXT    NOT NULL DEFAULT 'general',
-      club_id     INTEGER REFERENCES clubs(id) ON DELETE CASCADE,
-      source      TEXT    DEFAULT 'manual',
-      value       TEXT    NOT NULL,            -- JSON-encoded value
-      updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  CLUBS – the core entity                                    ║
-    -- ╚══════════════════════════════════════════════════════════════╝
+    -- 1. CLUBS (id = Instagram handle)
     CREATE TABLE IF NOT EXISTS clubs (
-      id               INTEGER PRIMARY KEY AUTOINCREMENT,
-      slug             TEXT    UNIQUE,
-      name             TEXT    NOT NULL UNIQUE,
-      abbreviation     TEXT,
-      description      TEXT,
-      category         TEXT    CHECK(category IN (
-                           'academic','social','arts','sports',
-                           'cultural','professional','volunteer','other'
-                       )) DEFAULT 'other',
-      meeting_schedule TEXT,
-      meeting_location TEXT,
-      avatar_bg        TEXT,
-      logo_url         TEXT,
-      website_url      TEXT,
-      instagram_handle TEXT,
-      discord_invite   TEXT,
-      mailing_list     TEXT,
-      gcal_id          TEXT,
-      is_active        INTEGER NOT NULL DEFAULT 1,
-      member_count     INTEGER NOT NULL DEFAULT 0,
-      created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
-      updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+      id                TEXT PRIMARY KEY,
+      name              TEXT NOT NULL,
+      alsoKnownAs       TEXT DEFAULT '[]',
+      instagram         TEXT NOT NULL,
+      instagramUrl      TEXT,
+      category          TEXT,
+      bio               TEXT,
+      website           TEXT,
+      profilePictureUrl TEXT,
+      followers         INTEGER DEFAULT 0,
+      lastPostAt        TEXT,
+      updatedAt         TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  TAGS – freeform labels for filtering / discovery           ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS tags (
-      id    INTEGER PRIMARY KEY AUTOINCREMENT,
-      label TEXT    NOT NULL UNIQUE,
-      color TEXT    DEFAULT 'blue'
+    -- 2. POSTS (links to clubs.id via clubId)
+    CREATE TABLE IF NOT EXISTS posts (
+      id          TEXT PRIMARY KEY,
+      clubId      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      postedAt    TEXT,
+      permalink   TEXT,
+      imageUrl    TEXT,
+      caption     TEXT,
+      type        TEXT,
+      important   INTEGER NOT NULL DEFAULT 0,
+      title       TEXT,
+      summary     TEXT,
+      extractedBy TEXT,
+      source      TEXT DEFAULT 'instagram'
     );
 
-    CREATE TABLE IF NOT EXISTS club_tags (
-      club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-      tag_id  INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
-      PRIMARY KEY (club_id, tag_id)
-    );
-
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  EVENTS – meeting times, workshops, socials, etc.           ║
-    -- ╚══════════════════════════════════════════════════════════════╝
+    -- 3. EVENTS (links to clubs.id via clubId; times are ISO UTC; allDay boolean)
     CREATE TABLE IF NOT EXISTS events (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      club_id       INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-      title         TEXT    NOT NULL,
-      description   TEXT,
-      location      TEXT,
-      start_time    TEXT    NOT NULL,            -- ISO-8601
-      end_time      TEXT,
-      duration      TEXT    DEFAULT '1 hr',
-      color         TEXT    DEFAULT 'blue',
-      is_recurring  INTEGER NOT NULL DEFAULT 0,
-      recurrence    TEXT,                         -- RRULE or human schedule string
-      source        TEXT    CHECK(source IN (
-                        'manual','instagram','discord','email',
-                        'google_calendar','website','other'
-                    )) DEFAULT 'manual',
-      source_id     TEXT,                         -- external ID for dedup
-      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-      updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+      id          TEXT PRIMARY KEY,
+      clubId      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      clubName    TEXT,
+      postId      TEXT,
+      permalink   TEXT,
+      title       TEXT NOT NULL,
+      kind        TEXT DEFAULT 'event',
+      start       TEXT NOT NULL,
+      end         TEXT,
+      allDay      INTEGER NOT NULL DEFAULT 0,
+      recurring   TEXT,
+      location    TEXT,
+      source      TEXT DEFAULT 'instagram'
     );
 
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  ANNOUNCEMENTS – urgent notices, news, updates              ║
-    -- ╚══════════════════════════════════════════════════════════════╝
+    -- 4. ANNOUNCEMENTS (links to clubs.id via clubId)
     CREATE TABLE IF NOT EXISTS announcements (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      club_id     INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
-      title       TEXT    NOT NULL,
-      body        TEXT,
-      type        TEXT    CHECK(type IN ('urgent','event','update','info'))
-                         DEFAULT 'info',
-      source      TEXT    CHECK(source IN (
-                        'manual','instagram','discord','email',
-                        'google_calendar','website','other'
-                  )) DEFAULT 'manual',
-      source_id   TEXT,
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      id          TEXT PRIMARY KEY,
+      clubId      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      clubName    TEXT,
+      title       TEXT NOT NULL,
+      summary     TEXT,
+      important   INTEGER NOT NULL DEFAULT 0,
+      postedAt    TEXT,
+      permalink   TEXT,
+      source      TEXT DEFAULT 'instagram'
     );
 
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  MEMBERS & BOARD MEMBERS                                    ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS members (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      name        TEXT    NOT NULL,
-      email       TEXT    UNIQUE,
-      avatar_url  TEXT,
-      attendance  INTEGER DEFAULT 85,
-      joined_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-      status      TEXT    CHECK(status IN ('active','moderate','inactive'))
-                         DEFAULT 'active'
-    );
-
-    CREATE TABLE IF NOT EXISTS club_members (
-      club_id   INTEGER NOT NULL REFERENCES clubs(id)   ON DELETE CASCADE,
-      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-      role      TEXT    CHECK(role IN (
-                    'member','president','vice_president',
-                    'treasurer','secretary','social_chair','officer'
-                )) DEFAULT 'member',
-      joined_at TEXT    NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (club_id, member_id)
-    );
-
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  LINKS & RESOURCES – docs, videos, forms, etc.              ║
-    -- ╚══════════════════════════════════════════════════════════════╝
+    -- 5. LINKS (links to clubs.id via clubId)
     CREATE TABLE IF NOT EXISTS links (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      club_id     INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
-      title       TEXT    NOT NULL,
-      url         TEXT    NOT NULL,
-      description TEXT,
-      icon        TEXT    DEFAULT 'Link',
-      color       TEXT    DEFAULT 'blue',
-      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+      id          TEXT PRIMARY KEY,
+      clubId      TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      clubName    TEXT,
+      url         TEXT NOT NULL,
+      label       TEXT,
+      kind        TEXT,
+      postId      TEXT
     );
 
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  DATA SOURCES – connection configs for each integration      ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS data_sources (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      club_id       INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-      platform      TEXT    NOT NULL CHECK(platform IN (
-                        'instagram','discord','email',
-                        'google_calendar','website'
-                    )),
-      identifier    TEXT    NOT NULL,   -- @handle, server_id, address, cal url, site url
-      access_token  TEXT,               -- encrypted in prod
-      refresh_token TEXT,
-      is_active     INTEGER NOT NULL DEFAULT 1,
-      last_synced   TEXT,
-      config        TEXT,               -- JSON blob for extra settings
-      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(club_id, platform, identifier)
+    -- 6. DICTIONARY STORE (key-value lookup & metadata)
+    CREATE TABLE IF NOT EXISTS dictionary_store (
+      key         TEXT PRIMARY KEY,
+      namespace   TEXT NOT NULL DEFAULT 'general',
+      clubId      TEXT,
+      source      TEXT DEFAULT 'collector',
+      value       TEXT NOT NULL,
+      updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  INGESTED ITEMS – raw data pulled from external sources     ║
-    -- ║  Acts as a dictionary / lookup cache of all scraped info     ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS ingested_items (
-      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_id           INTEGER NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
-      platform            TEXT    NOT NULL,
-      external_id         TEXT,               -- dedup key from the platform
-      item_type           TEXT    NOT NULL CHECK(item_type IN (
-                              'post','message','email','calendar_event',
-                              'story','announcement','page_content','other'
-                          )),
-      title               TEXT,
-      body                TEXT,
-      author              TEXT,
-      url                 TEXT,
-      media_urls          TEXT,               -- JSON array
-      extracted_time      TEXT,               -- parsed meeting time if found
-      extracted_location  TEXT,               -- parsed location if found
-      metadata            TEXT,               -- JSON blob (likes, reactions, etc.)
-      published_at        TEXT,
-      ingested_at         TEXT    NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(platform, external_id)
-    );
-
-    -- ╔══════════════════════════════════════════════════════════════╗
-    -- ║  SYNC LOG – audit trail for ingestion runs                  ║
-    -- ╚══════════════════════════════════════════════════════════════╝
-    CREATE TABLE IF NOT EXISTS sync_log (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_id     INTEGER NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
-      started_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-      finished_at   TEXT,
-      items_found   INTEGER DEFAULT 0,
-      items_new     INTEGER DEFAULT 0,
-      status        TEXT    CHECK(status IN ('running','success','error'))
-                           DEFAULT 'running',
-      error_message TEXT
-    );
-
-    -- ── Indexes for common queries ──
-    CREATE INDEX IF NOT EXISTS idx_dict_namespace    ON dictionary_store(namespace);
-    CREATE INDEX IF NOT EXISTS idx_dict_club         ON dictionary_store(club_id);
-    CREATE INDEX IF NOT EXISTS idx_dict_source       ON dictionary_store(source);
-    CREATE INDEX IF NOT EXISTS idx_events_club       ON events(club_id);
-    CREATE INDEX IF NOT EXISTS idx_events_start      ON events(start_time);
-    CREATE INDEX IF NOT EXISTS idx_events_source     ON events(source, source_id);
-    CREATE INDEX IF NOT EXISTS idx_announcements_club ON announcements(club_id);
-    CREATE INDEX IF NOT EXISTS idx_ingested_platform ON ingested_items(platform, external_id);
-    CREATE INDEX IF NOT EXISTS idx_ingested_source   ON ingested_items(source_id);
-    CREATE INDEX IF NOT EXISTS idx_data_sources_club ON data_sources(club_id);
+    -- Indexes for fast lookups, filtering, and sorting
+    CREATE INDEX IF NOT EXISTS idx_clubs_name           ON clubs(name);
+    CREATE INDEX IF NOT EXISTS idx_clubs_category       ON clubs(category);
+    CREATE INDEX IF NOT EXISTS idx_events_start         ON events(start);
+    CREATE INDEX IF NOT EXISTS idx_events_clubId        ON events(clubId);
+    CREATE INDEX IF NOT EXISTS idx_announcements_clubId ON announcements(clubId);
+    CREATE INDEX IF NOT EXISTS idx_announcements_posted ON announcements(postedAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_links_clubId         ON links(clubId);
+    CREATE INDEX IF NOT EXISTS idx_posts_clubId         ON posts(clubId);
+    CREATE INDEX IF NOT EXISTS idx_posts_posted         ON posts(postedAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_dict_clubId          ON dictionary_store(clubId);
+    CREATE INDEX IF NOT EXISTS idx_dict_namespace       ON dictionary_store(namespace);
   `);
 }
 
-// ── Dictionary Helper Functions ─────────────────────────────────────
+// ── Sync a club's current relational state into dictionary_store ────
+export function syncClubDictionary(clubId) {
+  const cid = normalizeClubId(clubId);
+  if (!cid) return null;
 
-/**
- * Set a key-value entry in the dictionary store.
- */
-export function setDictEntry(key, value, { namespace = 'general', clubId = null, source = 'manual' } = {}) {
-  const db = getDb();
-  const jsonValue = JSON.stringify(value);
-  db.prepare(`
-    INSERT INTO dictionary_store (key, namespace, club_id, source, value, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET
-      namespace  = excluded.namespace,
-      club_id    = excluded.club_id,
-      source     = excluded.source,
-      value      = excluded.value,
-      updated_at = datetime('now')
-  `).run(key, namespace, clubId, source, jsonValue);
-  return { key, namespace, club_id: clubId, source, value };
+  const club = getClubById(cid);
+  if (!club) {
+    deleteDictEntry(`club:${cid}`);
+    return null;
+  }
+
+  return setDictEntry(`club:${cid}`, club, {
+    namespace: 'clubs',
+    clubId: cid,
+    source: 'collector',
+  });
 }
 
-/**
- * Get a single entry from the dictionary store by key.
- */
-export function getDictEntry(key) {
+// ── Upsert full or partial collector payload by ID ──────────────────
+export function upsertCollectorData(data = {}) {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM dictionary_store WHERE key = ?').get(key);
-  if (!row) return null;
+  const {
+    collectedAt = new Date().toISOString(),
+    clubs = [],
+    posts = [],
+    events = [],
+    announcements = [],
+    links = [],
+    errors,
+  } = data;
+
+  const ensureClubStmt = db.stmt(`
+    INSERT OR IGNORE INTO clubs (id, name, instagram, instagramUrl, updatedAt)
+    VALUES (?, ?, ?, ?, datetime('now'))
+  `);
+
+  const upsertClubStmt = db.stmt(`
+    INSERT INTO clubs (
+      id, name, alsoKnownAs, instagram, instagramUrl, category,
+      bio, website, profilePictureUrl, followers, lastPostAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      name              = excluded.name,
+      alsoKnownAs       = excluded.alsoKnownAs,
+      instagram         = excluded.instagram,
+      instagramUrl      = excluded.instagramUrl,
+      category          = COALESCE(excluded.category, clubs.category),
+      bio               = COALESCE(excluded.bio, clubs.bio),
+      website           = COALESCE(excluded.website, clubs.website),
+      profilePictureUrl = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
+      followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
+      lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
+      updatedAt         = datetime('now')
+  `);
+
+  const upsertPostStmt = db.stmt(`
+    INSERT INTO posts (
+      id, clubId, postedAt, permalink, imageUrl, caption,
+      type, important, title, summary, extractedBy, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      clubId      = excluded.clubId,
+      postedAt    = excluded.postedAt,
+      permalink   = excluded.permalink,
+      imageUrl    = excluded.imageUrl,
+      caption     = excluded.caption,
+      type        = excluded.type,
+      important   = excluded.important,
+      title       = excluded.title,
+      summary     = excluded.summary,
+      extractedBy = excluded.extractedBy,
+      source      = excluded.source
+  `);
+
+  const upsertEventStmt = db.stmt(`
+    INSERT INTO events (
+      id, clubId, clubName, postId, permalink, title,
+      kind, start, end, allDay, recurring, location, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      clubId    = excluded.clubId,
+      clubName  = COALESCE(excluded.clubName, events.clubName),
+      postId    = COALESCE(excluded.postId, events.postId),
+      permalink = COALESCE(excluded.permalink, events.permalink),
+      title     = excluded.title,
+      kind      = excluded.kind,
+      start     = excluded.start,
+      end       = excluded.end,
+      allDay    = excluded.allDay,
+      recurring = excluded.recurring,
+      location  = excluded.location,
+      source    = excluded.source
+  `);
+
+  const upsertAnnouncementStmt = db.stmt(`
+    INSERT INTO announcements (
+      id, clubId, clubName, title, summary, important, postedAt, permalink, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      clubId    = excluded.clubId,
+      clubName  = COALESCE(excluded.clubName, announcements.clubName),
+      title     = excluded.title,
+      summary   = excluded.summary,
+      important = excluded.important,
+      postedAt  = excluded.postedAt,
+      permalink = COALESCE(excluded.permalink, announcements.permalink),
+      source    = excluded.source
+  `);
+
+  const upsertLinkStmt = db.stmt(`
+    INSERT INTO links (
+      id, clubId, clubName, url, label, kind, postId
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      clubId   = excluded.clubId,
+      clubName = COALESCE(excluded.clubName, links.clubName),
+      url      = excluded.url,
+      label    = excluded.label,
+      kind     = excluded.kind,
+      postId   = COALESCE(excluded.postId, links.postId)
+  `);
+
+  const affectedClubs = new Set();
+  const ensureClub = (rawId, fallbackName) => {
+    const cid = normalizeClubId(rawId);
+    if (!cid) return null;
+    ensureClubStmt.run(cid, fallbackName || cid, cid, `https://www.instagram.com/${cid}/`);
+    affectedClubs.add(cid);
+    return cid;
+  };
+
+  const counts = { clubs: 0, posts: 0, events: 0, announcements: 0, links: 0 };
+
+  const runTransaction = db.transaction(() => {
+    for (const c of clubs) {
+      const cid = normalizeClubId(c.id || c.instagram);
+      if (!cid) continue;
+      upsertClubStmt.run(
+        cid,
+        c.name || cid,
+        JSON.stringify(Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : []),
+        normalizeClubId(c.instagram) || cid,
+        c.instagramUrl || `https://www.instagram.com/${cid}/`,
+        c.category || null,
+        c.bio || null,
+        c.website || null,
+        c.profilePictureUrl || null,
+        Number(c.followers) || 0,
+        c.lastPostAt || null
+      );
+      affectedClubs.add(cid);
+      counts.clubs++;
+    }
+
+    for (const p of posts) {
+      const cid = ensureClub(p.clubId, p.clubName);
+      if (!p.id || !cid) continue;
+      upsertPostStmt.run(
+        String(p.id),
+        cid,
+        p.postedAt || null,
+        p.permalink || null,
+        p.imageUrl || null,
+        p.caption || null,
+        p.type || 'other',
+        p.important ? 1 : 0,
+        p.title || null,
+        p.summary || null,
+        p.extractedBy || 'rules',
+        p.source || 'instagram'
+      );
+      counts.posts++;
+    }
+
+    for (const e of events) {
+      const cid = ensureClub(e.clubId, e.clubName);
+      if (!e.id || !cid || !e.start) continue;
+      upsertEventStmt.run(
+        String(e.id),
+        cid,
+        e.clubName || null,
+        e.postId || null,
+        e.permalink || null,
+        e.title || 'Untitled Event',
+        e.kind || 'event',
+        e.start,
+        e.end || null,
+        e.allDay ? 1 : 0,
+        e.recurring || null,
+        e.location || null,
+        e.source || 'instagram'
+      );
+      counts.events++;
+    }
+
+    for (const a of announcements) {
+      const cid = ensureClub(a.clubId, a.clubName);
+      if (!a.id || !cid) continue;
+      upsertAnnouncementStmt.run(
+        String(a.id),
+        cid,
+        a.clubName || null,
+        a.title || 'Announcement',
+        a.summary || null,
+        a.important ? 1 : 0,
+        a.postedAt || null,
+        a.permalink || null,
+        a.source || 'instagram'
+      );
+      counts.announcements++;
+    }
+
+    for (const l of links) {
+      const cid = ensureClub(l.clubId, l.clubName);
+      if (!l.id || !cid || !l.url) continue;
+      upsertLinkStmt.run(
+        String(l.id),
+        cid,
+        l.clubName || null,
+        l.url,
+        l.label || l.url,
+        l.kind || 'website',
+        l.postId || null
+      );
+      counts.links++;
+    }
+
+    // Sync every affected club's full record into dictionary_store
+    for (const cid of affectedClubs) {
+      syncClubDictionary(cid);
+    }
+
+    // Update collection metadata with live database totals
+    const prevMeta = getDictEntry('meta:last_collection')?.value || {};
+    const liveTotals = getStats();
+    setDictEntry(
+      'meta:last_collection',
+      {
+        collectedAt: data.collectedAt || prevMeta.collectedAt || collectedAt,
+        updatedAt: new Date().toISOString(),
+        counts: liveTotals,
+        errors: Array.isArray(errors) ? errors : prevMeta.errors || [],
+      },
+      { namespace: 'meta', source: 'collector' }
+    );
+  });
+
+  runTransaction();
+
   return {
-    ...row,
-    value: safeParseJSON(row.value),
+    collectedAt,
+    upserted: counts,
+    errors: Array.isArray(errors) ? errors.length : 0,
   };
 }
 
-/**
- * Return a plain JS object (dictionary: `{ [key]: value }`) matching optional filters.
- */
-export function getDictionary({ namespace, clubId, source, prefix } = {}) {
-  const db = getDb();
-  let sql = 'SELECT * FROM dictionary_store WHERE 1=1';
-  const params = [];
+// ── Load from collector JSON file (output/clubhub-data.json or fixtures/sample-output.json) ──
+export function importCollectorFile(customFilePath = null) {
+  const targetPath =
+    customFilePath ||
+    (fs.existsSync(COLLECTOR_OUTPUT_PATH) ? COLLECTOR_OUTPUT_PATH : COLLECTOR_SAMPLE_PATH);
 
-  if (namespace) { sql += ' AND namespace = ?'; params.push(namespace); }
-  if (clubId)    { sql += ' AND club_id = ?';   params.push(Number(clubId)); }
-  if (source)    { sql += ' AND source = ?';    params.push(source); }
-  if (prefix)    { sql += ' AND key LIKE ?';    params.push(`${prefix}%`); }
-
-  sql += ' ORDER BY key ASC';
-  const rows = db.prepare(sql).all(...params);
-
-  const dict = {};
-  for (const row of rows) {
-    dict[row.key] = safeParseJSON(row.value);
+  if (!fs.existsSync(targetPath)) {
+    return { imported: false, reason: `No collector file found at ${targetPath}` };
   }
+
+  const data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+  return {
+    imported: true,
+    file: targetPath,
+    ...upsertCollectorData(data),
+  };
+}
+
+// ── Fast single-query database counts ───────────────────────────────
+export function getStats() {
+  const db = getDb();
+  return db
+    .stmt(`
+      SELECT
+        (SELECT COUNT(*) FROM clubs)            AS clubs,
+        (SELECT COUNT(*) FROM events)           AS events,
+        (SELECT COUNT(*) FROM announcements)    AS announcements,
+        (SELECT COUNT(*) FROM links)            AS links,
+        (SELECT COUNT(*) FROM posts)            AS posts,
+        (SELECT COUNT(*) FROM dictionary_store) AS dictKeys
+    `)
+    .get();
+}
+
+// ── Get a single club with all its events, announcements, links, and posts ──
+export function getClubById(clubId) {
+  const db = getDb();
+  const cid = normalizeClubId(clubId);
+  if (!cid) return null;
+
+  const row = db.stmt('SELECT * FROM clubs WHERE lower(id) = lower(?)').get(cid);
+  if (!row) return null;
+
+  const club = formatClubRow(row);
+  return {
+    ...club,
+    events: db.stmt('SELECT * FROM events WHERE clubId = ? ORDER BY start ASC').all(club.id).map(formatEventRow),
+    announcements: db.stmt('SELECT * FROM announcements WHERE clubId = ? ORDER BY postedAt DESC').all(club.id).map(formatAnnouncementRow),
+    links: db.stmt('SELECT * FROM links WHERE clubId = ? ORDER BY id ASC').all(club.id),
+    posts: db.stmt('SELECT * FROM posts WHERE clubId = ? ORDER BY postedAt DESC').all(club.id).map(formatPostRow),
+  };
+}
+
+// ── Delete a record from any table by ID and sync dictionary_store ──
+export function deleteRecord(table, id) {
+  if (!VALID_TABLES.has(table)) {
+    throw new Error(`Invalid table "${table}"`);
+  }
+  const db = getDb();
+  const cleanId = table === 'clubs' ? normalizeClubId(id) : String(id);
+  const existing = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(cleanId);
+  if (!existing) return { deleted: false, id: cleanId };
+
+  const clubId = table === 'clubs' ? existing.id : existing.clubId;
+  db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(cleanId);
+
+  if (clubId) syncClubDictionary(clubId);
+  return { deleted: true, id: cleanId, clubId };
+}
+
+// ── Read all 5 collections in the exact Collector JSON format ──────
+export function getAllCollectorData({ clubId } = {}) {
+  const db = getDb();
+  const cid = clubId ? normalizeClubId(clubId) : null;
+  const where = cid ? 'WHERE lower(clubId) = lower(?)' : '';
+  const clubWhere = cid ? 'WHERE lower(id) = lower(?)' : '';
+  const params = cid ? [cid] : [];
+
+  const clubs = db.prepare(`SELECT * FROM clubs ${clubWhere} ORDER BY name ASC`).all(...params).map(formatClubRow);
+  const posts = db.prepare(`SELECT * FROM posts ${where} ORDER BY postedAt DESC`).all(...params).map(formatPostRow);
+  const events = db.prepare(`SELECT * FROM events ${where} ORDER BY start ASC`).all(...params).map(formatEventRow);
+  const announcements = db.prepare(`SELECT * FROM announcements ${where} ORDER BY postedAt DESC`).all(...params).map(formatAnnouncementRow);
+  const links = db.prepare(`SELECT * FROM links ${where} ORDER BY id ASC`).all(...params);
+
+  const meta = getDictEntry('meta:last_collection')?.value || {};
+
+  return {
+    collectedAt: meta.collectedAt || new Date().toISOString(),
+    clubs,
+    posts,
+    events,
+    announcements,
+    links,
+    errors: meta.errors || [],
+  };
+}
+
+// ── Build a dictionary keyed by clubId in O(N) single pass ──────────
+export function buildClubHubDictionary(filterClubId = null) {
+  const data = getAllCollectorData(filterClubId ? { clubId: filterClubId } : {});
+  const dict = {};
+
+  for (const club of data.clubs) {
+    dict[club.id] = {
+      ...club,
+      events: [],
+      announcements: [],
+      links: [],
+      posts: [],
+    };
+  }
+
+  for (const e of data.events) dict[e.clubId]?.events.push(e);
+  for (const a of data.announcements) dict[a.clubId]?.announcements.push(a);
+  for (const l of data.links) dict[l.clubId]?.links.push(l);
+  for (const p of data.posts) dict[p.clubId]?.posts.push(p);
+
   return dict;
 }
 
-/**
- * Build a complete dictionary of all clubs and their aggregated info
- * (meeting times, locations, Instagram, Discord, email, Google Calendar, website, announcements, links).
- */
-export function buildClubHubDictionary(filterClubSlugOrId = null) {
+// ── Dictionary Key-Value Helpers ────────────────────────────────────
+export function setDictEntry(key, value, { namespace = 'general', clubId = null, source = 'manual' } = {}) {
   const db = getDb();
-  let clubs = db.prepare('SELECT * FROM clubs ORDER BY id ASC').all();
-  if (filterClubSlugOrId !== null) {
-    clubs = clubs.filter(
-      c => String(c.id) === String(filterClubSlugOrId) ||
-           c.slug === String(filterClubSlugOrId).toLowerCase() ||
-           c.abbreviation?.toLowerCase() === String(filterClubSlugOrId).toLowerCase()
-    );
-  }
+  const jsonValue = JSON.stringify(value ?? null);
+  db.stmt(`
+    INSERT INTO dictionary_store (key, namespace, clubId, source, value, updatedAt)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET
+      namespace = excluded.namespace,
+      clubId    = excluded.clubId,
+      source    = excluded.source,
+      value     = excluded.value,
+      updatedAt = datetime('now')
+  `).run(key, namespace, clubId, source, jsonValue);
+  return { key, namespace, clubId, source, value };
+}
 
-  const tagStmt = db.prepare(`
-    SELECT t.label, t.color FROM tags t
-    JOIN club_tags ct ON t.id = ct.tag_id
-    WHERE ct.club_id = ?
-  `);
-
-  const eventStmt = db.prepare(`
-    SELECT id, title, description, location, start_time, end_time, duration, color, is_recurring, recurrence, source
-    FROM events WHERE club_id = ? ORDER BY start_time ASC
-  `);
-
-  const announcementStmt = db.prepare(`
-    SELECT id, title, body, type, source, created_at
-    FROM announcements WHERE club_id = ? ORDER BY created_at DESC
-  `);
-
-  const linkStmt = db.prepare(`
-    SELECT id, title, url, description, icon, color
-    FROM links WHERE club_id = ? ORDER BY id ASC
-  `);
-
-  const sourceStmt = db.prepare(`
-    SELECT id, platform, identifier, is_active, last_synced
-    FROM data_sources WHERE club_id = ?
-  `);
-
-  const ingestedByClubStmt = db.prepare(`
-    SELECT ii.id, ii.platform, ii.external_id, ii.item_type, ii.title, ii.body,
-           ii.author, ii.url, ii.extracted_time, ii.extracted_location,
-           ii.metadata, ii.published_at, ii.ingested_at
-    FROM ingested_items ii
-    JOIN data_sources ds ON ii.source_id = ds.id
-    WHERE ds.club_id = ?
-    ORDER BY ii.published_at DESC, ii.ingested_at DESC
-  `);
-
-  const hubDict = {};
-
-  for (const club of clubs) {
-    const key = club.slug || club.abbreviation?.toLowerCase() || `club_${club.id}`;
-    const tags = tagStmt.all(club.id);
-    const events = eventStmt.all(club.id);
-    const announcements = announcementStmt.all(club.id);
-    const links = linkStmt.all(club.id);
-    const dataSources = sourceStmt.all(club.id);
-    const ingested = ingestedByClubStmt.all(club.id).map(item => ({
-      ...item,
-      metadata: safeParseJSON(item.metadata),
-    }));
-
-    // Group ingested items by source platform (instagram, discord, email, google_calendar, website)
-    const byPlatform = {
-      instagram: [],
-      discord: [],
-      email: [],
-      google_calendar: [],
-      website: [],
-    };
-    for (const item of ingested) {
-      if (!byPlatform[item.platform]) byPlatform[item.platform] = [];
-      byPlatform[item.platform].push(item);
+export function setDictEntries(entriesObj, options = {}) {
+  const db = getDb();
+  const results = {};
+  const saveAll = db.transaction(() => {
+    for (const [k, v] of Object.entries(entriesObj)) {
+      results[k] = setDictEntry(k, v, options).value;
     }
+  });
+  saveAll();
+  return results;
+}
 
-    // Also include custom key-value dictionary entries for this club
-    const customKv = getDictionary({ clubId: club.id });
+export function getDictEntry(key) {
+  const db = getDb();
+  const row = db.stmt('SELECT * FROM dictionary_store WHERE key = ?').get(key);
+  return row ? { ...row, value: safeParseJSON(row.value) } : null;
+}
 
-    hubDict[key] = {
-      id: club.id,
-      key,
-      name: club.name,
-      abbreviation: club.abbreviation,
-      description: club.description,
-      category: club.category,
-      members: club.member_count,
-      active: Boolean(club.is_active),
-      avatarBg: club.avatar_bg || 'linear-gradient(135deg, var(--blue), #5B8DEF)',
-      meeting: {
-        schedule: club.meeting_schedule || 'TBD',
-        location: club.meeting_location || 'TBD',
-        upcoming_events: events,
-      },
-      contacts: {
-        website: club.website_url,
-        instagram: club.instagram_handle,
-        discord: club.discord_invite,
-        email: club.mailing_list,
-        google_calendar: club.gcal_id,
-      },
-      tags,
-      announcements,
-      links,
-      sources: {
-        configured: dataSources,
-        instagram: byPlatform.instagram,
-        discord: byPlatform.discord,
-        email: byPlatform.email,
-        google_calendar: byPlatform.google_calendar,
-        website: byPlatform.website,
-      },
-      dictionary: customKv,
-    };
+export function deleteDictEntry(key) {
+  const db = getDb();
+  const info = db.stmt('DELETE FROM dictionary_store WHERE key = ?').run(key);
+  return { deleted: info.changes > 0, key };
+}
+
+export function getDictionary({ namespace, clubId, source, prefix, q } = {}) {
+  const db = getDb();
+  let sql = 'SELECT key, value FROM dictionary_store WHERE 1=1';
+  const params = [];
+
+  if (namespace) { sql += ' AND namespace = ?'; params.push(namespace); }
+  if (clubId) { sql += ' AND clubId = ?'; params.push(normalizeClubId(clubId)); }
+  if (source) { sql += ' AND source = ?'; params.push(source); }
+  if (prefix) { sql += ' AND key LIKE ?'; params.push(`${prefix}%`); }
+  if (q) { sql += ' AND (key LIKE ? OR value LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
+
+  sql += ' ORDER BY key ASC';
+  const out = {};
+  for (const row of db.prepare(sql).all(...params)) {
+    out[row.key] = safeParseJSON(row.value);
   }
+  return out;
+}
 
-  return hubDict;
+// ── Concise Row Formatters (convert SQLite ints/JSON to JS types) ───
+export function formatClubRow(row) {
+  if (!row) return null;
+  const { updatedAt, ...rest } = row;
+  return { ...rest, alsoKnownAs: safeParseJSON(row.alsoKnownAs) || [] };
+}
+
+export function formatPostRow(row) {
+  return row ? { ...row, important: Boolean(row.important), source: row.source || 'instagram' } : null;
+}
+
+export function formatEventRow(row) {
+  return row ? { ...row, allDay: Boolean(row.allDay), source: row.source || 'instagram' } : null;
+}
+
+export function formatAnnouncementRow(row) {
+  return row ? { ...row, important: Boolean(row.important), source: row.source || 'instagram' } : null;
 }
 
 function safeParseJSON(str) {

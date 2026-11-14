@@ -1,10 +1,11 @@
 import { Users, Heart, Calendar, Link } from 'lucide-react'
-import { stats } from '../data/sampleData'
+import { stats as defaultStats } from '../data/sampleData'
 import { Card } from './ui'
 
 const iconMap = { Users, Heart, Calendar, Link }
 
-export default function StatCards() {
+export default function StatCards({ items }) {
+  const stats = items && items.length > 0 ? items : defaultStats
   return (
     <div className="grid grid-cols-4 gap-4 mb-7">
       {stats.map((stat, i) => {

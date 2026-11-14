@@ -1,184 +1,243 @@
-// ── Dictionary & Unified Hub API Routes ──
-// Exposes the database like a Python/JS dictionary:
-//   - GET    /api/dict              -> { [key]: value, ... }
-//   - GET    /api/dict/:key         -> single key lookup
-//   - PUT    /api/dict/:key         -> set dict[key] = value
-//   - POST   /api/dict              -> set dict[key] = value (or bulk dictionary update)
-//   - DELETE /api/dict/:key         -> delete dict[key]
-//   - GET    /api/hub               -> unified club dictionary keyed by club slug
-//   - GET    /api/hub/:clubKey      -> single club's full dictionary entry
-//   - POST   /api/ingest(/:platform)-> ingest Instagram/Discord/Email/GCal/Website info,
-//                                      auto-extract meeting time & location, and store in dict
+// ── Webhook, Collector Data, Search, and Dictionary Routes ──
+//
+// Collector Webhook URL (for collector/.env DB_WEBHOOK_URL):
+//   POST http://localhost:3001/api/webhook
+//
+// File Import:
+//   POST http://localhost:3001/api/import-file
+//
+// Full Collector JSON from DB:
+//   GET  http://localhost:3001/api/data
+//
+// Club Search (uses collector/src/search.js):
+//   GET  http://localhost:3001/api/search?q=debate
+//
+// Dictionary Views:
+//   GET  http://localhost:3001/api/hub
+//   GET  http://localhost:3001/api/hub/:clubId
+//   GET  http://localhost:3001/api/dict
 
 import { Router } from 'express';
 import {
   getDb,
+  normalizeClubId,
+  upsertCollectorData,
+  importCollectorFile,
+  getAllCollectorData,
+  buildClubHubDictionary,
   getDictionary,
   getDictEntry,
   setDictEntry,
-  buildClubHubDictionary,
+  setDictEntries,
+  deleteDictEntry,
 } from '../database.js';
-import { ingestAndIndexItem, extractMeetingInfo } from '../services/extractor.js';
+import { searchClubs } from '../../collector/src/search.js';
+import { extractPost } from '../../collector/src/extract.js';
 
 const router = Router();
 
-// ── 1. Key-Value Dictionary Endpoints (/api/dict) ──────────────────
+// ── 1. Collector Webhook Endpoint (DB_WEBHOOK_URL) ──────────────────
+function handleWebhook(req, res) {
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object') {
+    return res.status(400).json({ error: 'Expected JSON payload from collector' });
+  }
 
-// GET /api/dict?namespace=clubs&club_id=1&source=instagram&prefix=cs:
-router.get('/dict', (req, res) => {
-  const { namespace, club_id, source, prefix } = req.query;
-  const dict = getDictionary({
-    namespace,
-    clubId: club_id,
-    source,
-    prefix,
+  res.json({
+    ok: true,
+    ...upsertCollectorData(payload),
   });
-  res.json(dict);
-});
+}
 
-// GET /api/dict/:key
-router.get('/dict/:key', (req, res) => {
-  const entry = getDictEntry(req.params.key);
-  if (!entry) {
-    return res.status(404).json({ error: `Key "${req.params.key}" not found in dictionary` });
+router.post('/webhook', handleWebhook);
+router.post('/collect', handleWebhook);
+router.post('/data', handleWebhook);
+
+// ── 2. Import collector/output/clubhub-data.json from disk ──────────
+router.post('/import-file', (req, res) => {
+  const result = importCollectorFile(req.body?.file || null);
+  if (!result.imported) {
+    return res.status(404).json(result);
   }
-  res.json(entry);
+  res.json(result);
 });
 
-// PUT /api/dict/:key — set dict[key] = value
-router.put('/dict/:key', (req, res) => {
-  const { value, namespace, club_id, source } = req.body;
-  const storedValue = value !== undefined ? value : req.body;
-  const entry = setDictEntry(req.params.key, storedValue, {
-    namespace: namespace || 'custom',
-    clubId: club_id || null,
-    source: source || 'manual',
-  });
-  res.json(entry);
+// ── 3. Get all 5 lists in the exact Collector JSON format ───────────
+router.get('/data', (req, res) => {
+  res.json(getAllCollectorData({ clubId: req.query.clubId }));
 });
 
-// POST /api/dict — set one key `{ key, value, ... }` OR bulk dictionary `{ entries: { k1: v1, k2: v2 } }`
-router.post('/dict', (req, res) => {
-  const { key, value, entries, namespace = 'custom', club_id = null, source = 'manual' } = req.body;
-
-  if (entries && typeof entries === 'object') {
-    const db = getDb();
-    const results = {};
-    const saveAll = db.transaction(() => {
-      for (const [k, v] of Object.entries(entries)) {
-        const saved = setDictEntry(k, v, { namespace, clubId: club_id, source });
-        results[k] = saved.value;
-      }
-    });
-    saveAll();
-    return res.status(201).json({ updated: Object.keys(results).length, dictionary: results });
+// ── 4. Search clubs (uses collector/src/search.js) ──────────────────
+router.get('/search', (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) {
+    const hub = buildClubHubDictionary();
+    const now = new Date();
+    return res.json(
+      Object.values(hub).map(({ events, announcements, links, posts, ...club }) => ({
+        club,
+        upcomingEvents: events.filter(e => new Date(e.end || e.start) >= now),
+        announcements: announcements.slice(0, 5),
+        links,
+      }))
+    );
   }
-
-  if (!key) {
-    return res.status(400).json({ error: 'Provide either "key" + "value" or "entries" object' });
-  }
-
-  const saved = setDictEntry(key, value, { namespace, clubId: club_id, source });
-  res.status(201).json(saved);
+  res.json(searchClubs(getAllCollectorData(), q));
 });
 
-// DELETE /api/dict/:key
-router.delete('/dict/:key', (req, res) => {
-  const db = getDb();
-  const info = db.prepare('DELETE FROM dictionary_store WHERE key = ?').run(req.params.key);
-  res.json({ deleted: info.changes > 0, key: req.params.key });
-});
-
-// ── 2. Unified ClubHub Dictionary Endpoints (/api/hub) ─────────────
-
-// GET /api/hub — returns all clubs as a dictionary `{ cs: {...}, ds: {...}, ... }`
+// ── 5. ClubHub Dictionary View (/api/hub & /api/hub/:clubId) ────────
 router.get('/hub', (req, res) => {
   res.json(buildClubHubDictionary());
 });
 
-// GET /api/hub/:clubKey — returns a single club's dictionary entry (by slug, abbr, or id)
-router.get('/hub/:clubKey', (req, res) => {
-  const dict = buildClubHubDictionary(req.params.clubKey);
-  const keys = Object.keys(dict);
-  if (keys.length === 0) {
-    return res.status(404).json({ error: `Club "${req.params.clubKey}" not found` });
+router.get('/hub/:clubId', (req, res) => {
+  const cid = normalizeClubId(req.params.clubId);
+  const dict = buildClubHubDictionary(cid);
+  const club = Object.values(dict)[0];
+  if (!club) {
+    return res.status(404).json({ error: `Club "${cid}" not found` });
   }
-  res.json(dict[keys[0]]);
+  res.json(club);
 });
 
-// ── 3. Multi-Source Ingestion & Parser Endpoints (/api/ingest) ─────
+// ── 6. Key-Value Dictionary Store (/api/dict) ───────────────────────
+router.get('/dict', (req, res) => {
+  const { namespace, clubId, club_id, source, prefix, q } = req.query;
+  res.json(getDictionary({ namespace, clubId: clubId || club_id, source, prefix, q }));
+});
 
-function handleIngest(req, res) {
-  const db = getDb();
-  const platform = (req.params.platform || req.body.platform || '').toLowerCase();
-  const validPlatforms = ['instagram', 'discord', 'email', 'google_calendar', 'website'];
+router.get('/dict/:key', (req, res) => {
+  const entry = getDictEntry(req.params.key);
+  if (!entry) return res.status(404).json({ error: `Key "${req.params.key}" not found` });
+  res.json(entry);
+});
 
-  if (!validPlatforms.includes(platform)) {
-    return res.status(400).json({
-      error: `Invalid platform "${platform}". Must be one of: ${validPlatforms.join(', ')}`,
-    });
+router.put('/dict/:key', (req, res) => {
+  const { value, namespace, clubId, club_id, source } = req.body || {};
+  const storedValue = value !== undefined ? value : req.body;
+  res.json(
+    setDictEntry(req.params.key, storedValue, {
+      namespace: namespace || 'custom',
+      clubId: normalizeClubId(clubId || club_id) || null,
+      source: source || 'manual',
+    })
+  );
+});
+
+router.post('/dict', (req, res) => {
+  const { key, value, entries, namespace = 'custom', clubId, club_id, source = 'manual' } = req.body || {};
+  const cid = normalizeClubId(clubId || club_id) || null;
+
+  if (entries && typeof entries === 'object') {
+    const results = setDictEntries(entries, { namespace, clubId: cid, source });
+    return res.status(201).json({ updated: Object.keys(results).length, dictionary: results });
+  }
+  if (!key) {
+    return res.status(400).json({ error: 'Provide either "key" + "value" or "entries" object' });
+  }
+  res.status(201).json(setDictEntry(key, value, { namespace, clubId: cid, source }));
+});
+
+router.delete('/dict/:key', (req, res) => {
+  res.json(deleteDictEntry(req.params.key));
+});
+
+// ── 7. Single-post/message ingestion (uses collector/src/extract.js) ──
+function handleSingleIngest(req, res) {
+  const source = req.params.source || req.body?.source || 'instagram';
+  const { clubId: rawClubId, club_id, clubName, id, caption, body, text, permalink, postedAt } = req.body || {};
+  const clubId = normalizeClubId(rawClubId || club_id);
+
+  if (!clubId) {
+    return res.status(400).json({ error: 'clubId (Instagram handle) is required' });
   }
 
-  let { club_id, club_key, title, body, text, caption, subject, author, url, identifier, external_id, metadata, meeting_time, location } = req.body;
-
-  // Allow resolving club by slug/abbreviation/name if club_id is not passed
-  if (!club_id && club_key) {
-    const club = db.prepare(
-      'SELECT id FROM clubs WHERE lower(slug) = lower(?) OR lower(abbreviation) = lower(?) OR lower(name) = lower(?)'
-    ).get(club_key, club_key, club_key);
-    if (club) club_id = club.id;
+  const rawText = (caption || body || text || '').trim();
+  if (!rawText) {
+    return res.status(400).json({ error: 'caption, body, or text is required' });
   }
 
-  if (!club_id) {
-    return res.status(400).json({ error: 'Provide either club_id or club_key (e.g. "cs", "ds", "ac", "ec")' });
-  }
-
-  const finalTitle = title || subject || '';
-  const finalBody = body || text || caption || '';
-
-  if (!finalTitle && !finalBody) {
-    return res.status(400).json({ error: 'Provide text content via "body", "text", "caption", or "title"' });
-  }
-
-  const itemTypeMap = {
-    instagram: 'post',
-    discord: 'message',
-    email: 'email',
-    google_calendar: 'calendar_event',
-    website: 'page_content',
+  const postId = String(id || `${source}_${clubId}_${Date.now()}`);
+  const postTime = postedAt || new Date().toISOString();
+  const postObj = {
+    id: postId,
+    caption: rawText,
+    postedAt: postTime,
+    permalink: permalink || null,
+    imageUrl: null,
   };
 
-  const result = ingestAndIndexItem({
-    clubId: Number(club_id),
-    platform,
-    identifier: identifier || author || `${platform}_feed`,
-    externalId: external_id,
-    itemType: req.body.item_type || itemTypeMap[platform] || 'other',
-    title: finalTitle,
-    body: finalBody,
-    author: author || identifier || platform,
-    url: url || '',
-    metadata: metadata || {},
-    explicitTime: meeting_time || null,
-    explicitLocation: location || null,
-    createEventIfFound: req.body.create_event !== false,
-    createAnnouncementIfFound: req.body.create_announcement !== false,
-  });
+  const db = getDb();
+  const existingClub = db.stmt('SELECT name FROM clubs WHERE lower(id) = lower(?)').get(clubId);
+  const resolvedClubName = clubName || existingClub?.name || clubId;
 
+  // Run the collector's rule-based extractor on the caption/message
+  const info = extractPost(postObj, { username: clubId, name: resolvedClubName });
+
+  const payload = {
+    collectedAt: new Date().toISOString(),
+    clubs: existingClub ? [] : [{ id: clubId, name: resolvedClubName, instagram: clubId }],
+    posts: [
+      {
+        id: postId,
+        clubId,
+        postedAt: postTime,
+        permalink: postObj.permalink,
+        imageUrl: null,
+        caption: rawText,
+        type: info.type,
+        important: info.important,
+        title: info.title,
+        summary: info.summary,
+        extractedBy: source === 'instagram' ? info.extractedBy : source,
+        source,
+      },
+    ],
+    events: info.events.map((e, i) => ({
+      id: `${postId}-${i}`,
+      clubId,
+      clubName: resolvedClubName,
+      postId,
+      permalink: postObj.permalink,
+      ...e,
+      source,
+    })),
+    announcements:
+      info.type === 'announcement' || info.important
+        ? [
+          {
+            id: postId,
+            clubId,
+            clubName: resolvedClubName,
+            title: info.title,
+            summary: info.summary,
+            important: info.important,
+            postedAt: postTime,
+            permalink: postObj.permalink,
+            source,
+          },
+        ]
+        : [],
+    links: info.links.map(l => ({
+      id: `${clubId}:${l.url}`,
+      clubId,
+      clubName: resolvedClubName,
+      ...l,
+      postId,
+    })),
+  };
+
+  const result = upsertCollectorData(payload);
   res.status(201).json({
     success: true,
-    ingested: result,
-    dictionary_key: `${result.clubKey}:${platform}:${result.externalId}`,
+    postId,
+    clubId,
+    extracted: info,
+    upserted: result.upserted,
   });
 }
 
-router.post('/ingest', handleIngest);
-router.post('/ingest/:platform', handleIngest);
-
-// POST /api/parse — preview what meeting time & location the extractor finds in any text
-router.post('/parse', (req, res) => {
-  const { text, title } = req.body;
-  res.json(extractMeetingInfo(text || '', title || ''));
-});
+router.post('/ingest', handleSingleIngest);
+router.post('/ingest/:source', handleSingleIngest);
 
 export default router;

@@ -1,0 +1,143 @@
+// ── Multi-Source Resource Ingestor ──
+// Uses the Collector rule extractor (`collector/src/extract.js`) and `server/database.js`
+// to ingest items from Instagram, Discord, Email, Google Calendar, and Websites
+// into the 5 core tables (`clubs`, `posts`, `events`, `announcements`, `links`) and `dictionary_store`.
+
+import {
+  getDb,
+  normalizeClubId,
+  upsertCollectorData,
+  setDictEntry,
+  getDictionary,
+} from '../database.js';
+import { extractPost } from '../../collector/src/extract.js';
+
+export function upsertDataSource({ clubId, platform, identifier, isActive = true, config = {} }) {
+  const cid = normalizeClubId(clubId);
+  const id = `${cid}:${platform}:${identifier}`;
+  const value = {
+    id,
+    clubId: cid,
+    platform,
+    identifier,
+    isActive: Boolean(isActive),
+    lastSynced: new Date().toISOString(),
+    config,
+  };
+  setDictEntry(`source:${id}`, value, {
+    namespace: 'sources',
+    clubId: cid,
+    source: platform,
+  });
+  return value;
+}
+
+export function getDataSources({ clubId, platform } = {}) {
+  const dict = getDictionary({
+    namespace: 'sources',
+    clubId: clubId ? normalizeClubId(clubId) : undefined,
+    source: platform || undefined,
+  });
+  return Object.values(dict);
+}
+
+export function ingestResourceItem({
+  clubId,
+  clubName,
+  source = 'instagram',
+  id,
+  caption,
+  title,
+  permalink = null,
+  imageUrl = null,
+  postedAt = null,
+  identifier = null,
+}) {
+  const db = getDb();
+  const cid = normalizeClubId(clubId);
+  if (!cid) throw new Error('clubId is required');
+
+  const existingClub = db.stmt('SELECT * FROM clubs WHERE lower(id) = lower(?)').get(cid);
+  const resolvedClubName = clubName || existingClub?.name || cid;
+  const postTime = postedAt || new Date().toISOString();
+  const postId = String(id || `${source}_${cid}_${Date.now()}`);
+  const fullText =
+    title && caption && !caption.includes(title) ? `${title}\n${caption}` : caption || title || '';
+
+  // Run the collector's extractor to pull dates, times, locations, links, and type
+  const info = extractPost(
+    { id: postId, caption: fullText, postedAt: postTime, permalink, imageUrl },
+    { username: cid, name: resolvedClubName }
+  );
+
+  // Record the connected data source in dictionary_store
+  if (identifier || source) {
+    upsertDataSource({
+      clubId: cid,
+      platform: source,
+      identifier: identifier || (source === 'instagram' ? `@${cid}` : `${cid}_${source}`),
+    });
+  }
+
+  const payload = {
+    collectedAt: new Date().toISOString(),
+    clubs: existingClub ? [] : [{ id: cid, name: resolvedClubName, instagram: cid }],
+    posts: [
+      {
+        id: postId,
+        clubId: cid,
+        postedAt: postTime,
+        permalink,
+        imageUrl,
+        caption: fullText,
+        type: info.type,
+        important: info.important,
+        title: title || info.title,
+        summary: info.summary,
+        extractedBy: source === 'instagram' ? info.extractedBy : source,
+        source,
+      },
+    ],
+    events: info.events.map((e, i) => ({
+      id: `${postId}-${i}`,
+      clubId: cid,
+      clubName: resolvedClubName,
+      postId,
+      permalink,
+      ...e,
+      source,
+    })),
+    announcements:
+      info.type === 'announcement' || info.important
+        ? [
+            {
+              id: postId,
+              clubId: cid,
+              clubName: resolvedClubName,
+              title: title || info.title,
+              summary: info.summary,
+              important: info.important,
+              postedAt: postTime,
+              permalink,
+              source,
+            },
+          ]
+        : [],
+    links: info.links.map(l => ({
+      id: `${cid}:${l.url}`,
+      clubId: cid,
+      clubName: resolvedClubName,
+      ...l,
+      postId,
+    })),
+  };
+
+  const upserted = upsertCollectorData(payload);
+  return {
+    postId,
+    clubId: cid,
+    source,
+    extracted: info,
+    upserted: upserted.upserted,
+  };
+}
