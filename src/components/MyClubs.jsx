@@ -1,60 +1,221 @@
 import { useState } from 'react'
-import { clubs as defaultClubs } from '../data/sampleData'
+import { Calendar, MapPin, Users, Check, Plus, Sparkles } from 'lucide-react'
+import { clubs as initialClubs } from '../data/sampleData'
 import { Card, Avatar, BubbleTag } from './ui'
 
-const tabs = ['All', 'Academic', 'Social', 'Arts']
+const tabs = [
+  { id: 'All', label: 'My Clubs' },
+  { id: 'Academic', label: 'Academic' },
+  { id: 'Social', label: 'Social' },
+  { id: 'Arts', label: 'Arts' },
+  { id: 'Discover', label: 'Discover All' },
+]
 
-export default function MyClubs({ items }) {
-  const clubs = items && items.length > 0 ? items : defaultClubs
-  const [filter, setFilter] = useState('All')
+export default function MyClubs({
+  clubsData,
+  onToggleJoin,
+  defaultTab = 'All',
+  searchQuery = '',
+}) {
+  const [localClubs, setLocalClubs] = useState(initialClubs)
+  const [filter, setFilter] = useState(defaultTab)
+  const [selectedId, setSelectedId] = useState(null)
 
-  const filtered = filter === 'All'
-    ? clubs
-    : clubs.filter(c => c.category === filter.toLowerCase())
+  const list = clubsData || localClubs
+
+  function handleJoin(id, e) {
+    e.stopPropagation()
+    if (onToggleJoin) {
+      onToggleJoin(id)
+    } else {
+      setLocalClubs(prev =>
+        prev.map(c =>
+          c.id === id
+            ? {
+                ...c,
+                joined: !c.joined,
+                members: c.joined ? c.members - 1 : c.members + 1,
+                role: c.joined ? 'Open to Join' : 'Member',
+              }
+            : c
+        )
+      )
+    }
+  }
+
+  const activeFilter = defaultTab === 'Discover' && filter === 'All' ? 'Discover' : filter
+
+  const filtered = list.filter(c => {
+    if (activeFilter !== 'Discover' && !c.joined) return false
+    if (
+      activeFilter !== 'All' &&
+      activeFilter !== 'Discover' &&
+      c.category !== activeFilter.toLowerCase()
+    ) {
+      return false
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.description?.toLowerCase().includes(q) ||
+        c.tags.some(t => t.label.toLowerCase().includes(q))
+      )
+    }
+    return true
+  })
 
   return (
     <Card className="p-[22px] mb-7" delay={5}>
-      <div className="flex items-center justify-between mb-[18px]">
-        <h2 className="text-base font-bold text-[var(--text)]">My Clubs</h2>
-        <div className="flex gap-1.5">
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={`px-4 py-2 rounded-full text-[13px] font-medium cursor-pointer border-none
-                transition-all duration-200
-                ${filter === tab
-                  ? 'bg-[var(--blue)] text-white'
-                  : 'bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg-surface)]'
-                }`}
-            >
-              {tab}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-[18px]">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+              {activeFilter === 'Discover' ? 'Campus Club Directory' : 'My Clubs'}
+            </h2>
+            <span className="text-[11px] font-bold font-mono-num px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)]">
+              {filtered.length}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            {activeFilter === 'Discover'
+              ? 'Browse active organizations across campus and join with one click.'
+              : 'Your active memberships, leadership roles, and weekly meeting times.'}
+          </p>
+        </div>
+
+        {/* Filter pill bar */}
+        <div className="flex flex-wrap gap-1 p-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border)]">
+          {tabs.map(tab => {
+            const isActive = activeFilter === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold cursor-pointer border-none
+                  transition-all duration-200 inline-flex items-center gap-1.5
+                  ${
+                    isActive
+                      ? 'bg-[var(--blue)] text-white shadow-xs'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+              >
+                {tab.id === 'Discover' && <Sparkles size={12} />}
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3.5">
-        {filtered.map(club => (
-          <Card key={club.id} className="p-[18px] !rounded-[var(--radius-sm)]">
-            <div className="flex items-center gap-3 mb-3.5">
-              <Avatar initials={club.abbr} bg={club.avatarBg} size={42} />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filtered.map(club => {
+          const isSelected = selectedId === club.id
+          return (
+            <div
+              key={club.id}
+              onClick={() => setSelectedId(isSelected ? null : club.id)}
+              className="group relative flex flex-col justify-between p-[18px] rounded-[var(--radius-sm)]
+                bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-xs)]
+                hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)] hover:-translate-y-0.5
+                transition-all duration-200 cursor-pointer"
+            >
               <div>
-                <div className="font-semibold text-sm text-[var(--text)]">{club.name}</div>
-                <div className="text-[11px] text-[var(--text-muted)]">{club.members} members</div>
+                {/* Top header: Avatar + Name + Role / Join */}
+                <div className="flex items-start justify-between gap-2.5 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar initials={club.abbr} bg={club.avatarBg} size={42} />
+                    <div className="min-w-0">
+                      <div className="font-bold text-[14.5px] text-[var(--text)] truncate group-hover:text-[var(--blue-ink)] transition-colors">
+                        {club.name}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11.5px] text-[var(--text-muted)] mt-0.5">
+                        <span className="inline-flex items-center gap-1 font-mono-num">
+                          <Users size={12} />
+                          {club.members}
+                        </span>
+                        {club.role && (
+                          <>
+                            <span>·</span>
+                            <span className="font-semibold text-[var(--text)]">{club.role}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {activeFilter === 'Discover' || !club.joined ? (
+                    <button
+                      type="button"
+                      onClick={e => handleJoin(club.id, e)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold
+                        cursor-pointer transition-all border shrink-0"
+                      style={{
+                        background: club.joined ? 'var(--green-light)' : 'var(--blue)',
+                        color: club.joined ? 'var(--green-ink)' : '#fff',
+                        borderColor: club.joined ? 'var(--green)' : 'var(--blue)',
+                      }}
+                    >
+                      {club.joined ? <Check size={12} strokeWidth={2.5} /> : <Plus size={12} />}
+                      {club.joined ? 'Joined' : 'Join'}
+                    </button>
+                  ) : (
+                    <BubbleTag label="Active" color="green" size="sm" dot />
+                  )}
+                </div>
+
+                {/* Description */}
+                {club.description && (
+                  <p className="text-[12px] text-[var(--text-muted)] leading-relaxed mb-3 line-clamp-2">
+                    {club.description}
+                  </p>
+                )}
+
+                {/* Tags */}
+                <div className="flex gap-1.5 flex-wrap mb-3.5">
+                  {club.tags.map(tag => (
+                    <BubbleTag key={tag.label} label={tag.label} color={tag.color} size="sm" />
+                  ))}
+                </div>
               </div>
+
+              {/* Footer */}
+              <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11.5px] text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <Calendar size={12.5} className="text-[var(--text-light)]" />
+                  {club.schedule}
+                </span>
+                {club.room && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-light)] truncate max-w-[140px]">
+                    <MapPin size={12} />
+                    {club.room}
+                  </span>
+                )}
+              </div>
+
+              {/* Expandable detail drawer on click */}
+              {isSelected && club.nextEvent && (
+                <div
+                  className="mt-3 pt-2.5 border-t border-[var(--border)] flex items-center justify-between
+                    text-[11.5px] fade-in"
+                >
+                  <div>
+                    <span className="font-bold text-[var(--text)]">Next: </span>
+                    <span className="text-[var(--text-muted)]">{club.nextEvent}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={e => handleJoin(club.id, e)}
+                    className="text-[11px] font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                  >
+                    {club.joined ? 'Leave club' : 'Join now'}
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="flex gap-1.5 flex-wrap mb-3">
-              {club.tags.map(tag => (
-                <BubbleTag key={tag.label} label={tag.label} color={tag.color} />
-              ))}
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[var(--text-muted)]">📅 {club.schedule}</span>
-              <BubbleTag label="Active" color="green" size="sm" dot />
-            </div>
-          </Card>
-        ))}
+          )
+        })}
       </div>
     </Card>
   )
