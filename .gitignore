@@ -1,4 +1,65 @@
+# Dependencies and generated builds (at any directory depth)
 node_modules/
 dist/
+coverage/
+.vite/
+.cache/
+
+# Environment secrets; commit only sanitized example/template files
 .env
-server/clubhub.db
+.env.*
+*.env
+!.env.example
+!.env.*.example
+!.env.template
+
+# Private keys and local credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+.npmrc
+.netrc
+.aws/
+.ssh/
+secrets/
+credentials.json
+credentials.*.json
+service-account*.json
+service_account*.json
+
+# Local databases, including SQLite journals (may contain access tokens)
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.sql.gz
+*.dump
+
+# Collected data, API caches, browser sessions, and network captures
+/collector/output/
+cookies.txt
+cookies.json
+storageState.json
+storage-state.json
+*.har
+
+# Logs and local backups can contain credentials or personal data
+logs/
+*.log
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+
+# Local OS/editor metadata
+.DS_Store
+._*
+Thumbs.db
+.idea/

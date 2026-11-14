@@ -22,11 +22,11 @@ export default function MemberActivity({ globalSearch = '' }) {
     .sort((a, b) => (sortDesc ? b.attendance - a.attendance : a.attendance - b.attendance))
 
   return (
-    <Card className="p-[22px] mt-7" delay={6}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-[18px]">
+    <Card className="p-4 sm:p-[22px] mt-5 sm:mt-7" delay={6}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-[18px]">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+            <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
               Recent Member Activity
             </h2>
             <span className="text-[11px] font-bold font-mono-num px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)]">
@@ -38,27 +38,70 @@ export default function MemberActivity({ globalSearch = '' }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setSortDesc(s => !s)}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold
-              bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)]
-              hover:text-[var(--text)] cursor-pointer transition-colors"
+              bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)]
+              hover:text-[var(--text)] cursor-pointer transition-colors shrink-0 shadow-[var(--shadow-xs)]"
           >
             <ArrowUpDown size={13} />
             Attendance {sortDesc ? '↓' : '↑'}
           </button>
-          <SearchBox
-            placeholder="Filter members or clubs…"
-            width="220px"
-            value={localSearch}
-            onChange={setLocalSearch}
-          />
+          <div className="flex-1 sm:w-[220px]">
+            <SearchBox
+              placeholder="Filter members…"
+              width="100%"
+              value={localSearch}
+              onChange={setLocalSearch}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* ── Phone Card List (< md) ── */}
+      <div className="flex md:hidden flex-col gap-2.5">
+        {filtered.map(m => (
+          <div
+            key={m.id}
+            className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-card)] border border-[var(--border)]
+              shadow-[var(--shadow-xs)] flex flex-col gap-2.5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Avatar initials={m.initials} bg={m.avatarBg} size={36} />
+                <div className="min-w-0">
+                  <div className="font-bold text-[13.5px] text-[var(--text)] truncate">
+                    {m.name}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] truncate">
+                    {m.role || 'Member'} · {m.email}
+                  </div>
+                </div>
+              </div>
+              <BubbleTag
+                label={m.status}
+                color={m.statusColor}
+                size="sm"
+                dot={m.status === 'Active'}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <div className="flex flex-wrap gap-1">
+                {m.clubs.map(c => (
+                  <BubbleTag key={c.label} label={c.label} color={c.color} size="sm" />
+                ))}
+              </div>
+              <ProgressBar value={m.attendance} color={m.attendanceColor} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Tablet / Desktop Table (md+) ── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
@@ -137,13 +180,13 @@ export default function MemberActivity({ globalSearch = '' }) {
             })}
           </tbody>
         </table>
-
-        {filtered.length === 0 && (
-          <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-            No members found matching &ldquo;{effectiveQuery}&rdquo;.
-          </div>
-        )}
       </div>
+
+      {filtered.length === 0 && (
+        <div className="py-8 text-center text-xs text-[var(--text-muted)]">
+          No members found matching &ldquo;{effectiveQuery}&rdquo;.
+        </div>
+      )}
     </Card>
   )
 }

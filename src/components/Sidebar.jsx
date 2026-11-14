@@ -1,23 +1,33 @@
 import {
-  LayoutGrid, Heart, Search, Calendar, Users, Link, Moon, Sun, Sparkles, Clock,
+  LayoutGrid, Heart, Search, Calendar, Users, Link, Moon, Sun, Sparkles, Clock, X,
 } from 'lucide-react'
 import { navItems } from '../data/sampleData'
 import { Avatar, ClubHubLogo } from './ui'
 
 const iconMap = { LayoutGrid, Heart, Search, Calendar, Users, Link }
 
-export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCount = 5 }) {
-  return (
-    <aside
-      className="w-[264px] sticky top-0 h-screen bg-[var(--bg-card)] border-r border-[var(--border)]
-        flex flex-col px-4 py-5 shrink-0 transition-colors duration-300 select-none overflow-y-auto"
-    >
+export default function Sidebar({
+  activeNav,
+  onNav,
+  dark,
+  onToggleDark,
+  joinedCount = 5,
+  mobileOpen = false,
+  onCloseMobile,
+}) {
+  function handleSelect(id) {
+    onNav(id)
+    if (onCloseMobile) onCloseMobile()
+  }
+
+  const sidebarContent = (
+    <>
       {/* ── Brand Logo ── */}
-      <div
-        onClick={() => onNav('overview')}
-        className="flex items-center justify-between px-2 mb-6 cursor-pointer group"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-2 mb-6">
+        <div
+          onClick={() => handleSelect('overview')}
+          className="flex items-center gap-3 cursor-pointer group"
+        >
           <ClubHubLogo
             size={42}
             className="transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-2"
@@ -43,6 +53,19 @@ export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCo
             </div>
           </div>
         </div>
+
+        {/* Close button on mobile drawer */}
+        {onCloseMobile && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            aria-label="Close menu"
+            className="lg:hidden w-8 h-8 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)]
+              flex items-center justify-center border-none cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* ── Navigation Section ── */}
@@ -59,12 +82,13 @@ export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCo
           return (
             <button
               key={item.id}
-              onClick={() => onNav(item.id)}
+              onClick={() => handleSelect(item.id)}
               className={`group relative flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-sm)]
                 text-[13.5px] cursor-pointer transition-all duration-200 border-none text-left
-                ${isActive
-                  ? 'font-semibold text-[var(--blue-ink)]'
-                  : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)]'
+                ${
+                  isActive
+                    ? 'font-semibold text-[var(--blue-ink)]'
+                    : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)]'
                 }`}
               style={{
                 background: isActive ? 'var(--blue-light)' : undefined,
@@ -98,7 +122,7 @@ export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCo
 
         {/* ── Up Next Compact Callout ── */}
         <div
-          onClick={() => onNav('calendar')}
+          onClick={() => handleSelect('calendar')}
           className="mt-auto mb-3 p-3.5 rounded-[var(--radius-sm)] border border-[var(--border)]
             bg-[var(--bg-surface)] hover:border-[var(--blue)] transition-all cursor-pointer group"
         >
@@ -107,7 +131,10 @@ export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCo
               <span className="w-2 h-2 rounded-full bg-[var(--blue)] pulse-dot" />
               Up Next · 2:00 PM
             </span>
-            <Clock size={13} className="text-[var(--text-light)] group-hover:text-[var(--blue)] transition-colors" />
+            <Clock
+              size={13}
+              className="text-[var(--text-light)] group-hover:text-[var(--blue)] transition-colors"
+            />
           </div>
           <div className="text-[12.5px] font-bold text-[var(--text)] leading-snug">
             CS Club — Weekly Standup
@@ -160,13 +187,88 @@ export default function Sidebar({ activeNav, onNav, dark, onToggleDark, joinedCo
               </div>
               <div className="min-w-0">
                 <div className="text-[13px] font-bold text-[var(--text)] truncate">Jane Doe</div>
-                <div className="text-[11px] text-[var(--text-muted)] truncate">CS &apos;27 · President</div>
+                <div className="text-[11px] text-[var(--text-muted)] truncate">
+                  CS &apos;27 · President
+                </div>
               </div>
             </div>
             <Sparkles size={14} className="text-[var(--text-light)] shrink-0" />
           </div>
         </div>
       </nav>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* ── Desktop Sticky Sidebar ── */}
+      <aside
+        className="hidden lg:flex w-[264px] sticky top-0 h-screen bg-[var(--bg-card)] border-r border-[var(--border)]
+          flex-col px-4 py-5 shrink-0 transition-colors duration-300 select-none overflow-y-auto z-30"
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* ── Mobile Slide-Over Drawer ── */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div
+            onClick={onCloseMobile}
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
+          />
+          <aside
+            className="relative w-[280px] max-w-[82vw] h-full bg-[var(--bg-card)] border-r border-[var(--border)]
+              flex flex-col px-4 py-5 select-none overflow-y-auto z-10 shadow-[var(--shadow-lg)]"
+          >
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      {/* ── Phone Bottom Navigation Bar ── */}
+      <nav
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-glass)] backdrop-blur-md
+          border-t border-[var(--border)] px-2 py-1.5 flex items-center justify-around select-none"
+        style={{
+          paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))',
+        }}
+      >
+        {navItems.slice(0, 5).map(item => {
+          const Icon = iconMap[item.icon]
+          const isActive = activeNav === item.id
+          const shortLabels = {
+            overview: 'Home',
+            myclubs: 'Clubs',
+            discover: 'Discover',
+            calendar: 'Schedule',
+            members: 'Members',
+          }
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNav(item.id)}
+              className="flex flex-col items-center justify-center gap-0.5 py-1 px-2.5 rounded-xl
+                border-none bg-transparent cursor-pointer transition-all"
+              style={{
+                color: isActive ? 'var(--blue-ink)' : 'var(--text-muted)',
+              }}
+            >
+              <div
+                className="px-3 py-1 rounded-full transition-colors flex items-center justify-center"
+                style={{
+                  background: isActive ? 'var(--blue-light)' : 'transparent',
+                }}
+              >
+                {Icon && <Icon size={18} strokeWidth={isActive ? 2.4 : 1.9} />}
+              </div>
+              <span className={`text-[10.5px] ${isActive ? 'font-bold' : 'font-medium'}`}>
+                {shortLabels[item.id] || item.label}
+              </span>
+            </button>
+          )
+        })}
+      </nav>
+    </>
   )
 }

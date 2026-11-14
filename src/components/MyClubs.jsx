@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Calendar, MapPin, Users, Check, Plus, Sparkles } from 'lucide-react'
-import { clubs as initialClubs } from '../data/sampleData'
+import { clubs as defaultClubs } from '../data/sampleData'
 import { Card, Avatar, BubbleTag } from './ui'
 
 const tabs = [
@@ -12,16 +12,17 @@ const tabs = [
 ]
 
 export default function MyClubs({
+  items,
   clubsData,
   onToggleJoin,
   defaultTab = 'All',
   searchQuery = '',
 }) {
-  const [localClubs, setLocalClubs] = useState(initialClubs)
+  const [localClubs, setLocalClubs] = useState(defaultClubs)
   const [filter, setFilter] = useState(defaultTab)
   const [selectedId, setSelectedId] = useState(null)
 
-  const list = clubsData || localClubs
+  const list = items && items.length > 0 ? items : clubsData || localClubs
 
   function handleJoin(id, e) {
     e.stopPropagation()
@@ -46,31 +47,32 @@ export default function MyClubs({
   const activeFilter = defaultTab === 'Discover' && filter === 'All' ? 'Discover' : filter
 
   const filtered = list.filter(c => {
-    if (activeFilter !== 'Discover' && !c.joined) return false
+    const isJoined = c.joined !== undefined ? c.joined : true
+    if (activeFilter !== 'Discover' && !isJoined) return false
     if (
       activeFilter !== 'All' &&
       activeFilter !== 'Discover' &&
-      c.category !== activeFilter.toLowerCase()
+      (c.category || '').toLowerCase() !== activeFilter.toLowerCase()
     ) {
       return false
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       return (
-        c.name.toLowerCase().includes(q) ||
-        c.description?.toLowerCase().includes(q) ||
-        c.tags.some(t => t.label.toLowerCase().includes(q))
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.description || '').toLowerCase().includes(q) ||
+        (c.tags || []).some(t => t.label.toLowerCase().includes(q))
       )
     }
     return true
   })
 
   return (
-    <Card className="p-[22px] mb-7" delay={5}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-[18px]">
+    <Card className="p-4 sm:p-[22px] mb-5 sm:mb-7" delay={5}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-[18px]">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+            <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
               {activeFilter === 'Discover' ? 'Campus Club Directory' : 'My Clubs'}
             </h2>
             <span className="text-[11px] font-bold font-mono-num px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-muted)]">
@@ -85,7 +87,7 @@ export default function MyClubs({
         </div>
 
         {/* Filter pill bar */}
-        <div className="flex flex-wrap gap-1 p-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border)]">
+        <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] overflow-x-auto max-w-full">
           {tabs.map(tab => {
             const isActive = activeFilter === tab.id
             return (
@@ -93,8 +95,8 @@ export default function MyClubs({
                 key={tab.id}
                 type="button"
                 onClick={() => setFilter(tab.id)}
-                className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold cursor-pointer border-none
-                  transition-all duration-200 inline-flex items-center gap-1.5
+                className={`px-3 sm:px-3.5 py-1.5 rounded-full text-[11.5px] sm:text-[12px] font-bold cursor-pointer border-none
+                  transition-all duration-200 inline-flex items-center gap-1.5 shrink-0
                   ${
                     isActive
                       ? 'bg-[var(--blue)] text-white shadow-xs'
@@ -112,6 +114,8 @@ export default function MyClubs({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map(club => {
           const isSelected = selectedId === club.id
+          const isJoined = club.joined !== undefined ? club.joined : true
+
           return (
             <div
               key={club.id}
@@ -145,20 +149,20 @@ export default function MyClubs({
                     </div>
                   </div>
 
-                  {activeFilter === 'Discover' || !club.joined ? (
+                  {activeFilter === 'Discover' || !isJoined ? (
                     <button
                       type="button"
                       onClick={e => handleJoin(club.id, e)}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold
                         cursor-pointer transition-all border shrink-0"
                       style={{
-                        background: club.joined ? 'var(--green-light)' : 'var(--blue)',
-                        color: club.joined ? 'var(--green-ink)' : '#fff',
-                        borderColor: club.joined ? 'var(--green)' : 'var(--blue)',
+                        background: isJoined ? 'var(--green-light)' : 'var(--blue)',
+                        color: isJoined ? 'var(--green-ink)' : '#fff',
+                        borderColor: isJoined ? 'var(--green)' : 'var(--blue)',
                       }}
                     >
-                      {club.joined ? <Check size={12} strokeWidth={2.5} /> : <Plus size={12} />}
-                      {club.joined ? 'Joined' : 'Join'}
+                      {isJoined ? <Check size={12} strokeWidth={2.5} /> : <Plus size={12} />}
+                      {isJoined ? 'Joined' : 'Join'}
                     </button>
                   ) : (
                     <BubbleTag label="Active" color="green" size="sm" dot />
@@ -174,21 +178,21 @@ export default function MyClubs({
 
                 {/* Tags */}
                 <div className="flex gap-1.5 flex-wrap mb-3.5">
-                  {club.tags.map(tag => (
-                    <BubbleTag key={tag.label} label={tag.label} color={tag.color} size="sm" />
+                  {(club.tags || []).map(tag => (
+                    <BubbleTag key={tag.label} label={tag.label} color={tag.color || 'blue'} size="sm" />
                   ))}
                 </div>
               </div>
 
               {/* Footer */}
               <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11.5px] text-[var(--text-muted)]">
-                <span className="inline-flex items-center gap-1.5 font-medium">
-                  <Calendar size={12.5} className="text-[var(--text-light)]" />
+                <span className="inline-flex items-center gap-1.5 font-medium truncate">
+                  <Calendar size={12.5} className="text-[var(--text-light)] shrink-0" />
                   {club.schedule}
                 </span>
                 {club.room && (
                   <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-light)] truncate max-w-[140px]">
-                    <MapPin size={12} />
+                    <MapPin size={12} className="shrink-0" />
                     {club.room}
                   </span>
                 )}
@@ -209,7 +213,7 @@ export default function MyClubs({
                     onClick={e => handleJoin(club.id, e)}
                     className="text-[11px] font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                   >
-                    {club.joined ? 'Leave club' : 'Join now'}
+                    {isJoined ? 'Leave club' : 'Join now'}
                   </button>
                 </div>
               )}

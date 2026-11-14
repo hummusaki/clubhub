@@ -15,11 +15,9 @@
     </linearGradient>
   </defs>
 
-  <!-- Squircle Base -->
   <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#ch-bg)" />
   <rect x="4.75" y="4.75" width="54.5" height="54.5" rx="15.25" stroke="url(#ch-shine)" stroke-width="1.5" />
 
-  <!-- Connecting Hub Ring (C-shaped orbital arc) -->
   <path
     d="M42.5 22.5A14.5 14.5 0 1 0 42.5 41.5"
     stroke="#FFFFFF"
@@ -28,13 +26,11 @@
     stroke-opacity="0.92"
   />
 
-  <!-- Interconnected Club Nodes -->
   <circle cx="24" cy="22" r="5.5" fill="#FFFFFF" />
   <circle cx="24" cy="42" r="5.5" fill="#B8F5D4" />
   <circle cx="43.5" cy="22.5" r="5.5" fill="url(#ch-warm)" />
   <circle cx="43.5" cy="41.5" r="5.5" fill="#D9E8FF" />
 
-  <!-- Central Hub Sparkle Core -->
   <path
     d="M32 24.5C32.7 28.6 35.4 31.3 39.5 32C35.4 32.7 32.7 35.4 32 39.5C31.3 35.4 28.6 32.7 24.5 32C28.6 31.3 31.3 28.6 32 24.5Z"
     fill="#FFFFFF"

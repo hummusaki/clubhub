@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, Mail } from 'lucide-react'
+import { Copy, Check, Mail, Clock } from 'lucide-react'
 import { boardMembers } from '../data/sampleData'
 import { Card, Avatar, BubbleTag } from './ui'
 
@@ -17,10 +17,10 @@ export default function ClubBoard() {
   }
 
   return (
-    <Card className="p-[22px] flex flex-col" delay={5}>
-      <div className="flex items-center justify-between mb-[18px]">
+    <Card className="p-4 sm:p-[22px] flex flex-col" delay={5}>
+      <div className="flex items-center justify-between gap-2 mb-4 sm:mb-[18px]">
         <div>
-          <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+          <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
             CS Club — Board
           </h2>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -30,7 +30,64 @@ export default function ClubBoard() {
         <BubbleTag label="2026–27 Term" color="blue" size="sm" />
       </div>
 
-      <div className="overflow-x-auto">
+      {/* ── Phone Card List (< md) ── */}
+      <div className="flex md:hidden flex-col gap-2.5">
+        {boardMembers.map(m => {
+          const isCopied = copiedId === m.id
+          return (
+            <div
+              key={m.id}
+              className="p-3 rounded-[var(--radius-sm)] bg-[var(--bg-card)] border border-[var(--border)]
+                shadow-[var(--shadow-xs)] flex items-center justify-between gap-2.5"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Avatar
+                  initials={m.initials}
+                  bg={`linear-gradient(135deg, var(--${m.color}), var(--${m.color}-ink))`}
+                  size={36}
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-[13px] text-[var(--text)] truncate">
+                      {m.name}
+                    </span>
+                    <BubbleTag label={m.role} color={m.color} size="sm" />
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] mt-0.5 font-mono-num">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={11} />
+                      {m.office || 'By appt'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => copyEmail(m)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-mono-num
+                  bg-[var(--bg-subtle)] text-[var(--text-muted)] border border-[var(--border)]
+                  cursor-pointer shrink-0"
+              >
+                {isCopied ? (
+                  <>
+                    <Check size={12} className="text-[var(--green-ink)]" />
+                    <span className="text-[var(--green-ink)] font-semibold">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Mail size={12} />
+                    <span>{m.email.split('@')[0]}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Tablet / Desktop Table (md+) ── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>

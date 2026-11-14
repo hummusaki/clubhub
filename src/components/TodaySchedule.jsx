@@ -1,46 +1,54 @@
 import { useState } from 'react'
 import { MapPin, Clock, Users, Check, Plus } from 'lucide-react'
-import { todaySchedule as initialSchedule } from '../data/sampleData'
+import { todaySchedule as defaultSchedule } from '../data/sampleData'
 import { Card, BubbleTag } from './ui'
 
-export default function TodaySchedule({ searchQuery = '' }) {
-  const [events, setEvents] = useState(initialSchedule)
+export default function TodaySchedule({ items, searchQuery = '' }) {
+  const [localEvents, setLocalEvents] = useState(defaultSchedule)
+  const [rsvpMap, setRsvpMap] = useState({})
   const [tab, setTab] = useState('all')
 
-  function toggleRsvp(id) {
-    setEvents(prev =>
-      prev.map(ev =>
-        ev.id === id
-          ? {
-              ...ev,
-              rsvp: !ev.rsvp,
-              attendees: ev.rsvp ? ev.attendees - 1 : ev.attendees + 1,
-            }
-          : ev
+  const baseEvents = items && items.length > 0 ? items : localEvents
+
+  function toggleRsvp(ev) {
+    if (items && items.length > 0) {
+      setRsvpMap(prev => ({ ...prev, [ev.id]: !(prev[ev.id] ?? ev.rsvp) }))
+    } else {
+      setLocalEvents(prev =>
+        prev.map(item =>
+          item.id === ev.id
+            ? {
+                ...item,
+                rsvp: !item.rsvp,
+                attendees: item.rsvp ? (item.attendees || 1) - 1 : (item.attendees || 0) + 1,
+              }
+            : item
+        )
       )
-    )
+    }
   }
 
-  const filtered = events.filter(ev => {
-    if (tab === 'today' && ev.day !== 'today') return false
-    if (tab === 'upcoming' && ev.day === 'today') return false
+  const filtered = baseEvents.filter(ev => {
+    const dayVal = ev.day || (ev.upcoming ? 'tomorrow' : 'today')
+    if (tab === 'today' && dayVal !== 'today') return false
+    if (tab === 'upcoming' && dayVal === 'today') return false
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       return (
-        ev.club.toLowerCase().includes(q) ||
-        ev.event.toLowerCase().includes(q) ||
-        ev.location.toLowerCase().includes(q)
+        (ev.club || '').toLowerCase().includes(q) ||
+        (ev.event || '').toLowerCase().includes(q) ||
+        (ev.location || '').toLowerCase().includes(q)
       )
     }
     return true
   })
 
   return (
-    <Card className="p-[22px] flex flex-col" delay={3}>
+    <Card className="p-4 sm:p-[22px] flex flex-col" delay={3}>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-[18px]">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 sm:mb-[18px]">
         <div className="flex items-center gap-2.5">
-          <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+          <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
             Today&apos;s Schedule
           </h2>
           <span className="text-[11.5px] font-semibold font-mono-num px-2 py-0.5 rounded-md bg-[var(--bg-subtle)] text-[var(--text-muted)]">
@@ -75,11 +83,12 @@ export default function TodaySchedule({ searchQuery = '' }) {
       <div className="flex flex-col gap-3 flex-1">
         {filtered.map((item, i) => {
           const isLast = i === filtered.length - 1
-          const c = item.color === 'muted' ? 'teal' : item.color
-          const isNextUp = item.status === 'Next Up'
+          const c = item.color === 'muted' || !item.color ? 'teal' : item.color
+          const isNextUp = item.status === 'Next Up' || i === 0
+          const isGoing = rsvpMap[item.id] ?? item.rsvp
 
           return (
-            <div key={item.id} className="flex items-stretch gap-3.5 group">
+            <div key={item.id} className="flex items-stretch gap-3 sm:gap-3.5 group">
               {/* Timeline dot + continuous line */}
               <div className="flex flex-col items-center pt-3.5">
                 <div
@@ -98,7 +107,7 @@ export default function TodaySchedule({ searchQuery = '' }) {
 
               {/* Event card */}
               <div
-                className="flex-1 rounded-[var(--radius-sm)] p-3.5 border transition-all duration-200
+                className="flex-1 rounded-[var(--radius-sm)] p-3 sm:p-3.5 border transition-all duration-200
                   hover:shadow-[var(--shadow-xs)]"
                 style={{
                   background: item.upcoming ? 'var(--bg-card)' : `var(--${c}-light)`,
@@ -130,42 +139,42 @@ export default function TodaySchedule({ searchQuery = '' }) {
                         </span>
                       )}
                     </div>
-                    <div className="font-bold text-[14px] text-[var(--text)] mt-0.5">
+                    <div className="font-bold text-[13.5px] sm:text-[14px] text-[var(--text)] mt-0.5">
                       {item.event}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <BubbleTag label={item.time} color={c} size="sm" />
                     <button
                       type="button"
-                      onClick={() => toggleRsvp(item.id)}
+                      onClick={() => toggleRsvp(item)}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold
                         cursor-pointer transition-all duration-150 border"
                       style={{
-                        background: item.rsvp ? 'var(--bg-card)' : 'transparent',
-                        color: item.rsvp ? 'var(--green-ink)' : 'var(--text-muted)',
-                        borderColor: item.rsvp ? 'var(--green)' : 'var(--border-strong)',
+                        background: isGoing ? 'var(--bg-card)' : 'transparent',
+                        color: isGoing ? 'var(--green-ink)' : 'var(--text-muted)',
+                        borderColor: isGoing ? 'var(--green)' : 'var(--border-strong)',
                       }}
                     >
-                      {item.rsvp ? <Check size={12} strokeWidth={2.6} /> : <Plus size={12} />}
-                      {item.rsvp ? 'Going' : 'RSVP'}
+                      {isGoing ? <Check size={12} strokeWidth={2.6} /> : <Plus size={12} />}
+                      {isGoing ? 'Going' : 'RSVP'}
                     </button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 text-[12px] text-[var(--text-muted)] mt-2.5 pt-2 border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-[11.5px] sm:text-[12px] text-[var(--text-muted)] mt-2.5 pt-2 border-t border-[color-mix(in_srgb,var(--border)_65%,transparent)]">
                   <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={13} className="text-[var(--text-light)]" />
+                    <MapPin size={13} className="text-[var(--text-light)] shrink-0" />
                     {item.location}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <Clock size={13} className="text-[var(--text-light)]" />
+                    <Clock size={13} className="text-[var(--text-light)] shrink-0" />
                     {item.duration}
                   </span>
                   {item.attendees && (
-                    <span className="inline-flex items-center gap-1.5 ml-auto font-mono-num text-[11.5px]">
-                      <Users size={13} className="text-[var(--text-light)]" />
+                    <span className="inline-flex items-center gap-1.5 sm:ml-auto font-mono-num text-[11.5px]">
+                      <Users size={13} className="text-[var(--text-light)] shrink-0" />
                       {item.attendees} attending
                     </span>
                   )}

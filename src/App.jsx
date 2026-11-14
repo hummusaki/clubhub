@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
@@ -8,9 +8,16 @@ import MyClubs from './components/MyClubs'
 import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
-<<<<<<< HEAD
 import SourceFeedHub from './components/SourceFeedHub'
-import { getClubHub, getDictionary, getAnnouncements, getEvents, getLinks, getStats } from './api/client'
+import { clubs as initialClubs } from './data/sampleData'
+import {
+  getClubHub,
+  getDictionary,
+  getAnnouncements,
+  getEvents,
+  getLinks,
+  getStats,
+} from './api/client'
 
 const KIND_ICON_MAP = {
   discord: 'MessageCircle',
@@ -25,14 +32,16 @@ const KIND_COLOR_MAP = {
   document: 'blue',
   website: 'green',
 }
-=======
-import { clubs as initialClubs } from './data/sampleData'
->>>>>>> 9a2a3a902f9ab8eef6d18195ce87b0cf54464fde
 
 export default function App() {
   const [dark, setDark] = useState(false)
   const [activeNav, setActiveNav] = useState('overview')
-<<<<<<< HEAD
+  const [searchQuery, setSearchQuery] = useState('')
+  const [clubsData, setClubsData] = useState(initialClubs)
+  const [linksCount, setLinksCount] = useState(24)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Live SQLite / Collector backend state
   const [hubDict, setHubDict] = useState({})
   const [rawDict, setRawDict] = useState({})
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
@@ -56,22 +65,36 @@ export default function App() {
       const mappedClubs = Object.values(hub).map(c => {
         const nextEvent = (c.events || [])[0]
         const scheduleStr = nextEvent
-          ? `${new Date(nextEvent.start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${nextEvent.location ? ' · ' + nextEvent.location : ''}`
+          ? `${new Date(nextEvent.start).toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+            })}${nextEvent.location ? ' · ' + nextEvent.location : ''}`
           : `@${c.instagram}`
 
         return {
           id: c.id,
           name: c.name,
-          abbr: (c.name || 'CL').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+          abbr: (c.name || 'CL')
+            .split(' ')
+            .map(w => w[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase(),
           members: c.followers || 0,
-          category: c.category || 'other',
+          category: c.category || 'academic',
+          role: 'Member',
+          room: nextEvent?.location || 'Campus',
+          nextEvent: nextEvent?.title ? `${nextEvent.title} · ${scheduleStr}` : null,
+          description: c.bio || c.description || '',
           tags: [
-            { label: `@${c.instagram}`, color: 'blue' },
+            ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
             ...(c.category ? [{ label: c.category, color: 'purple' }] : []),
           ],
           schedule: scheduleStr,
           avatarBg: 'linear-gradient(135deg, var(--blue), #5B8DEF)',
           active: true,
+          joined: true,
         }
       })
       if (mappedClubs.length > 0) setLiveClubs(mappedClubs)
@@ -99,9 +122,12 @@ export default function App() {
             event: e.title,
             time: timeLabel,
             location: e.location || 'TBD',
-            duration: e.recurring ? `Every ${e.recurring}` : (e.kind || 'event'),
+            duration: e.recurring ? `Every ${e.recurring}` : e.kind || 'event',
             color: palette[i % palette.length],
+            status: i === 0 ? 'Next Up' : 'Scheduled',
+            rsvp: i < 2,
             upcoming: false,
+            day: 'today',
           }
         })
       )
@@ -113,9 +139,12 @@ export default function App() {
           id: a.id,
           type: a.important ? 'Urgent' : 'Announcement',
           color: a.important ? 'red' : 'yellow',
-          time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : '',
+          club: a.clubName || a.clubId || 'Campus',
+          time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
           title: `${a.clubName ? a.clubName + ': ' : ''}${a.title}`,
           description: a.summary || '',
+          pinned: Boolean(a.important),
+          unread: true,
         }))
       )
     }
@@ -127,6 +156,7 @@ export default function App() {
           title: `${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`,
           subtitle: l.url,
           url: l.url,
+          category: l.kind || 'Resource',
           color: KIND_COLOR_MAP[l.kind] || 'blue',
           icon: KIND_ICON_MAP[l.kind] || 'Globe',
         }))
@@ -135,10 +165,42 @@ export default function App() {
 
     if (dbStats) {
       setLiveStats([
-        { label: 'Active Clubs',      value: dbStats.clubs ?? 0,   color: 'blue',   icon: 'Users' },
-        { label: 'Connected Sources', value: dbStats.sources ?? 0, color: 'green',  icon: 'Heart' },
-        { label: 'Upcoming Events',   value: dbStats.events ?? 0,  color: 'yellow', icon: 'Calendar' },
-        { label: 'Shared Links',      value: dbStats.links ?? 0,   color: 'purple', icon: 'Link' },
+        {
+          label: 'Active Clubs',
+          value: dbStats.clubs ?? 0,
+          color: 'blue',
+          icon: 'Users',
+          delta: 'Live DB',
+          subtitle: 'Synced organizations',
+          navTarget: 'discover',
+        },
+        {
+          label: 'Connected Sources',
+          value: dbStats.sources ?? 0,
+          color: 'green',
+          icon: 'Heart',
+          delta: 'Multi-source',
+          subtitle: 'IG, Discord & Cal',
+          navTarget: 'myclubs',
+        },
+        {
+          label: 'Upcoming Events',
+          value: dbStats.events ?? 0,
+          color: 'yellow',
+          icon: 'Calendar',
+          delta: 'Extracted',
+          subtitle: 'From club feeds',
+          navTarget: 'calendar',
+        },
+        {
+          label: 'Shared Links',
+          value: dbStats.links ?? 0,
+          color: 'purple',
+          icon: 'Link',
+          delta: 'Verified',
+          subtitle: 'Forms, docs & servers',
+          navTarget: 'links',
+        },
       ])
     }
   }, [])
@@ -146,13 +208,9 @@ export default function App() {
   useEffect(() => {
     loadBackendData()
   }, [loadBackendData])
-=======
-  const [searchQuery, setSearchQuery] = useState('')
-  const [clubsData, setClubsData] = useState(initialClubs)
-  const [linksCount, setLinksCount] = useState(24)
 
-  const joinedCount = clubsData.filter(c => c.joined).length
->>>>>>> 9a2a3a902f9ab8eef6d18195ce87b0cf54464fde
+  const effectiveClubs = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
+  const joinedCount = effectiveClubs.filter(c => c.joined !== false).length
 
   function toggleDark() {
     setDark(prev => {
@@ -163,18 +221,32 @@ export default function App() {
   }
 
   function toggleJoinClub(clubId) {
-    setClubsData(prev =>
-      prev.map(c =>
-        c.id === clubId
-          ? {
-              ...c,
-              joined: !c.joined,
-              members: c.joined ? c.members - 1 : c.members + 1,
-              role: c.joined ? 'Open to Join' : 'Member',
-            }
-          : c
+    if (liveClubs && liveClubs.length > 0) {
+      setLiveClubs(prev =>
+        prev.map(c =>
+          c.id === clubId
+            ? {
+                ...c,
+                joined: c.joined === false ? true : false,
+                members: c.joined === false ? (c.members || 0) + 1 : Math.max(0, (c.members || 1) - 1),
+              }
+            : c
+        )
       )
-    )
+    } else {
+      setClubsData(prev =>
+        prev.map(c =>
+          c.id === clubId
+            ? {
+                ...c,
+                joined: !c.joined,
+                members: c.joined ? c.members - 1 : c.members + 1,
+                role: c.joined ? 'Open to Join' : 'Member',
+              }
+            : c
+        )
+      )
+    }
   }
 
   const showAll = activeNav === 'overview'
@@ -187,54 +259,52 @@ export default function App() {
         dark={dark}
         onToggleDark={toggleDark}
         joinedCount={joinedCount}
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
       />
 
-<<<<<<< HEAD
-      <main className="flex-1 overflow-y-auto px-8 py-7">
-        <Header />
-        <StatCards items={liveStats} />
-
-        {/* Schedule + Announcements */}
-        <div className="grid grid-cols-[5fr_3fr] gap-5 mb-7">
-          <TodaySchedule items={liveSchedule} />
-          <Announcements items={liveAnnouncements} />
-        </div>
-
-        {/* Multi-Source Feed & Dictionary Hub */}
-        <SourceFeedHub
-          hubDict={hubDict}
-          rawDict={rawDict}
-          onRefresh={loadBackendData}
-=======
-      <main className="flex-1 min-w-0 overflow-y-auto px-6 lg:px-9 py-7 max-w-[1440px]">
+      <main className="flex-1 min-w-0 overflow-y-auto px-3.5 sm:px-6 lg:px-9 pt-3.5 pb-24 sm:py-7 lg:pb-8 max-w-[1440px]">
         <Header
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           activeNav={activeNav}
           onNav={setActiveNav}
->>>>>>> 9a2a3a902f9ab8eef6d18195ce87b0cf54464fde
+          dark={dark}
+          onToggleDark={toggleDark}
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
         {showAll && (
           <StatCards
+            items={liveStats}
             joinedCount={joinedCount}
-            linksCount={linksCount}
+            linksCount={liveLinks ? liveLinks.length : linksCount}
             onNav={setActiveNav}
           />
         )}
 
         {/* Schedule + Announcements */}
         {(showAll || activeNav === 'calendar') && (
-          <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-5 mb-7">
-            <TodaySchedule searchQuery={searchQuery} />
-            <Announcements />
+          <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
+            <TodaySchedule items={liveSchedule} searchQuery={searchQuery} />
+            <Announcements items={liveAnnouncements} />
           </div>
+        )}
+
+        {/* Multi-Source Feed & Dictionary Hub */}
+        {(showAll || activeNav === 'discover') && (
+          <SourceFeedHub
+            hubDict={hubDict}
+            rawDict={rawDict}
+            onRefresh={loadBackendData}
+          />
         )}
 
         {/* My Clubs / Discover */}
         {(showAll || activeNav === 'myclubs' || activeNav === 'discover') && (
           <MyClubs
             key={activeNav === 'discover' ? 'discover' : 'myclubs'}
+            items={liveClubs}
             clubsData={clubsData}
             onToggleJoin={toggleJoinClub}
             defaultTab={activeNav === 'discover' ? 'Discover' : 'All'}
@@ -243,23 +313,17 @@ export default function App() {
         )}
 
         {/* Board + Links */}
-<<<<<<< HEAD
-        <div className="grid grid-cols-2 gap-5">
-          <ClubBoard />
-          <LinksResources
-            items={liveLinks}
-            clubs={Object.values(hubDict)}
-            onRefresh={loadBackendData}
-          />
-        </div>
-=======
         {(showAll || activeNav === 'links') && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
             <ClubBoard />
-            <LinksResources onCountChange={setLinksCount} />
+            <LinksResources
+              items={liveLinks}
+              clubs={Object.values(hubDict)}
+              onRefresh={loadBackendData}
+              onCountChange={setLinksCount}
+            />
           </div>
         )}
->>>>>>> 9a2a3a902f9ab8eef6d18195ce87b0cf54464fde
 
         {/* Member Activity */}
         {(showAll || activeNav === 'members') && (

@@ -1,20 +1,28 @@
 import { useState } from 'react'
 import { Pin, Plus, Megaphone } from 'lucide-react'
-import { announcements as initialAnnouncements } from '../data/sampleData'
+import { announcements as defaultAnnouncements } from '../data/sampleData'
 import { Card, BubbleTag } from './ui'
 
-export default function Announcements() {
-  const [list, setList] = useState(initialAnnouncements)
+export default function Announcements({ items }) {
+  const [addedList, setAddedList] = useState([])
+  const [pinnedIds, setPinnedIds] = useState({})
   const [composing, setComposing] = useState(false)
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
 
-  function togglePin(id) {
-    setList(prev =>
-      prev
-        .map(item => (item.id === id ? { ...item, pinned: !item.pinned } : item))
-        .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-    )
+  const baseList = items && items.length > 0 ? items : defaultAnnouncements
+  const list = [...addedList, ...baseList]
+    .map(item => ({
+      ...item,
+      pinned: pinnedIds[item.id] !== undefined ? pinnedIds[item.id] : Boolean(item.pinned),
+    }))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+
+  function togglePin(item) {
+    setPinnedIds(prev => ({
+      ...prev,
+      [item.id]: !(prev[item.id] !== undefined ? prev[item.id] : Boolean(item.pinned)),
+    }))
   }
 
   function handleAdd(e) {
@@ -31,18 +39,18 @@ export default function Announcements() {
       pinned: false,
       unread: true,
     }
-    setList(prev => [next, ...prev])
+    setAddedList(prev => [next, ...prev])
     setTitle('')
     setDesc('')
     setComposing(false)
   }
 
   return (
-    <Card className="p-[22px] flex flex-col" delay={4}>
-      <div className="flex items-center justify-between mb-[18px]">
+    <Card className="p-4 sm:p-[22px] flex flex-col" delay={4}>
+      <div className="flex items-center justify-between mb-4 sm:mb-[18px]">
         <div className="flex items-center gap-2">
           <Megaphone size={16} className="text-[var(--red)]" />
-          <h2 className="text-[16px] font-extrabold tracking-tight text-[var(--text)]">
+          <h2 className="text-[15.5px] sm:text-[16px] font-extrabold tracking-tight text-[var(--text)]">
             Announcements
           </h2>
           <span
@@ -115,12 +123,12 @@ export default function Announcements() {
               hover:border-[var(--border-strong)] hover:shadow-[var(--shadow)] transition-all duration-200"
             style={{
               borderLeftWidth: '3.5px',
-              borderLeftColor: `var(--${item.color})`,
+              borderLeftColor: `var(--${item.color || 'blue'})`,
             }}
           >
             <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-2">
-                <BubbleTag label={item.type} color={item.color} size="sm" />
+              <div className="flex items-center gap-2 flex-wrap">
+                <BubbleTag label={item.type} color={item.color || 'blue'} size="sm" />
                 {item.club && (
                   <span className="text-[11px] font-semibold text-[var(--text-muted)]">
                     · {item.club}
@@ -134,7 +142,7 @@ export default function Announcements() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => togglePin(item.id)}
+                  onClick={() => togglePin(item)}
                   title={item.pinned ? 'Unpin' : 'Pin announcement'}
                   className={`p-1 rounded-md cursor-pointer border-none bg-transparent transition-opacity ${
                     item.pinned
