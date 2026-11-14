@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════
+   ClubHub — Google-Bubble Palette (Soft)
+   ═══════════════════════════════════════════════ */
+
+:root {
+  /* Surfaces */
+  --bg:          #F5F0EB;
+  --bg-surface:  #FAF7F3;
+  --bg-card:     #FFFFFF;
+  --border:      #E8E0D8;
+
+  /* Text */
+  --text:        #3C3226;
+  --text-muted:  #8A7E72;
+  --text-light:  #B5A99B;
+
+  /* Google-bubble accents — softened pastels */
+  --blue:        #7BAAF7;
+  --blue-light:  #D6E5FC;
+  --red:         #E88E8E;
+  --red-light:   #FADED9;
+  --yellow:      #F3CC72;
+  --yellow-light:#FBF0D1;
+  --green:       #81C995;
+  --green-light: #D4F0DC;
+  --purple:      #B39DDB;
+  --purple-light:#E8DFF5;
+  --teal:        #80CBC4;
+  --teal-light:  #D0EFEC;
+
+  /* Shadows & radii */
+  --shadow:      0 1px 3px rgba(60,50,38,0.06), 0 1px 2px rgba(60,50,38,0.04);
+  --shadow-md:   0 4px 12px rgba(60,50,38,0.08);
+  --radius:      16px;
+  --radius-sm:   12px;
+  --radius-pill: 9999px;
+}
+
+/* ── Dark mode (warm cappuccino-dark, not too dark) ── */
+.dark {
+  --bg:          #2C2820;
+  --bg-surface:  #36322A;
+  --bg-card:     #3E3930;
+  --border:      #524D44;
+
+  --text:        #EDE8E1;
+  --text-muted:  #A89E92;
+  --text-light:  #7A7168;
+
+  --blue-light:  rgba(123,170,247,0.15);
+  --red-light:   rgba(232,142,142,0.15);
+  --yellow-light:rgba(243,204,114,0.15);
+  --green-light: rgba(129,201,149,0.15);
+  --purple-light:rgba(179,157,219,0.15);
+  --teal-light:  rgba(128,203,196,0.15);
+
+  --shadow:      0 1px 3px rgba(0,0,0,0.2);
+  --shadow-md:   0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* ── Base ── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  transition: background 0.35s ease, color 0.35s ease;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+/* ── Animations ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeInUp 0.5s ease both; }
