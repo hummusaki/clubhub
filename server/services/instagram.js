@@ -6,8 +6,13 @@ import { upsertCollectorData, getDb, formatPostRow } from '../database.js';
 
 export class InstagramService {
   // Sync Instagram posts using the Collector pipeline (uses live API if IG_ACCESS_TOKEN is set, otherwise demo fixtures)
-  async syncInstagram({ clubId = null, demo = !process.env.IG_ACCESS_TOKEN } = {}) {
-    const data = await collect({ demo, only: clubId || undefined });
+  async syncInstagram({
+    clubId = null,
+    demo = !process.env.IG_ACCESS_TOKEN,
+    fallbackPersonal = process.env.IG_PERSONAL_FALLBACK === 'true',
+    stories = process.env.IG_SCRAPER_STORIES === 'true',
+  } = {}) {
+    const data = await collect({ demo, only: clubId || undefined, fallbackPersonal, stories });
     return upsertCollectorData(data);
   }
 

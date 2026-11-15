@@ -1,5 +1,8 @@
 # Dependencies and generated builds (at any directory depth)
 node_modules/
+.venv/
+__pycache__/
+*.py[cod]
 dist/
 coverage/
 .vite/
@@ -47,6 +50,8 @@ cookies.txt
 cookies.json
 storageState.json
 storage-state.json
+session-*
+.ig-session*
 *.har
 
 # Logs and local backups can contain credentials or personal data

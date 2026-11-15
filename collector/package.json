@@ -6,6 +6,8 @@
   "private": true,
   "scripts": {
     "collect": "node src/index.js",
+    "collect:hybrid": "node src/index.js --fallback-personal",
+    "collect:personal": "node src/index.js --personal-only",
     "demo": "node src/index.js --demo",
     "search": "node src/search.js",
     "update-clubs": "node src/update-clubs.js"

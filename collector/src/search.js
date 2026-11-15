@@ -61,7 +61,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const when = e =>
     new Date(e.start).toLocaleString('en-US', e.allDay ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   for (const r of results) {
-    console.log(`\n${r.club.name}  (@${r.club.instagram})\n${r.club.bio || ''}`)
+    console.log(`\n${r.club.name}  (@${r.club.instagram})${r.club.syncStatus === 'unavailable' ? '  [not synced]' : ''}\n${r.club.bio || r.club.syncNote || ''}`)
+    if (r.club.email) console.log(`  Email: ${r.club.email}`)
     console.log('  Upcoming:')
     for (const e of r.upcomingEvents) console.log(`   - [${e.kind}] ${when(e)}  ${e.title}${e.location ? '  @ ' + e.location : ''}${e.recurring ? '  (every ' + e.recurring + ')' : ''}`)
     if (!r.upcomingEvents.length) console.log('   (none found)')

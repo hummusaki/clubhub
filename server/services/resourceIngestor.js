@@ -52,6 +52,8 @@ export function ingestResourceItem({
   imageUrl = null,
   postedAt = null,
   identifier = null,
+  forceAnnouncement = null,
+  extractedInfo = null,
 }) {
   const db = getDb();
   const cid = normalizeClubId(clubId);
@@ -64,11 +66,13 @@ export function ingestResourceItem({
   const fullText =
     title && caption && !caption.includes(title) ? `${title}\n${caption}` : caption || title || '';
 
-  // Run the collector's extractor to pull dates, times, locations, links, and type
-  const info = extractPost(
-    { id: postId, caption: fullText, postedAt: postTime, permalink, imageUrl },
-    { username: cid, name: resolvedClubName }
-  );
+  // Run the collector's extractor (unless pre-extracted by vision LLM)
+  const info =
+    extractedInfo ||
+    extractPost(
+      { id: postId, caption: fullText, postedAt: postTime, permalink, imageUrl },
+      { username: cid, name: resolvedClubName }
+    );
 
   // Record the connected data source in dictionary_store
   if (identifier || source) {
@@ -78,6 +82,16 @@ export function ingestResourceItem({
       identifier: identifier || (source === 'instagram' ? `@${cid}` : `${cid}_${source}`),
     });
   }
+
+  // Discord #announcements and Instagram Story Mentions should always surface in Announcements
+  // even when they also contain an event date/time.
+  const shouldCreateAnnouncement =
+    forceAnnouncement !== null
+      ? Boolean(forceAnnouncement)
+      : source === 'discord' ||
+        source === 'instagram_story' ||
+        info.type === 'announcement' ||
+        Boolean(info.important);
 
   const payload = {
     collectedAt: new Date().toISOString(),
@@ -98,7 +112,7 @@ export function ingestResourceItem({
         source,
       },
     ],
-    events: info.events.map((e, i) => ({
+    events: (info.events || []).map((e, i) => ({
       id: `${postId}-${i}`,
       clubId: cid,
       clubName: resolvedClubName,
@@ -107,23 +121,22 @@ export function ingestResourceItem({
       ...e,
       source,
     })),
-    announcements:
-      info.type === 'announcement' || info.important
-        ? [
-            {
-              id: postId,
-              clubId: cid,
-              clubName: resolvedClubName,
-              title: title || info.title,
-              summary: info.summary,
-              important: info.important,
-              postedAt: postTime,
-              permalink,
-              source,
-            },
-          ]
-        : [],
-    links: info.links.map(l => ({
+    announcements: shouldCreateAnnouncement
+      ? [
+          {
+            id: postId,
+            clubId: cid,
+            clubName: resolvedClubName,
+            title: title || info.title,
+            summary: info.summary,
+            important: info.important,
+            postedAt: postTime,
+            permalink,
+            source,
+          },
+        ]
+      : [],
+    links: (info.links || []).map(l => ({
       id: `${cid}:${l.url}`,
       clubId: cid,
       clubName: resolvedClubName,

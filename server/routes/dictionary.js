@@ -32,7 +32,7 @@ import {
   deleteDictEntry,
 } from '../database.js';
 import { searchClubs } from '../../collector/src/search.js';
-import { extractPost } from '../../collector/src/extract.js';
+import { ingestResourceItem } from '../services/resourceIngestor.js';
 
 const router = Router();
 
@@ -142,10 +142,22 @@ router.delete('/dict/:key', (req, res) => {
   res.json(deleteDictEntry(req.params.key));
 });
 
-// ── 7. Single-post/message ingestion (uses collector/src/extract.js) ──
+// ── 7. Single-post/message ingestion (uses ingestResourceItem) ──────
 function handleSingleIngest(req, res) {
   const source = req.params.source || req.body?.source || 'instagram';
-  const { clubId: rawClubId, club_id, clubName, id, caption, body, text, permalink, postedAt } = req.body || {};
+  const {
+    clubId: rawClubId,
+    club_id,
+    clubName,
+    id,
+    title,
+    caption,
+    body,
+    text,
+    permalink,
+    imageUrl,
+    postedAt,
+  } = req.body || {};
   const clubId = normalizeClubId(rawClubId || club_id);
 
   if (!clubId) {
@@ -153,87 +165,25 @@ function handleSingleIngest(req, res) {
   }
 
   const rawText = (caption || body || text || '').trim();
-  if (!rawText) {
+  if (!rawText && !title) {
     return res.status(400).json({ error: 'caption, body, or text is required' });
   }
 
-  const postId = String(id || `${source}_${clubId}_${Date.now()}`);
-  const postTime = postedAt || new Date().toISOString();
-  const postObj = {
-    id: postId,
+  const result = ingestResourceItem({
+    clubId,
+    clubName,
+    source,
+    id,
+    title,
     caption: rawText,
-    postedAt: postTime,
     permalink: permalink || null,
-    imageUrl: null,
-  };
+    imageUrl: imageUrl || null,
+    postedAt: postedAt || null,
+  });
 
-  const db = getDb();
-  const existingClub = db.stmt('SELECT name FROM clubs WHERE lower(id) = lower(?)').get(clubId);
-  const resolvedClubName = clubName || existingClub?.name || clubId;
-
-  // Run the collector's rule-based extractor on the caption/message
-  const info = extractPost(postObj, { username: clubId, name: resolvedClubName });
-
-  const payload = {
-    collectedAt: new Date().toISOString(),
-    clubs: existingClub ? [] : [{ id: clubId, name: resolvedClubName, instagram: clubId }],
-    posts: [
-      {
-        id: postId,
-        clubId,
-        postedAt: postTime,
-        permalink: postObj.permalink,
-        imageUrl: null,
-        caption: rawText,
-        type: info.type,
-        important: info.important,
-        title: info.title,
-        summary: info.summary,
-        extractedBy: source === 'instagram' ? info.extractedBy : source,
-        source,
-      },
-    ],
-    events: info.events.map((e, i) => ({
-      id: `${postId}-${i}`,
-      clubId,
-      clubName: resolvedClubName,
-      postId,
-      permalink: postObj.permalink,
-      ...e,
-      source,
-    })),
-    announcements:
-      info.type === 'announcement' || info.important
-        ? [
-          {
-            id: postId,
-            clubId,
-            clubName: resolvedClubName,
-            title: info.title,
-            summary: info.summary,
-            important: info.important,
-            postedAt: postTime,
-            permalink: postObj.permalink,
-            source,
-          },
-        ]
-        : [],
-    links: info.links.map(l => ({
-      id: `${clubId}:${l.url}`,
-      clubId,
-      clubName: resolvedClubName,
-      ...l,
-      postId,
-    })),
-  };
-
-  const result = upsertCollectorData(payload);
   res.status(201).json({
     success: true,
-    postId,
-    clubId,
-    extracted: info,
-    upserted: result.upserted,
+    ...result,
   });
 }
 

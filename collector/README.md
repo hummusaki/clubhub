@@ -50,8 +50,9 @@ yourself stay if you mark them `"manual": true`:
 { "name": "Some New Club", "instagram": "their_handle", "category": "gaming", "manual": true }
 ```
 
-Only clubs with an Instagram **Business or Creator** account can be read (see below). The rest are listed
-under `errors` after a run, so you can see which clubs to ask to switch (it's free and takes a minute).
+Each club also has its contact `email` from the directory. Only clubs with an Instagram **Business or Creator**
+account can be read (see below). The rest still appear in the output as contact-only clubs (Instagram link + email)
+and are listed under `errors`, so you can see which clubs to ask to switch (it's free and takes a minute).
 
 ## Instagram setup (one time, about 20 minutes)
 
@@ -94,12 +95,17 @@ database should **upsert by id**: re-running the collector updates records inste
 
 | Collection | Fields |
 |---|---|
-| `clubs` | `id` (= Instagram handle), `name`, `alsoKnownAs`, `instagram`, `instagramUrl`, `category`, `bio`, `website`, `profilePictureUrl`, `followers`, `lastPostAt` |
+| `clubs` | `id` (= Instagram handle), `name`, `alsoKnownAs`, `instagram`, `instagramUrl`, `category`, `email`, `syncStatus` (`synced` / `unavailable`), `syncNote`, `bio`, `website`, `profilePictureUrl`, `followers`, `lastPostAt` |
 | `events` | `id`, `clubId`, `clubName`, `postId`, `permalink`, `title`, `kind` (`meeting` / `event` / `deadline`), `start`, `end`, `allDay`, `recurring` (weekday or null), `location` |
 | `announcements` | `id`, `clubId`, `clubName`, `title`, `summary`, `important`, `postedAt`, `permalink` |
-| `links` | `id`, `clubId`, `clubName`, `url`, `label`, `kind` (`discord` / `form` / `linktree` / `document` / `event` / `social` / `website`), `postId` |
+| `links` | `id`, `clubId`, `clubName`, `url`, `label`, `kind` (`instagram` / `email` / `discord` / `form` / `linktree` / `document` / `event` / `social` / `website`), `postId` |
 | `posts` | `id`, `clubId`, `postedAt`, `permalink`, `imageUrl`, `caption`, `type`, `important`, `title`, `summary`, `extractedBy` |
 | `errors` | `club`, `message` (clubs that couldn't be read) |
+
+**Clubs that can't be read** (personal or private Instagram accounts) are still included, with
+`syncStatus: "unavailable"`, a plain-language `syncNote`, their `email`, and two links: their Instagram page
+(`kind: "instagram"`) and a `mailto:` email link (`kind: "email"`). Club pages can show a "Visit on Instagram" /
+"Email this club" card for these. Every club, synced or not, gets those two contact links.
 
 All times are ISO 8601 in UTC (`2026-11-18T02:00:00.000Z`). Display them in `America/Los_Angeles`.
 `allDay: true` means no time was given (deadlines, "club fair tomorrow").

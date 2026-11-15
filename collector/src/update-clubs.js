@@ -12,6 +12,7 @@ const CLUBS_FILE = path.join(ROOT, 'clubs.json')
 
 const decode = s =>
   s
+    .replace(/<(?:style|script)\b[^>]*>[\s\S]*?<\/(?:style|script)>/gi, '')
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&#0?39;|&rsquo;|&#8217;/g, "'")
@@ -22,7 +23,7 @@ const decode = s =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const RESERVED = new Set(['p', 'reel', 'reels', 'explore', 'stories', 'accounts', 'tv'])
+const RESERVED = new Set(['p', 'reel', 'reels', 'explore', 'stories', 'accounts', 'tv', 'media', 'import', 'keyframes', 'font-face', 'ucsc'])
 
 function instagramHandle(html) {
   // Prefer the link target (the page's display text is sometimes out of date).
@@ -53,6 +54,25 @@ export function guessCategory(name) {
   return 'other'
 }
 
+function extractSectionUrls(html) {
+  let discord = null
+  let website = null
+  for (const m of html.matchAll(/href=["'](https?:\/\/[^"'\s>]+)["']/gi)) {
+    const url = m[1].replace(/&amp;/g, '&').trim()
+    if (!discord && /discord\.(?:gg|com\/invite)\/[A-Za-z0-9-]+/i.test(url)) {
+      discord = url
+      continue
+    }
+    if (
+      !website &&
+      !/(?:instagram\.com|getinvolved\.ucsc\.edu|facebook\.com\/ucsc|twitter\.com\/ucsc)/i.test(url)
+    ) {
+      website = url
+    }
+  }
+  return { discord, website }
+}
+
 export function parseDirectory(html) {
   // Everything from the "Suspended" / "Dismissed" headings on is not an active club.
   const cut = html.search(/<h[1-6][^>]*>[^<]*(suspended|dismissed)/i)
@@ -71,8 +91,10 @@ export function parseDirectory(html) {
     const name = decode(nameMatch[1])
     if (!name || /browse by|search|categor/i.test(name)) continue
     const handle = instagramHandle(section)
+    const email = (section.match(/mailto:([^"'?\s>]+)/i)?.[1] || decode(section).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || null)?.toLowerCase() || null
+    const { discord, website } = extractSectionUrls(section)
     const suspended = inactive.has(short(name))
-    clubs.push({ name, instagram: handle, suspended })
+    clubs.push({ name, instagram: handle, email, discord, website, suspended })
   }
   return clubs
 }
@@ -98,10 +120,19 @@ async function main() {
       // Two orgs sharing one account (e.g. ESLP + Student Environmental Center).
       const first = seen.get(c.instagram)
       first.alsoKnownAs = [...(first.alsoKnownAs || []), c.name]
+      if (c.email && c.email !== first.email) first.extraEmails = [...(first.extraEmails || []), c.email]
       continue
     }
     const prev = byHandle.get(c.instagram)
-    const club = { name: c.name, instagram: c.instagram, category: prev?.category || guessCategory(c.name) }
+    const club = {
+      name: c.name,
+      instagram: c.instagram,
+      category: prev?.category || guessCategory(c.name),
+      email: c.email || prev?.email || null,
+      ...(c.discord || prev?.discord ? { discord: c.discord || prev?.discord } : {}),
+      ...(c.website || prev?.website ? { website: c.website || prev?.website } : {}),
+      ...(prev?.discordChannelId ? { discordChannelId: prev.discordChannelId } : {}),
+    }
     seen.set(c.instagram, club)
     out.push(club)
   }

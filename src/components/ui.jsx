@@ -212,14 +212,14 @@ export function SearchBox({
   const isControlled = value !== undefined
   return (
     <div
-      className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[var(--bg-card)]
-        border border-[var(--border)] transition-all duration-200
+      className="flex items-center gap-2.5 px-3.5 min-h-[42px] rounded-xl bg-[var(--bg-card)]
+        border border-[var(--border)] transition-all duration-200 max-w-full min-w-0
         focus-within:border-[var(--blue)]"
       style={{ width }}
     >
       <svg
-        width="15"
-        height="15"
+        width="16"
+        height="16"
         viewBox="0 0 24 24"
         fill="none"
         className="shrink-0 text-[var(--text-light)]"
@@ -249,19 +249,76 @@ export function SearchBox({
         placeholder={placeholder}
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
-        className="border-none outline-none bg-transparent text-[var(--text)] text-[13px] w-full
+        className="border-none outline-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0
           placeholder:text-[var(--text-light)]"
       />
       {isControlled && value && (
         <button
           type="button"
           onClick={() => onChange && onChange('')}
-          className="text-[var(--text-light)] hover:text-[var(--text)] p-0.5 cursor-pointer bg-transparent border-none flex items-center"
+          className="text-[var(--text-light)] hover:text-[var(--text)] p-1 cursor-pointer bg-transparent border-none flex items-center shrink-0"
           aria-label="Clear search"
         >
-          <X size={13} />
+          <X size={14} />
         </button>
       )}
+    </div>
+  )
+}
+
+// ── Floating Non-Layout-Shifting Toast Viewport ──
+export function ToastViewport({ toast, onDismiss }) {
+  if (!toast) return null
+  const tone = toast.type === 'error' ? 'red' : toast.type === 'info' ? 'blue' : 'green'
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed top-4 right-4 left-4 sm:left-auto sm:right-6 sm:max-w-sm z-[120] pointer-events-none flex justify-end"
+    >
+      <div
+        className="pointer-events-auto w-full sm:w-auto rounded-2xl bg-[var(--bg-card)] border px-4 py-3
+          shadow-[var(--shadow-lg)] flex items-center justify-between gap-3 fade-in"
+        style={{
+          borderColor: `var(--${tone})`,
+        }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: `var(--${tone})` }}
+          />
+          <div className="min-w-0">
+            <div className="text-xs sm:text-[13px] font-semibold text-[var(--text)] leading-snug">
+              {toast.text}
+            </div>
+            {toast.actionLabel && toast.onAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.onAction()
+                  if (onDismiss) onDismiss()
+                }}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+              >
+                <span>{toast.actionLabel} &rarr;</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss notification"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-light)] hover:text-[var(--text)] hover:bg-[var(--bg-surface)] bg-transparent border-none cursor-pointer shrink-0 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
     </div>
   )
 }

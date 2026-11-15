@@ -64,16 +64,47 @@ function createDatabaseWrapper(rawDb) {
   return rawDb;
 }
 
+function openAndInitDb() {
+  const instance = createDatabaseWrapper(new DatabaseSync(DB_PATH));
+  instance.pragma('journal_mode = WAL');
+  instance.pragma('synchronous = NORMAL');
+  instance.pragma('foreign_keys = ON');
+  instance.pragma('busy_timeout = 5000');
+  instance.pragma('temp_store = MEMORY');
+  instance.pragma('cache_size = -16000');
+  initSchema(instance);
+  // Full B-tree & index integrity check so corrupted tables/indexes trigger auto-recreation
+  const check = instance.prepare('PRAGMA quick_check').get();
+  if (check && check.quick_check && check.quick_check !== 'ok') {
+    throw new Error(`database disk image is malformed (${check.quick_check})`);
+  }
+  return instance;
+}
+
 export function getDb() {
   if (!db) {
-    db = createDatabaseWrapper(new DatabaseSync(DB_PATH));
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
-    db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
-    db.pragma('temp_store = MEMORY');
-    db.pragma('cache_size = -16000');
-    initSchema(db);
+    try {
+      db = openAndInitDb();
+    } catch (err) {
+      if (/malformed|not a database|corrupt/i.test(err.message || '')) {
+        console.warn('⚠️ Corrupted SQLite file detected; recreating server/clubhub.db cleanly...');
+        try {
+          db?.close?.();
+        } catch {
+          // ignore
+        }
+        for (const ext of ['', '-wal', '-shm']) {
+          try {
+            if (fs.existsSync(DB_PATH + ext)) fs.unlinkSync(DB_PATH + ext);
+          } catch {
+            // ignore
+          }
+        }
+        db = openAndInitDb();
+      } else {
+        throw err;
+      }
+    }
   }
   return db;
 }
@@ -106,6 +137,9 @@ function initSchema(db) {
       profilePictureUrl TEXT,
       followers         INTEGER DEFAULT 0,
       lastPostAt        TEXT,
+      email             TEXT,
+      syncStatus        TEXT DEFAULT 'synced',   -- 'synced' | 'unavailable' (personal/private Instagram)
+      syncNote          TEXT,                    -- plain-language reason shown when unavailable
       updatedAt         TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -189,6 +223,12 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_dict_clubId          ON dictionary_store(clubId);
     CREATE INDEX IF NOT EXISTS idx_dict_namespace       ON dictionary_store(namespace);
   `);
+
+  // Add newer club columns to databases created before they existed.
+  const clubCols = new Set(db.prepare('PRAGMA table_info(clubs)').all().map(c => c.name));
+  for (const [col, def] of [['email', 'TEXT'], ['syncStatus', "TEXT DEFAULT 'synced'"], ['syncNote', 'TEXT']]) {
+    if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
+  }
 }
 
 // ── Sync a club's current relational state into dictionary_store ────
@@ -230,8 +270,9 @@ export function upsertCollectorData(data = {}) {
   const upsertClubStmt = db.stmt(`
     INSERT INTO clubs (
       id, name, alsoKnownAs, instagram, instagramUrl, category,
-      bio, website, profilePictureUrl, followers, lastPostAt, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      bio, website, profilePictureUrl, followers, lastPostAt,
+      email, syncStatus, syncNote, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       name              = excluded.name,
       alsoKnownAs       = excluded.alsoKnownAs,
@@ -243,6 +284,9 @@ export function upsertCollectorData(data = {}) {
       profilePictureUrl = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
       followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
       lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
+      email             = COALESCE(excluded.email, clubs.email),
+      syncStatus        = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN 'synced' ELSE COALESCE(excluded.syncStatus, clubs.syncStatus) END,
+      syncNote          = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN clubs.syncNote ELSE excluded.syncNote END,
       updatedAt         = datetime('now')
   `);
 
@@ -339,7 +383,10 @@ export function upsertCollectorData(data = {}) {
         c.website || null,
         c.profilePictureUrl || null,
         Number(c.followers) || 0,
-        c.lastPostAt || null
+        c.lastPostAt || null,
+        c.email || null,
+        c.syncStatus || 'synced',
+        c.syncNote || null
       );
       affectedClubs.add(cid);
       counts.clubs++;
@@ -449,12 +496,18 @@ export function upsertCollectorData(data = {}) {
 
 // ── Load from collector JSON file (output/clubhub-data.json or fixtures/sample-output.json) ──
 export function importCollectorFile(customFilePath = null) {
+  const db = getDb();
+  const realClubCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%'").get()?.c || 0;
   const targetPath =
     customFilePath ||
-    (fs.existsSync(COLLECTOR_OUTPUT_PATH) ? COLLECTOR_OUTPUT_PATH : COLLECTOR_SAMPLE_PATH);
+    (fs.existsSync(COLLECTOR_OUTPUT_PATH)
+      ? COLLECTOR_OUTPUT_PATH
+      : realClubCount === 0
+        ? COLLECTOR_SAMPLE_PATH
+        : null);
 
-  if (!fs.existsSync(targetPath)) {
-    return { imported: false, reason: `No collector file found at ${targetPath}` };
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    return { imported: false, reason: 'No collector output file to import' };
   }
 
   const data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));

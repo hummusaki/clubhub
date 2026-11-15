@@ -1,7 +1,7 @@
 // ── ClubHub API & Dictionary Client ──
 // Clean frontend client for the SQLite database, Collector API & Multi-Source Sync.
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 async function fetchJSON(path, options = {}) {
   try {
@@ -13,6 +13,18 @@ async function fetchJSON(path, options = {}) {
     return await res.json();
   } catch (err) {
     console.warn(`[API] Failed to fetch ${path}:`, err.message);
+    return null;
+  }
+}
+
+export async function getStaticSnapshot() {
+  try {
+    const base = import.meta.env.BASE_URL || './';
+    const url = `${base.endsWith('/') ? base : `${base}/`}clubhub-data.json`;
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
     return null;
   }
 }
@@ -51,10 +63,10 @@ export const ingestFromSource = (source, payload) =>
 
 export const getSources = (params = {}) => fetchJSON(withQuery('/sources', params));
 export const registerSource = data => fetchJSON('/sources', { method: 'POST', body: JSON.stringify(data) });
-export const syncAllSources = (platform = 'all', clubId = null) =>
+export const syncAllSources = (platform = 'all', clubId = null, extra = {}) =>
   fetchJSON('/sources/sync', {
     method: 'POST',
-    body: JSON.stringify({ platform, clubId }),
+    body: JSON.stringify({ platform, clubId, ...extra }),
   });
 
 // ── 4. Core Collector Tables (clubs, events, announcements, links, posts) ──
