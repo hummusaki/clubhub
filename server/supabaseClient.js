@@ -1,7 +1,7 @@
 // ── ClubHub Server-Side Supabase Cloud Client & JWT Verifier ──
 // Supports both RLS-enforced per-user clients and Service-Role administrative operations.
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '../src/lib/supabaseJsShim.js';
 
 function cleanVal(v) {
   return String(v || '').trim();

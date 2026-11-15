@@ -2,7 +2,7 @@
 // Connects React directly to hosted Supabase PostgreSQL + Auth + Row Level Security.
 // Zero user credentials or PII are persisted to localStorage (ephemeral sessionStorage only).
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from './supabaseJsShim.js'
 
 function readEnv(key) {
   try {

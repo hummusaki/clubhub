@@ -486,59 +486,20 @@ export function ClubEmblemSvg({ size = 22 }) {
 
 // ── 5. Schedule & Announcement Duotone Event/Alert Icons ─────────────
 
-export function ScheduleEventIcon({ club = '', event = '', size = 16 }) {
-  const key = `${club} ${event}`.toLowerCase()
-
-  if (key.includes('cs') || key.includes('computer') || key.includes('react') || key.includes('code') || key.includes('standup')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.85" />
-        <path d="M8.5 10L6 12.2L8.5 14.4M15.5 10L18 12.2L15.5 14.4M13 9.2L11 15.2" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    )
-  }
-
-  if (key.includes('debate') || key.includes('motion') || key.includes('practice') || key.includes('tournament')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <rect x="9" y="3.5" width="6" height="9.8" rx="3" fill="currentColor" fillOpacity="0.22" stroke="currentColor" strokeWidth="1.85" />
-        <path d="M6.2 10.2C6.2 13.4 8.8 16 12 16C15.2 16 17.8 13.4 17.8 10.2M12 16V20M9 20H15" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" />
-      </svg>
-    )
-  }
-
-  if (key.includes('art') || key.includes('studio') || key.includes('print') || key.includes('zine')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <path
-          d="M12 3.5C7.2 3.5 3.5 7.1 3.5 11.7C3.5 16.3 7.1 20 11.7 20C13.1 20 14.1 18.9 14.1 17.6C14.1 16.5 13.1 15.8 13.1 14.7C13.1 13.7 13.9 12.9 15 12.9H16.6C18.8 12.9 20.5 11.1 20.5 8.9C20.5 5.8 16.7 3.5 12 3.5Z"
-          fill="currentColor"
-          fillOpacity="0.2"
-          stroke="currentColor"
-          strokeWidth="1.85"
-        />
-        <circle cx="8.2" cy="10" r="1.2" fill="currentColor" />
-        <circle cx="11.5" cy="7.5" r="1.2" fill="currentColor" />
-      </svg>
-    )
-  }
-
-  if (key.includes('robot') || key.includes('lab') || key.includes('maker')) {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <rect x="4.5" y="6.5" width="15" height="12.5" rx="3.5" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.85" />
-        <path d="M12 3.2V6.5M9.2 15.8H14.8" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" />
-        <circle cx="9.2" cy="11.8" r="1.4" fill="currentColor" />
-        <circle cx="14.8" cy="11.8" r="1.4" fill="currentColor" />
-      </svg>
-    )
-  }
-
+export function ScheduleEventIcon({ size = 16 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3.5" y="4.5" width="17" height="16" rx="3" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.85" />
-      <path d="M3.5 9.2H20.5M8 3V6M16 3V6" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" />
-      <circle cx="12" cy="14.5" r="2" fill="currentColor" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
+      <path
+        d="M18.9 5.4A15.8 15.8 0 0 0 14.95 4.15L14.45 5.15A14.2 14.2 0 0 0 9.55 5.15L9.05 4.15A15.8 15.8 0 0 0 5.1 5.4C2.65 9.1 2 12.7 2.3 16.25A16 16 0 0 0 7.15 18.75L8.15 17.35C7.35 17.05 6.6 16.65 5.95 16.15C6.15 16.3 6.35 16.4 6.55 16.5C9.95 18.05 14.05 18.05 17.45 16.5C17.65 16.4 17.85 16.3 18.05 16.15C17.4 16.65 16.65 17.05 15.85 17.35L16.85 18.75A16 16 0 0 0 21.7 16.25C22.05 12.15 21.05 8.55 18.9 5.4Z"
+        fill="currentColor"
+        fillOpacity="0.18"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9.1" cy="11.8" r="1.4" fill="currentColor" />
+      <circle cx="14.9" cy="11.8" r="1.4" fill="currentColor" />
     </svg>
   )
 }

@@ -40,7 +40,8 @@ import {
   cleanMultilineText,
 } from './ui'
 import { PlatformIcon, ClubEmblemSvg } from './icons'
-import { ingestFromSource, syncAllSources } from '../api/client'
+import { ingestFromSource, syncAllSources, getStaticSnapshot } from '../api/client'
+import IntegrationsPanel from './IntegrationsPanel'
 import {
   getLocalIntegrationPrefs,
   dispatchDiscordNotification,
@@ -1028,6 +1029,8 @@ export default function ClubsHub({
   items,
   clubsData,
   hubDict = {},
+  events = [],
+  calendarIntegration = null,
   initialSection = null,
   initialRbacClubId = '',
   isDemo = false,
@@ -1979,7 +1982,27 @@ export default function ClubsHub({
             </p>
           )}
 
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {clubDiscordUrl && (
+              <a
+                href={clubDiscordUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={
+                  club.discordServerName
+                    ? `Join ${club.discordServerName} on Discord`
+                    : `Join ${cleanText(club.name)} on Discord`
+                }
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] leading-4 font-semibold bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/25 hover:opacity-85 no-underline transition-opacity"
+              >
+                <PlatformIcon type="discord" size={11} />
+                <span>
+                  {club.discordMemberCount
+                    ? `Discord · ${club.discordMemberCount}`
+                    : 'Discord'}
+                </span>
+              </a>
+            )}
             {(club.tags || []).map(tag => (
               <BubbleTag
                 key={tag.label}
@@ -2597,11 +2620,12 @@ export default function ClubsHub({
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
             {[
-              { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
-              { id: 'rbac',      label: 'Roles & Sub-Groups' },
-              { id: 'discover',  label: `Discover (${allClubs.length})` },
-              { id: 'updates',   label: 'Club Feed' },
-              { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
+              { id: 'myclubs',      label: `My Clubs (${joinedClubs.length})` },
+              { id: 'rbac',         label: 'Roles & Sub-Groups' },
+              { id: 'discover',     label: `Discover (${allClubs.length})` },
+              { id: 'updates',      label: 'Club Feed' },
+              { id: 'directory',    label: `Officers & Members (${allOfficers.length + allMembers.length})` },
+              { id: 'integrations', label: 'Discord & Email', icon: 'discord' },
             ].map(tab => {
               const isActive = section === tab.id
               return (
@@ -2612,13 +2636,18 @@ export default function ClubsHub({
                     setSection(tab.id)
                     setCategory('All')
                   }}
+<<<<<<< Updated upstream
                   className={`shrink-0 whitespace-nowrap px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
+=======
+                  className={`inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
+>>>>>>> Stashed changes
                     isActive
                       ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
                   }`}
                 >
-                  {tab.label}
+                  {tab.icon && <PlatformIcon type={tab.icon} size={14} />}
+                  <span>{tab.label}</span>
                 </button>
               )
             })}
@@ -3975,6 +4004,74 @@ export default function ClubsHub({
               </div>
             )
           })()}
+        </div>
+      )}
+
+      {/* ── SECTION 5: AUTONOMOUS DISCORD & EMAIL INTEGRATION HUB ── */}
+      {section === 'integrations' && (
+        <div className="space-y-5 fade-in">
+          {/* GitHub Actions Autonomous Agent Banner */}
+          <div
+            style={{
+              borderLeftWidth: '3.5px',
+              borderLeftColor: 'var(--blue)',
+            }}
+            className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-3.5"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs"
+                style={{ background: 'linear-gradient(135deg, #5865F2, #4752C4)' }}
+              >
+                <ClubEmblemSvg size={22} />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold text-[var(--text)]">
+                    Autonomous GitHub Actions Discord &amp; Email Agent
+                  </span>
+                  <BubbleTag label="Runs Every 6 Hours" color="green" size="sm" />
+                  <BubbleTag
+                    label={`${
+                      allClubs.filter(
+                        c =>
+                          c.discordUrl ||
+                          c.discord ||
+                          (hubDict?.[c.id]?.links || []).some(l =>
+                            /discord\.(?:gg|com\/invite)\//i.test(String(l?.url || ''))
+                          )
+                      ).length
+                    } Discord Servers`}
+                    color="blue"
+                    size="sm"
+                  />
+                  <BubbleTag
+                    label={`${allClubs.filter(c => c.email).length} Club Emails`}
+                    color="yellow"
+                    size="sm"
+                  />
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  A scheduled GitHub Action (<code>discord-email-sync.yml</code>) automatically
+                  discovers Discord invites and official club emails across all {allClubs.length}{' '}
+                  clubs and organizations, verifies live server rosters via the Discord API,
+                  ingests Discord &amp; mailing-list updates, and keeps every club&apos;s official
+                  logo in sync.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <IntegrationsPanel
+            embedded={true}
+            user={user}
+            accountKey={accountKey}
+            clubs={allClubs}
+            events={events}
+            calendarIntegration={calendarIntegration}
+            onRefresh={onRefresh}
+            onNotify={onNotify}
+          />
         </div>
       )}
     </Card>

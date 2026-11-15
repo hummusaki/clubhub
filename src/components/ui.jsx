@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { ClubEmblemSvg } from './icons'
 
@@ -120,14 +120,31 @@ export function IconBadge({
   )
 }
 
-// ── Bespoke Club Emblem Avatar (Vector Illustration inside Sculpted Squircle) ──
+// ── Official Club Logo Avatar (Real Club Logo / Discord Icon with Discord Emblem Fallback) ──
 export function ClubAvatar({ club, size = 42, className = '' }) {
-  const bg = club?.avatarBg || 'linear-gradient(135deg, var(--blue), #4B7BE5)'
+  const bg = club?.avatarBg || 'linear-gradient(135deg, #5865F2, #4752C4)'
   const iconSize = Math.round(size * 0.54)
+  const rawUrl =
+    club?.discordIconUrl ||
+    club?.logoUrl ||
+    club?.profilePictureUrl ||
+    ''
+  const [imgStage, setImgStage] = useState(0)
+
+  useEffect(() => {
+    setImgStage(0)
+  }, [rawUrl])
+
+  const effectiveSrc =
+    rawUrl && imgStage === 0
+      ? rawUrl
+      : rawUrl && imgStage === 1
+        ? `https://images.weserv.nl/?url=${encodeURIComponent(rawUrl)}&w=128&h=128&fit=cover`
+        : ''
 
   return (
     <div
-      className={`rounded-[13px] flex items-center justify-center text-white shrink-0 select-none ${className}`}
+      className={`rounded-[13px] overflow-hidden flex items-center justify-center text-white shrink-0 select-none ${className}`}
       style={{
         width: size,
         height: size,
@@ -136,13 +153,24 @@ export function ClubAvatar({ club, size = 42, className = '' }) {
           'inset 0 1px 1px rgba(255, 255, 255, 0.36), 0 3px 9px -2px rgba(15, 23, 42, 0.24)',
       }}
     >
-      <ClubEmblemSvg
-        clubName={club?.name}
-        clubId={club?.id}
-        abbr={club?.abbr}
-        category={club?.category}
-        size={iconSize}
-      />
+      {effectiveSrc ? (
+        <img
+          src={effectiveSrc}
+          alt={cleanText(club?.name || 'Club logo')}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          onError={() => setImgStage(prev => prev + 1)}
+          className="w-full h-full object-cover rounded-[inherit]"
+        />
+      ) : (
+        <ClubEmblemSvg
+          clubName={club?.name}
+          clubId={club?.id}
+          abbr={club?.abbr}
+          category={club?.category}
+          size={iconSize}
+        />
+      )}
     </div>
   )
 }

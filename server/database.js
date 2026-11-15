@@ -765,11 +765,15 @@ export function getAllCollectorData({ clubId } = {}) {
 
   const clubs = rawClubs.map(c => {
     const dLink = discordLinkByClub.get(c.id);
+    const dSource = getDictEntry(`source:discord:invite_${c.id}`)?.value || null;
+    const discordIconUrl = dSource?.iconUrl || c.discordIconUrl || null;
     return {
       ...c,
       discord: c.discord || dLink?.url || null,
       discordUrl: c.discordUrl || c.discord || dLink?.url || null,
-      discordServerName: c.discordServerName || dLink?.serverName || null,
+      discordServerName: c.discordServerName || dSource?.serverName || dLink?.serverName || null,
+      discordIconUrl,
+      profilePictureUrl: discordIconUrl || c.profilePictureUrl || null,
     };
   });
 
