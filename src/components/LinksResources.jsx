@@ -238,6 +238,7 @@ function ResourceGlyph({ iconKey, size = 18 }) {
 export default function LinksResources({
   items,
   clubs = [],
+  isDemo = false,
   userSettings = {},
   searchQuery = '',
   onRefresh,
@@ -277,10 +278,19 @@ export default function LinksResources({
 
   // Add Resource form state
   const [showAdd, setShowAdd] = useState(false)
-  const [selectedClubId, setSelectedClubId] = useState(clubs[0]?.id || 'demo_ucsc_csclub')
+  const [selectedClubId, setSelectedClubId] = useState(
+    () => clubs.find(c => c.joined)?.id || clubs[0]?.id || 'demo_ucsc_csclub'
+  )
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const [kind, setKind] = useState('form')
+
+  useEffect(() => {
+    const fallbackId = clubs.find(c => c.joined)?.id || clubs[0]?.id
+    if (fallbackId && !clubs.some(c => String(c.id) === String(selectedClubId))) {
+      setSelectedClubId(String(fallbackId))
+    }
+  }, [clubs, selectedClubId])
 
   const baseLinks = items && items.length > 0 ? items : defaultLinks
 
@@ -462,13 +472,15 @@ export default function LinksResources({
     const clubLabel = selectedClub ? cleanText(selectedClub.name) : ''
     const validUrl = normalizeUrl(url)
 
-    const created = await createLink({
-      clubId: String(selectedClubId || 'demo_ucsc_csclub'),
-      clubName: clubLabel || 'Campus Club',
-      label: label.trim(),
-      url: validUrl,
-      kind,
-    })
+    const created = isDemo
+      ? null
+      : await createLink({
+          clubId: String(selectedClubId || 'demo_ucsc_csclub'),
+          clubName: clubLabel || 'Campus Club',
+          label: label.trim(),
+          url: validUrl,
+          kind,
+        })
 
     if (created && onRefresh) {
       await onRefresh()

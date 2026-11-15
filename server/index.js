@@ -28,6 +28,7 @@ import dictionaryRouter from './routes/dictionary.js';
 import schedulerRouter from './routes/scheduler.js';
 import webhooksRouter from './routes/webhooks.js';
 import calendarRouter from './routes/calendar.js';
+import integrationsRouter from './routes/integrations.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -69,6 +70,7 @@ app.use('/api/posts',         postsRouter);
 app.use('/api/sources',       sourcesRouter);
 app.use('/api/scheduler',     schedulerRouter);
 app.use('/api/calendar',      calendarRouter);
+app.use('/api/integrations',  integrationsRouter);
 
 // ── Stats endpoint ──
 app.get('/api/stats', (req, res) => {

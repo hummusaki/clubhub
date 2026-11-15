@@ -11,10 +11,15 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { getDb, normalizeClubId } from '../database.js';
 import { ingestResourceItem } from '../services/resourceIngestor.js';
-import { parseDiscordMessage, matchClubFromDiscordContext } from '../services/discord.js';
+import {
+  parseDiscordMessage,
+  matchClubFromDiscordContext,
+  loadClubsCatalog,
+} from '../services/discord.js';
+import emailService from '../services/email.js';
 import { extractWithClaude, llmEnabled } from '../../collector/src/llm.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -210,20 +215,84 @@ router.post('/discord', (req, res) => {
     channelName,
     channelTopic,
     message,
+    scheduled_event: scheduledEvent,
   } = req.body || {};
+
+  const catalog = loadClubsCatalog();
+
+  // Support pushed Discord Guild Scheduled Event payloads (`scheduled_event`)
+  if (scheduledEvent && scheduledEvent.id && scheduledEvent.scheduled_start_time) {
+    const evGuildId = scheduledEvent.guild_id || guildId || null;
+    const matched = matchClubFromDiscordContext(
+      {
+        explicitClubId: rawClubId,
+        originGuildId: evGuildId,
+        messageTitle: scheduledEvent.name || '',
+        messageText: scheduledEvent.description || '',
+      },
+      catalog
+    );
+    if (!matched.clubId) {
+      return res.status(400).json({
+        error: 'Could not determine clubId for scheduled_event.',
+      });
+    }
+
+    const postId = `discord_sched_${scheduledEvent.id}`;
+    const permalink = evGuildId
+      ? `https://discord.com/events/${evGuildId}/${scheduledEvent.id}`
+      : null;
+    const location =
+      scheduledEvent.entity_metadata?.location ||
+      (scheduledEvent.entity_type === 2
+        ? 'Discord Voice Channel'
+        : scheduledEvent.entity_type === 1
+          ? 'Discord Stage'
+          : 'Discord / TBD');
+    const caption = [scheduledEvent.name, scheduledEvent.description, `Location: ${location}`]
+      .filter(Boolean)
+      .join('\n');
+
+    const result = ingestResourceItem({
+      clubId: matched.clubId,
+      clubName: clubName || matched.clubName || undefined,
+      source: 'discord',
+      id: postId,
+      title: scheduledEvent.name,
+      caption,
+      permalink,
+      postedAt: scheduledEvent.scheduled_start_time,
+      identifier: evGuildId ? `guild_events:${evGuildId}` : 'discord_webhook',
+      forceAnnouncement: true,
+      extractedInfo: {
+        type: 'event',
+        title: scheduledEvent.name,
+        summary: (scheduledEvent.description || `${scheduledEvent.name} at ${location}`).slice(0, 280),
+        events: [
+          {
+            title: scheduledEvent.name,
+            kind: 'event',
+            start: new Date(scheduledEvent.scheduled_start_time).toISOString(),
+            end: scheduledEvent.scheduled_end_time
+              ? new Date(scheduledEvent.scheduled_end_time).toISOString()
+              : null,
+            allDay: false,
+            recurring: null,
+            location,
+          },
+        ],
+        links: [],
+      },
+    });
+
+    return res.status(201).json({ ok: true, ingested: true, ...result });
+  }
 
   const msgObj = message || req.body;
   const parsed = parseDiscordMessage(msgObj, { guildId, channelId });
   if (!parsed) {
     return res.status(400).json({ error: 'No readable content or image found in Discord message' });
   }
-
-  const catalog = loadFileClubs().map(c => ({
-    id: normalizeClubId(c.instagram),
-    name: c.name,
-    alsoKnownAs: c.alsoKnownAs || [],
-    discordChannelId: c.discordChannelId || null,
-  }));
 
   const matched = matchClubFromDiscordContext(
     {
@@ -232,13 +301,16 @@ router.post('/discord', (req, res) => {
       channelTopic,
       webhookAuthor: parsed.webhookAuthor,
       originChannelId: parsed.originChannelId,
+      originGuildId: parsed.originGuildId || guildId || null,
+      messageText: parsed.caption,
+      messageTitle: parsed.title,
     },
     catalog
   );
 
   if (!matched.clubId) {
     return res.status(400).json({
-      error: 'Could not determine clubId. Pass "clubId" or include "@instagram_handle" in the channel topic.',
+      error: 'Could not determine clubId. Pass "clubId" or include "@instagram_handle" in the channel topic or message.',
     });
   }
 
@@ -256,7 +328,52 @@ router.post('/discord', (req, res) => {
     forceAnnouncement: true,
   });
 
-  return res.status(201).json({ ok: true, ...result });
+  return res.status(201).json({ ok: true, ingested: true, ...result });
 });
+
+// ── 3. Inbound Email Webhook (Resend, SendGrid, Mailgun, Cloudflare, Apps Script) ──
+router.post(
+  '/email',
+  express.urlencoded({ extended: true, limit: '15mb' }),
+  express.text({ type: ['message/rfc822', 'text/plain'], limit: '15mb' }),
+  (req, res) => {
+    const expectedSecret = (
+      process.env.EMAIL_WEBHOOK_SECRET ||
+      process.env.WEBHOOK_SECRET ||
+      ''
+    ).trim();
+    if (expectedSecret) {
+      const provided =
+        req.get('x-webhook-secret') ||
+        req.get('x-email-secret') ||
+        req.query.secret ||
+        '';
+      if (provided !== expectedSecret) {
+        return res.status(401).json({ error: 'Invalid webhook secret' });
+      }
+    }
+
+    // Normalize Resend (`{ type: 'email.received', data: { ... } }`), raw MIME text, or flat JSON/form payloads
+    let payload = req.body;
+    if (typeof payload === 'string') {
+      payload = { rawMime: payload };
+    } else if (payload?.data && typeof payload.data === 'object' && (payload.data.from || payload.data.subject)) {
+      payload = { ...payload.data, clubId: payload.clubId || payload.data.clubId };
+    } else if (payload?.email && typeof payload.email === 'string' && payload.email.includes('From:')) {
+      // SendGrid Inbound Parse raw mode (`email` field holds raw RFC 5322 MIME)
+      payload = { ...payload, rawMime: payload.email };
+    }
+
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ error: 'Expected JSON, form-encoded, or raw MIME email payload' });
+    }
+
+    const result = emailService.ingestInboundEmail(payload);
+    if (!result.ingested) {
+      return res.status(200).json({ ok: false, ...result });
+    }
+    return res.status(201).json({ ok: true, ...result });
+  }
+);
 
 export default router;

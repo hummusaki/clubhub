@@ -33,9 +33,15 @@ npm run dev:full
 
 ## Production Build & Deployment
 
-### 1. GitHub Pages (Automated CI/CD)
+### 1. GitHub Pages & Automated Cloud Sync (Zero Local Services Required)
 
-`.github/workflows/deploy.yml` builds and deploys `./dist` to GitHub Pages on every push to `main`, on manual `workflow_dispatch`, and on a 2-hour cron schedule (`0 */2 * * *`).
+All recurring background syncs, roster checks, directory updates, and token checks run completely in **GitHub Actions** — no local cron jobs, daemons, or background processes are needed on your machine:
+
+- **`.github/workflows/deploy.yml` (Every 2 Hours + Push to `main`)**: Syncs Instagram (Business Discovery + Instaloader personal-account fallback), Linktrees, Google Calendars, Discord announcements, and email newsletters into `public/clubhub-data.json` (preserving daily club rosters), builds `./dist`, and deploys to GitHub Pages.
+- **`.github/workflows/daily-roster-sync.yml` (Once Daily at `30 10 * * *` UTC)**:
+  1. Checks Meta Instagram Graph API token health & remaining 60-day lifetime (`npm run ig:check-token`).
+  2. Syncs the official UCSC SOMeCA student organization directory (`getinvolved.ucsc.edu`) into `collector/clubs.json`.
+  3. Crawls per-club officer/member rosters and live Discord/website stats alongside every club (`npm run sync:rosters`) into `public/clubhub-data.json`, commits any changes, and redeploys GitHub Pages.
 
 1. In your GitHub repository, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
 2. Configure optional repository secrets under **Settings → Secrets and variables → Actions**:
@@ -43,10 +49,12 @@ npm run dev:full
      - `VITE_CLERK_PUBLISHABLE_KEY` — Clerk publishable key (`pk_live_...` or `pk_test_...`)
      - `VITE_GOOGLE_CLIENT_ID` — Google OAuth 2.0 Web Client ID (`*.apps.googleusercontent.com`) for 1-click Google Sign-In and live Google Calendar push sync
      - `VITE_API_BASE_URL` *(optional)* — Public Express API URL (`https://your-api.example.com/api`) if hosting the Node backend separately
-   - **Scheduled Collector Sync (optional — preserves committed `public/clubhub-data.json` when unset):**
+   - **Scheduled Collector & Daily Roster Sync (optional — preserves committed `public/clubhub-data.json` when unset):**
      - `IG_USER_ID` & `IG_ACCESS_TOKEN` — Meta Instagram Graph API Business Discovery credentials
+     - `INSTAGRAM_APP_ID` & `INSTAGRAM_APP_SECRET` — Optional Meta App credentials for automated long-lived token health/refresh checks
      - `IG_SCRAPER_SESSION_USER` & `IG_SCRAPER_SESSION_B64` — Optional Instaloader session for personal club accounts
-     - `DISCORD_BOT_TOKEN`, `DISCORD_AGGREGATOR_GUILD_ID`, `DISCORD_CHANNEL_MAP` — Discord announcement ingestion
+     - `DISCORD_BOT_TOKEN`, `DISCORD_AGGREGATOR_GUILD_ID`, `DISCORD_CHANNEL_MAP` — Discord announcement ingestion & server member counts
+     - `EMAIL_USER`, `EMAIL_PASSWORD`, `EMAIL_IMAP_HOST`, `EMAIL_IMAP_PORT` — Optional club newsletter IMAP ingestion
      - `ANTHROPIC_API_KEY` — Optional LLM event extraction enhancement
 
 ### 2. Full-Stack Single-Server Deployment (Express + Static `dist/`)
@@ -68,5 +76,7 @@ When `dist/index.html` exists, `server/index.js` serves both `/api/*` and the co
 | `npm run server` | Start Express 5 + SQLite API server on `PORT` (default `3001`) |
 | `npm run dev:full` | Run API server and Vite frontend concurrently |
 | `npm run sync:static` | Sync Instagram/Discord feeds and export `public/clubhub-data.json` |
+| `npm run sync:rosters` | Sync official UCSC club directory + per-club rosters into SQLite & `public/clubhub-data.json` |
+| `npm run ig:check-token` | Verify Meta Instagram Graph API token health & remaining lifetime |
 | `npm run build` | Build production SPA bundle into `dist/` |
 | `npm run preview` | Locally preview the production `dist/` bundle |

@@ -56,8 +56,8 @@ import { buildDashboardPageTitle } from './utils/pageTitle'
 
 const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
 const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
-const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v1'
-const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_dark_v1'
+const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v2'
+const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_theme_mode_v1'
 const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
 const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
 const USER_SETTINGS_STORAGE_KEY = 'clubhub_user_settings_v1'
@@ -69,6 +69,28 @@ const PINNED_LINK_OVERRIDES_KEY = 'clubhub_pinned_link_overrides_v1'
 const LOCAL_CLUB_POSTS_KEY = 'clubhub_local_club_posts_v1'
 const CUSTOM_POLLS_STORAGE_KEY = 'clubhub_custom_polls_v1'
 const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
+
+const VALID_THEME_MODES = new Set(['system', 'light', 'dark'])
+
+function isValidThemeMode(mode) {
+  return VALID_THEME_MODES.has(mode)
+}
+
+function normalizeThemeMode(mode, fallback = 'system') {
+  return isValidThemeMode(mode) ? mode : fallback
+}
+
+function getSystemPrefersDark() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return Boolean(window.matchMedia('(prefers-color-scheme: dark)').matches)
+}
+
+function resolveDarkFromThemeMode(mode) {
+  const normalized = normalizeThemeMode(mode, 'system')
+  if (normalized === 'dark') return true
+  if (normalized === 'light') return false
+  return getSystemPrefersDark()
+}
 
 function readLocalJson(key, fallback) {
   try {
@@ -124,7 +146,7 @@ const DEFAULT_USER_SETTINGS = {
   displayName: '',
   major: '',
   avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
-  themeMode: null, // null = follow account dark boolean | 'light' | 'dark' | 'system'
+  themeMode: 'system', // 'system' (default: match OS) | 'light' | 'dark'
   compactCards: false,
   reduceMotion: false,
   timeFormat: '12h',
@@ -148,6 +170,7 @@ function getStoredUserSettings() {
     return {
       ...DEFAULT_USER_SETTINGS,
       ...parsed,
+      themeMode: normalizeThemeMode(parsed?.themeMode, 'system'),
       channels: {
         ...DEFAULT_USER_SETTINGS.channels,
         ...(parsed?.channels || {}),
@@ -167,12 +190,12 @@ function saveStoredUserSettings(nextSettings) {
   }
 }
 
-function createDemoUserSettings(themeMode = null) {
+function createDemoUserSettings(themeMode = 'system') {
   return {
     ...DEFAULT_USER_SETTINGS,
     displayName: '',
     major: '',
-    themeMode,
+    themeMode: normalizeThemeMode(themeMode, 'system'),
     channels: { ...DEFAULT_USER_SETTINGS.channels },
     calendarSync: normalizeCalendarSyncSettings(DEFAULT_USER_SETTINGS.calendarSync),
   }
@@ -273,11 +296,12 @@ function getAccountThemeMap() {
   }
 }
 
-function saveAccountThemeForKeys(keys, isDark) {
+function saveAccountThemeForKeys(keys, mode) {
+  if (!isValidThemeMode(mode)) return
   try {
     const map = getAccountThemeMap()
     keys.filter(Boolean).forEach(k => {
-      map[k] = Boolean(isDark)
+      map[k] = mode
     })
     localStorage.setItem(ACCOUNT_THEMES_STORAGE_KEY, JSON.stringify(map))
   } catch {
@@ -285,30 +309,34 @@ function saveAccountThemeForKeys(keys, isDark) {
   }
 }
 
-function getGuestTheme() {
+function getGuestThemeMode() {
   try {
     const raw = localStorage.getItem(GUEST_THEME_STORAGE_KEY)
-    if (raw === 'true') return true
-    if (raw === 'false') return false
+    if (isValidThemeMode(raw)) return raw
   } catch {
     // Ignore storage errors
   }
-  return false
+  return 'system'
 }
 
-function saveGuestTheme(isDark) {
+function saveGuestThemeMode(mode) {
+  if (!isValidThemeMode(mode)) return
   try {
-    localStorage.setItem(GUEST_THEME_STORAGE_KEY, String(Boolean(isDark)))
+    localStorage.setItem(GUEST_THEME_STORAGE_KEY, mode)
   } catch {
     // Ignore storage errors
   }
 }
 
-function persistBackendAccountTheme(email, isDark) {
-  if (!email) return
+function persistBackendAccountTheme(email, mode) {
+  if (!email || !isValidThemeMode(mode)) return
   setDictKey(
     `user_theme:${email.toLowerCase()}`,
-    { darkMode: Boolean(isDark), updatedAt: new Date().toISOString() },
+    {
+      themeMode: mode,
+      darkMode: mode === 'dark' ? true : mode === 'light' ? false : null,
+      updatedAt: new Date().toISOString(),
+    },
     { namespace: 'user_prefs', source: 'account_theme' }
   ).catch(() => {})
 }
@@ -738,7 +766,7 @@ function MainDashboard({
 
         const catId = categorizeClub(c)
         const catMeta = getClubCategoryMeta(catId)
-        const rawDesc = c.bio || (c.posts || [])[0]?.summary || ''
+        const rawDesc = c.bio || c.directoryDescription || (c.posts || [])[0]?.summary || ''
 
         return {
           id: c.id,
@@ -750,7 +778,13 @@ function MainDashboard({
             .join('')
             .slice(0, 2)
             .toUpperCase(),
-          members: c.followers || 0,
+          members: c.memberCount || c.discordMemberCount || c.followers || 0,
+          discordMemberCount: c.discordMemberCount ?? null,
+          discordOnlineCount: c.discordOnlineCount ?? null,
+          rosterCount: Array.isArray(c.roster) ? c.roster.length : c.rosterCount || 0,
+          rosterUpdatedAt: c.rosterUpdatedAt || null,
+          orgStatus: c.orgStatus || 'active',
+          orgStatusNote: c.orgStatusNote || null,
           category: catId,
           categoryLabel: catMeta.label,
           description: rawDesc ? cleanText(rawDesc) : '',
@@ -824,6 +858,7 @@ function MainDashboard({
           const src = a.source || 'instagram'
           const isDiscord = src === 'discord'
           const isStory = src === 'instagram_story'
+          const isEmail = src === 'email'
           return {
             id: a.id,
             clubId: a.clubId || null,
@@ -835,7 +870,9 @@ function MainDashboard({
                 ? 'Discord'
                 : isStory
                   ? 'IG Story'
-                  : 'Announcement',
+                  : isEmail
+                    ? 'Email'
+                    : 'Announcement',
             color: a.important ? 'red' : isDiscord ? 'blue' : isStory ? 'purple' : 'yellow',
             time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
             title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
@@ -1187,7 +1224,7 @@ function MainDashboard({
     feedWebcalUrl: '',
   })
   const [googleLiveMeta, setGoogleLiveMeta] = useState(() =>
-    getStoredGoogleCalSyncMeta(accountKey)
+    isDemo ? null : getStoredGoogleCalSyncMeta(accountKey)
   )
   const [googleSyncBusy, setGoogleSyncBusy] = useState(false)
   const [googleClientIdVersion, setGoogleClientIdVersion] = useState(0)
@@ -1207,9 +1244,9 @@ function MainDashboard({
 
   useEffect(() => {
     setSyncToken(getOrCreateCalendarSyncToken(accountKey))
-    setGoogleLiveMeta(getStoredGoogleCalSyncMeta(accountKey))
+    setGoogleLiveMeta(isDemo ? null : getStoredGoogleCalSyncMeta(accountKey))
     googleTokenRef.current = null
-  }, [accountKey])
+  }, [accountKey, isDemo])
 
   const joinedClubsList = useMemo(
     () => effectiveClubs.filter(c => Boolean(c.joined)),
@@ -1585,7 +1622,7 @@ function MainDashboard({
         onNav={handleNavigate}
         dark={dark}
         onToggleDark={toggleDark}
-        user={user}
+        user={effectiveUser}
         userSettings={userSettings}
         isDemo={isDemo}
         onExitDemo={onExitDemo}
@@ -1606,7 +1643,7 @@ function MainDashboard({
             onNav={handleNavigate}
             dark={dark}
             onToggleDark={toggleDark}
-            user={user}
+            user={effectiveUser}
             userSettings={userSettings}
             isDemo={isDemo}
             onExitDemo={onExitDemo}
@@ -1697,6 +1734,8 @@ function MainDashboard({
 
               <ClubsHub
                 compact={true}
+                user={effectiveUser}
+                isDemo={isDemo}
                 items={effectiveClubs}
                 clubsData={clubsData}
                 userSettings={userSettings}
@@ -1732,7 +1771,8 @@ function MainDashboard({
           {activeNav === 'availability' && (
             <AvailabilityView
               key={`avail_${resetGeneration}`}
-              user={user}
+              user={effectiveUser}
+              accountKey={accountKey}
               isDemo={isDemo}
               userSettings={userSettings}
               events={combinedRawEvents}
@@ -1740,6 +1780,7 @@ function MainDashboard({
               onAddLocalEvent={handleAddLocalCollabEvent}
               onRemoveLocalEvent={handleRemoveLocalCollabEvent}
               onOpenCalendar={() => handleNavigate('calendar')}
+              onOpenSettings={() => handleNavigate('settings')}
               onPageContextChange={setPageSubContext}
               onNotify={showToast}
             />
@@ -1749,6 +1790,9 @@ function MainDashboard({
           {activeNav === 'clubs' && (
             <ClubsHub
               key={`clubs_${resetGeneration}_${clubsInitialSection || 'auto'}`}
+              user={effectiveUser}
+              accountKey={accountKey}
+              isDemo={isDemo}
               items={effectiveClubs}
               clubsData={clubsData}
               hubDict={hubDict}
@@ -1757,6 +1801,7 @@ function MainDashboard({
               onToggleJoin={toggleJoinClub}
               searchQuery={searchQuery}
               onRefresh={loadBackendData}
+              onOpenSettings={() => handleNavigate('settings')}
               localPosts={localClubPosts}
               onAddLocalPost={handleAddLocalClubPost}
               onPageContextChange={setPageSubContext}
@@ -1767,6 +1812,7 @@ function MainDashboard({
           {/* ── 5. RESOURCES ── */}
           {activeNav === 'links' && (
             <LinksResources
+              isDemo={isDemo}
               items={liveLinks}
               clubs={effectiveClubs}
               userSettings={userSettings}
@@ -1784,15 +1830,17 @@ function MainDashboard({
           {/* ── 6. USER SETTINGS ── */}
           {activeNav === 'settings' && (
             <SettingsView
-              user={user}
+              user={effectiveUser}
+              accountKey={accountKey}
               isDemo={isDemo}
               hasClerkKey={hasClerkKey}
-              dark={dark}
               userSettings={userSettings}
               onUpdateSettings={onUpdateSettings}
               onSetThemeMode={onSetExplicitThemeMode}
+              clubs={effectiveClubs}
               events={effectiveSchedule}
               calendarIntegration={calendarIntegration}
+              onRefresh={loadBackendData}
               onResetLocalData={handleResetLocalData}
               onSignOut={onSignOut}
               onExitDemo={onExitDemo}
@@ -1805,34 +1853,81 @@ function MainDashboard({
   )
 }
 
-function getInitialTheme() {
-  const settings = getStoredUserSettings()
-  if (settings.themeMode === 'system' && typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  }
-
+function resolveInitialThemeMode() {
   const storedLocal = getInitialStoredUser()
   const map = getAccountThemeMap()
 
   if (storedLocal?.email) {
     const emailKey = `email:${storedLocal.email.toLowerCase()}`
-    if (typeof storedLocal.darkMode === 'boolean') return storedLocal.darkMode
-    if (typeof map[emailKey] === 'boolean') return map[emailKey]
+    if (isValidThemeMode(storedLocal.themeMode)) return storedLocal.themeMode
+    if (isValidThemeMode(map[emailKey])) return map[emailKey]
   }
 
   try {
     const lastAccount = localStorage.getItem(LAST_ACTIVE_ACCOUNT_KEY)
-    if (lastAccount && typeof map[lastAccount] === 'boolean') {
+    if (lastAccount && isValidThemeMode(map[lastAccount])) {
       return map[lastAccount]
     }
   } catch {
     // Ignore storage errors
   }
 
-  if (settings.themeMode === 'dark') return true
-  if (settings.themeMode === 'light') return false
+  try {
+    const rawSettings = localStorage.getItem(USER_SETTINGS_STORAGE_KEY)
+    const parsedSettings = rawSettings ? JSON.parse(rawSettings) : null
+    if (isValidThemeMode(parsedSettings?.themeMode)) {
+      return parsedSettings.themeMode
+    }
+  } catch {
+    // Ignore storage errors
+  }
 
-  return getGuestTheme()
+  return getGuestThemeMode()
+}
+
+function getInitialTheme() {
+  return resolveDarkFromThemeMode(resolveInitialThemeMode())
+}
+
+function useSystemThemeListener(themeMode, setDark) {
+  useEffect(() => {
+    if (themeMode !== 'system' || typeof window === 'undefined' || !window.matchMedia) {
+      return
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const syncFromSystem = () => {
+      setDark(Boolean(mq.matches))
+    }
+    const onChange = e => {
+      setDark(Boolean(e.matches))
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFromSystem()
+      }
+    }
+
+    syncFromSystem()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange)
+      return () => {
+        mq.removeEventListener('change', onChange)
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+      }
+    }
+    if (typeof mq.addListener === 'function') {
+      mq.addListener(onChange)
+      return () => {
+        mq.removeListener(onChange)
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+      }
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [themeMode, setDark])
 }
 
 function ClerkAppWrapper({
@@ -1848,10 +1943,39 @@ function ClerkAppWrapper({
   const { isLoaded, isSignedIn, user } = useUser()
   const { signOut } = useClerk()
   const [demoMode, setDemoMode] = useState(false)
+  const [demoSession, setDemoSession] = useState(0)
+  const [demoSettings, setDemoSettings] = useState(() =>
+    createDemoUserSettings(userSettings.themeMode)
+  )
   const [loadTimedOut, setLoadTimedOut] = useState(false)
   const syncedAccountRef = useRef(null)
-  const darkRef = useRef(dark)
-  darkRef.current = dark
+
+  useSystemThemeListener(
+    demoMode ? demoSettings.themeMode : userSettings.themeMode,
+    setDark
+  )
+
+  const handleEnterDemo = useCallback(() => {
+    setDemoSettings(createDemoUserSettings(userSettings.themeMode))
+    setDemoSession(s => s + 1)
+    setDemoMode(true)
+  }, [userSettings.themeMode])
+
+  const handleExitDemo = useCallback(() => {
+    setDemoMode(false)
+    setDark(resolveDarkFromThemeMode(userSettings.themeMode))
+  }, [userSettings.themeMode, setDark])
+
+  const handleUpdateDemoSettings = useCallback(patch => {
+    setDemoSettings(prev => ({
+      ...prev,
+      ...patch,
+      channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
+      calendarSync: patch.calendarSync
+        ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
+        : prev.calendarSync,
+    }))
+  }, [])
 
   const isOAuthCallback =
     typeof window !== 'undefined' &&
@@ -1900,28 +2024,43 @@ function ClerkAppWrapper({
         ? `email:${localEmail}`
         : 'guest'
 
-  // Sync dark mode automatically whenever the signed-in account changes (without white flash!)
-  useEffect(() => {
-    if (userSettings.themeMode === 'system') return
+  const applyAccountThemeMode = useCallback(
+    mode => {
+      const normalized = normalizeThemeMode(mode, 'system')
+      onUpdateSettings({ themeMode: normalized })
+      setDark(resolveDarkFromThemeMode(normalized))
+    },
+    [onUpdateSettings, setDark]
+  )
 
+  // Sync theme mode automatically whenever the signed-in account changes (without page-load flash!)
+  useEffect(() => {
     if (activeAccountKey === 'guest') {
-      if (!isLoaded) return // Never overwrite theme before Clerk actually finishes loading
+      if (!isLoaded && !loadTimedOut) return // Never overwrite theme before Clerk finishes loading
       if (syncedAccountRef.current === 'guest') return
+      const wasSignedIn = Boolean(
+        syncedAccountRef.current && syncedAccountRef.current !== 'guest'
+      )
       syncedAccountRef.current = 'guest'
       try {
         localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
       } catch {
         // Ignore storage errors
       }
-      if (userSettings.themeMode === 'dark' || userSettings.themeMode === 'light') {
-        setDark(userSettings.themeMode === 'dark')
+      if (wasSignedIn) {
+        applyAccountThemeMode(getGuestThemeMode())
       } else {
-        setDark(getGuestTheme())
+        setDark(resolveDarkFromThemeMode(userSettings.themeMode))
       }
       return
     }
 
     if (syncedAccountRef.current === activeAccountKey) return
+    const switchedFromAnotherAccount = Boolean(
+      syncedAccountRef.current &&
+        syncedAccountRef.current !== 'guest' &&
+        syncedAccountRef.current !== activeAccountKey
+    )
     syncedAccountRef.current = activeAccountKey
 
     try {
@@ -1935,97 +2074,110 @@ function ClerkAppWrapper({
     if (isSignedIn && user) {
       const clerkKey = `clerk:${user.id}`
       const emailKey = clerkEmail ? `email:${clerkEmail}` : null
-      const metaDark = user.unsafeMetadata?.darkMode
+      const metaMode = user.unsafeMetadata?.themeMode
 
-      const localStored =
-        typeof map[clerkKey] === 'boolean'
-          ? map[clerkKey]
-          : emailKey && typeof map[emailKey] === 'boolean'
-            ? map[emailKey]
-            : undefined
+      const localStoredMode = isValidThemeMode(map[clerkKey])
+        ? map[clerkKey]
+        : emailKey && isValidThemeMode(map[emailKey])
+          ? map[emailKey]
+          : undefined
 
-      if (typeof localStored === 'boolean') {
-        setDark(localStored)
-        saveAccountThemeForKeys([clerkKey, emailKey], localStored)
-        if (metaDark !== localStored) {
+      if (localStoredMode) {
+        applyAccountThemeMode(localStoredMode)
+        saveAccountThemeForKeys([clerkKey, emailKey], localStoredMode)
+        if (metaMode !== localStoredMode) {
           user
             .update({
-              unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: localStored },
+              unsafeMetadata: {
+                ...(user.unsafeMetadata || {}),
+                themeMode: localStoredMode,
+              },
             })
             .catch(() => {})
         }
         return
       }
 
-      if (typeof metaDark === 'boolean') {
-        setDark(metaDark)
-        saveAccountThemeForKeys([clerkKey, emailKey], metaDark)
+      if (isValidThemeMode(metaMode)) {
+        applyAccountThemeMode(metaMode)
+        saveAccountThemeForKeys([clerkKey, emailKey], metaMode)
         return
       }
 
+      if (switchedFromAnotherAccount) {
+        applyAccountThemeMode('system')
+      }
+
       if (clerkEmail) {
+        let cancelled = false
         getDictKey(`user_theme:${clerkEmail}`).then(entry => {
-          const remoteDark = entry?.value?.darkMode
-          if (typeof remoteDark === 'boolean') {
-            setDark(remoteDark)
-            saveAccountThemeForKeys([clerkKey, emailKey], remoteDark)
-            user
-              .update({
-                unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: remoteDark },
-              })
-              .catch(() => {})
-          } else {
-            const initialForAccount = Boolean(darkRef.current)
-            saveAccountThemeForKeys([clerkKey, emailKey], initialForAccount)
+          if (cancelled || isValidThemeMode(getAccountThemeMap()[clerkKey])) return
+          const remoteMode = entry?.value?.themeMode
+          if (isValidThemeMode(remoteMode)) {
+            applyAccountThemeMode(remoteMode)
+            saveAccountThemeForKeys([clerkKey, emailKey], remoteMode)
             user
               .update({
                 unsafeMetadata: {
                   ...(user.unsafeMetadata || {}),
-                  darkMode: initialForAccount,
+                  themeMode: remoteMode,
                 },
               })
               .catch(() => {})
           }
         })
+        return () => {
+          cancelled = true
+        }
       }
       return
     }
 
     if (localUser && localEmail) {
       const emailKey = `email:${localEmail}`
-      if (typeof localUser.darkMode === 'boolean') {
-        setDark(localUser.darkMode)
-        saveAccountThemeForKeys([emailKey], localUser.darkMode)
+      if (isValidThemeMode(localUser.themeMode)) {
+        applyAccountThemeMode(localUser.themeMode)
+        saveAccountThemeForKeys([emailKey], localUser.themeMode)
         return
       }
-      if (typeof map[emailKey] === 'boolean') {
-        setDark(map[emailKey])
+      if (isValidThemeMode(map[emailKey])) {
+        applyAccountThemeMode(map[emailKey])
         return
       }
+      if (switchedFromAnotherAccount) {
+        applyAccountThemeMode('system')
+      }
+      let cancelled = false
       getDictKey(`user_theme:${localEmail}`).then(entry => {
-        const remoteDark = entry?.value?.darkMode
-        if (typeof remoteDark === 'boolean') {
-          setDark(remoteDark)
-          saveAccountThemeForKeys([emailKey], remoteDark)
-        } else {
-          saveAccountThemeForKeys([emailKey], Boolean(darkRef.current))
+        if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
+        const remoteMode = entry?.value?.themeMode
+        if (isValidThemeMode(remoteMode)) {
+          applyAccountThemeMode(remoteMode)
+          saveAccountThemeForKeys([emailKey], remoteMode)
         }
       })
+      return () => {
+        cancelled = true
+      }
     }
   }, [
     activeAccountKey,
     isLoaded,
+    loadTimedOut,
     isSignedIn,
     user,
     clerkEmail,
     localUser,
     localEmail,
     userSettings.themeMode,
+    applyAccountThemeMode,
     setDark,
   ])
 
-  function persistDarkChoice(next) {
-    setDark(next)
+  function persistThemeMode(mode) {
+    const normalized = normalizeThemeMode(mode, 'system')
+    onUpdateSettings({ themeMode: normalized })
+    setDark(resolveDarkFromThemeMode(normalized))
 
     if (isSignedIn && user) {
       const clerkKey = `clerk:${user.id}`
@@ -2035,43 +2187,36 @@ function ClerkAppWrapper({
       } catch {
         // Ignore storage errors
       }
-      saveAccountThemeForKeys([clerkKey, emailKey], next)
+      saveAccountThemeForKeys([clerkKey, emailKey], normalized)
       user
         .update({
-          unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: next },
+          unsafeMetadata: {
+            ...(user.unsafeMetadata || {}),
+            themeMode: normalized,
+            darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : null,
+          },
         })
         .catch(() => {})
       if (clerkEmail) {
-        persistBackendAccountTheme(clerkEmail, next)
+        persistBackendAccountTheme(clerkEmail, normalized)
       }
       return
     }
 
     if (localUser && localEmail) {
-      onUpdateLocalUserTheme(next)
+      onUpdateLocalUserTheme(normalized)
       return
     }
 
-    saveGuestTheme(next)
+    saveGuestThemeMode(normalized)
   }
 
   function handleToggleDark() {
-    const next = !dark
-    onUpdateSettings({ themeMode: next ? 'dark' : 'light' })
-    persistDarkChoice(next)
+    persistThemeMode(dark ? 'light' : 'dark')
   }
 
   function handleSetExplicitThemeMode(mode) {
-    onUpdateSettings({ themeMode: mode })
-    if (mode === 'system') {
-      const sysDark =
-        typeof window !== 'undefined' &&
-        window.matchMedia &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches
-      setDark(Boolean(sysDark))
-    } else {
-      persistDarkChoice(mode === 'dark')
-    }
+    persistThemeMode(mode)
   }
 
   const baseUrl =
@@ -2164,14 +2309,23 @@ function ClerkAppWrapper({
   if (demoMode) {
     return (
       <MainDashboard
+        key={`demo_clerk_${demoSession}`}
         dark={dark}
-        toggleDark={handleToggleDark}
-        onSetExplicitThemeMode={handleSetExplicitThemeMode}
-        userSettings={userSettings}
-        onUpdateSettings={onUpdateSettings}
+        toggleDark={() => {
+          const next = !dark
+          handleUpdateDemoSettings({ themeMode: next ? 'dark' : 'light' })
+          setDark(next)
+        }}
+        onSetExplicitThemeMode={mode => {
+          const normalized = normalizeThemeMode(mode, 'system')
+          handleUpdateDemoSettings({ themeMode: normalized })
+          setDark(resolveDarkFromThemeMode(normalized))
+        }}
+        userSettings={demoSettings}
+        onUpdateSettings={handleUpdateDemoSettings}
         user={null}
         isDemo={true}
-        onExitDemo={() => setDemoMode(false)}
+        onExitDemo={handleExitDemo}
         hasClerkKey={true}
       />
     )
@@ -2183,7 +2337,7 @@ function ClerkAppWrapper({
       onToggleDark={handleToggleDark}
       hasPublishableKey={true}
       initialError={oauthTimedOutNotice}
-      onEnterDemo={() => setDemoMode(true)}
+      onEnterDemo={handleEnterDemo}
       onLocalSignIn={onLocalSignIn}
     />
   )
@@ -2200,67 +2354,109 @@ function FallbackApp({
   onUpdateLocalUserTheme,
 }) {
   const [demoMode, setDemoMode] = useState(false)
+  const [demoSession, setDemoSession] = useState(0)
+  const [demoSettings, setDemoSettings] = useState(() =>
+    createDemoUserSettings(userSettings.themeMode)
+  )
   const syncedAccountRef = useRef(null)
   const localEmail = localUser?.email?.toLowerCase() || ''
   const activeAccountKey = localUser && localEmail ? `email:${localEmail}` : 'guest'
 
+  useSystemThemeListener(
+    demoMode ? demoSettings.themeMode : userSettings.themeMode,
+    setDark
+  )
+
+  const handleEnterDemo = useCallback(() => {
+    setDemoSettings(createDemoUserSettings(userSettings.themeMode))
+    setDemoSession(s => s + 1)
+    setDemoMode(true)
+  }, [userSettings.themeMode])
+
+  const handleExitDemo = useCallback(() => {
+    setDemoMode(false)
+    setDark(resolveDarkFromThemeMode(userSettings.themeMode))
+  }, [userSettings.themeMode, setDark])
+
+  const handleUpdateDemoSettings = useCallback(patch => {
+    setDemoSettings(prev => ({
+      ...prev,
+      ...patch,
+      channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
+      calendarSync: patch.calendarSync
+        ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
+        : prev.calendarSync,
+    }))
+  }, [])
+
+  const applyAccountThemeMode = useCallback(
+    mode => {
+      const normalized = normalizeThemeMode(mode, 'system')
+      onUpdateSettings({ themeMode: normalized })
+      setDark(resolveDarkFromThemeMode(normalized))
+    },
+    [onUpdateSettings, setDark]
+  )
+
   useEffect(() => {
-    if (userSettings.themeMode === 'system') return
     if (syncedAccountRef.current === activeAccountKey) return
+    const prevAccount = syncedAccountRef.current
     syncedAccountRef.current = activeAccountKey
 
     if (activeAccountKey === 'guest') {
-      if (userSettings.themeMode === 'dark' || userSettings.themeMode === 'light') {
-        setDark(userSettings.themeMode === 'dark')
+      if (prevAccount && prevAccount !== 'guest') {
+        applyAccountThemeMode(getGuestThemeMode())
       } else {
-        setDark(getGuestTheme())
+        setDark(resolveDarkFromThemeMode(userSettings.themeMode))
       }
       return
     }
 
     const map = getAccountThemeMap()
     const emailKey = `email:${localEmail}`
-    if (typeof localUser?.darkMode === 'boolean') {
-      setDark(localUser.darkMode)
-      saveAccountThemeForKeys([emailKey], localUser.darkMode)
-    } else if (typeof map[emailKey] === 'boolean') {
-      setDark(map[emailKey])
-    } else {
-      getDictKey(`user_theme:${localEmail}`).then(entry => {
-        if (typeof entry?.value?.darkMode === 'boolean') {
-          setDark(entry.value.darkMode)
-          saveAccountThemeForKeys([emailKey], entry.value.darkMode)
-        }
-      })
+    if (isValidThemeMode(localUser?.themeMode)) {
+      applyAccountThemeMode(localUser.themeMode)
+      saveAccountThemeForKeys([emailKey], localUser.themeMode)
+      return
     }
-  }, [activeAccountKey, localUser, localEmail, userSettings.themeMode, setDark])
+    if (isValidThemeMode(map[emailKey])) {
+      applyAccountThemeMode(map[emailKey])
+      return
+    }
+    if (prevAccount && prevAccount !== 'guest' && prevAccount !== activeAccountKey) {
+      applyAccountThemeMode('system')
+    }
+    let cancelled = false
+    getDictKey(`user_theme:${localEmail}`).then(entry => {
+      if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
+      const remoteMode = entry?.value?.themeMode
+      if (isValidThemeMode(remoteMode)) {
+        applyAccountThemeMode(remoteMode)
+        saveAccountThemeForKeys([emailKey], remoteMode)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeAccountKey, localUser, localEmail, userSettings.themeMode, applyAccountThemeMode, setDark])
 
-  function persistDarkChoice(next) {
-    setDark(next)
+  function persistThemeMode(mode) {
+    const normalized = normalizeThemeMode(mode, 'system')
+    onUpdateSettings({ themeMode: normalized })
+    setDark(resolveDarkFromThemeMode(normalized))
     if (localUser && localEmail) {
-      onUpdateLocalUserTheme(next)
+      onUpdateLocalUserTheme(normalized)
     } else {
-      saveGuestTheme(next)
+      saveGuestThemeMode(normalized)
     }
   }
 
   function handleToggleDark() {
-    const next = !dark
-    onUpdateSettings({ themeMode: next ? 'dark' : 'light' })
-    persistDarkChoice(next)
+    persistThemeMode(dark ? 'light' : 'dark')
   }
 
   function handleSetExplicitThemeMode(mode) {
-    onUpdateSettings({ themeMode: mode })
-    if (mode === 'system') {
-      const sysDark =
-        typeof window !== 'undefined' &&
-        window.matchMedia &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches
-      setDark(Boolean(sysDark))
-    } else {
-      persistDarkChoice(mode === 'dark')
-    }
+    persistThemeMode(mode)
   }
 
   if (localUser) {
@@ -2282,14 +2478,23 @@ function FallbackApp({
   if (demoMode) {
     return (
       <MainDashboard
+        key={`demo_fallback_${demoSession}`}
         dark={dark}
-        toggleDark={handleToggleDark}
-        onSetExplicitThemeMode={handleSetExplicitThemeMode}
-        userSettings={userSettings}
-        onUpdateSettings={onUpdateSettings}
+        toggleDark={() => {
+          const next = !dark
+          handleUpdateDemoSettings({ themeMode: next ? 'dark' : 'light' })
+          setDark(next)
+        }}
+        onSetExplicitThemeMode={mode => {
+          const normalized = normalizeThemeMode(mode, 'system')
+          handleUpdateDemoSettings({ themeMode: normalized })
+          setDark(resolveDarkFromThemeMode(normalized))
+        }}
+        userSettings={demoSettings}
+        onUpdateSettings={handleUpdateDemoSettings}
         user={null}
         isDemo={true}
-        onExitDemo={() => setDemoMode(false)}
+        onExitDemo={handleExitDemo}
         hasClerkKey={false}
       />
     )
@@ -2300,7 +2505,7 @@ function FallbackApp({
       dark={dark}
       onToggleDark={handleToggleDark}
       hasPublishableKey={false}
-      onEnterDemo={() => setDemoMode(true)}
+      onEnterDemo={handleEnterDemo}
       onLocalSignIn={onLocalSignIn}
     />
   )
@@ -2313,7 +2518,11 @@ const DEFAULT_CLERK_KEY = (
 ).trim()
 
 export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_CLERK_KEY) }) {
-  const [userSettings, setUserSettings] = useState(getStoredUserSettings)
+  const [userSettings, setUserSettings] = useState(() => {
+    const stored = getStoredUserSettings()
+    const initialMode = resolveInitialThemeMode()
+    return initialMode !== stored.themeMode ? { ...stored, themeMode: initialMode } : stored
+  })
   const [dark, setDark] = useState(getInitialTheme)
   const [localUser, setLocalUser] = useState(getInitialStoredUser)
 
@@ -2335,7 +2544,12 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
     const root = document.documentElement
     const isDark = Boolean(dark)
     root.classList.toggle('dark', isDark)
+    root.classList.toggle('light', !isDark)
     root.style.colorScheme = isDark ? 'dark' : 'light'
+    const metaTags = document.querySelectorAll('meta[name="theme-color"]')
+    metaTags.forEach(tag => {
+      tag.setAttribute('content', isDark ? '#080C14' : '#DFDDD5')
+    })
   }, [dark])
 
   useLayoutEffect(() => {
@@ -2354,23 +2568,15 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  // Live OS color-scheme listener when Theme Mode is set to 'System'
-  useEffect(() => {
-    if (userSettings.themeMode !== 'system' || typeof window === 'undefined' || !window.matchMedia) {
-      return
-    }
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = e => setDark(e.matches)
-    setDark(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [userSettings.themeMode])
-
   const handleUpdateSettings = useCallback(patch => {
     setUserSettings(prev => {
       const next = {
         ...prev,
         ...patch,
+        themeMode:
+          patch.themeMode !== undefined
+            ? normalizeThemeMode(patch.themeMode, 'system')
+            : prev.themeMode,
         channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
         calendarSync: patch.calendarSync
           ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
@@ -2399,19 +2605,28 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
     }
   }, [])
 
-  const updateLocalUserTheme = useCallback(nextDark => {
+  const updateLocalUserTheme = useCallback(nextMode => {
+    const normalized = normalizeThemeMode(nextMode, 'system')
     setLocalUser(prev => {
       if (!prev) return prev
-      const updated = { ...prev, darkMode: Boolean(nextDark) }
+      const updated = {
+        ...prev,
+        themeMode: normalized,
+        darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : undefined,
+      }
       const emailLower = (prev.email || '').toLowerCase()
       try {
         localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(updated))
         if (emailLower) {
-          saveAccountThemeForKeys([`email:${emailLower}`], nextDark)
+          saveAccountThemeForKeys([`email:${emailLower}`], normalized)
           const regRaw = localStorage.getItem(EMAIL_ACCOUNTS_KEY)
           const reg = regRaw ? JSON.parse(regRaw) : {}
           if (reg[emailLower]) {
-            reg[emailLower] = { ...reg[emailLower], darkMode: Boolean(nextDark) }
+            reg[emailLower] = {
+              ...reg[emailLower],
+              themeMode: normalized,
+              darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : undefined,
+            }
             localStorage.setItem(EMAIL_ACCOUNTS_KEY, JSON.stringify(reg))
           }
         }
@@ -2419,7 +2634,7 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
         // Ignore storage errors
       }
       if (emailLower) {
-        persistBackendAccountTheme(emailLower, nextDark)
+        persistBackendAccountTheme(emailLower, normalized)
       }
       return updated
     })
@@ -2428,15 +2643,13 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
   const handleLocalSignIn = useCallback(profile => {
     const emailLower = (profile.email || '').toLowerCase()
     const map = getAccountThemeMap()
-    const resolvedDark =
-      typeof profile.darkMode === 'boolean'
-        ? profile.darkMode
-        : emailLower && typeof map[`email:${emailLower}`] === 'boolean'
-          ? map[`email:${emailLower}`]
-          : undefined
+    const resolvedMode = isValidThemeMode(profile.themeMode)
+      ? profile.themeMode
+      : emailLower && isValidThemeMode(map[`email:${emailLower}`])
+        ? map[`email:${emailLower}`]
+        : undefined
 
-    const nextProfile =
-      typeof resolvedDark === 'boolean' ? { ...profile, darkMode: resolvedDark } : profile
+    const nextProfile = resolvedMode ? { ...profile, themeMode: resolvedMode } : profile
 
     setLocalUser(nextProfile)
     try {

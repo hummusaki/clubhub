@@ -223,6 +223,12 @@ html.reduce-motion .fade-in {
   .content-tile-interactive:hover {
     transform: translateY(-1.5px);
   }
+
+  /* Skip browser layout & paint for off-screen feed items during long scrolls */
+  .feed-tile-virtual {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 128px;
+  }
 }
 
 html.reduce-motion .content-tile-interactive:hover {

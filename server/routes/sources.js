@@ -2,7 +2,7 @@
 // Connects Instagram, Discord, Email, Google Calendar, and Websites to the database.
 
 import { Router } from 'express';
-import { upsertDataSource } from '../services/resourceIngestor.js';
+import { upsertDataSource, deleteDataSource } from '../services/resourceIngestor.js';
 import syncOrchestrator from '../services/syncOrchestrator.js';
 
 const router = Router();
@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
     let syncResult = null;
     if (syncNow) {
       syncResult = await syncOrchestrator.syncPlatform(platform, {
-        clubId: cid,
+        clubId: cid === 'all' || cid === 'campus' ? null : cid,
         channelId: platform === 'discord' ? config?.channelId || identifier : undefined,
       });
     }
@@ -35,6 +35,17 @@ router.post('/', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// DELETE /api/sources & DELETE /api/sources/:id — disconnect a registered source
+router.delete('/', (req, res) => {
+  const id = req.query.id || req.body?.id || '';
+  if (!id) return res.status(400).json({ error: 'Source id is required' });
+  res.json(deleteDataSource(id));
+});
+
+router.delete('/:id', (req, res) => {
+  res.json(deleteDataSource(req.params.id));
 });
 
 // POST /api/sources/sync — sync all platforms (or a specific platform: instagram, discord, email, google_calendar, website)

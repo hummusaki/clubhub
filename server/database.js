@@ -12,9 +12,10 @@ import { categorizeClub } from '../collector/src/categorize.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, 'clubhub.db');
 const COLLECTOR_OUTPUT_PATH = path.resolve(__dirname, '../collector/output/clubhub-data.json');
+const PUBLIC_SNAPSHOT_PATH = path.resolve(__dirname, '../public/clubhub-data.json');
 const COLLECTOR_SAMPLE_PATH = path.resolve(__dirname, '../collector/fixtures/sample-output.json');
 
-const VALID_TABLES = new Set(['clubs', 'posts', 'events', 'announcements', 'links']);
+const VALID_TABLES = new Set(['clubs', 'posts', 'events', 'announcements', 'links', 'roster']);
 
 let db;
 
@@ -220,6 +221,35 @@ function initSchema(db) {
       updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- 8. INTEGRATION CONFIGS (private credentials & user alert subscriptions; never exported publicly)
+    CREATE TABLE IF NOT EXISTS integration_configs (
+      id          TEXT PRIMARY KEY,
+      scope       TEXT NOT NULL DEFAULT 'global',
+      platform    TEXT NOT NULL,
+      config      TEXT NOT NULL,
+      updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- 9. ROSTER (daily club leadership, officers, spotlighted members & official contacts)
+    CREATE TABLE IF NOT EXISTS roster (
+      id         TEXT PRIMARY KEY,
+      clubId     TEXT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      clubName   TEXT,
+      name       TEXT NOT NULL,
+      initials   TEXT,
+      role       TEXT NOT NULL,
+      personType TEXT DEFAULT 'officer',
+      major      TEXT,
+      year       TEXT,
+      email      TEXT,
+      office     TEXT,
+      instagram  TEXT,
+      color      TEXT DEFAULT 'blue',
+      source     TEXT DEFAULT 'directory',
+      sourceUrl  TEXT,
+      updatedAt  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Indexes for fast lookups, filtering, and sorting
     CREATE INDEX IF NOT EXISTS idx_clubs_name           ON clubs(name);
     CREATE INDEX IF NOT EXISTS idx_clubs_category       ON clubs(category);
@@ -230,8 +260,11 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_links_clubId         ON links(clubId);
     CREATE INDEX IF NOT EXISTS idx_posts_clubId         ON posts(clubId);
     CREATE INDEX IF NOT EXISTS idx_posts_posted         ON posts(postedAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_roster_clubId        ON roster(clubId);
     CREATE INDEX IF NOT EXISTS idx_dict_clubId          ON dictionary_store(clubId);
     CREATE INDEX IF NOT EXISTS idx_dict_namespace       ON dictionary_store(namespace);
+    CREATE INDEX IF NOT EXISTS idx_integration_platform ON integration_configs(platform);
+    CREATE INDEX IF NOT EXISTS idx_integration_scope    ON integration_configs(scope);
   `);
 
   // Add newer club columns to databases created before they existed.
@@ -241,6 +274,14 @@ function initSchema(db) {
     ['syncStatus', "TEXT DEFAULT 'synced'"],
     ['syncNote', 'TEXT'],
     ['lastSyncedAt', 'TEXT'],
+    ['memberCount', 'INTEGER DEFAULT 0'],
+    ['discordMemberCount', 'INTEGER'],
+    ['discordOnlineCount', 'INTEGER'],
+    ['rosterCount', 'INTEGER DEFAULT 0'],
+    ['rosterUpdatedAt', 'TEXT'],
+    ['orgStatus', "TEXT DEFAULT 'active'"],
+    ['orgStatusNote', 'TEXT'],
+    ['directoryDescription', 'TEXT'],
   ]) {
     if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
   }
@@ -265,7 +306,7 @@ export function syncClubDictionary(clubId) {
 }
 
 // ── Upsert full or partial collector payload by ID ──────────────────
-export function upsertCollectorData(data = {}) {
+export function upsertCollectorData(data = {}, { replaceRosterForClubs = false } = {}) {
   const db = getDb();
   const {
     collectedAt = new Date().toISOString(),
@@ -274,6 +315,7 @@ export function upsertCollectorData(data = {}) {
     events = [],
     announcements = [],
     links = [],
+    roster = [],
     errors,
   } = data;
 
@@ -286,30 +328,40 @@ export function upsertCollectorData(data = {}) {
     INSERT INTO clubs (
       id, name, alsoKnownAs, instagram, instagramUrl, category,
       bio, website, profilePictureUrl, followers, lastPostAt, lastSyncedAt,
-      email, syncStatus, syncNote, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      email, syncStatus, syncNote,
+      memberCount, discordMemberCount, discordOnlineCount, rosterCount, rosterUpdatedAt,
+      orgStatus, orgStatusNote, directoryDescription, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
-      name              = excluded.name,
-      alsoKnownAs       = excluded.alsoKnownAs,
-      instagram         = excluded.instagram,
-      instagramUrl      = excluded.instagramUrl,
-      category          = CASE
-                            WHEN clubs.category IS NOT NULL
-                             AND clubs.category NOT IN ('other', 'community', '')
-                             AND (excluded.category IS NULL OR excluded.category IN ('other', 'community', ''))
-                            THEN clubs.category
-                            ELSE COALESCE(excluded.category, clubs.category)
-                          END,
-      bio               = COALESCE(excluded.bio, clubs.bio),
-      website           = COALESCE(excluded.website, clubs.website),
-      profilePictureUrl = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
-      followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
-      lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
-      lastSyncedAt      = COALESCE(excluded.lastSyncedAt, clubs.lastSyncedAt),
-      email             = COALESCE(excluded.email, clubs.email),
-      syncStatus        = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN 'synced' ELSE COALESCE(excluded.syncStatus, clubs.syncStatus) END,
-      syncNote          = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN clubs.syncNote ELSE excluded.syncNote END,
-      updatedAt         = datetime('now')
+      name                 = excluded.name,
+      alsoKnownAs          = excluded.alsoKnownAs,
+      instagram            = excluded.instagram,
+      instagramUrl         = excluded.instagramUrl,
+      category             = CASE
+                               WHEN clubs.category IS NOT NULL
+                                AND clubs.category NOT IN ('other', 'community', '')
+                                AND (excluded.category IS NULL OR excluded.category IN ('other', 'community', ''))
+                               THEN clubs.category
+                               ELSE COALESCE(excluded.category, clubs.category)
+                             END,
+      bio                  = COALESCE(excluded.bio, clubs.bio),
+      website              = COALESCE(excluded.website, clubs.website),
+      profilePictureUrl    = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
+      followers            = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
+      lastPostAt           = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
+      lastSyncedAt         = COALESCE(excluded.lastSyncedAt, clubs.lastSyncedAt),
+      email                = COALESCE(excluded.email, clubs.email),
+      syncStatus           = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN 'synced' ELSE COALESCE(excluded.syncStatus, clubs.syncStatus) END,
+      syncNote             = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN clubs.syncNote ELSE excluded.syncNote END,
+      memberCount          = CASE WHEN excluded.memberCount > 0 THEN excluded.memberCount ELSE clubs.memberCount END,
+      discordMemberCount   = COALESCE(excluded.discordMemberCount, clubs.discordMemberCount),
+      discordOnlineCount   = COALESCE(excluded.discordOnlineCount, clubs.discordOnlineCount),
+      rosterCount          = CASE WHEN excluded.rosterCount > 0 THEN excluded.rosterCount ELSE clubs.rosterCount END,
+      rosterUpdatedAt      = COALESCE(excluded.rosterUpdatedAt, clubs.rosterUpdatedAt),
+      orgStatus            = COALESCE(excluded.orgStatus, clubs.orgStatus),
+      orgStatusNote        = COALESCE(excluded.orgStatusNote, clubs.orgStatusNote),
+      directoryDescription = COALESCE(excluded.directoryDescription, clubs.directoryDescription),
+      updatedAt            = datetime('now')
   `);
 
   const upsertPostStmt = db.stmt(`
@@ -379,6 +431,33 @@ export function upsertCollectorData(data = {}) {
       postId   = COALESCE(excluded.postId, links.postId)
   `);
 
+  const clearAutoRosterStmt = db.stmt(`
+    DELETE FROM roster WHERE lower(clubId) = lower(?) AND id NOT LIKE 'custom_%'
+  `);
+
+  const upsertRosterStmt = db.stmt(`
+    INSERT INTO roster (
+      id, clubId, clubName, name, initials, role, personType,
+      major, year, email, office, instagram, color, source, sourceUrl, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      clubId     = excluded.clubId,
+      clubName   = COALESCE(excluded.clubName, roster.clubName),
+      name       = excluded.name,
+      initials   = COALESCE(excluded.initials, roster.initials),
+      role       = excluded.role,
+      personType = COALESCE(excluded.personType, roster.personType),
+      major      = COALESCE(excluded.major, roster.major),
+      year       = COALESCE(excluded.year, roster.year),
+      email      = COALESCE(excluded.email, roster.email),
+      office     = COALESCE(excluded.office, roster.office),
+      instagram  = COALESCE(excluded.instagram, roster.instagram),
+      color      = COALESCE(excluded.color, roster.color),
+      source     = COALESCE(excluded.source, roster.source),
+      sourceUrl  = COALESCE(excluded.sourceUrl, roster.sourceUrl),
+      updatedAt  = datetime('now')
+  `);
+
   const affectedClubs = new Set();
   const ensureClub = (rawId, fallbackName) => {
     const cid = normalizeClubId(rawId);
@@ -389,7 +468,7 @@ export function upsertCollectorData(data = {}) {
     return cid;
   };
 
-  const counts = { clubs: 0, posts: 0, events: 0, announcements: 0, links: 0 };
+  const counts = { clubs: 0, posts: 0, events: 0, announcements: 0, links: 0, roster: 0 };
 
   const runTransaction = db.transaction(() => {
     for (const c of clubs) {
@@ -416,8 +495,19 @@ export function upsertCollectorData(data = {}) {
         c.lastSyncedAt || null,
         c.email || null,
         c.syncStatus || 'synced',
-        c.syncNote || null
+        c.syncNote || null,
+        Number(c.memberCount) || 0,
+        c.discordMemberCount != null ? Number(c.discordMemberCount) : null,
+        c.discordOnlineCount != null ? Number(c.discordOnlineCount) : null,
+        Number(c.rosterCount) || 0,
+        c.rosterUpdatedAt || null,
+        c.orgStatus || null,
+        c.orgStatusNote || null,
+        c.directoryDescription || c.description || null
       );
+      if (replaceRosterForClubs) {
+        clearAutoRosterStmt.run(cid);
+      }
       affectedClubs.add(cid);
       counts.clubs++;
     }
@@ -495,6 +585,29 @@ export function upsertCollectorData(data = {}) {
       counts.links++;
     }
 
+    for (const r of roster) {
+      const cid = ensureClub(r.clubId, r.clubName);
+      if (!r.id || !cid || !r.name) continue;
+      upsertRosterStmt.run(
+        String(r.id),
+        cid,
+        r.clubName || null,
+        r.name,
+        r.initials || null,
+        r.role || 'Member',
+        r.personType || 'officer',
+        r.major || null,
+        r.year || null,
+        r.email || null,
+        r.office || null,
+        r.instagram || null,
+        r.color || 'blue',
+        r.source || 'directory',
+        r.sourceUrl || null
+      );
+      counts.roster++;
+    }
+
     // Sync every affected club's full record into dictionary_store
     for (const cid of affectedClubs) {
       syncClubDictionary(cid);
@@ -524,7 +637,7 @@ export function upsertCollectorData(data = {}) {
   };
 }
 
-// ── Load from collector JSON file (output/clubhub-data.json or fixtures/sample-output.json) ──
+// ── Load from collector JSON file (output/clubhub-data.json, public/clubhub-data.json, or fixtures/sample-output.json) ──
 export function importCollectorFile(customFilePath = null) {
   const db = getDb();
   const realClubCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%'").get()?.c || 0;
@@ -532,9 +645,11 @@ export function importCollectorFile(customFilePath = null) {
     customFilePath ||
     (fs.existsSync(COLLECTOR_OUTPUT_PATH)
       ? COLLECTOR_OUTPUT_PATH
-      : realClubCount === 0
-        ? COLLECTOR_SAMPLE_PATH
-        : null);
+      : fs.existsSync(PUBLIC_SNAPSHOT_PATH)
+        ? PUBLIC_SNAPSHOT_PATH
+        : realClubCount === 0
+          ? COLLECTOR_SAMPLE_PATH
+          : null);
 
   if (!targetPath || !fs.existsSync(targetPath)) {
     return { imported: false, reason: 'No collector output file to import' };
@@ -559,12 +674,13 @@ export function getStats() {
         (SELECT COUNT(*) FROM announcements)    AS announcements,
         (SELECT COUNT(*) FROM links)            AS links,
         (SELECT COUNT(*) FROM posts)            AS posts,
+        (SELECT COUNT(*) FROM roster)           AS roster,
         (SELECT COUNT(*) FROM dictionary_store) AS dictKeys
     `)
     .get();
 }
 
-// ── Get a single club with all its events, announcements, links, and posts ──
+// ── Get a single club with all its events, announcements, links, posts, and roster ──
 export function getClubById(clubId) {
   const db = getDb();
   const cid = normalizeClubId(clubId);
@@ -580,6 +696,10 @@ export function getClubById(clubId) {
     announcements: db.stmt('SELECT * FROM announcements WHERE clubId = ? ORDER BY postedAt DESC').all(club.id).map(formatAnnouncementRow),
     links: db.stmt('SELECT * FROM links WHERE clubId = ? ORDER BY id ASC').all(club.id),
     posts: db.stmt('SELECT * FROM posts WHERE clubId = ? ORDER BY postedAt DESC').all(club.id).map(formatPostRow),
+    roster: db
+      .stmt("SELECT * FROM roster WHERE clubId = ? ORDER BY CASE WHEN personType = 'officer' THEN 0 ELSE 1 END, name ASC")
+      .all(club.id)
+      .map(formatRosterRow),
   };
 }
 
@@ -600,7 +720,7 @@ export function deleteRecord(table, id) {
   return { deleted: true, id: cleanId, clubId };
 }
 
-// ── Read all 5 collections in the exact Collector JSON format ──────
+// ── Read all 6 collections in the exact Collector JSON format ──────
 export function getAllCollectorData({ clubId } = {}) {
   const db = getDb();
   const cid = clubId ? normalizeClubId(clubId) : null;
@@ -613,6 +733,12 @@ export function getAllCollectorData({ clubId } = {}) {
   const events = db.prepare(`SELECT * FROM events ${where} ORDER BY start ASC`).all(...params).map(formatEventRow);
   const announcements = db.prepare(`SELECT * FROM announcements ${where} ORDER BY postedAt DESC`).all(...params).map(formatAnnouncementRow);
   const links = db.prepare(`SELECT * FROM links ${where} ORDER BY id ASC`).all(...params);
+  const roster = db
+    .prepare(
+      `SELECT * FROM roster ${where} ORDER BY CASE WHEN personType = 'officer' THEN 0 ELSE 1 END, clubName ASC, name ASC`
+    )
+    .all(...params)
+    .map(formatRosterRow);
 
   const meta = getDictEntry('meta:last_collection')?.value || {};
 
@@ -623,6 +749,7 @@ export function getAllCollectorData({ clubId } = {}) {
     events,
     announcements,
     links,
+    roster,
     errors: meta.errors || [],
   };
 }
@@ -639,6 +766,7 @@ export function buildClubHubDictionary(filterClubId = null) {
       announcements: [],
       links: [],
       posts: [],
+      roster: [],
     };
   }
 
@@ -646,6 +774,7 @@ export function buildClubHubDictionary(filterClubId = null) {
   for (const a of data.announcements) dict[a.clubId]?.announcements.push(a);
   for (const l of data.links) dict[l.clubId]?.links.push(l);
   for (const p of data.posts) dict[p.clubId]?.posts.push(p);
+  for (const r of data.roster) dict[r.clubId]?.roster.push(r);
 
   return dict;
 }
@@ -743,6 +872,90 @@ export function getCalendarSyncProfile(token) {
   };
 }
 
+// ── Private Integration Config & Subscription Helpers ───────────────
+export function maskSecret(str) {
+  if (!str || typeof str !== 'string') return '';
+  const s = str.trim();
+  if (!s) return '';
+  const webhookMatch = s.match(/^(https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/)([\w-]+)$/i);
+  if (webhookMatch) {
+    const [, prefix, secret] = webhookMatch;
+    return `${prefix}••••${secret.slice(-4)}`;
+  }
+  if (s.length <= 8) return '••••••••';
+  return `${s.slice(0, 4)}••••${s.slice(-4)}`;
+}
+
+export function saveIntegrationConfig(id, { scope = 'global', platform, config = {} } = {}) {
+  const db = getDb();
+  const cleanId = String(id || '').trim();
+  const cleanPlatform = String(platform || '').trim();
+  if (!cleanId || !cleanPlatform) {
+    throw new Error('Integration config id and platform are required');
+  }
+  const jsonConfig = JSON.stringify(config ?? {});
+  db.stmt(`
+    INSERT INTO integration_configs (id, scope, platform, config, updatedAt)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      scope     = excluded.scope,
+      platform  = excluded.platform,
+      config    = excluded.config,
+      updatedAt = datetime('now')
+  `).run(cleanId, scope || 'global', cleanPlatform, jsonConfig);
+  return getIntegrationConfig(cleanId);
+}
+
+export function getIntegrationConfig(id) {
+  const db = getDb();
+  const cleanId = String(id || '').trim();
+  if (!cleanId) return null;
+  const row = db
+    .stmt('SELECT id, scope, platform, config, updatedAt FROM integration_configs WHERE id = ?')
+    .get(cleanId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    scope: row.scope,
+    platform: row.platform,
+    config: safeParseJSON(row.config) || {},
+    updatedAt: row.updatedAt,
+  };
+}
+
+export function listIntegrationConfigs({ scope, platform } = {}) {
+  const db = getDb();
+  let sql = 'SELECT id, scope, platform, config, updatedAt FROM integration_configs WHERE 1=1';
+  const params = [];
+  if (scope) {
+    sql += ' AND scope = ?';
+    params.push(scope);
+  }
+  if (platform) {
+    sql += ' AND platform = ?';
+    params.push(platform);
+  }
+  sql += ' ORDER BY updatedAt DESC';
+  return db
+    .prepare(sql)
+    .all(...params)
+    .map(row => ({
+      id: row.id,
+      scope: row.scope,
+      platform: row.platform,
+      config: safeParseJSON(row.config) || {},
+      updatedAt: row.updatedAt,
+    }));
+}
+
+export function deleteIntegrationConfig(id) {
+  const db = getDb();
+  const cleanId = String(id || '').trim();
+  if (!cleanId) return { deleted: false, id: cleanId };
+  const info = db.stmt('DELETE FROM integration_configs WHERE id = ?').run(cleanId);
+  return { deleted: info.changes > 0, id: cleanId };
+}
+
 // ── Concise Row Formatters (convert SQLite ints/JSON to JS types) ───
 export function formatClubRow(row) {
   if (!row) return null;
@@ -760,6 +973,12 @@ export function formatEventRow(row) {
 
 export function formatAnnouncementRow(row) {
   return row ? { ...row, important: Boolean(row.important), source: row.source || 'instagram' } : null;
+}
+
+export function formatRosterRow(row) {
+  if (!row) return null;
+  const { updatedAt, ...rest } = row;
+  return rest;
 }
 
 function safeParseJSON(str) {

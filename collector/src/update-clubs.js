@@ -44,9 +44,14 @@ export function guessCategory(nameOrClub) {
   )
 }
 
-function extractSectionUrls(html) {
+function extractSectionMeta(html) {
   let discord = null
   let website = null
+  const emails = []
+  for (const m of html.matchAll(/href=["']mailto:([^"'?\s>]+)/gi)) {
+    const addr = m[1].trim().toLowerCase()
+    if (addr && !emails.includes(addr)) emails.push(addr)
+  }
   for (const m of html.matchAll(/href=["'](https?:\/\/[^"'\s>]+)["']/gi)) {
     const url = m[1].replace(/&amp;/g, '&').trim()
     if (!discord && /discord\.(?:gg|com\/invite)\/[A-Za-z0-9-]+/i.test(url)) {
@@ -60,7 +65,26 @@ function extractSectionUrls(html) {
       website = url
     }
   }
-  return { discord, website }
+
+  let description = null
+  let orgStatus = 'active'
+  let orgStatusNote = null
+
+  for (const pm of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = decode(pm[1])
+    if (!text) continue
+    if (/^(?:instagram|email|emai|website|discord|contact)\s*:?/i.test(text)) continue
+    if (/\b(?:on probation|interim suspension)\b/i.test(text)) {
+      orgStatus = /interim suspension/i.test(text) ? 'interim_suspension' : 'probation'
+      orgStatusNote = text
+      continue
+    }
+    if (!description && text.length >= 15) {
+      description = text
+    }
+  }
+
+  return { discord, website, emails, description, orgStatus, orgStatusNote }
 }
 
 export function parseDirectory(html) {
@@ -81,19 +105,40 @@ export function parseDirectory(html) {
     const name = decode(nameMatch[1])
     if (!name || /browse by|search|categor/i.test(name)) continue
     const handle = instagramHandle(section)
-    const email = (section.match(/mailto:([^"'?\s>]+)/i)?.[1] || decode(section).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || null)?.toLowerCase() || null
-    const { discord, website } = extractSectionUrls(section)
+    const meta = extractSectionMeta(section)
+    const fallbackEmail = decode(section).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0]?.toLowerCase() || null
+    const email = meta.emails[0] || fallbackEmail
+    const extraEmails = meta.emails.slice(1).filter(e => e !== email)
     const suspended = inactive.has(short(name))
-    clubs.push({ name, instagram: handle, email, discord, website, suspended })
+    clubs.push({
+      name,
+      instagram: handle,
+      email,
+      ...(extraEmails.length ? { extraEmails } : {}),
+      discord: meta.discord,
+      website: meta.website,
+      description: meta.description,
+      orgStatus: suspended ? 'suspended' : meta.orgStatus,
+      orgStatusNote: meta.orgStatusNote,
+      suspended,
+    })
   }
   return clubs
 }
 
-async function main() {
-  console.log(`Downloading ${DIRECTORY_URL}`)
-  const res = await fetch(DIRECTORY_URL, { headers: { 'user-agent': 'ClubHub student project (UCSC DevFest)' } })
-  if (!res.ok) throw new Error(`Directory returned ${res.status}`)
-  const parsed = parseDirectory(await res.text())
+export async function updateClubsCatalog({ htmlOverride = null } = {}) {
+  let rawHtml = htmlOverride
+  if (!rawHtml) {
+    console.log(`Downloading ${DIRECTORY_URL}`)
+    const res = await fetch(DIRECTORY_URL, {
+      headers: { 'user-agent': 'ClubHub student project (UCSC DevFest)' },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) throw new Error(`Directory returned ${res.status}`)
+    rawHtml = await res.text()
+  }
+
+  const parsed = parseDirectory(rawHtml)
   if (parsed.length < 20) throw new Error(`Only found ${parsed.length} clubs; the page layout may have changed. clubs.json was not touched.`)
 
   const existing = fs.existsSync(CLUBS_FILE) ? JSON.parse(fs.readFileSync(CLUBS_FILE, 'utf8')) : []
@@ -110,10 +155,17 @@ async function main() {
       // Two orgs sharing one account (e.g. ESLP + Student Environmental Center).
       const first = seen.get(c.instagram)
       first.alsoKnownAs = [...(first.alsoKnownAs || []), c.name]
-      if (c.email && c.email !== first.email) first.extraEmails = [...(first.extraEmails || []), c.email]
+      for (const em of [c.email, ...(c.extraEmails || [])].filter(Boolean)) {
+        if (em !== first.email && !(first.extraEmails || []).includes(em)) {
+          first.extraEmails = [...(first.extraEmails || []), em]
+        }
+      }
       continue
     }
     const prev = byHandle.get(c.instagram)
+    const mergedExtraEmails = [
+      ...new Set([...(c.extraEmails || []), ...(prev?.extraEmails || [])].filter(e => e && e !== (c.email || prev?.email))),
+    ]
     const club = {
       name: c.name,
       instagram: c.instagram,
@@ -124,6 +176,10 @@ async function main() {
         category: prev?.category,
       }),
       email: c.email || prev?.email || null,
+      ...(mergedExtraEmails.length ? { extraEmails: mergedExtraEmails } : {}),
+      ...(c.description || prev?.description ? { description: c.description || prev?.description } : {}),
+      ...(c.orgStatus && c.orgStatus !== 'active' ? { orgStatus: c.orgStatus } : prev?.orgStatus && prev.orgStatus !== 'active' ? { orgStatus: prev.orgStatus } : {}),
+      ...(c.orgStatusNote || prev?.orgStatusNote ? { orgStatusNote: c.orgStatusNote || prev?.orgStatusNote } : {}),
       ...(c.discord || prev?.discord ? { discord: c.discord || prev?.discord } : {}),
       ...(c.website || prev?.website ? { website: c.website || prev?.website } : {}),
       ...(prev?.discordChannelId ? { discordChannelId: prev.discordChannelId } : {}),
@@ -139,6 +195,11 @@ async function main() {
   fs.writeFileSync(CLUBS_FILE, JSON.stringify(out, null, 2) + '\n')
   console.log(`Saved ${out.length} clubs to clubs.json (${added} new, ${removed} removed, ${manual.length} kept from manual entries)`)
   console.log(`Skipped: ${skippedSuspended} suspended/dismissed, ${skippedNoIg} with no Instagram listed`)
+  return { total: out.length, added, removed, manual: manual.length, skippedSuspended, skippedNoIg, clubs: out }
+}
+
+async function main() {
+  await updateClubsCatalog()
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

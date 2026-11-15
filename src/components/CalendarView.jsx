@@ -135,10 +135,19 @@ export default function CalendarView({
   const [showAddForm, setShowAddForm] = useState(false)
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
-  const [eventClubId, setEventClubId] = useState(clubs[0]?.id || 'demo_ucsc_csclub')
+  const [eventClubId, setEventClubId] = useState(
+    () => clubs.find(c => c.joined)?.id || clubs[0]?.id || 'demo_ucsc_csclub'
+  )
   const [eventDate, setEventDate] = useState(todayYmd)
   const [eventTime, setEventTime] = useState('17:00')
   const [eventLocation, setEventLocation] = useState('')
+
+  useEffect(() => {
+    const fallbackId = clubs.find(c => c.joined)?.id || clubs[0]?.id
+    if (fallbackId && !clubs.some(c => String(c.id) === String(eventClubId))) {
+      setEventClubId(String(fallbackId))
+    }
+  }, [clubs, eventClubId])
 
   const baseEvents = items && items.length > 0 ? items : defaultSchedule
 

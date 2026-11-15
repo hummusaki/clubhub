@@ -34,17 +34,19 @@ export default function Sidebar({
       window.removeEventListener('keydown', handleKey)
     }
   }, [])
+  const effectiveUser = isDemo ? null : user
+
   const displayName =
     userSettings?.displayName?.trim() ||
-    user?.fullName ||
-    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-    user?.email?.split('@')[0] ||
+    effectiveUser?.fullName ||
+    effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    effectiveUser?.email?.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
   const subline =
     userSettings?.major?.trim() ||
-    user?.primaryEmailAddress?.emailAddress ||
-    user?.email ||
+    effectiveUser?.primaryEmailAddress?.emailAddress ||
+    effectiveUser?.email ||
     (isDemo ? 'Preview Mode' : 'Verified Member')
 
   const initials = displayName
@@ -57,7 +59,7 @@ export default function Sidebar({
 
   const avatarGradient =
     userSettings?.avatarBg ||
-    user?.avatarBg ||
+    effectiveUser?.avatarBg ||
     'linear-gradient(135deg, var(--blue), var(--purple))'
 
   return (

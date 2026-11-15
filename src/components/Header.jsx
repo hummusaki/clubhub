@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ChevronDown } from 'lucide-react'
 import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, Avatar, cleanText } from './ui'
-import { AnnouncementTypeIcon } from './icons'
+import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 import { announcements as initialAnnouncements } from '../data/sampleData'
 
 export default function Header({
@@ -22,7 +22,11 @@ export default function Header({
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [readIds, setReadIds] = useState({})
-  const notifRef = useRef(null)
+  const mobileNotifBtnRef = useRef(null)
+  const desktopNotifBtnRef = useRef(null)
+  const notifPanelRef = useRef(null)
+  const userMenuBtnRef = useRef(null)
+  const userMenuPanelRef = useRef(null)
 
   const rawItems = announcements && announcements.length > 0 ? announcements : initialAnnouncements
 
@@ -49,6 +53,11 @@ export default function Header({
   }, [items, readIds, userSettings?.urgentOnlyBadge])
 
   useEffect(() => {
+    setNotifOpen(false)
+    setUserMenuOpen(false)
+  }, [activeNav])
+
+  useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
         setNotifOpen(false)
@@ -56,8 +65,22 @@ export default function Header({
       }
     }
     function handleClickOutside(e) {
-      if (notifRef.current && !notifRef.current.contains(e.target)) {
+      const target = e.target
+      if (target instanceof Element && target.closest('[data-toast-viewport]')) {
+        return
+      }
+      const clickedInsideNotif =
+        notifPanelRef.current?.contains(target) ||
+        mobileNotifBtnRef.current?.contains(target) ||
+        desktopNotifBtnRef.current?.contains(target)
+      if (!clickedInsideNotif) {
         setNotifOpen(false)
+      }
+
+      const clickedInsideUserMenu =
+        userMenuPanelRef.current?.contains(target) ||
+        userMenuBtnRef.current?.contains(target)
+      if (!clickedInsideUserMenu) {
         setUserMenuOpen(false)
       }
     }
@@ -75,16 +98,18 @@ export default function Header({
     setReadIds(next)
   }
 
+  const effectiveUser = isDemo ? null : user
+
   const displayName =
     userSettings?.displayName?.trim() ||
-    user?.fullName ||
-    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-    user?.email?.split('@')[0] ||
+    effectiveUser?.fullName ||
+    effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    effectiveUser?.email?.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
   const displayEmail =
-    user?.primaryEmailAddress?.emailAddress ||
-    user?.email ||
+    effectiveUser?.primaryEmailAddress?.emailAddress ||
+    effectiveUser?.email ||
     (isDemo ? 'Preview Mode' : 'Verified Member')
 
   const initials = displayName
@@ -97,7 +122,7 @@ export default function Header({
 
   const avatarGradient =
     userSettings?.avatarBg ||
-    user?.avatarBg ||
+    effectiveUser?.avatarBg ||
     'linear-gradient(135deg, var(--blue), var(--purple))'
 
   const customFirst = userSettings?.displayName?.trim()
@@ -105,13 +130,13 @@ export default function Header({
     : null
   const firstName =
     customFirst ||
-    user?.firstName ||
-    (user?.fullName ? user.fullName.split(' ')[0] : null) ||
-    (user?.email ? user.email.split('@')[0] : null)
+    effectiveUser?.firstName ||
+    (effectiveUser?.fullName ? effectiveUser.fullName.split(' ')[0] : null) ||
+    (effectiveUser?.email ? effectiveUser.email.split('@')[0] : null)
   const greetingName = firstName || (isDemo ? 'Guest' : 'Student')
 
   const viewTitles = {
-    overview: `Welcome back, ${greetingName}`,
+    overview: isDemo && !customFirst ? 'Welcome, Guest' : `Welcome back, ${greetingName}`,
     calendar: 'Calendar',
     availability: 'Group Availability',
     clubs: 'Clubs & Community',
@@ -139,7 +164,7 @@ export default function Header({
   const isCompact = Boolean(userSettings?.compactCards)
 
   return (
-    <header className={`relative z-30 ${isCompact ? 'mb-3.5 sm:mb-4' : 'mb-5 sm:mb-6'}`} ref={notifRef}>
+    <header className={`relative z-30 ${isCompact ? 'mb-3.5 sm:mb-4' : 'mb-5 sm:mb-6'}`}>
       {/* ── Mobile / Tablet Top Bar (< lg) ── */}
       <div className="flex lg:hidden items-center justify-between gap-2 pb-3 mb-3.5 border-b border-[var(--border)]">
         <button
@@ -165,6 +190,7 @@ export default function Header({
           </button>
 
           <button
+            ref={mobileNotifBtnRef}
             type="button"
             onClick={() => {
               setUserMenuOpen(false)
@@ -188,6 +214,7 @@ export default function Header({
 
           {(user || isDemo) && (
             <button
+              ref={userMenuBtnRef}
               type="button"
               onClick={() => {
                 setNotifOpen(false)
@@ -217,7 +244,13 @@ export default function Header({
 
         <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
           {showSearch && (
-            <div className="flex-1 sm:w-[250px] min-w-0">
+            <div
+              className="flex-1 sm:w-[250px] min-w-0"
+              onFocusCapture={() => {
+                setNotifOpen(false)
+                setUserMenuOpen(false)
+              }}
+            >
               <SearchBox
                 placeholder={searchPlaceholders[activeNav] || 'Search…'}
                 width="100%"
@@ -229,6 +262,7 @@ export default function Header({
 
           <div className="hidden lg:flex items-center gap-2.5 relative">
             <button
+              ref={desktopNotifBtnRef}
               type="button"
               onClick={() => setNotifOpen(o => !o)}
               aria-label="Notifications"
@@ -254,7 +288,8 @@ export default function Header({
       {/* ── Mobile User Account Dropdown (< lg, when left Sidebar is hidden) ── */}
       {userMenuOpen && (user || isDemo) && (
         <div
-          className="lg:hidden fixed right-3 top-[58px]
+          ref={userMenuPanelRef}
+          className="lg:hidden absolute right-0 top-[54px]
             w-[235px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
             shadow-[var(--shadow-lg)] p-2 z-[95] fade-in"
         >
@@ -300,8 +335,9 @@ export default function Header({
       {/* ── Notification Popover (Anchored directly beneath Bell — No transform trap) ── */}
       {notifOpen && (
         <div
-          className="fixed lg:absolute left-3 right-3 top-[58px] lg:left-auto lg:right-0 lg:top-full lg:mt-2
-            lg:w-[340px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
+          ref={notifPanelRef}
+          className="absolute left-0 right-0 top-[54px] sm:left-auto sm:right-0 sm:w-[340px] lg:top-full lg:mt-2
+            rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
             shadow-[var(--shadow-lg)] p-4 z-[90] fade-in"
         >
           <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[var(--border)]">
@@ -322,7 +358,7 @@ export default function Header({
           </div>
 
           {items.length > 0 ? (
-            <div className="flex flex-col gap-2 max-h-[56vh] overflow-y-auto">
+            <div className="flex flex-col gap-2 max-h-[min(56vh,calc(100dvh-14rem))] overflow-y-auto">
               {items.map(item => {
                 const isUnread = !readIds[item.id] && item.unread !== false
                 return (
@@ -345,7 +381,15 @@ export default function Header({
                     }}
                   >
                     <IconBadge color={item.color || 'blue'} size={30} radius={9} className="mt-0.5">
-                      <AnnouncementTypeIcon type={item.type} size={15} />
+                      {item.source === 'discord' ? (
+                        <PlatformIcon type="discord" size={15} />
+                      ) : item.source === 'email' ? (
+                        <PlatformIcon type="email" size={15} />
+                      ) : item.source === 'instagram_story' ? (
+                        <PlatformIcon type="instagram" size={15} />
+                      ) : (
+                        <AnnouncementTypeIcon type={item.type} size={15} />
+                      )}
                     </IconBadge>
 
                     <div className="flex-1 min-w-0">

@@ -912,7 +912,12 @@ export default function SignInPage({
       provider: profile.provider || 'email',
       authenticated: true,
       verifiedEdu: cleanEmail.endsWith('.edu'),
-      darkMode: typeof profile.darkMode === 'boolean' ? profile.darkMode : undefined,
+      themeMode:
+        profile.themeMode === 'light' ||
+        profile.themeMode === 'dark' ||
+        profile.themeMode === 'system'
+          ? profile.themeMode
+          : undefined,
       avatarBg: profile.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
     }
     if (onLocalSignIn) onLocalSignIn(userObj)
@@ -1300,8 +1305,12 @@ export default function SignInPage({
         email: cleanEmail,
         fullName: existingLocal.fullName || formatNameFromEmail(cleanEmail),
         passwordHash,
-        darkMode:
-          typeof existingLocal.darkMode === 'boolean' ? existingLocal.darkMode : undefined,
+        themeMode:
+          existingLocal.themeMode === 'light' ||
+          existingLocal.themeMode === 'dark' ||
+          existingLocal.themeMode === 'system'
+            ? existingLocal.themeMode
+            : undefined,
         avatarBg:
           existingLocal.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
       }
@@ -1315,7 +1324,6 @@ export default function SignInPage({
       email: cleanEmail,
       fullName: formatNameFromEmail(cleanEmail),
       passwordHash,
-      darkMode: Boolean(dark),
       avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
     }
     saveRegisteredEmailAccount(newAccount)
@@ -1385,8 +1393,8 @@ export default function SignInPage({
                 <span>UC Santa Cruz</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-[36px] font-extrabold tracking-tight text-[var(--text)] leading-[1.16]">
-                Everything happening across{' '}
+              <h1 className="text-2xl sm:text-3xl lg:text-[36px] font-extrabold tracking-tight text-[var(--text)] leading-[1.16] text-balance">
+                See what&apos;s happening{' '}
                 <span
                   className="bg-clip-text text-transparent"
                   style={{
@@ -1394,12 +1402,12 @@ export default function SignInPage({
                       'linear-gradient(135deg, var(--blue) 0%, var(--purple) 52%, var(--teal) 100%)',
                   }}
                 >
-                  UCSC student clubs.
+                  across every campus club.
                 </span>
               </h1>
 
               <p className="text-[13.5px] sm:text-[14.5px] text-[var(--text-muted)] leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Explore campus organizations, follow announcements from Discord and Instagram, and
+                Explore student organizations, follow announcements from Discord and Instagram, and
                 coordinate event RSVPs and group availability.
               </p>
 
