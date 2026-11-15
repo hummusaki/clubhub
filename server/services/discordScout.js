@@ -386,10 +386,12 @@ function buildClubCandidateMap() {
   for (const fc of fileClubs) {
     const cid = normalizeClubId(fc.instagram || fc.id);
     if (!cid || cid.startsWith('demo_')) continue;
+    const cleanIg =
+      fc.instagram && !/^(?:noig_|discord_)/i.test(String(fc.instagram)) ? fc.instagram : '';
     clubsMap.set(cid.toLowerCase(), {
       id: cid,
       name: fc.name || cid,
-      instagram: fc.instagram || cid,
+      instagram: cleanIg,
       category: fc.category || null,
       email: fc.email || null,
       bio: '',
@@ -409,11 +411,13 @@ function buildClubCandidateMap() {
     const cid = normalizeClubId(dc.id || dc.instagram);
     if (!cid || cid.startsWith('demo_') || cid === 'media') continue;
     const key = cid.toLowerCase();
+    const cleanDcIg =
+      dc.instagram && !/^(?:noig_|discord_)/i.test(String(dc.instagram)) ? dc.instagram : '';
     if (!clubsMap.has(key)) {
       clubsMap.set(key, {
         id: cid,
         name: dc.name || cid,
-        instagram: dc.instagram || cid,
+        instagram: cleanDcIg,
         category: dc.category || null,
         email: dc.email || null,
         bio: dc.bio || '',

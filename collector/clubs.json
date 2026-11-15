@@ -361,13 +361,6 @@
     "description": "A club where we provide weekly dance workshops in different styles, which are open to all UCSC students"
   },
   {
-    "name": "Delta Sigma Pi",
-    "instagram": "ucscdsp",
-    "category": "greek",
-    "email": "pichipres@gmail.com",
-    "description": "Pre-Professional Co-ed fraternity focusing on comunity service, brotherhood, and professional development."
-  },
-  {
     "name": "Education for Sustainable Living Program (ESLP)",
     "instagram": "enviroslug",
     "category": "service & advocacy",
@@ -645,6 +638,15 @@
     "description": "KASA is a student run social and cultural organization that values equality and diversity here at UCSC. They focus on promoting and celebrating Korean culture to students of all backgrounds and provide opportunities to form relationships through their events."
   },
   {
+    "name": "kresge parliament",
+    "instagram": "kresge_parliament",
+    "category": "service & advocacy",
+    "email": null,
+    "sources": [
+      "mention_discovery"
+    ]
+  },
+  {
     "name": "Kuya Ate Mentorship Program (KAMP)",
     "instagram": "kamp.ucsc",
     "category": "cultural",
@@ -864,6 +866,19 @@
     "description": "We are an organization of people who play fighting games. These include Super Smash Bros, Street Fighter, Guilty Gear and more. We host tournaments and fun gaming sessions as a community."
   },
   {
+    "name": "Santa Cruz Ski and Snow Club",
+    "instagram": "santacruzskiandsnow",
+    "category": "gaming",
+    "email": null,
+    "alsoKnownAs": [
+      "Santa Cruz Ski and Snow",
+      "UCSC Ski and Snow Club"
+    ],
+    "sources": [
+      "mention_discovery"
+    ]
+  },
+  {
     "name": "Shutterslug",
     "instagram": "shutterslugofficial",
     "category": "media & arts",
@@ -903,22 +918,6 @@
     "category": "greek",
     "email": "president.ucscsopi@gmail.com",
     "description": "Our chapter was founded at the University of California, Santa Cruz (UCSC) in 1995. We are a national Asian-interest sorority that has based our sisterhood on four objectives: Unity, Friendship, Leadership, and Service."
-  },
-  {
-    "name": "Sigma Phi Zeta",
-    "instagram": "sigmaphizeta_fraternity",
-    "category": "greek",
-    "email": "ucscsigmaphizeta@gmail.com",
-    "description": "We are an organization that commits to upholding our core pillars and supporting ouruniversity and our community. We devote ourselves to giving back to our community and fostering a safe and caring environment for young adults to prosper.",
-    "orgStatus": "interim_suspension",
-    "orgStatusNote": "Please note this organization is in Interim Suspension until further notice."
-  },
-  {
-    "name": "Sigma Pi Alpha Sorority, Inc.",
-    "instagram": "ucsantacruzellas",
-    "category": "greek",
-    "email": "gammachapter.president96@gmail.com",
-    "description": "Sigma Pi Alpha Sorority, Inc. is a Chicana/Latina-based sorority that strives to empower women from all cultures through community service, campus involvement, and sisterhood. We hold our motto, “Mujeres con Cultura, Fuerza, y Hermandad” close to our hearts as it empower us."
   },
   {
     "name": "Sikh Student Association",

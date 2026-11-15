@@ -21,6 +21,7 @@ import {
 } from './database.js';
 import { scoutClubDiscordServers } from './services/discordScout.js';
 import discordService from './services/discord.js';
+import { sanitizePublicSnapshot } from './services/publicSnapshotSanitizer.js';
 import { updateClubsCatalog } from '../collector/src/update-clubs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -140,7 +141,7 @@ async function main() {
     const stats = getStats();
     const sources = Object.values(getDictionary({ namespace: 'sources' }));
 
-    const snapshot = {
+    const snapshot = sanitizePublicSnapshot({
       exportedAt: new Date().toISOString(),
       ...(prevRosterUpdatedAt ? { rosterUpdatedAt: prevRosterUpdatedAt } : {}),
       stats: {
@@ -148,7 +149,7 @@ async function main() {
         sources: sources.length,
       },
       ...collectorData,
-    };
+    });
 
     fs.mkdirSync(PUBLIC_DIR, { recursive: true });
     fs.writeFileSync(DATA_OUTPUT_FILE, JSON.stringify(snapshot));
@@ -189,8 +190,9 @@ async function main() {
       lines.push('| Club | Server Name | Invite | Followable (`NEWS`) | Members | Source |');
       lines.push('| --- | --- | --- | --- | --- | --- |');
       for (const srv of newServers.slice(0, 30)) {
+        const igTag = srv.instagram ? ` (\`@${srv.instagram}\`)` : '';
         lines.push(
-          `| **${srv.clubName}** (\`@${srv.instagram}\`) | ${srv.serverName || '—'} | ${srv.url} | ${srv.followable ? '✅ Yes' : '💬 Text Only'} | ${srv.memberCount ?? '—'} | \`${srv.discoveredVia}\` |`
+          `| **${srv.clubName}**${igTag} | ${srv.serverName || '—'} | ${srv.url} | ${srv.followable ? '✅ Yes' : '💬 Text Only'} | ${srv.memberCount ?? '—'} | \`${srv.discoveredVia}\` |`
         );
       }
       lines.push('');
@@ -214,7 +216,8 @@ async function main() {
     if (expiredList.length > 0) {
       lines.push('### ⚠️ Expired Club Discord Invites', '');
       for (const srv of expiredList.slice(0, 20)) {
-        lines.push(`- **${srv.clubName}** (\`@${srv.instagram}\`): \`${srv.url}\``);
+        const igTag = srv.instagram ? ` (\`@${srv.instagram}\`)` : '';
+        lines.push(`- **${srv.clubName}**${igTag}: \`${srv.url}\``);
       }
       lines.push('');
     }

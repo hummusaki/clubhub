@@ -472,11 +472,23 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
   `);
 
   const affectedClubs = new Set();
+  const isSyntheticNonIgId = id => /^(?:noig_|discord_)/i.test(String(id || ''));
   const ensureClub = (rawId, fallbackName) => {
     const cid = normalizeClubId(rawId);
     if (!cid) return null;
-    const autoCat = categorizeClub({ id: cid, name: fallbackName || cid, instagram: cid });
-    ensureClubStmt.run(cid, fallbackName || cid, cid, `https://www.instagram.com/${cid}/`, autoCat);
+    const hasIg = !isSyntheticNonIgId(cid);
+    const autoCat = categorizeClub({
+      id: cid,
+      name: fallbackName || cid,
+      instagram: hasIg ? cid : '',
+    });
+    ensureClubStmt.run(
+      cid,
+      fallbackName || cid,
+      hasIg ? cid : '',
+      hasIg ? `https://www.instagram.com/${cid}/` : null,
+      autoCat
+    );
     affectedClubs.add(cid);
     return cid;
   };
@@ -492,22 +504,30 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
     for (const c of clubs) {
       const cid = normalizeClubId(c.id || c.instagram);
       if (!cid) continue;
+      const rawIg = normalizeClubId(c.instagram);
+      const hasIg = Boolean(
+        rawIg && !c.noInstagram && !isSyntheticNonIgId(rawIg) && !isSyntheticNonIgId(cid)
+      );
+      const resolvedIg = hasIg ? rawIg : !c.noInstagram && !isSyntheticNonIgId(cid) && c.instagram === undefined ? cid : '';
+      const resolvedIgUrl = resolvedIg
+        ? c.instagramUrl || `https://www.instagram.com/${resolvedIg}/`
+        : null;
       const resolvedCategory = categorizeClub({
         ...c,
         id: cid,
         name: c.name || cid,
-        instagram: normalizeClubId(c.instagram) || cid,
+        instagram: resolvedIg,
       });
       upsertClubStmt.run(
         cid,
         c.name || cid,
         JSON.stringify(Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : []),
-        normalizeClubId(c.instagram) || cid,
-        c.instagramUrl || `https://www.instagram.com/${cid}/`,
+        resolvedIg,
+        resolvedIgUrl,
         resolvedCategory,
         c.bio || null,
         c.website || null,
-        c.profilePictureUrl || null,
+        c.profilePictureUrl || c.iconUrl || null,
         Number(c.followers) || 0,
         c.lastPostAt || null,
         c.lastSyncedAt || null,

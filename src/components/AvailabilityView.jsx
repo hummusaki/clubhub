@@ -2289,7 +2289,7 @@ export default function AvailabilityView({
                     rowStyle = 'bg-[var(--green)] text-white border-[var(--green)] shadow-2xs'
                   } else if (otherCount > 0) {
                     rowStyle =
-                      'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/30'
+                      'bg-[var(--green)]/22 text-[var(--green-ink)] border-[var(--green)]/42'
                   }
                 } else if (count > 0) {
                   rowStyle =
@@ -2435,8 +2435,8 @@ export default function AvailabilityView({
                           className={`pr-2 py-0 text-right align-middle text-[10.5px] text-[var(--text-muted)] font-mono-num whitespace-nowrap bg-[var(--bg-surface)]/55 border-r border-[var(--border)] select-none ${
                             !isFirstRow
                               ? isFullHour
-                                ? 'border-t border-t-[var(--border)]'
-                                : 'border-t border-dashed border-t-[var(--border-subtle)]'
+                                ? 'border-t border-t-[var(--border-strong)]'
+                                : 'border-t border-t-[var(--border)]'
                               : ''
                           }`}
                         >
@@ -2488,7 +2488,9 @@ export default function AvailabilityView({
                               bg = 'var(--green)'
                               textColor = '#ffffff'
                             } else if (otherCount > 0) {
-                              bg = 'var(--green-light)'
+                              const otherRatio = otherCount / Math.max(1, allParticipants.length)
+                              const otherPct = Math.round((0.22 + otherRatio * 0.20) * 100)
+                              bg = `color-mix(in srgb, var(--green) ${otherPct}%, transparent)`
                               textColor = 'var(--green-ink)'
                             }
                           } else if (count > 0) {
@@ -2527,7 +2529,7 @@ export default function AvailabilityView({
                                 !isFirstRow
                                   ? isFullHour
                                     ? 'border-t border-t-[var(--border-strong)]'
-                                    : 'border-t border-dashed border-t-[var(--border-subtle)]'
+                                    : 'border-t border-t-[var(--border)]'
                                   : ''
                               } cursor-pointer text-center text-[10.5px] font-semibold transition-colors ${
                                 isRemovePreview
@@ -2880,7 +2882,7 @@ export default function AvailabilityView({
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric',
-                  }).replace(/,?\s*\d{1,2}:\d{2}.*$/, '')
+                  }).replace(/(?:\s+at)?,?\s*\d{1,2}:\d{2}.*$/, '')
                   const startClock = formatTimeFromIso(win.startIso, use24h)
                   const endClock = formatTimeFromIso(win.endIso, use24h)
                   const isEveryone = win.availableCount === allParticipants.length
@@ -2914,11 +2916,11 @@ export default function AvailabilityView({
                         isCompact ? 'p-2.5 space-y-2' : 'p-3.5 space-y-2.5'
                       } rounded-xl hover:border-[var(--blue)] transition-colors`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             <span
-                              className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num ${
+                              className={`inline-flex items-center justify-center shrink-0 px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num ${
                                 idx === 0
                                   ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
                                   : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
@@ -2940,6 +2942,7 @@ export default function AvailabilityView({
                           }
                           color={isEveryone ? 'green' : 'blue'}
                           size="sm"
+                          className="whitespace-nowrap shrink-0"
                         />
                       </div>
 

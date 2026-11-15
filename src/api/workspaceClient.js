@@ -180,41 +180,42 @@ export async function authenticateWorkspaceEmail({
   mode = 'auto',
 }) {
   // When Supabase Cloud keys are configured, authenticate with Supabase Auth first
+  let sbRequiresConfirmation = false
+  let sbErrorMsg = ''
   if (isSupabaseConfigured()) {
-    const sbAuth = await signInOrSignUpWithSupabase({ email, password, fullName })
-    if (sbAuth?.requiresEmailConfirmation) {
-      return {
-        ok: false,
-        requiresEmailConfirmation: true,
-        error: 'Check your email inbox to confirm your Supabase account, then sign in.',
+    try {
+      const sbAuth = await signInOrSignUpWithSupabase({ email, password, fullName })
+      if (sbAuth?.requiresEmailConfirmation) {
+        sbRequiresConfirmation = true
+      } else if (sbAuth?.session?.access_token) {
+        setApiSessionToken(sbAuth.session.access_token)
+        const synced = await workspaceRequest('/auth/sync-external', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: 'supabase',
+            googleAccessToken: sbAuth.session.access_token,
+            email: sbAuth.user?.email || email,
+            fullName: sbAuth.user?.user_metadata?.full_name || fullName,
+            avatarBg,
+          }),
+        })
+        if (synced.ok) return synced
+        return {
+          ok: true,
+          user: {
+            id: sbAuth.user.id,
+            email: sbAuth.user.email,
+            fullName: sbAuth.user.user_metadata?.full_name || fullName || email.split('@')[0],
+            avatarBg: avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+          },
+          token: sbAuth.session.access_token,
+          memberships: [],
+          claims: [],
+          permissionsByClub: {},
+        }
       }
-    }
-    if (sbAuth?.session?.access_token) {
-      setApiSessionToken(sbAuth.session.access_token)
-      const synced = await workspaceRequest('/auth/sync-external', {
-        method: 'POST',
-        body: JSON.stringify({
-          provider: 'supabase',
-          googleAccessToken: sbAuth.session.access_token,
-          email: sbAuth.user?.email || email,
-          fullName: sbAuth.user?.user_metadata?.full_name || fullName,
-          avatarBg,
-        }),
-      })
-      if (synced.ok) return synced
-      return {
-        ok: true,
-        user: {
-          id: sbAuth.user.id,
-          email: sbAuth.user.email,
-          fullName: sbAuth.user.user_metadata?.full_name || fullName || email.split('@')[0],
-          avatarBg: avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
-        },
-        token: sbAuth.session.access_token,
-        memberships: [],
-        claims: [],
-        permissionsByClub: {},
-      }
+    } catch (err) {
+      sbErrorMsg = err?.message || ''
     }
   }
 
@@ -224,6 +225,17 @@ export async function authenticateWorkspaceEmail({
   })
   if (res.ok && res.token) {
     setApiSessionToken(res.token)
+    return res
+  }
+  if (isMissingBackendEndpoint(res) && sbRequiresConfirmation) {
+    return {
+      ok: false,
+      requiresEmailConfirmation: true,
+      error: 'Check your email inbox to confirm your Supabase account, then sign in.',
+    }
+  }
+  if (isMissingBackendEndpoint(res) && sbErrorMsg) {
+    return { ok: false, error: sbErrorMsg }
   }
   return res
 }

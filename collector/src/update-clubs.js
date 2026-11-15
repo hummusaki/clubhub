@@ -131,14 +131,17 @@ export function canonicalClubNameKey(rawName = '') {
     .replace(/\buniversity of california,?\s*santa cruz\b/gi, ' ')
     .replace(/\buc santa cruz\b/gi, ' ')
     .replace(/\bbanana slugs?\b/gi, ' ')
+    .replace(/\bgoogle developer (?:group on campus|student club)\b/gi, 'google developer')
     .replace(/['’`]/g, '') // men's -> mens
     .replace(/[&+]/g, ' and ')
     .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, ' ')
     .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\b(?:ucsc|the|at|of|for|in|club|clubs|team|student|students|organization|organizations)\b/g, ' ')
+    .replace(/\b(?:ucsc|the|at|of|for|in|on|campus|club|clubs|team|student|students|organization|organizations)\b/g, ' ')
     .replace(/\bskatboarding\b/g, 'skate')
     .replace(/\bskateboarding\b/g, 'skate')
     .replace(/\bwomxns\b/g, 'womens')
+    .replace(/\barts\b/g, 'art')
+    .replace(/\bcollaborations\b/g, 'collaboration')
     .replace(/\s+/g, ' ')
     .trim()
   return s
@@ -217,13 +220,31 @@ export function parseDirectory(html) {
   const cut = String(html || '').search(/<h[1-6][^>]*>(?:<[^>]+>|\s)*[^<]*(?:suspended|dismissed)/i)
   const active = cut === -1 ? String(html || '') : String(html || '').slice(0, cut)
   const short = n => n.replace(/\s*\(.*?\)\s*/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
-  const inactive = new Set(
-    cut === -1
-      ? []
-      : [...String(html || '').slice(cut).matchAll(/<(td|li|th)[^>]*>([\s\S]*?)<\/\1>/gi)]
-          .map(m => short(decode(m[2])))
-          .filter(Boolean)
-  )
+  const inactive = new Set()
+  if (cut !== -1) {
+    const tail = String(html || '').slice(cut)
+    // Inspect table rows first so chapters explicitly "on probation" (permitted to continue activities) aren't marked suspended
+    const rows = [...tail.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+    if (rows.length > 0) {
+      for (const rm of rows) {
+        const rowHtml = rm[1]
+        const rowText = decode(rowHtml)
+        if (/\bon probation\b|\bpermitted to continue\b/i.test(rowText)) continue
+        const firstCell = rowHtml.match(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/i)
+        if (firstCell) {
+          const k = short(decode(firstCell[1]))
+          if (k && !/organization|details/i.test(k)) inactive.add(k)
+        }
+      }
+    } else {
+      for (const m of tail.matchAll(/<(td|li|th)[^>]*>([\s\S]*?)<\/\1>/gi)) {
+        const text = decode(m[2])
+        if (/\bon probation\b|\bpermitted to continue\b/i.test(text)) continue
+        const k = short(text)
+        if (k) inactive.add(k)
+      }
+    }
+  }
 
   const clubs = []
   const sections = active.split(/(?=<h2[\s>])/i).slice(1)
@@ -273,6 +294,7 @@ export function parseBaskinDirectory(html = '') {
 
   const columns = targetHtml.split(/<div\b[^>]*class=["'][^"']*wp-block-column\b/i).slice(1)
   for (const col of columns) {
+    if (!/wp-block-cover\b/i.test(col)) continue
     const linkMatch = col.match(/<a\b[^>]*href=["'](https?:\/\/[^"'\s>]+)["'][^>]*>([\s\S]*?)<\/a>/i)
     if (!linkMatch) continue
     const rawUrl = linkMatch[1].replace(/&amp;/g, '&').trim()
@@ -522,7 +544,7 @@ const CONDUCT_BLOCKED_PATTERNS = [
   /\blambda phi epsilon\b/i,
   /\bpi alpha phi\b/i,
   /\bpsi chi omega\b/i,
-  /\bsigma pi\b/i,
+  /(?<!delta\s)\bsigma pi\b(?!\s+alpha)/i,
   /\btau kappa epsilon\b|\btke\b/i,
   /\btheta chi\b/i,
 ]
@@ -532,14 +554,19 @@ function hasCleanUcscAffiliation(username, normName) {
   const n = String(normName || '').toLowerCase()
 
   if (
-    /^(?:slugsonwheelsclub|slugsontwowheels|santacruzskiandsnow|cruzhacks|formulaslug|slugbotics|slugsec|sweslugs|slugultimate|slugxc|slugsvolleyball|slugshockey|cruzlacrosse|sol_ultimate|tangroupe|kzsc|kzsc881|cityonahillpress|fishraplive|autoslug|neurotechsc|santacruzai)$/i.test(
+    /^(?:slugsonwheelsclub|slugsontwowheels|santacruzskiandsnow|cruzhacks|formulaslug|slugbotics|slugsec|sweslugs|slugultimate|slugxc|slugsvolleyball|slugshockey|cruzlacrosse|sol_ultimate|tangroupe|kzsc|kzsc881|cityonahillpress|fishraplive|autoslug|neurotechsc|santacruzai|kresge_parliament)$/i.test(
       u
     )
   ) {
     return true
   }
 
-  if (/\b(?:ucsc|uc santa cruz|banana slugs?)\b/i.test(n)) {
+  if (
+    /\b(?:ucsc|uc santa cruz|banana slugs?)\b/i.test(n) ||
+    /\b(?:cowell|stevenson|crown|merrill|porter|kresge|oakes|rachel carson|college nine|john r\.? lewis)\s+(?:college\s+)?(?:student\s+)?(?:senate|parliament|council|government)\b/i.test(
+      n
+    )
+  ) {
     return true
   }
 
@@ -589,7 +616,7 @@ export function isGenuineUcscClubCandidate(entry = {}) {
 
   // 3. Reject UCSC administrative offices, academic departments, dining halls, research labs, NCAA varsity teams, meme/confession pages, local businesses
   if (
-    /\b(department|division|dining hall|advising|career|careers|care\b|taps\b|police|library|registrar|admissions|alumni|extension|institute of|center for|norris center|el centro|shop\s*@?\s*ucsc|ucsc athletics|sport clubs|lab\b|laboratory|kap\/sar|raimondi|kroeker|mfa\b|phd\b|tim\d+|20\d{2} .*bios|class of 20\d{2}|class council|council of chairs|crisis communication|financial affairs|green team|ssa team|sustainability advisors|yik\s*yak|fizz|cupid|carspotting|cars of uc|naked\s*run|run me my money|robs\b|drinking team|art hoes|nshit|self\s*care|parkside|graffiti|short film by|skincare|esthetic|acne|barber|realty|property|country club|athletic club|fitness club|kustom|hyundai|line dance lessons|polo club|school of)\b/i.test(
+    /\b(department|division|dining hall|advising|career|careers|care\b|taps\b|police|library|registrar|admissions|alumni|extension|institute of|center for|norris center|el centro|shop\s*@?\s*ucsc|ucsc athletics|sport clubs|lab\b|laboratory|kap\/sar|raimondi|kroeker|mfa\b|phd\b|tim\d+|20\d{2} .*bios|class of 20\d{2}|class council|council of chairs|crisis communication|financial affairs|green team|ssa team|sustainability advisors|yik\s*yak|fizz|cupid|carspotting|cars of uc|naked\s*run|run me my money|robs\b|drinking team|art hoes|nshit|self\s*care|parkside|graffiti|short film by|skincare|esthetic|acne|barber|realty|property|(?<!cross\s)country club|athletic club|fitness club|kustom|hyundai|line dance lessons|(?<!water\s)polo club|school of)\b/i.test(
       combined
     ) ||
     /^(?:ucsc|ucsc_athletics|ucsc_sportclubs|ucsc_mbb|ucsc_wvb|ucscswimanddive|ucsc_msoc|ucsc_wsoc|ucsc_taps|ucsccowelldh|ucscrcodininghall|ucsccareers|ucsccareersuccess|ucsantacruz_care|ucsc_care|care\.ucsc|ucsc_oarcadv|ucsc_oakescara|rcc_ucsc|porter\.college|ucscmusic|ucsc_art_department|ucsc_arts_division|ucsctheaterarts|ucschumanities|fdm\.ucsc|ucsc\.cse|ucsc_bees|councilofchairs|ucscsurfteamsucks|ucsc_club_?|ucsc\.club|ucsc_creations|slugtunesnshit|ucscrobs|ucscgreenteamfa|ucsc_suacct|ucscsustainabilityadvisors)$/i.test(
@@ -616,10 +643,20 @@ export function formatDiscoveredClubEntry(entry = {}, sourceTag = 'instagram_dis
     .replace(/\s+/g, ' ')
     .trim()
 
+  if (sourceTag === 'mention_discovery' && cleanName === cleanName.toLowerCase()) {
+    cleanName = cleanName
+      .split(' ')
+      .map(w => (/^ucsc$/i.test(w) ? 'UCSC' : /^(?:and|of|at|on|in|for)$/i.test(w) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+      .join(' ')
+  }
+
   let alsoKnownAs = []
   if (handle === 'slugsontwowheels') {
     cleanName = 'Slugs on Two Wheels (SlugWerks)'
     alsoKnownAs = ['Slugs on Two Wheels', 'SlugWerks']
+  } else if (handle === 'santacruzskiandsnow') {
+    cleanName = cleanName || 'Santa Cruz Ski & Board Club'
+    alsoKnownAs = ['Santa Cruz Ski and Snow', 'UCSC Ski and Snow Club']
   } else if (/^balloon club$/i.test(cleanName)) {
     cleanName = 'UCSC Balloon Brigade'
   } else if (/^ucsc costco club$/i.test(cleanName)) {
@@ -998,9 +1035,24 @@ export async function updateClubsCatalog({
   ])
 
   const mergeIntoExistingRecord = (target, incoming) => {
+    const prevSources = target.sources || []
+    const wasOnlyMention = prevSources.length === 1 && prevSources[0] === 'mention_discovery'
     const incomingSource = incoming.source || 'someca'
-    const mergedSources = [...new Set([...(target.sources || []), incomingSource])]
+    const mergedSources = [...new Set([...prevSources, incomingSource])]
     target.sources = mergedSources
+
+    // If target was created from a humanized @mention handle and incoming has the real profile/directory name, upgrade name!
+    if (wasOnlyMention && incoming.name && incomingSource !== 'mention_discovery') {
+      const oldName = target.name
+      target.name = incoming.name
+      if (
+        oldName &&
+        oldName.toLowerCase() !== target.name.toLowerCase() &&
+        !(target.alsoKnownAs || []).some(a => a.toLowerCase() === oldName.toLowerCase())
+      ) {
+        target.alsoKnownAs = [...(target.alsoKnownAs || []), oldName]
+      }
+    }
 
     // If target had no Instagram handle yet (e.g. SPA website in Baskin/DSERec) and incoming has one, upgrade it!
     if (!target.instagram && incoming.instagram && !byHandle.has(incoming.instagram)) {
@@ -1203,6 +1255,7 @@ export async function updateClubsCatalog({
   }
 
   out.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  keptWithoutIg = out.filter(c => !c.instagram).length
 
   const wasPreviouslyKnown = c => {
     const h = String(c.instagram || '').toLowerCase()

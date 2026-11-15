@@ -21,9 +21,10 @@ export function scrapePersonalClubs(
     pythonBin = process.env.PYTHON_BIN || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3'),
   } = {}
 ) {
-  if (!clubs.length) return Promise.resolve({ items: [], errors: [] })
+  const validClubs = clubs.filter(c => Boolean(c?.instagram && String(c.instagram).trim()))
+  if (!validClubs.length) return Promise.resolve({ items: [], errors: [] })
 
-  const handles = clubs.map(c => c.instagram.replace(/^@/, ''))
+  const handles = validClubs.map(c => String(c.instagram).trim().replace(/^@+/, ''))
   const maxClubs = Number(process.env.IG_SCRAPER_MAX_CLUBS) || 0
   const args = [SCRIPT_PATH, '--limit', String(limit), '--delay', String(delay)]
   if (maxClubs > 0) args.push('--max-clubs', String(maxClubs))
@@ -53,7 +54,7 @@ export function scrapePersonalClubs(
       } catch {
         return resolve({
           items: [],
-          errors: clubs.map(c => ({
+          errors: validClubs.map(c => ({
             club: c.instagram,
             message: `@${c.instagram}: fallback scraper returned invalid output`,
           })),
@@ -64,14 +65,16 @@ export function scrapePersonalClubs(
         console.warn(`\n! ${parsed.fatalError}`)
         return resolve({
           items: [],
-          errors: clubs.map(c => ({
+          errors: validClubs.map(c => ({
             club: c.instagram,
             message: parsed.fatalError,
           })),
         })
       }
 
-      const clubByHandle = new Map(clubs.map(c => [c.instagram.toLowerCase().replace(/^@/, ''), c]))
+      const clubByHandle = new Map(
+        validClubs.map(c => [String(c.instagram).trim().toLowerCase().replace(/^@+/, ''), c])
+      )
       const items = (parsed.results || []).map(r => ({
         club: clubByHandle.get((r.handle || '').toLowerCase()) || {
           name: r.profile?.name || r.handle,

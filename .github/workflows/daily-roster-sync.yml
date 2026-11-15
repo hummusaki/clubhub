@@ -45,8 +45,15 @@ jobs:
           restore-keys: |
             clubhub-collector-cache-${{ runner.os }}-
 
+      - name: Set up Python (for Instagram UCSC club discovery)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          pip install --quiet instaloader requests
 
       - name: Check Meta Graph API token health & expiry
         env:
@@ -58,6 +65,8 @@ jobs:
       - name: Sync official UCSC club directory & per-club rosters
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          IG_SCRAPER_SESSION_USER: ${{ secrets.IG_SCRAPER_SESSION_USER }}
+          IG_SCRAPER_SESSION_B64: ${{ secrets.IG_SCRAPER_SESSION_B64 }}
           OFFLINE_ONLY: ${{ inputs.offline_only && 'true' || 'false' }}
         run: |
           if [ "$OFFLINE_ONLY" = "true" ]; then

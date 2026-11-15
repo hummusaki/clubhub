@@ -775,7 +775,19 @@ function LightWaveBackground({ dark }) {
       rafId = requestAnimationFrame(render)
     }
 
+    function onPointerMove(e) {
+      if (e.pointerType === 'touch') return
+      onMouseMove(e)
+    }
+
+    function onPointerDown(e) {
+      if (e.pointerType === 'touch') return
+      onMouseDown(e)
+    }
+
     window.addEventListener('resize', resize, { passive: true })
+    window.addEventListener('pointermove', onPointerMove, { passive: true })
+    window.addEventListener('pointerdown', onPointerDown, { passive: true })
     window.addEventListener('mousemove', onMouseMove, { passive: true })
     window.addEventListener('mousedown', onMouseDown, { passive: true })
     window.addEventListener('mouseout', onMouseOut, { passive: true })
@@ -791,6 +803,8 @@ function LightWaveBackground({ dark }) {
       if (rafId) cancelAnimationFrame(rafId)
       if (resizeObserver) resizeObserver.disconnect()
       window.removeEventListener('resize', resize)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mouseout', onMouseOut)

@@ -24,7 +24,26 @@ import {
 import { categorizeClub } from './categorize.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-if (fs.existsSync(path.join(ROOT, '.env'))) process.loadEnvFile(path.join(ROOT, '.env'))
+for (const envCandidate of [path.join(ROOT, '.env'), path.resolve(ROOT, '../.env')]) {
+  if (fs.existsSync(envCandidate)) {
+    try {
+      process.loadEnvFile(envCandidate)
+    } catch {
+      // ignore unreadable env file
+    }
+  }
+}
+
+const getIgHandle = c => String(c?.instagram || '').trim().toLowerCase().replace(/^@+/, '')
+const getClubId = c => getIgHandle(c) || String(c?.id || '').trim().toLowerCase().replace(/^@+/, '')
+
+export function isGraphTokenOrPermissionBlock(err) {
+  if (!err) return false
+  if (err.code === 190 || err.code === 200 || err.code === 10) return true
+  return /API access blocked|access token|OAuthException|permission|not authorized/i.test(
+    String(err.message || '')
+  )
+}
 
 const args = process.argv.slice(2)
 const flag = name => args.includes(`--${name}`)
@@ -114,8 +133,8 @@ function loadPreviousSnapshot() {
 
 function sortClubsByStaleness(list, clubsById) {
   return [...list].sort((a, b) => {
-    const ca = clubsById.get(a.instagram.toLowerCase())
-    const cb = clubsById.get(b.instagram.toLowerCase())
+    const ca = clubsById.get(getClubId(a))
+    const cb = clubsById.get(getClubId(b))
     const aSynced = ca?.syncStatus === 'synced'
     const bSynced = cb?.syncStatus === 'synced'
     if (aSynced !== bSynced) return aSynced ? 1 : -1
@@ -130,23 +149,27 @@ function sortClubsByStaleness(list, clubsById) {
 }
 
 async function* runPersonalBatch(queue, { stories = false, clubsById = new Map() } = {}) {
-  if (!queue.length) return
-  const sortedQueue = sortClubsByStaleness(queue, clubsById)
-  const queueByHandle = new Map(
-    sortedQueue.map(c => [c.instagram.toLowerCase().replace(/^@/, ''), c])
-  )
+  const igQueue = []
+  for (const c of queue) {
+    if (getIgHandle(c)) igQueue.push(c)
+    else yield { club: c, noInstagram: true }
+  }
+  if (!igQueue.length) return
+  const sortedQueue = sortClubsByStaleness(igQueue, clubsById)
+  const queueByHandle = new Map(sortedQueue.map(c => [getIgHandle(c), c]))
 
   const fb = await scrapePersonalClubs(sortedQueue, { stories })
   const resolvedSet = new Set([
-    ...fb.items.map(i => i.club?.instagram?.toLowerCase()),
-    ...fb.errors.map(e => e.club?.toLowerCase()),
+    ...fb.items.map(i => getIgHandle(i.club)),
+    ...fb.errors.map(e => String(e.club || '').toLowerCase().replace(/^@+/, '')),
   ])
 
   for (const item of fb.items) yield item
 
   let rateLimitedPersonalCount = 0
   for (const err of fb.errors) {
-    const origClub = queueByHandle.get((err.club || '').toLowerCase()) || { instagram: err.club }
+    const errHandle = String(err.club || '').toLowerCase().replace(/^@+/, '')
+    const origClub = queueByHandle.get(errHandle) || { instagram: err.club }
     if (err.rateLimited || /rate[- ]?limit|deferred/i.test(err.message || '')) {
       rateLimitedPersonalCount++
       yield { club: origClub, deferred: true, reason: 'rate_limit' }
@@ -161,7 +184,7 @@ async function* runPersonalBatch(queue, { stories = false, clubsById = new Map()
   }
 
   for (const club of sortedQueue) {
-    if (!resolvedSet.has(club.instagram.toLowerCase())) {
+    if (!resolvedSet.has(getIgHandle(club))) {
       yield { club, deferred: true, reason: 'rotation' }
     }
   }
@@ -182,9 +205,19 @@ async function* liveSource(
   const clubsById = prevSnapshot?.clubsById || new Map()
   const personalClubIds = prevSnapshot?.personalClubIds || new Set()
 
+  const igClubs = []
+  for (const club of clubs) {
+    if (!getIgHandle(club)) {
+      yield { club, noInstagram: true }
+    } else {
+      igClubs.push(club)
+    }
+  }
+  if (!igClubs.length) return
+
   if (personalOnly) {
-    console.log(`Running personal-account Instaloader scraper on ${clubs.length} club(s)...`)
-    yield* runPersonalBatch(clubs, { stories, clubsById })
+    console.log(`Running personal-account Instaloader scraper on ${igClubs.length} club(s)...`)
+    yield* runPersonalBatch(igClubs, { stories, clubsById })
     return
   }
 
@@ -192,7 +225,7 @@ async function* liveSource(
   if (!IG_USER_ID || !IG_ACCESS_TOKEN) {
     if (fallbackPersonal) {
       console.warn('! Missing IG_USER_ID or IG_ACCESS_TOKEN; using Instaloader scraper directly...')
-      yield* runPersonalBatch(clubs, { stories, clubsById })
+      yield* runPersonalBatch(igClubs, { stories, clubsById })
       return
     }
     throw new Error('Missing IG_USER_ID or IG_ACCESS_TOKEN in .env (see README). Try `npm run demo` meanwhile.')
@@ -214,8 +247,8 @@ async function* liveSource(
   const personalFallbackQueue = []
   const graphCandidates = []
 
-  for (const club of clubs) {
-    const cid = club.instagram.toLowerCase()
+  for (const club of igClubs) {
+    const cid = getIgHandle(club)
     const prev = clubsById.get(cid)
     const lastSyncMs = prev?.lastSyncedAt ? Date.parse(prev.lastSyncedAt) : NaN
 
@@ -256,12 +289,13 @@ async function* liveSource(
 
   for (let idx = 0; idx < activeGraphBatch.length; idx++) {
     const club = activeGraphBatch[idx]
-    const prev = clubsById.get(club.instagram.toLowerCase())
+    const handle = getIgHandle(club)
+    const prev = clubsById.get(handle)
     const postLimit = prev?.syncStatus === 'synced' ? incrementalPostLimit : fullPostLimit
     let nextDelayMs = baseDelayMs
 
     try {
-      const data = await fetchClub(club.instagram, {
+      const data = await fetchClub(handle, {
         igUserId: IG_USER_ID.trim(),
         accessToken: IG_ACCESS_TOKEN.trim(),
         version: GRAPH_API_VERSION || 'v26.0',
@@ -297,10 +331,11 @@ async function* liveSource(
         consecutiveNetworkErrors = 0
       }
 
-      // Code 190 = IG_ACCESS_TOKEN expired; stop calling Graph API and fall back to Instaloader!
-      if (fallbackPersonal && err.code === 190) {
+      // Codes 190 (expired token), 200 ("API access blocked"), or 10 (permission denied):
+      // stop hammering Graph API and immediately switch the entire remaining batch to Instaloader!
+      if (fallbackPersonal && isGraphTokenOrPermissionBlock(err)) {
         console.warn(`\n! ${err.message}`)
-        console.warn('! Switching to Instaloader scraper since IG_ACCESS_TOKEN is expired...')
+        console.warn('! Switching remaining batch to Instaloader scraper since Meta Graph API token/access is blocked...')
         personalFallbackQueue.push(...activeGraphBatch.slice(idx))
         break
       }
@@ -364,7 +399,16 @@ async function* demoSource() {
 
 // Instagram page + email + directory Discord/website links, so every club can be reached even when IG posts can't be read.
 function contactLinks(club, handle) {
-  const links = [{ url: `https://www.instagram.com/${handle}/`, label: 'Instagram page', kind: 'instagram', postId: null }]
+  const links = []
+  const cleanHandle = String(handle || '').trim().replace(/^@+/, '')
+  if (cleanHandle && !cleanHandle.startsWith('noig_')) {
+    links.push({
+      url: `https://www.instagram.com/${cleanHandle}/`,
+      label: 'Instagram page',
+      kind: 'instagram',
+      postId: null,
+    })
+  }
   for (const email of [club.email, ...(club.extraEmails || [])].filter(Boolean)) {
     links.push({ url: `mailto:${email}`, label: `Email ${email}`, kind: 'email', postId: null })
   }
@@ -464,15 +508,19 @@ export async function collect({
   fallbackPersonal = process.env.IG_PERSONAL_FALLBACK === 'true',
   personalOnly = false,
   stories = process.env.IG_SCRAPER_STORIES === 'true',
+  clubsOverride = null,
 } = {}) {
-  let clubs = JSON.parse(fs.readFileSync(path.join(ROOT, 'clubs.json'), 'utf8'))
+  let clubs = Array.isArray(clubsOverride)
+    ? clubsOverride
+    : JSON.parse(fs.readFileSync(path.join(ROOT, 'clubs.json'), 'utf8'))
   const explicitOnly = Boolean(only && (!Array.isArray(only) || only.length > 0))
   if (Array.isArray(only)) {
-    const set = new Set(only.map(h => h.toLowerCase().replace(/^@/, '')))
-    clubs = clubs.filter(c => set.has(c.instagram.toLowerCase()))
+    const set = new Set(only.map(h => String(h || '').toLowerCase().replace(/^@+/, '')))
+    clubs = clubs.filter(c => set.has(getIgHandle(c)) || set.has(getClubId(c)))
   } else if (only) {
-    clubs = clubs.filter(c => c.instagram.toLowerCase() === only.toLowerCase().replace(/^@/, ''))
-    if (!clubs.length) clubs = [{ name: only, instagram: only.replace(/^@/, ''), category: null }]
+    const target = String(only).toLowerCase().replace(/^@+/, '')
+    clubs = clubs.filter(c => getIgHandle(c) === target || getClubId(c) === target)
+    if (!clubs.length) clubs = [{ name: only, instagram: target.startsWith('noig_') ? '' : target, id: target, category: null }]
   }
 
   const prevSnapshot = demo ? null : loadPreviousSnapshot()
@@ -504,10 +552,107 @@ export async function collect({
     }
   }
 
+  const carryPreviousClubCollections = clubId => {
+    const lc = String(clubId || '').toLowerCase()
+    if (!prevSnapshot) return
+    for (const p of prevSnapshot.postsByClubId.get(lc) || []) {
+      if (!seenPostIds.has(p.id)) {
+        seenPostIds.add(p.id)
+        out.posts.push(p)
+      }
+    }
+    for (const e of prevSnapshot.eventsByClubId.get(lc) || []) {
+      if (!seenEventIds.has(e.id)) {
+        seenEventIds.add(e.id)
+        out.events.push(e)
+      }
+    }
+    for (const a of prevSnapshot.announcementsByClubId.get(lc) || []) {
+      if (!seenAnnouncementIds.has(a.id)) {
+        seenAnnouncementIds.add(a.id)
+        out.announcements.push(a)
+      }
+    }
+    for (const l of prevSnapshot.linksByClubId.get(lc) || []) {
+      if (!seenLinkIds.has(l.id)) {
+        seenLinkIds.add(l.id)
+        out.links.push(l)
+      }
+    }
+    preserveClubRoster(lc)
+  }
+
+  const enrichLinksAndDiscord = async (clubId, clubName, websiteUrl, linksMap, clubRecord) => {
+    if (!demo && websiteUrl) {
+      try {
+        const unpacked = await unpackBioWebsite(websiteUrl)
+        for (const l of unpacked) {
+          if (!linksMap.has(l.url.toLowerCase())) {
+            linksMap.set(l.url.toLowerCase(), { ...l, postId: null })
+          }
+          const gcalId = extractGoogleCalendarId(l.url)
+          if (gcalId) {
+            const gcalEvents = await fetchPublicGoogleCalendarEvents(gcalId, {
+              clubId,
+              clubName,
+              calendarUrl: l.url,
+            })
+            for (const ge of gcalEvents) {
+              if (!seenEventIds.has(ge.id)) {
+                seenEventIds.add(ge.id)
+                out.events.push(ge)
+              }
+            }
+          }
+        }
+      } catch {
+        // non-fatal website enrichment failure
+      }
+    }
+    if (!demo) {
+      for (const l of linksMap.values()) {
+        if (l.kind === 'discord') {
+          try {
+            const inviteMeta = await fetchDiscordInviteMetadata(l.url)
+            if (inviteMeta?.serverName) {
+              const stats =
+                inviteMeta.memberCount != null
+                  ? ` (${inviteMeta.memberCount.toLocaleString()} members${
+                      inviteMeta.onlineCount != null ? ` · ${inviteMeta.onlineCount} online` : ''
+                    })`
+                  : ''
+              l.label = `Discord — ${inviteMeta.serverName}${stats}`
+              if (clubRecord && inviteMeta.memberCount != null) {
+                clubRecord.discordMemberCount = Math.max(
+                  clubRecord.discordMemberCount || 0,
+                  inviteMeta.memberCount
+                )
+                if (inviteMeta.onlineCount != null) clubRecord.discordOnlineCount = inviteMeta.onlineCount
+                clubRecord.memberCount = Math.max(
+                  clubRecord.memberCount || 0,
+                  clubRecord.discordMemberCount
+                )
+              }
+            }
+          } catch {
+            // non-fatal discord invite lookup failure
+          }
+        }
+      }
+    }
+    for (const l of linksMap.values()) {
+      const linkId = `${clubId}:${l.url}`
+      if (!seenLinkIds.has(linkId)) {
+        seenLinkIds.add(linkId)
+        out.links.push({ id: linkId, clubId, clubName, ...l })
+      }
+    }
+  }
+
   const carryClubRosterFields = (catalogClub, prevClub, followersOverride = null) => {
     const followers = followersOverride ?? prevClub?.followers ?? 0
-    const discordMemberCount = prevClub?.discordMemberCount ?? null
-    const discordOnlineCount = prevClub?.discordOnlineCount ?? null
+    const discordMemberCount = catalogClub?.discordMemberCount ?? prevClub?.discordMemberCount ?? null
+    const discordOnlineCount = catalogClub?.discordOnlineCount ?? prevClub?.discordOnlineCount ?? null
     const rosterCount = prevClub?.rosterCount ?? 0
     const memberCount = Math.max(
       prevClub?.memberCount || 0,
@@ -534,11 +679,63 @@ export async function collect({
   for await (const item of source) {
     const { club } = item
 
+    // Official directory organizations without an Instagram handle (e.g. SOMeCA / Baskin / Sport Clubs):
+    // store with empty `instagram: ''`, `instagramUrl: null`, website/Discord/email contact links, and web/GCal enrichment.
+    if (item.noInstagram) {
+      const clubId = getClubId(club)
+      if (!clubId) continue
+      const clubName = club.name || clubId
+      const prevClub = prevSnapshot?.clubsById?.get(clubId)
+      const hasWebOrContact = Boolean(club.website || club.discord || club.email || prevClub?.syncStatus === 'synced')
+
+      const clubRecord = {
+        ...(prevClub || {}),
+        id: clubId,
+        name: clubName,
+        alsoKnownAs: club.alsoKnownAs || prevClub?.alsoKnownAs || [],
+        instagram: '',
+        instagramUrl: null,
+        noInstagram: true,
+        category: categorizeClub({
+          ...prevClub,
+          ...club,
+          id: clubId,
+          name: clubName,
+          instagram: '',
+          bio: prevClub?.bio || club.description || null,
+        }),
+        email: club.email || prevClub?.email || null,
+        bio: prevClub?.bio || club.description || null,
+        website: club.website || prevClub?.website || null,
+        profilePictureUrl: prevClub?.profilePictureUrl || club.iconUrl || null,
+        followers: prevClub?.followers ?? null,
+        lastPostAt: prevClub?.lastPostAt || null,
+        lastSyncedAt: hasWebOrContact ? out.collectedAt : prevClub?.lastSyncedAt || null,
+        syncStatus: hasWebOrContact ? 'synced' : 'unavailable',
+        syncNote: null,
+        ...carryClubRosterFields(club, prevClub),
+      }
+      out.clubs.push(clubRecord)
+      carryPreviousClubCollections(clubId)
+
+      const noIgLinks = new Map()
+      for (const l of contactLinks(club, '')) noIgLinks.set(l.url.toLowerCase(), l)
+      await enrichLinksAndDiscord(
+        clubId,
+        clubName,
+        prevClub ? null : clubRecord.website,
+        noIgLinks,
+        clubRecord
+      )
+      continue
+    }
+
     // Deferred clubs (rotation batch cap, freshness TTL, or rate-limit circuit breaker):
     // preserve cached club/posts/events/links/roster cleanly with zero noisy error logs.
     if (item.deferred) {
       preservedCacheCount++
-      const clubId = club.instagram.toLowerCase()
+      const clubId = getClubId(club)
+      const igHandle = getIgHandle(club)
       const clubName = club.name || clubId
       const prevClub = prevSnapshot?.clubsById?.get(clubId)
 
@@ -553,146 +750,86 @@ export async function collect({
             ...club,
             id: prevClub.id || clubId,
             name: clubName || prevClub.name,
-            instagram: prevClub.instagram || clubId,
-            bio: prevClub.bio,
+            instagram: prevClub.instagram || igHandle,
+            bio: prevClub.bio || club.description || null,
           }),
           email: club.email || prevClub.email || null,
           website: prevClub.website || club.website || null,
+          profilePictureUrl: prevClub.profilePictureUrl || club.iconUrl || null,
           ...carryClubRosterFields(club, prevClub),
         })
-        for (const p of prevSnapshot.postsByClubId.get(clubId) || []) {
-          if (!seenPostIds.has(p.id)) {
-            seenPostIds.add(p.id)
-            out.posts.push(p)
-          }
-        }
-        for (const e of prevSnapshot.eventsByClubId.get(clubId) || []) {
-          if (!seenEventIds.has(e.id)) {
-            seenEventIds.add(e.id)
-            out.events.push(e)
-          }
-        }
-        for (const a of prevSnapshot.announcementsByClubId.get(clubId) || []) {
-          if (!seenAnnouncementIds.has(a.id)) {
-            seenAnnouncementIds.add(a.id)
-            out.announcements.push(a)
-          }
-        }
-        for (const l of prevSnapshot.linksByClubId.get(clubId) || []) {
-          if (!seenLinkIds.has(l.id)) {
-            seenLinkIds.add(l.id)
-            out.links.push(l)
-          }
-        }
-        preserveClubRoster(clubId)
+        carryPreviousClubCollections(clubId)
       } else {
-        out.clubs.push({
+        const newDeferredRecord = {
           id: clubId,
           name: clubName,
           alsoKnownAs: club.alsoKnownAs || [],
-          instagram: clubId,
-          instagramUrl: `https://www.instagram.com/${clubId}/`,
+          instagram: igHandle,
+          instagramUrl: igHandle ? `https://www.instagram.com/${igHandle}/` : null,
           category: categorizeClub({
             ...club,
             id: clubId,
             name: clubName,
-            instagram: clubId,
+            instagram: igHandle,
+            bio: club.description || null,
           }),
           email: club.email || null,
-          bio: null,
+          bio: club.description || null,
           website: club.website || null,
-          profilePictureUrl: null,
+          profilePictureUrl: club.iconUrl || null,
           followers: null,
           lastPostAt: null,
           lastSyncedAt: null,
           syncStatus: 'unavailable',
           syncNote: 'Instagram was busy; this club will sync on the next run.',
           ...carryClubRosterFields(club, null),
-        })
-        for (const l of contactLinks(club, clubId)) {
-          const linkId = `${clubId}:${l.url}`
-          if (!seenLinkIds.has(linkId)) {
-            seenLinkIds.add(linkId)
-            out.links.push({ id: linkId, clubId, clubName, ...l })
-          }
         }
+        out.clubs.push(newDeferredRecord)
+        const defLinks = new Map()
+        for (const l of contactLinks(club, igHandle)) defLinks.set(l.url.toLowerCase(), l)
+        await enrichLinksAndDiscord(clubId, clubName, club.website, defLinks, newDeferredRecord)
       }
       continue
     }
 
     if (item.error) {
       console.warn(`✗ ${item.error}`)
-      out.errors.push({ club: club.instagram, message: item.error })
+      out.errors.push({ club: club.instagram || club.id, message: item.error })
       // Keep the club anyway, with its Instagram page and email so people can reach it manually.
-      const clubId = club.instagram.toLowerCase()
+      const clubId = getClubId(club)
+      const igHandle = getIgHandle(club)
       const clubName = club.name || clubId
       const prevClub = prevSnapshot?.clubsById?.get(clubId)
-      out.clubs.push({
+      const errClubRecord = {
         id: clubId,
         name: clubName,
         alsoKnownAs: club.alsoKnownAs || [],
-        instagram: clubId,
-        instagramUrl: `https://www.instagram.com/${clubId}/`,
+        instagram: igHandle,
+        instagramUrl: igHandle ? `https://www.instagram.com/${igHandle}/` : null,
         category: categorizeClub({
           ...club,
           id: clubId,
           name: clubName,
-          instagram: clubId,
+          instagram: igHandle,
+          bio: prevClub?.bio || club.description || null,
         }),
         email: club.email || null,
-        bio: prevClub?.bio || null,
+        bio: prevClub?.bio || club.description || null,
         website: club.website || prevClub?.website || null,
-        profilePictureUrl: prevClub?.profilePictureUrl || null,
+        profilePictureUrl: prevClub?.profilePictureUrl || club.iconUrl || null,
         followers: prevClub?.followers ?? null,
         lastPostAt: prevClub?.lastPostAt || null,
         lastSyncedAt: prevClub?.lastSyncedAt || null,
         syncStatus: 'unavailable',
         syncNote: syncNote(item.error),
         ...carryClubRosterFields(club, prevClub),
-      })
+      }
+      out.clubs.push(errClubRecord)
       preserveClubRoster(clubId)
 
       const fallbackLinks = new Map()
-      for (const l of contactLinks(club, clubId)) fallbackLinks.set(l.url.toLowerCase(), l)
-      if (!demo && club.website) {
-        const unpacked = await unpackBioWebsite(club.website)
-        for (const l of unpacked) {
-          if (!fallbackLinks.has(l.url.toLowerCase())) fallbackLinks.set(l.url.toLowerCase(), { ...l, postId: null })
-          const gcalId = extractGoogleCalendarId(l.url)
-          if (gcalId) {
-            const gcalEvents = await fetchPublicGoogleCalendarEvents(gcalId, { clubId, clubName, calendarUrl: l.url })
-            for (const ge of gcalEvents) {
-              if (!seenEventIds.has(ge.id)) {
-                seenEventIds.add(ge.id)
-                out.events.push(ge)
-              }
-            }
-          }
-        }
-      }
-      if (!demo) {
-        for (const l of fallbackLinks.values()) {
-          if (l.kind === 'discord') {
-            const inviteMeta = await fetchDiscordInviteMetadata(l.url)
-            if (inviteMeta?.serverName) {
-              const stats =
-                inviteMeta.memberCount != null
-                  ? ` (${inviteMeta.memberCount.toLocaleString()} members${
-                      inviteMeta.onlineCount != null ? ` · ${inviteMeta.onlineCount} online` : ''
-                    })`
-                  : ''
-              l.label = `Discord — ${inviteMeta.serverName}${stats}`
-            }
-          }
-        }
-      }
-      for (const l of fallbackLinks.values()) {
-        const linkId = `${clubId}:${l.url}`
-        if (!seenLinkIds.has(linkId)) {
-          seenLinkIds.add(linkId)
-          out.links.push({ id: linkId, clubId, clubName, ...l })
-        }
-      }
+      for (const l of contactLinks(club, igHandle)) fallbackLinks.set(l.url.toLowerCase(), l)
+      await enrichLinksAndDiscord(clubId, clubName, club.website, fallbackLinks, errClubRecord)
       continue
     }
     const { profile, posts } = item
@@ -713,12 +850,12 @@ export async function collect({
         id: clubId,
         name: clubName,
         instagram: clubId,
-        bio: profile.biography,
+        bio: profile.biography || prevClub?.bio || club.description || null,
       }),
       alsoKnownAs: club.alsoKnownAs || [],
-      bio: profile.biography,
+      bio: profile.biography || prevClub?.bio || club.description || null,
       website: profile.website || club.website || null,
-      profilePictureUrl: profile.profilePictureUrl,
+      profilePictureUrl: profile.profilePictureUrl || prevClub?.profilePictureUrl || club.iconUrl || null,
       followers: profile.followers,
       lastPostAt: posts[0]?.postedAt || null,
       lastSyncedAt: out.collectedAt,

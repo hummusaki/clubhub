@@ -42,12 +42,17 @@ function loadMergedClubsForRoster(dbClubs = [], targetClubId = null) {
 
     const dbClub = dbById.get(key) || {};
     const catClub = catalogById.get(key) || {};
+    const rawIg = dbClub.instagram ?? catClub.instagram ?? '';
+    const cleanIg =
+      rawIg && !/^(?:noig_|discord_)/i.test(String(rawIg)) ? String(rawIg).trim() : '';
     merged.push({
       ...catClub,
       ...dbClub,
-      id: dbClub.id || catClub.instagram || key,
+      id: dbClub.id || catClub.id || catClub.instagram || key,
       name: catClub.name || dbClub.name || key,
-      instagram: dbClub.instagram || catClub.instagram || key,
+      instagram: cleanIg,
+      ...(cleanIg ? {} : { noInstagram: true }),
+      profilePictureUrl: dbClub.profilePictureUrl || catClub.iconUrl || null,
       email: catClub.email || dbClub.email || null,
       extraEmails: catClub.extraEmails || [],
       discord: catClub.discord || dbClub.discord || null,

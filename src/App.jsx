@@ -2575,16 +2575,28 @@ function ClerkAppWrapper({
       ? `${window.location.origin}${window.location.pathname}`
       : '/'
 
+  const signingOutRef = useRef(false)
+
   async function handleClerkSignOut() {
+    if (signingOutRef.current) return
+    signingOutRef.current = true
     try {
-      localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
-    } catch {
-      // Ignore storage errors
-    }
-    try {
-      await signOut({ redirectUrl: baseUrl })
-    } catch {
-      // Ignore Clerk signOut fallback errors
+      if (onLocalSignOut) {
+        onLocalSignOut()
+      } else {
+        try {
+          localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
+        } catch {
+          // Ignore storage errors
+        }
+      }
+      try {
+        await signOut({ redirectUrl: baseUrl })
+      } catch {
+        // Ignore Clerk signOut fallback errors
+      }
+    } finally {
+      signingOutRef.current = false
     }
   }
 
