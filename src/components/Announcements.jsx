@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ExternalLink, ArrowRight } from 'lucide-react'
-import { Card, BubbleTag, IconBadge, cleanText } from './ui'
+import { Card, BubbleTag, IconBadge, Button, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 import { filterAndRankBySearch } from '../utils/search'
 
@@ -36,25 +36,25 @@ export default function Announcements({
 
   return (
     <Card
-      className={`${isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
+      className="section-pad"
       delay={2}
     >
       <div>
-        <div className={`flex items-center justify-between gap-2 ${isCompact ? 'mb-3' : 'mb-4'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-[var(--text)]">Announcements</h2>
-            <BubbleTag label={`${announcements.length}`} color="red" size="sm" />
+            <h2 className="font-display text-base font-medium text-[var(--text)]">Announcements</h2>
+            <BubbleTag label={`${announcements.length}`} color="blue" size="sm" />
           </div>
 
           {onNav && (
-            <button
-              type="button"
+            <Button
+              variant="text"
+              size="sm"
+              trailingIcon={<ArrowRight size={13} />}
               onClick={() => onNav('clubs', { section: 'updates' })}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
             >
-              <span>All Updates</span>
-              <ArrowRight size={13} />
-            </button>
+              All updates
+            </Button>
           )}
         </div>
 
@@ -69,35 +69,31 @@ export default function Announcements({
               return (
                 <div
                   key={item.id}
-                  style={{
-                    borderLeftWidth: '3.5px',
-                    borderLeftColor: `var(--${color})`,
-                  }}
-                  className={`content-tile content-tile-interactive rounded-[var(--radius-sm)] flex items-start ${
-                    isCompact ? 'p-2.5 gap-2.5' : 'p-3.5 gap-3'
+                  className={`content-tile rounded-[var(--radius-sm)] flex items-start ${
+                    isCompact ? 'p-2 gap-2' : 'px-2.5 py-2 gap-2.5'
                   }`}
                 >
                   <IconBadge
                     color={color}
-                    size={isCompact ? 28 : 34}
-                    radius={isCompact ? 8 : 10}
+                    size={isCompact ? 32 : 36}
+                    radius={9999}
                     className="mt-0.5"
                   >
                     {isDiscord ? (
-                      <PlatformIcon type="discord" size={isCompact ? 14 : 17} />
+                      <PlatformIcon type="discord" size={isCompact ? 14 : 16} />
                     ) : isStory ? (
-                      <PlatformIcon type="instagram" size={isCompact ? 14 : 17} />
+                      <PlatformIcon type="instagram" size={isCompact ? 14 : 16} />
                     ) : isEmail ? (
-                      <PlatformIcon type="email" size={isCompact ? 14 : 17} />
+                      <PlatformIcon type="email" size={isCompact ? 14 : 16} />
                     ) : (
-                      <AnnouncementTypeIcon type={item.type} size={isCompact ? 14 : 17} />
+                      <AnnouncementTypeIcon type={item.type} size={isCompact ? 14 : 16} />
                     )}
                   </IconBadge>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
                       <BubbleTag label={item.type} color={color} size="sm" />
-                      <span className="text-[11px] text-[var(--text-light)]">{item.time}</span>
+                      <span className="text-xs text-[var(--text-muted)]">{item.time}</span>
                     </div>
 
                     {item.permalink ? (
@@ -107,7 +103,7 @@ export default function Announcements({
                         rel="noreferrer"
                         className={`inline-flex items-center gap-1 ${
                           isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-semibold text-[var(--text)] hover:text-[var(--blue)] no-underline`}
+                        } font-medium text-[var(--text)] hover:text-[var(--blue)] no-underline`}
                       >
                         <span>{cleanText(item.title)}</span>
                         <ExternalLink size={12} className="shrink-0 opacity-60" />
@@ -118,7 +114,7 @@ export default function Announcements({
                         onClick={() => onNav(item.navTarget)}
                         className={`text-left ${
                           isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none p-0 cursor-pointer`}
+                        } font-medium text-[var(--text)] hover:text-[var(--blue)] bg-transparent border-none p-0 cursor-pointer`}
                       >
                         {cleanText(item.title)}
                       </button>
@@ -126,14 +122,14 @@ export default function Announcements({
                       <p
                         className={`${
                           isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-semibold text-[var(--text)]`}
+                        } font-medium text-[var(--text)]`}
                       >
                         {cleanText(item.title)}
                       </p>
                     )}
 
                     <p
-                      className={`text-xs text-[var(--text-muted)] mt-0.5 leading-snug ${
+                      className={`text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed ${
                         isCompact ? 'line-clamp-1' : ''
                       }`}
                     >
@@ -145,21 +141,7 @@ export default function Announcements({
             })}
           </div>
         ) : joinedCount === 0 ? (
-          <div className="py-7 px-3 text-center space-y-3">
-            <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-              You&apos;re not in any clubs yet. Join a club to receive incoming announcements and updates.
-            </p>
-            {onNav && (
-              <button
-                type="button"
-                onClick={() => onNav('clubs', { section: 'discover' })}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none"
-              >
-                <span>Browse Clubs</span>
-                <ArrowRight size={13} />
-              </button>
-            )}
-          </div>
+          <p className="text-sm text-[var(--text-muted)]">No club updates yet.</p>
         ) : (
           <div className="py-8 text-center text-sm text-[var(--text-muted)]">
             {searchQuery.trim()

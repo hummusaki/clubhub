@@ -262,7 +262,7 @@ export function buildClubDirectoryData({
     const youAvatarBg =
       userSettings?.avatarBg ||
       effectiveUser?.avatarBg ||
-      'linear-gradient(135deg, var(--blue), var(--purple))'
+      '#1A73E8'
 
     seenMemberKeys.add(youEmail.toLowerCase())
     members.push({
@@ -336,7 +336,7 @@ export function buildClubDirectoryData({
           email: r.email || clubObj?.email || hubClub.email || '',
           role: cleanText(r.role || 'Club Member'),
           major: r.major ? cleanText(r.major) : '',
-          avatarBg: clubObj?.avatarBg || 'linear-gradient(135deg, var(--teal), var(--blue))',
+          avatarBg: clubObj?.avatarBg || '#00796B',
           clubs: newTag,
           joined: 'Active',
           isCustom: false,

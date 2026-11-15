@@ -14,7 +14,7 @@ import {
   RotateCcw,
   Ban,
 } from 'lucide-react'
-import { ClubAvatar, cleanText } from './ui'
+import { ClubAvatar, cleanText, Button, IconButton, FilterChip } from './ui'
 import { PlatformIcon } from './icons'
 import {
   recommendClubsForInterests,
@@ -217,44 +217,42 @@ export default function AiClubAgentModal({
   return (
     <>
       {/* ── AI Search Button (Beside normal search bar, never replacing it) ── */}
-      <button
-        type="button"
+      <Button
+        variant="tonal"
+        size="md"
+        leadingIcon={<Sparkles size={15} />}
         onClick={() => setIsOpen(true)}
         title="Open AI Club Search & Advisor"
         aria-label="Open AI Club Search & Advisor"
-        className="flex items-center gap-1.5 px-3 sm:px-3.5 min-h-[42px] rounded-xl
-          bg-[var(--blue-light)] border border-[var(--blue)]/30 hover:border-[var(--blue)]
-          text-xs font-bold text-[var(--blue-ink)] hover:opacity-95
-          transition-all shadow-2xs hover:shadow-xs cursor-pointer shrink-0"
+        className="shrink-0"
       >
-        <Sparkles size={15} className="text-[var(--blue)]" />
         <span className="hidden sm:inline">AI Search</span>
         <span className="sm:hidden">AI</span>
-      </button>
+      </Button>
 
       {/* ── Grounded AI Club Search & Advisor Modal ── */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/35 fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs fade-in"
           onClick={() => setIsOpen(false)}
         >
           <div
-            className="w-full max-w-[600px] bg-[var(--bg-card)] border border-[var(--border)]
-              rounded-[24px] shadow-[var(--shadow-lg)] overflow-hidden flex flex-col max-h-[86vh]"
+            className="w-full max-w-[620px] bg-[var(--bg-card)] border border-[var(--md-outline-variant)]
+              rounded-[28px] shadow-[var(--shadow-lg)] overflow-hidden flex flex-col max-h-[86vh]"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="px-5 py-4 bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center shrink-0">
+            <div className="px-6 py-4 bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-[var(--secondary-container)] text-[var(--on-secondary-container)] flex items-center justify-center shrink-0">
                   <Sparkles size={16} />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm sm:text-base font-bold text-[var(--text)] truncate">
+                    <h3 className="text-sm sm:text-base font-medium font-display text-[var(--text)] truncate">
                       AI Club Search &amp; Advisor
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--green-light)] text-[var(--green-ink)]">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-light)] text-[var(--green-ink)]">
                       {aiCaps.generativeEnabled ? 'Gemini 4' : 'Grounded AI'}
                     </span>
                   </div>
@@ -264,26 +262,25 @@ export default function AiClubAgentModal({
                 </div>
               </div>
 
-              <button
-                type="button"
+              <IconButton
+                size="sm"
                 onClick={() => setIsOpen(false)}
                 aria-label="Close AI Search"
-                className="w-7 h-7 rounded-full hover:bg-[var(--bg-subtle)] flex items-center justify-center text-[var(--text-muted)] border-none bg-transparent cursor-pointer shrink-0"
               >
                 <X size={16} />
-              </button>
+              </IconButton>
             </div>
 
             {/* Modal Body */}
-            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
               {/* Conversational Prompt Input */}
               <form onSubmit={handleSubmit} className="space-y-2">
                 <div
-                  className="flex items-center gap-2 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)]
+                  className="flex items-center gap-2 px-3.5 min-h-[44px] rounded-full bg-[var(--bg-surface)]
                     border border-[var(--border)] focus-within:border-[var(--blue)] focus-within:bg-[var(--bg-card)]
                     transition-all shadow-2xs"
                 >
-                  <Sparkles size={15} className="text-[var(--blue)] shrink-0" />
+                  <Sparkles size={15} className="text-[var(--blue)] shrink-0 ml-1" />
                   <input
                     ref={inputRef}
                     type="text"
@@ -298,25 +295,25 @@ export default function AiClubAgentModal({
                       placeholder:text-[var(--text-light)]"
                   />
                   {draft && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
+                    <div className="flex items-center gap-1 shrink-0 mr-0.5">
+                      <IconButton
+                        size="sm"
                         onClick={() => {
                           setDraft('')
                           if (inputRef.current) inputRef.current.focus()
                         }}
-                        className="text-[var(--text-light)] hover:text-[var(--text)] p-1 bg-transparent border-none cursor-pointer flex items-center"
                         aria-label="Clear prompt"
                       >
                         <X size={14} />
-                      </button>
-                      <button
+                      </IconButton>
+                      <Button
+                        variant="filled"
+                        size="sm"
                         type="submit"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--blue)] text-white border-none text-[11px] font-semibold cursor-pointer"
+                        trailingIcon={<CornerDownLeft size={11} />}
                       >
-                        <span>{turns.length > 0 ? 'Refine' : 'Ask'}</span>
-                        <CornerDownLeft size={11} />
-                      </button>
+                        {turns.length > 0 ? 'Refine' : 'Ask'}
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -341,14 +338,14 @@ export default function AiClubAgentModal({
                         </span>
                       ))}
                     </div>
-                    <button
-                      type="button"
+                    <Button
+                      variant="text"
+                      size="sm"
+                      leadingIcon={<RotateCcw size={11} />}
                       onClick={handleReset}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
                     >
-                      <RotateCcw size={11} />
-                      <span>Reset</span>
-                    </button>
+                      Reset
+                    </Button>
                   </div>
                 )}
               </form>
@@ -356,22 +353,17 @@ export default function AiClubAgentModal({
               {/* Starter Prompts when empty */}
               {!effectiveQuery && (
                 <div className="space-y-2">
-                  <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
-                    <Compass size={12} className="text-[var(--blue)]" />
-                    <span>Popular Natural-Language Prompts</span>
+                  <div className="text-xs font-medium text-[var(--text-muted)] flex items-center gap-1">
+                    <Compass size={13} className="text-[var(--blue)]" />
+                    <span>Popular natural-language prompts</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {SAMPLE_INTEREST_PROMPTS.map(p => (
-                      <button
+                      <FilterChip
                         key={p.label}
-                        type="button"
+                        label={p.label}
                         onClick={() => handleSelectStarter(p.query)}
-                        className="text-[11.5px] font-medium px-2.5 py-1 rounded-full bg-[var(--bg-surface)]
-                          border border-[var(--border)] text-[var(--text)] hover:border-[var(--blue)]
-                          hover:bg-[var(--blue-light)] hover:text-[var(--blue-ink)] transition-colors cursor-pointer"
-                      >
-                        {p.label}
-                      </button>
+                      />
                     ))}
                   </div>
                 </div>
@@ -383,12 +375,12 @@ export default function AiClubAgentModal({
                   {/* AI Overview Card */}
                   <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--blue)]/25 space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--blue-ink)]">
+                      <div className="flex items-center gap-1.5 text-xs font-medium font-display text-[var(--blue-ink)]">
                         <Sparkles size={13} className="text-[var(--blue)]" />
                         <span>AI Overview</span>
                       </div>
                       {isSynthesizing && (
-                        <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[var(--blue-ink)]">
+                        <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--blue-ink)]">
                           <Loader2 size={11} className="animate-spin" />
                           <span>Synthesizing…</span>
                         </span>
@@ -404,7 +396,7 @@ export default function AiClubAgentModal({
                         {displayResults.interpretedIntents.map((item, idx) => (
                           <span
                             key={`${item.label}-${idx}`}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${
                               item.kind === 'exclusion'
                                 ? 'bg-[var(--red-light)] text-[var(--red-ink)] border-[var(--red)]/20'
                                 : item.kind === 'modifier'
@@ -421,18 +413,15 @@ export default function AiClubAgentModal({
 
                     {displayResults.followUpSuggestions?.length > 0 && (
                       <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10.5px] font-semibold text-[var(--text-muted)]">
+                        <span className="text-[10.5px] font-medium text-[var(--text-muted)]">
                           {displayResults.hasMatches ? 'Refine:' : 'Try:'}
                         </span>
                         {displayResults.followUpSuggestions.map(chip => (
-                          <button
+                          <FilterChip
                             key={chip.label}
-                            type="button"
+                            label={chip.label}
                             onClick={() => handleSelectFollowUp(chip)}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--blue)] hover:text-[var(--blue-ink)] transition-colors cursor-pointer"
-                          >
-                            {chip.label}
-                          </button>
+                          />
                         ))}
                       </div>
                     )}
@@ -441,7 +430,7 @@ export default function AiClubAgentModal({
                   {/* Club Cards */}
                   {liveMatches.length > 0 && (
                     <div className="space-y-2.5">
-                      <div className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
+                      <div className="text-xs font-medium font-display text-[var(--text)] flex items-center gap-1.5">
                         <Zap size={13} className="text-[var(--yellow)]" />
                         <span>Recommended Clubs ({liveMatches.length})</span>
                       </div>
@@ -469,7 +458,7 @@ export default function AiClubAgentModal({
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <ClubAvatar club={club} size={36} />
                                   <div className="min-w-0">
-                                    <div className="text-[13.5px] font-bold text-[var(--text)] truncate">
+                                    <div className="text-[13.5px] font-medium font-display text-[var(--text)] truncate">
                                       {cleanText(club.name)}
                                     </div>
                                     <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate">
@@ -497,7 +486,7 @@ export default function AiClubAgentModal({
 
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <span
-                                    className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${
+                                    className={`px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
                                       matchScore >= 80
                                         ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
                                         : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
@@ -506,27 +495,14 @@ export default function AiClubAgentModal({
                                     {matchScore}% · {matchLabel || 'Match'}
                                   </span>
 
-                                  <button
-                                    type="button"
+                                  <Button
+                                    variant={isJoined ? 'tonal' : 'filled'}
+                                    size="sm"
+                                    leadingIcon={isJoined ? <Check size={12} /> : <Plus size={12} />}
                                     onClick={e => handleJoin(e, club)}
-                                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${
-                                      isJoined
-                                        ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
-                                        : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
-                                    }`}
                                   >
-                                    {isJoined ? (
-                                      <>
-                                        <Check size={12} />
-                                        <span>Joined</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus size={12} />
-                                        <span>Join</span>
-                                      </>
-                                    )}
-                                  </button>
+                                    {isJoined ? 'Joined' : 'Join'}
+                                  </Button>
                                 </div>
                               </div>
 
@@ -568,14 +544,15 @@ export default function AiClubAgentModal({
                                   ))}
                                 </div>
 
-                                <button
-                                  type="button"
+                                <Button
+                                  variant="text"
+                                  size="sm"
+                                  trailingIcon={<ArrowRight size={12} />}
                                   onClick={() => handleViewClub(club)}
-                                  className="text-[var(--blue-ink)] hover:underline font-semibold inline-flex items-center gap-0.5 bg-transparent border-none cursor-pointer shrink-0 ml-2"
+                                  className="ml-2"
                                 >
-                                  <span>View Club</span>
-                                  <ArrowRight size={12} />
-                                </button>
+                                  View Club
+                                </Button>
                               </div>
                             </div>
                           )
@@ -585,11 +562,11 @@ export default function AiClubAgentModal({
                   )}
                 </div>
               ) : (
-                <div className="py-5 px-4 rounded-2xl bg-[var(--bg-surface)] border border-dashed border-[var(--border)] text-center space-y-1.5">
-                  <div className="w-9 h-9 rounded-full bg-[var(--blue-light)] text-[var(--blue)] flex items-center justify-center mx-auto">
+                <div className="py-6 px-4 rounded-2xl bg-[var(--bg-surface)] border border-dashed border-[var(--border)] text-center space-y-1.5">
+                  <div className="w-10 h-10 rounded-full bg-[var(--secondary-container)] text-[var(--on-secondary-container)] flex items-center justify-center mx-auto">
                     <Sparkles size={18} />
                   </div>
-                  <div className="text-xs font-bold text-[var(--text)]">
+                  <div className="text-xs font-medium font-display text-[var(--text)]">
                     Ask anything about UCSC clubs &amp; campus involvement
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] max-w-sm mx-auto">
@@ -600,17 +577,17 @@ export default function AiClubAgentModal({
             </div>
 
             {/* Modal Footer */}
-            <div className="px-5 py-3 bg-[var(--bg-surface)] border-t border-[var(--border)] flex items-center justify-between text-xs">
+            <div className="px-6 py-3 bg-[var(--bg-surface)] border-t border-[var(--border)] flex items-center justify-between text-xs">
               <span className="text-[11px] text-[var(--text-muted)]">
                 Grounded on {clubs.length} UCSC clubs &amp; live calendar events
               </span>
-              <button
-                type="button"
+              <Button
+                variant="text"
+                size="sm"
                 onClick={() => setIsOpen(false)}
-                className="px-4 py-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--bg-subtle)] cursor-pointer"
               >
                 Close
-              </button>
+              </Button>
             </div>
           </div>
         </div>

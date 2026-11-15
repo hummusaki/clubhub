@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { Clock, ArrowRight } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
@@ -14,7 +14,7 @@ import ClubTaskBoard from './components/ClubTaskBoard'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
+import { Button, Card, PageToolbar, ToastViewport, cleanText } from './components/ui'
 import {
   getWorkspaceMe,
   updateWorkspaceProfile,
@@ -171,13 +171,12 @@ function saveStoredJoinedClubIds(keys, clubIds) {
 const DEFAULT_USER_SETTINGS = {
   displayName: '',
   major: '',
-  avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
+  avatarBg: '#1A73E8',
   themeMode: 'system', // 'system' (default: match OS) | 'light' | 'dark'
   compactCards: false,
   reduceMotion: false,
   timeFormat: '12h',
   weekStartsOn: 'monday',
-  defaultCalendarView: 'month',
   availabilityHours: '9-19',
   urgentOnlyBadge: false,
   channels: {
@@ -641,6 +640,9 @@ function MainDashboard({
   const [settingsInitialSection, setSettingsInitialSection] = useState(null)
   const [workspaceAnnouncements, setWorkspaceAnnouncements] = useState([])
   const [calendarInitialView, setCalendarInitialView] = useState(null)
+  const [calendarSelectedView, setCalendarSelectedView] = useState(null)
+  useEffect(() => { setCalendarSelectedView(null) }, [userSettings?.defaultCalendarView, accountKey])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData] = useState(initialClubs)
   const [joinedClubIds, setJoinedClubIds] = useState(() =>
@@ -1439,7 +1441,11 @@ function MainDashboard({
     showToast('Reset local customizations to clean defaults.', { type: 'info' })
   }
 
-  const isCompactDensity = Boolean(userSettings?.compactCards)
+  const [overviewAiOpen, setOverviewAiOpen] = useState(false)
+  const overviewAiTrigger = useRef(null)
+  const greeting = userSettings?.displayName?.trim().split(/\s+/)[0] ||
+    effectiveUser?.firstName || effectiveUser?.fullName?.split(/\s+/)[0] ||
+    effectiveUser?.email?.split('@')[0] || (isDemo ? 'Guest' : 'Student')
 
   const userDisplayName =
     userSettings?.displayName?.trim() ||
@@ -1903,15 +1909,9 @@ function MainDashboard({
         onSignOut={onSignOut}
       />
 
-      {/* Main Content Area (Offset by Fixed Sidebar on Desktop, Cleared of Bottom Nav < lg) */}
-      <main className="w-full min-w-0 lg:pl-[252px]">
-        <div
-          className={`px-3.5 sm:px-6 lg:px-8 ${
-            isCompactDensity
-              ? 'pt-3 sm:pt-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-16'
-              : 'pt-3.5 sm:pt-7 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-20'
-          }`}
-        >
+      {/* Main Content Area (Offset by 64px Top Bar + 256px Fixed Drawer on Desktop, Cleared of Bottom Nav < lg) */}
+      <main className="w-full min-w-0 pt-16 lg:pl-[256px]">
+        <div className="app-content page-stack max-w-[1440px] mx-auto">
           <Header
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -1925,7 +1925,6 @@ function MainDashboard({
             onExitDemo={onExitDemo}
             onSignOut={onSignOut}
             announcements={personalizedAnnouncements}
-            upcomingCount={visibleOverviewUpcomingCount}
             joinedCount={joinedCount}
             clubs={effectiveClubs}
             events={effectiveSchedule}
@@ -1933,10 +1932,27 @@ function MainDashboard({
             onNotify={showToast}
           />
 
-          <div key={`${activeNav}_${resetGeneration}`} className="view-enter">
+          <div key={`${activeNav}_${resetGeneration}`} className="view-enter page-stack">
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
-            <div className={isCompactDensity ? 'space-y-3.5' : 'space-y-5 sm:space-y-6'}>
+            <div className="page-stack">
+              <PageToolbar
+                title={`Welcome, ${greeting}`}
+                actions={
+                  <Button
+                    ref={overviewAiTrigger}
+                    variant="text"
+                    size="sm"
+                    className="px-2"
+                    icon={<Sparkles size={15} />}
+                    aria-expanded={overviewAiOpen}
+                    aria-controls="overview-ai"
+                    onClick={() => setOverviewAiOpen(open => !open)}
+                  >
+                    Find clubs with AI
+                  </Button>
+                }
+              />
               {searchQuery.trim() && (
                 <OverviewSearchResults
                   query={searchQuery}
@@ -1957,7 +1973,6 @@ function MainDashboard({
                 joinedCount={joinedCount}
                 eventsCount={visibleOverviewUpcomingCount}
                 linksCount={totalLinksCount}
-                userSettings={userSettings}
                 onNav={target =>
                   target === 'clubs' && joinedCount === 0
                     ? handleNavigate('clubs', { section: 'discover' })
@@ -1965,8 +1980,12 @@ function MainDashboard({
                 }
               />
 
-              {/* Dedicated AI Club Search & Advisor (separate from normal site-wide search) */}
               <AiOverviewSearchBar
+                open={overviewAiOpen}
+                onClose={() => {
+                  setOverviewAiOpen(false)
+                  overviewAiTrigger.current?.focus()
+                }}
                 clubs={effectiveClubs}
                 events={effectiveSchedule}
                 userSettings={userSettings}
@@ -1976,11 +1995,18 @@ function MainDashboard({
                 onNotify={showToast}
               />
 
-              <div
-                className={`grid grid-cols-1 xl:grid-cols-[5fr_3fr] ${
-                  isCompactDensity ? 'gap-3 sm:gap-3.5' : 'gap-4 sm:gap-5'
-                }`}
-              >
+              {joinedCount === 0 && (
+                <Card className="section-pad flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Join a club to see its events and announcements here.
+                  </p>
+                  <Button onClick={() => handleNavigate('clubs', { section: 'discover' })}>
+                    Browse clubs
+                  </Button>
+                </Card>
+              )}
+
+              <div className="grid min-w-0 gap-[var(--section-gap)] xl:grid-cols-[minmax(0,5fr)_minmax(0,3fr)] items-start">
                 <CalendarView
                   compact={true}
                   items={personalizedSchedule}
@@ -1995,7 +2021,6 @@ function MainDashboard({
                   onToggleRsvp={handleToggleRsvp}
                   onDeleteEvent={handleDeleteCalendarEvent}
                   onOpenCalendar={() => handleNavigate('calendar', { view: 'month' })}
-                  onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
                   onNotify={showToast}
                 />
                 <Announcements
@@ -2007,41 +2032,16 @@ function MainDashboard({
                 />
               </div>
 
-              {/* Shortcut Card to Separated Group Availability Tool */}
-              <Card
-                delay={3}
-                onClick={() => handleNavigate('availability')}
-                style={{
-                  borderLeftWidth: '3.5px',
-                  borderLeftColor: 'var(--green)',
-                }}
-                className={`content-tile content-tile-interactive ${
-                  isCompactDensity ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'
-                } flex flex-col sm:flex-row sm:items-center justify-between`}
-              >
-                <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3.5'} min-w-0`}>
-                  <IconBadge color="green" size={isCompactDensity ? 34 : 42} radius={isCompactDensity ? 10 : 13}>
-                    <Clock size={isCompactDensity ? 17 : 21} />
-                  </IconBadge>
-                  <div className="min-w-0">
-                    <div className="text-sm sm:text-base font-bold text-[var(--text)]">
-                      Coordinate Group Availability
-                    </div>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                      Click or drag when you&apos;re free — group overlap updates automatically and schedules straight onto your calendar.
-                    </p>
-                  </div>
-                </div>
-
-                <span
-                  className={`inline-flex items-center gap-1.5 ${
-                    isCompactDensity ? 'px-3 min-h-[34px]' : 'px-4 min-h-[38px]'
-                  } rounded-xl bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/25 text-xs font-semibold shrink-0 self-start sm:self-auto`}
+              <div className="flex flex-wrap items-center gap-x-3">
+                <Button
+                  variant="text"
+                  size="sm"
+                  trailingIcon={<ArrowRight size={14} />}
+                  onClick={() => handleNavigate('availability')}
                 >
-                  <span>Open Availability</span>
-                  <ArrowRight size={14} />
-                </span>
-              </Card>
+                  Find a meeting time
+                </Button>
+              </div>
 
               <ClubsHub
                 compact={true}
@@ -2056,6 +2056,19 @@ function MainDashboard({
                 onOpenClubs={opts => handleNavigate('clubs', opts)}
                 onNotify={showToast}
               />
+              <LinksResources
+                compact
+                isDemo={isDemo}
+                items={liveLinks}
+                clubs={effectiveClubs}
+                userSettings={userSettings}
+                searchQuery={searchQuery}
+                localAdded={localAddedLinks}
+                pinnedOverrides={pinnedLinkOverrides}
+                onTogglePinOverride={handleTogglePinOverride}
+                onOpenResources={() => handleNavigate('links')}
+                onNotify={showToast}
+              />
             </div>
           )}
 
@@ -2067,6 +2080,8 @@ function MainDashboard({
               clubs={effectiveClubs}
               joinedCount={joinedCount}
               initialView={calendarInitialView}
+              lastSelectedView={calendarSelectedView}
+              onSelectView={setCalendarSelectedView}
               userSettings={userSettings}
               onUpdateSettings={onUpdateSettings}
               calendarIntegration={calendarIntegration}
@@ -2100,6 +2115,8 @@ function MainDashboard({
               onNotify={showToast}
             />
           )}
+
+          {activeNav === 'settings' && <PageToolbar title="Settings" />}
 
           {/* ── 4. CLUBS & COMMUNITY ── */}
           {activeNav === 'clubs' && (
@@ -2913,7 +2930,7 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
     root.style.colorScheme = isDark ? 'dark' : 'light'
     const metaTags = document.querySelectorAll('meta[name="theme-color"]')
     metaTags.forEach(tag => {
-      tag.setAttribute('content', isDark ? '#080C14' : '#DFDDD5')
+      tag.setAttribute('content', isDark ? '#131314' : '#F8FAFD')
     })
   }, [dark])
 

@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Megaphone, X, Send } from 'lucide-react'
-import { BubbleTag, SectionHeader, cleanText } from './ui'
+import { useState, useMemo } from 'react'
+import { Megaphone, Send } from 'lucide-react'
+import { BubbleTag, ModalDialog, cleanText, Button } from './ui'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import { createClubAnnouncement } from '../api/workspaceClient'
 
@@ -22,14 +22,6 @@ export default function TargetedAnnouncementModal({
   const [permalink, setPermalink] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    const handleKey = e => {
-      if (e.key === 'Escape' && onClose) onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
 
   function handleToggleShortcut(token) {
     setSelectedShortcuts(prev => {
@@ -88,37 +80,10 @@ export default function TargetedAnnouncementModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`New Targeted Announcement for ${cleanText(clubName)}`}
-        className="modal-panel w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-y-auto fade-in"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="pb-3.5 border-b border-[var(--border)]">
-          <SectionHeader
-            icon={<Megaphone size={18} />}
-            color="purple"
-            title="New Targeted Announcement"
-            subtitle={`${cleanText(clubName)} · Broadcast to everyone, Board leadership, or sub-groups`}
-            action={
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close modal"
-                className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X size={16} />
-              </button>
-            }
-          />
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <ModalDialog title="New targeted announcement"
+      subtitle={`${cleanText(clubName)} · Choose who will receive this announcement`}
+      icon={<Megaphone size={18} />} iconColor="purple" onClose={onClose}>
+        <form onSubmit={handleSubmit} className="dense-controls space-y-3">
           <LeadershipShortcutBar
             clubPeople={clubPeople}
             selectedShortcuts={selectedShortcuts}
@@ -156,7 +121,7 @@ export default function TargetedAnnouncementModal({
               <select
                 value={type}
                 onChange={e => setType(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm font-medium text-[var(--text)]"
+                className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm font-medium text-[var(--text)] outline-none focus:border-[var(--blue)]"
               >
                 {ANNOUNCEMENT_TYPES.map(t => (
                   <option key={t} value={t}>
@@ -172,7 +137,7 @@ export default function TargetedAnnouncementModal({
               <select
                 value={visibility}
                 onChange={e => setVisibility(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm font-medium text-[var(--text)]"
+                className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm font-medium text-[var(--text)] outline-none focus:border-[var(--blue)]"
               >
                 <option value="members">All Club Members</option>
                 <option value="group">Targeted Sub-Groups Only</option>
@@ -191,7 +156,7 @@ export default function TargetedAnnouncementModal({
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g., Marketing sprint kickoff moved to Room 152"
-              className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)]"
+              className="w-full min-h-[40px] px-3.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm text-[var(--text)] outline-none focus:border-[var(--blue)]"
             />
           </div>
 
@@ -204,7 +169,7 @@ export default function TargetedAnnouncementModal({
               value={body}
               onChange={e => setBody(e.target.value)}
               placeholder="Share agenda notes, action items, or links..."
-              className="w-full p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)] resize-y"
+              className="w-full p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm text-[var(--text)] resize-y outline-none focus:border-[var(--blue)]"
             />
           </div>
 
@@ -217,7 +182,7 @@ export default function TargetedAnnouncementModal({
               value={permalink}
               onChange={e => setPermalink(e.target.value)}
               placeholder="https://..."
-              className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)]"
+              className="w-full min-h-[40px] px-3.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm text-[var(--text)] outline-none focus:border-[var(--blue)]"
             />
           </div>
 
@@ -228,24 +193,22 @@ export default function TargetedAnnouncementModal({
           )}
 
           <div className="flex flex-col-reverse xs:flex-row items-stretch xs:items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
-            <button
-              type="button"
+            <Button
+              variant="text"
               onClick={onClose}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-sm font-semibold text-[var(--text)] cursor-pointer transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="filled"
               type="submit"
               disabled={busy}
-              className="inline-flex items-center justify-center gap-1.5 px-4.5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-sm font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 transition-opacity"
+              leadingIcon={<Send size={14} />}
             >
-              <Send size={14} />
-              <span>{busy ? 'Publishing…' : 'Publish Announcement'}</span>
-            </button>
+              {busy ? 'Publishing…' : 'Publish Announcement'}
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalDialog>
   )
 }

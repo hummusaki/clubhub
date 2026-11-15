@@ -246,7 +246,18 @@ export async function handleDirectTasksAction(path, options = {}) {
         const { due_time: _dt, reminder_config: _rc, ...legacyRow } = insertRow
         ;({ error } = await sb.from('tasks').insert(legacyRow))
       }
-      if (error) return { ok: false, status: 403, error: error.message }
+      if (error) {
+        if (/tasks_(audience|visibility)_check/i.test(error.message || '')) {
+          return {
+            ok: false,
+            status: 400,
+            code: 'TASKS_CHECK_CONSTRAINT_VIOLATION',
+            error:
+              'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
+          }
+        }
+        return { ok: false, status: 403, error: error.message }
+      }
       return buildDirectTasksBoard(sb, cid)
     }
 
@@ -292,7 +303,18 @@ export async function handleDirectTasksAction(path, options = {}) {
       const { due_time: _dt, reminder_config: _rc, ...legacyRow } = sharedInsertRow
       ;({ error } = await sb.from('tasks').insert(legacyRow))
     }
-    if (error) return { ok: false, status: 403, error: error.message }
+    if (error) {
+      if (/tasks_(audience|visibility)_check/i.test(error.message || '')) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'TASKS_CHECK_CONSTRAINT_VIOLATION',
+          error:
+            'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
+        }
+      }
+      return { ok: false, status: 403, error: error.message }
+    }
     return buildDirectTasksBoard(sb, cid)
   }
 
@@ -342,7 +364,18 @@ export async function handleDirectTasksAction(path, options = {}) {
         error = null
       }
     }
-    if (error) return { ok: false, status: 403, error: error.message }
+    if (error) {
+      if (/tasks_(audience|visibility)_check/i.test(error.message || '')) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'TASKS_CHECK_CONSTRAINT_VIOLATION',
+          error:
+            'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
+        }
+      }
+      return { ok: false, status: 403, error: error.message }
+    }
     return buildDirectTasksBoard(sb, cid)
   }
 

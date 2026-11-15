@@ -16,7 +16,7 @@ import {
   Plug,
   Layers,
 } from 'lucide-react'
-import { Card, Avatar, BubbleTag, ToggleSwitch, SectionHeader } from './ui'
+import { Card, Avatar, BubbleTag, ToggleSwitch, SectionHeader, Button, Tabs } from './ui'
 import CalendarSyncModal from './CalendarSyncModal'
 import IntegrationsPanel from './IntegrationsPanel'
 import {
@@ -25,13 +25,13 @@ import {
   normalizeCalendarSyncSettings,
 } from '../utils/calendarSync'
 
-const AVATAR_GRADIENTS = [
-  { id: 'blue-purple', label: 'Ocean',   css: 'linear-gradient(135deg, var(--blue), var(--purple))' },
-  { id: 'teal-green',  label: 'Redwood', css: 'linear-gradient(135deg, var(--teal), var(--green))' },
-  { id: 'blue-teal',   label: 'Bay',     css: 'linear-gradient(135deg, var(--blue), var(--teal))' },
-  { id: 'purple-red',  label: 'Sunset',  css: 'linear-gradient(135deg, var(--purple), var(--red))' },
-  { id: 'yellow-red',  label: 'Gold',    css: 'linear-gradient(135deg, var(--yellow), var(--red))' },
-  { id: 'green-blue',  label: 'Meadow',  css: 'linear-gradient(135deg, var(--green), var(--blue))' },
+const AVATAR_COLORS = [
+  { id: 'blue',   label: 'Blue',   color: '#1A73E8' },
+  { id: 'red',    label: 'Red',    color: '#D93025' },
+  { id: 'yellow', label: 'Yellow', color: '#F9AB00' },
+  { id: 'green',  label: 'Green',  color: '#1E8E3E' },
+  { id: 'purple', label: 'Purple', color: '#9334E6' },
+  { id: 'teal',   label: 'Teal',   color: '#129EAF' },
 ]
 
 const SETTINGS_TABS = [
@@ -84,7 +84,7 @@ export default function SettingsView({
   const [displayName, setDisplayName] = useState(defaultName)
   const [major, setMajor] = useState(userSettings?.major || '')
   const [avatarBg, setAvatarBg] = useState(
-    userSettings?.avatarBg || AVATAR_GRADIENTS[0].css
+    userSettings?.avatarBg || AVATAR_COLORS[0].color
   )
 
   useEffect(() => {
@@ -172,36 +172,22 @@ export default function SettingsView({
   return (
     <div className={`max-w-4xl ${isCompact ? 'space-y-4' : 'space-y-5'}`}>
       {/* ── Focused Settings Section Navigation Bar ── */}
-      <Card className={isCompact ? 'p-2.5 sm:p-3' : 'p-3 sm:p-3.5'} delay={0}>
+      <Card className={isCompact ? 'p-2 sm:p-2.5' : 'p-2 sm:p-3'} delay={0}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="mobile-pill-rail" role="tablist" aria-label="Settings sections">
-            {SETTINGS_TABS.map(tab => {
-              const Icon = tab.icon
-              const isSelected = activeSection === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => setActiveSection(tab.id)}
-                  className={`inline-flex items-center gap-2 px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold border cursor-pointer shrink-0 transition-all ${
-                    isSelected
-                      ? 'bg-[var(--blue)] text-white border-[var(--blue)] shadow-[var(--shadow-xs)]'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
-                  }`}
-                >
-                  <Icon size={14} className="shrink-0" />
-                  <span className="sm:hidden">{tab.shortLabel}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
-                </button>
-              )
-            })}
-          </div>
+          <Tabs
+            tabs={SETTINGS_TABS.map(tab => ({
+              id: tab.id,
+              label: tab.shortLabel,
+              icon: <tab.icon size={15} />,
+            }))}
+            activeId={activeSection}
+            onChange={setActiveSection}
+            className="flex-1"
+          />
 
-          <div className="hidden md:flex items-center gap-2 shrink-0 pr-1">
+          <div className="hidden md:flex items-center gap-2 shrink-0 pr-2">
             <Avatar initials={initials} bg={avatarBg} size={26} />
-            <span className="text-xs font-semibold text-[var(--text-muted)] truncate max-w-[160px]">
+            <span className="text-xs font-medium text-[var(--text-muted)] truncate max-w-[160px]">
               {accountEmail || 'Guest Session'}
             </span>
           </div>
@@ -230,28 +216,28 @@ export default function SettingsView({
             <div className="p-3.5 sm:p-4 rounded-xl content-tile flex flex-col sm:flex-row sm:items-center gap-4">
               <Avatar initials={initials} bg={avatarBg} size={isCompact ? 48 : 56} />
               <div className="space-y-2 min-w-0">
-                <div className="text-xs font-semibold text-[var(--text-muted)]">
-                  Avatar Accent Gradient
+                <div className="text-xs font-medium text-[var(--text-muted)]">
+                  Avatar Color
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                  {AVATAR_GRADIENTS.map(g => {
-                    const selected = avatarBg === g.css
+                  {AVATAR_COLORS.map(g => {
+                    const selected = avatarBg === g.color
                     return (
                       <button
                         key={g.id}
                         type="button"
                         onClick={() => {
-                          setAvatarBg(g.css)
-                          onUpdateSettings({ avatarBg: g.css })
+                          setAvatarBg(g.color)
+                          onUpdateSettings({ avatarBg: g.color })
                         }}
                         title={g.label}
-                        aria-label={`Select ${g.label} avatar gradient`}
+                        aria-label={`Select ${g.label} avatar color`}
                         className={`w-9 h-9 rounded-full cursor-pointer border-2 flex items-center justify-center transition-transform ${
                           selected
                             ? 'border-[var(--text)] scale-105 shadow-[var(--shadow-xs)]'
                             : 'border-transparent hover:scale-105'
                         }`}
-                        style={{ background: g.css }}
+                        style={{ background: g.color }}
                       >
                         {selected && <Check size={14} className="text-white" />}
                       </button>
@@ -271,7 +257,7 @@ export default function SettingsView({
                   value={displayName}
                   onChange={e => setDisplayName(e.target.value)}
                   placeholder="Your name"
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[40px] px-3.5 py-2 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
 
@@ -284,7 +270,7 @@ export default function SettingsView({
                   value={major}
                   onChange={e => setMajor(e.target.value)}
                   placeholder="e.g. Computer Science '27"
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[40px] px-3.5 py-2 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
             </div>
@@ -293,12 +279,14 @@ export default function SettingsView({
               <div className="text-xs text-[var(--text-muted)] truncate">
                 {accountEmail ? `Signed in as ${accountEmail}` : 'Active session: Guest Preview'}
               </div>
-              <button
+              <Button
+                variant="filled"
                 type="submit"
-                className="w-full sm:w-auto px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+                size="md"
+                className="w-full sm:w-auto shrink-0"
               >
                 Save Profile
-              </button>
+              </Button>
             </div>
           </form>
         </Card>
@@ -439,10 +427,12 @@ export default function SettingsView({
                 Default Calendar View
               </label>
               <select
-                value={userSettings?.defaultCalendarView || 'month'}
+                aria-label="Default calendar view"
+                value={userSettings?.defaultCalendarView || ''}
                 onChange={e => onUpdateSettings({ defaultCalendarView: e.target.value })}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
+                <option value="">Automatic (agenda on phones, month elsewhere)</option>
                 <option value="month">Full Calendar (Month Grid)</option>
                 <option value="week">Week Board</option>
                 <option value="agenda">Agenda List</option>
@@ -610,45 +600,49 @@ export default function SettingsView({
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
+              <Button
+                variant="outlined-neutral"
+                size="md"
+                leadingIcon={<Download size={15} />}
                 onClick={handleExportIcs}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs sm:text-sm font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                className="flex-1 sm:flex-initial"
               >
-                <Download size={15} className="text-[var(--blue)] shrink-0" />
-                <span>Export Schedule (.ics)</span>
-              </button>
+                Export Schedule (.ics)
+              </Button>
 
               {onResetLocalData && (
-                <button
-                  type="button"
+                <Button
+                  variant="text"
+                  size="md"
+                  leadingIcon={<RotateCcw size={15} />}
                   onClick={onResetLocalData}
-                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs sm:text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                  className="flex-1 sm:flex-initial"
                 >
-                  <RotateCcw size={15} className="shrink-0" />
-                  <span>Reset Customizations</span>
-                </button>
+                  Reset Customizations
+                </Button>
               )}
             </div>
 
             {isDemo && onExitDemo ? (
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<LogIn size={15} />}
                 onClick={onExitDemo}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                className="w-full sm:w-auto shrink-0"
               >
-                <LogIn size={15} />
-                <span>Exit Demo &amp; Sign In</span>
-              </button>
+                Exit Demo &amp; Sign In
+              </Button>
             ) : onSignOut ? (
-              <button
-                type="button"
+              <Button
+                variant="danger-tonal"
+                size="md"
+                leadingIcon={<LogOut size={15} />}
                 onClick={onSignOut}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--red-light)] text-[var(--red-ink)] border border-[var(--red)]/30 text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 shrink-0"
+                className="w-full sm:w-auto shrink-0"
               >
-                <LogOut size={15} />
-                <span>Sign Out</span>
-              </button>
+                Sign Out
+              </Button>
             ) : null}
           </div>
         </Card>

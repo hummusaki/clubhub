@@ -6,8 +6,7 @@ import {
   X,
   Copy,
   Check,
-  Layers,
-  Building2,
+  SlidersHorizontal,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -17,7 +16,7 @@ import {
   Mail,
 } from 'lucide-react'
 import { links as defaultLinks } from '../data/sampleData'
-import { Card, IconBadge, BubbleTag, ClubAvatar, cleanText } from './ui'
+import { Card, IconBadge, BubbleTag, ClubAvatar, cleanText, Button, IconButton, PageToolbar, ActionDisclosure } from './ui'
 import { PlatformIcon } from './icons'
 import { createLink } from '../api/client'
 import { filterAndRankBySearch } from '../utils/search'
@@ -238,6 +237,8 @@ function ResourceGlyph({ iconKey, size = 18 }) {
 
 export default function LinksResources({
   items,
+  compact = false,
+  onOpenResources,
   clubs = [],
   isDemo = false,
   userSettings = {},
@@ -279,6 +280,7 @@ export default function LinksResources({
 
   // Add Resource form state
   const [showAdd, setShowAdd] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [selectedClubId, setSelectedClubId] = useState(
     () => clubs.find(c => c.joined)?.id || clubs[0]?.id || 'demo_ucsc_csclub'
   )
@@ -391,6 +393,7 @@ export default function LinksResources({
   const groupedByClub = useMemo(() => {
     const map = new Map()
     for (const l of filteredLinks) {
+      if (filterTab === 'All' && l.isPinned) continue
       const key = l.clubId || l.clubName || 'campus'
       if (!map.has(key)) {
         const clubObj = (l.clubId && clubById.get(String(l.clubId))) || {
@@ -418,7 +421,7 @@ export default function LinksResources({
       if (aActionable !== bActionable) return bActionable - aActionable
       return a.clubName.localeCompare(b.clubName)
     })
-  }, [filteredLinks, clubById, joinedClubIdSet])
+  }, [filteredLinks, filterTab, clubById, joinedClubIdSet])
 
   const clubsWithResources = useMemo(() => {
     const counts = new Map()
@@ -432,9 +435,7 @@ export default function LinksResources({
       .sort((a, b) => cleanText(a.name).localeCompare(cleanText(b.name)))
   }, [clubs, allLinks])
 
-  function togglePin(id, currentPinned, e) {
-    e.preventDefault()
-    e.stopPropagation()
+  function togglePin(id, currentPinned) {
     if (onTogglePinOverride) {
       onTogglePinOverride(id, !currentPinned)
     } else {
@@ -442,9 +443,7 @@ export default function LinksResources({
     }
   }
 
-  async function handleCopyUrl(id, targetUrl, e) {
-    e.preventDefault()
-    e.stopPropagation()
+  async function handleCopyUrl(id, targetUrl) {
     const cleanTarget = targetUrl.replace(/^mailto:/i, '')
     try {
       await navigator.clipboard.writeText(cleanTarget)
@@ -462,270 +461,163 @@ export default function LinksResources({
 
   async function handleAddLink(e) {
     e.preventDefault()
-    if (!label.trim() || !url.trim()) return
+    if (saving || !label.trim() || !url.trim()) return
+    setSaving(true)
+    try {
+      const selectedClub = clubs.find(c => String(c.id) === String(selectedClubId))
+      const clubLabel = selectedClub ? cleanText(selectedClub.name) : ''
+      const validUrl = normalizeUrl(url)
 
-    const selectedClub = clubs.find(c => String(c.id) === String(selectedClubId))
-    const clubLabel = selectedClub ? cleanText(selectedClub.name) : ''
-    const validUrl = normalizeUrl(url)
+      const created = isDemo
+        ? null
+        : await createLink({
+            clubId: String(selectedClubId || 'demo_ucsc_csclub'),
+            clubName: clubLabel || 'Campus Club',
+            label: label.trim(),
+            url: validUrl,
+            kind,
+          })
 
-    const created = isDemo
-      ? null
-      : await createLink({
+      if (created && onRefresh) {
+        await onRefresh()
+        if (onNotify) onNotify('Shared resource added!')
+      } else {
+        const newLinkItem = {
+          id: `link_${Date.now()}`,
           clubId: String(selectedClubId || 'demo_ucsc_csclub'),
           clubName: clubLabel || 'Campus Club',
-          label: label.trim(),
-          url: validUrl,
+          rawLabel: label.trim(),
           kind,
-        })
+          title: clubLabel ? `${clubLabel} — ${label.trim()}` : label.trim(),
+          subtitle: validUrl,
+          url: validUrl,
+          pinned: true,
+        }
+        if (onAddLocalLink) {
+          onAddLocalLink(newLinkItem)
+        } else {
+          setInternalLocalAdded(prev => [newLinkItem, ...prev])
+        }
+        if (onCountChange) onCountChange(c => c + 1)
+      }
 
-    if (created && onRefresh) {
-      await onRefresh()
-      if (onNotify) onNotify('Shared resource added!')
-    } else {
-      const newLinkItem = {
-        id: `link_${Date.now()}`,
-        clubId: String(selectedClubId || 'demo_ucsc_csclub'),
-        clubName: clubLabel || 'Campus Club',
-        rawLabel: label.trim(),
-        kind,
-        title: clubLabel ? `${clubLabel} — ${label.trim()}` : label.trim(),
-        subtitle: validUrl,
-        url: validUrl,
-        pinned: true,
-      }
-      if (onAddLocalLink) {
-        onAddLocalLink(newLinkItem)
-      } else {
-        setInternalLocalAdded(prev => [newLinkItem, ...prev])
-      }
-      if (onCountChange) onCountChange(c => c + 1)
+      setLabel('')
+      setUrl('')
+    } catch {
+      onNotify?.('Could not add the resource. Please try again.', { type: 'error' })
+    } finally {
+      setSaving(false)
     }
-
-    setLabel('')
-    setUrl('')
-    setShowAdd(false)
   }
 
-  const cardGridClass = isCompact
-    ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5'
-    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4'
+  const cardGridClass = 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2'
 
   function renderResourceCard(link, { hideClubName = false } = {}) {
     const isCopied = copiedId === link.id
-    const accent = link.color || 'blue'
+    const isEmailLink = /^mailto:/i.test(link.url)
+
     return (
-      <a
-        key={link.id}
-        href={link.url}
-        target={/^mailto:/i.test(link.url) ? undefined : '_blank'}
-        rel={/^mailto:/i.test(link.url) ? undefined : 'noreferrer'}
-        style={{
-          borderLeftWidth: '3.5px',
-          borderLeftColor: `var(--${accent})`,
-        }}
-        className={`content-tile content-tile-interactive group flex items-center justify-between ${
-          isCompact ? 'gap-2.5 p-2.5' : 'gap-3 p-3.5'
-        } rounded-[var(--radius-sm)] hover:border-[var(--blue)] no-underline min-w-0`}
-      >
-        <div className={`flex items-center ${isCompact ? 'gap-2.5' : 'gap-3'} min-w-0 flex-1`}>
-          <IconBadge
-            color={link.color || 'blue'}
-            size={isCompact ? 32 : 38}
-            radius={isCompact ? 9 : 11}
-          >
-            <ResourceGlyph iconKey={link.iconKey} size={isCompact ? 15 : 18} />
-          </IconBadge>
-
-          <div className="min-w-0 flex-1">
-            {!hideClubName && link.clubName && (
-              <div className="flex items-center gap-1.5 min-w-0 mb-0.5">
-                <span className="text-[11px] font-semibold text-[var(--blue-ink)] truncate">
-                  {link.clubName}
-                </span>
-                {link.isPinned && (
-                  <span className="inline-flex items-center px-1.5 py-0 rounded-full bg-[var(--blue-light)] text-[var(--blue-ink)] text-[9.5px] font-bold shrink-0">
-                    Pinned
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div
-              className={`${
-                isCompact ? 'text-[13px]' : 'text-sm'
-              } font-semibold text-[var(--text)] truncate`}
-            >
-              {link.displayLabel}
-            </div>
-
-            <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-              <span className="truncate">{link.sourceDomain}</span>
-              {hideClubName && (
-                <>
-                  <span className="text-[var(--text-light)]">·</span>
-                  <span className="text-[var(--text-light)] shrink-0">{link.sectionLabel}</span>
-                </>
-              )}
-            </div>
+      <article key={link.id} className="content-tile flex min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 sm:px-3">
+        <IconBadge color={link.color || 'blue'} size={28} radius={9999}>
+          <ResourceGlyph iconKey={link.iconKey} size={14} />
+        </IconBadge>
+        <div className="min-w-0 flex-1">
+          <a href={link.url} target={isEmailLink ? undefined : '_blank'}
+            rel={isEmailLink ? undefined : 'noreferrer'}
+            className="block text-sm font-medium leading-snug break-words text-[var(--text)] hover:text-[var(--blue)] hover:underline">
+            {link.displayLabel}
+          </a>
+          <div className="text-xs text-[var(--text-muted)] break-words">
+            {[hideClubName ? null : link.clubName, link.sectionLabel, link.sourceDomain].filter(Boolean).join(' · ')}
           </div>
         </div>
-
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={e => handleCopyUrl(link.id, link.url, e)}
-            title="Copy link"
-            aria-label="Copy link"
-            className={`${
-              isCompact ? 'w-8 h-8 sm:w-7 sm:h-7' : 'w-8.5 h-8.5 sm:w-8 sm:h-8'
-            } rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
-              isCopied
-                ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-light)] border-[var(--border)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
-            }`}
-          >
-            {isCopied ? <Check size={12} /> : <Copy size={12} />}
-          </button>
-
-          <button
-            type="button"
-            onClick={e => togglePin(link.id, link.isPinned, e)}
-            title={link.isPinned ? 'Unpin resource' : 'Pin resource to top'}
-            aria-label={link.isPinned ? 'Unpin resource' : 'Pin resource'}
-            className={`${
-              isCompact ? 'w-8 h-8 sm:w-7 sm:h-7' : 'w-8.5 h-8.5 sm:w-8 sm:h-8'
-            } rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
-              link.isPinned
-                ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
-                : 'bg-[var(--bg-card)] text-[var(--text-light)] border-[var(--border)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
-            }`}
-          >
-            <Pin size={12} />
-          </button>
-
-          <ExternalLink
-            size={14}
-            className="text-[var(--text-light)] group-hover:text-[var(--blue-ink)] ml-0.5 transition-colors"
-          />
+        <div className="flex items-center shrink-0">
+          {!compact && (
+            <IconButton size="sm" title={isCopied ? 'Link copied' : 'Copy resource link'}
+              onClick={() => handleCopyUrl(link.id, link.url)}>
+              {isCopied ? <Check size={14} /> : <Copy size={14} />}
+            </IconButton>
+          )}
+          <IconButton size="sm" selected={link.isPinned} title={link.isPinned ? 'Unpin resource' : 'Pin resource'}
+            aria-pressed={link.isPinned} onClick={() => togglePin(link.id, link.isPinned)}>
+            <Pin size={14} />
+          </IconButton>
         </div>
-      </a>
+      </article>
     )
   }
 
+  if (compact) {
+    const preview = [...scopedLinks].sort((a, b) => Number(b.isPinned) - Number(a.isPinned)).slice(0, 4)
+    return (
+      <Card className="section-pad space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-1">
+          <h2 className="font-display text-base font-medium">Resources</h2>
+          <Button variant="text" size="sm" onClick={onOpenResources}>View resources</Button>
+        </div>
+        {preview.length > 0 ? <div className={cardGridClass}>{preview.map(link => renderResourceCard(link))}</div>
+          : <p className="text-sm text-[var(--text-muted)]">No matching resources.</p>}
+      </Card>
+    )
+  }
+
+  const filterCount = Number(filterTab !== 'All') + Number(clubFilter !== 'all') + Number(groupMode !== 'category')
+
   return (
-    <Card className={isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={0}>
-      {/* ── Top Organization & Filter Header ── */}
-      <div
-        className={`flex flex-col gap-3 ${
-          isCompact ? 'pb-3 mb-4' : 'pb-4 mb-5'
-        } border-b border-[var(--border)]`}
-      >
-        {/* Row 1: Grouping Mode + Club Filter + Add Resource */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {/* Group By Switcher */}
-            <div className="segmented-track w-full xs:w-auto">
-              <button
-                type="button"
-                onClick={() => setGroupMode('category')}
-                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                  groupMode === 'category'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <Layers size={13} />
-                <span>By Category</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupMode('club')}
-                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                  groupMode === 'club'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <Building2 size={13} />
-                <span>By Club</span>
-              </button>
-            </div>
-
-            {/* Club Scope Selector */}
-            <select
-              value={clubFilter}
-              onChange={e => setClubFilter(e.target.value)}
-              aria-label="Filter resources by club"
-              className="w-full xs:w-auto min-h-[40px] sm:max-w-[240px] px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-            >
-              <option value="all">All Campus Clubs ({allLinks.length})</option>
-              {joinedClubIdSet.size > 0 && (
-                <option value="myclubs">My Joined Clubs ({joinedClubIdSet.size})</option>
-              )}
-              {clubsWithResources.map(c => (
-                <option key={c.id} value={c.id}>
-                  {cleanText(c.name)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAdd(prev => !prev)}
-            className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity self-start sm:self-auto"
-          >
-            {showAdd ? <X size={15} /> : <Plus size={15} />}
-            <span>{showAdd ? 'Cancel' : 'Add Resource'}</span>
-          </button>
-        </div>
-
-        {/* Row 2: Resource Category Filter Pills With Live Counts */}
-        <div className="mobile-pill-rail pb-0.5 sm:pb-0">
-          {[
-            { id: 'All', label: 'All Resources', count: sectionCounts.All },
-            ...(sectionCounts.Pinned > 0
-              ? [{ id: 'Pinned', label: 'Pinned', count: sectionCounts.Pinned }]
-              : []),
-            ...RESOURCE_SECTIONS.filter(s => (sectionCounts[s.id] || 0) > 0).map(s => ({
-              id: s.id,
-              label: s.shortLabel,
-              count: sectionCounts[s.id] || 0,
-            })),
-          ].map(tab => {
-            const active = filterTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setFilterTab(tab.id)}
-                className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs cursor-pointer border transition-colors ${
-                  active
-                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] font-medium'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`text-[10.5px] font-mono-num ${
-                    active ? 'text-[var(--blue-ink)]' : 'text-[var(--text-light)]'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+    <div className="page-stack">
+      <PageToolbar title="Shared resources" actions={
+        <>
+          <ActionDisclosure label={filterCount > 0 ? `Filters (${filterCount})` : 'Filters'} icon={<SlidersHorizontal size={14} />}
+            panelClassName="left-0 right-auto w-52 p-2">
+            {() => (
+              <div className="grid gap-2">
+                <label className="grid gap-1 text-xs">
+                  Group by
+                  <select className="control-select" value={groupMode} onChange={e => setGroupMode(e.target.value)}>
+                    <option value="category">Category</option>
+                    <option value="club">Club</option>
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs">
+                  Club
+                  <select className="control-select" value={clubFilter} onChange={e => setClubFilter(e.target.value)}>
+                    <option value="all">All campus clubs</option>
+                    {joinedClubIdSet.size > 0 && <option value="myclubs">My joined clubs</option>}
+                    {clubsWithResources.map(c => <option key={c.id} value={c.id}>{cleanText(c.name)}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs">
+                  Resource type
+                  <select className="control-select" value={filterTab} onChange={e => setFilterTab(e.target.value)}>
+                    <option value="All">All resources ({sectionCounts.All})</option>
+                    {(sectionCounts.Pinned > 0 || filterTab === 'Pinned') && (
+                      <option value="Pinned">Pinned ({sectionCounts.Pinned})</option>
+                    )}
+                    {RESOURCE_SECTIONS.filter(section => sectionCounts[section.id] > 0 || filterTab === section.id).map(section => (
+                      <option key={section.id} value={section.id}>{section.shortLabel} ({sectionCounts[section.id]})</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </ActionDisclosure>
+          <Button size="sm" variant={showAdd ? 'outlined-neutral' : 'filled'}
+            icon={showAdd ? <X size={14} /> : <Plus size={14} />}
+            aria-expanded={showAdd} aria-controls="add-resource-form"
+            onClick={() => setShowAdd(prev => !prev)}>
+            {showAdd ? 'Close resource form' : 'Add resource'}
+          </Button>
+        </>
+      } />
 
       {/* ── Add Resource Form ── */}
       {showAdd && (
         <form
+          id="add-resource-form"
           onSubmit={handleAddLink}
           className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
         >
-          <div className="text-sm font-bold text-[var(--text)]">Share Club Resource</div>
+          <div className="text-sm font-medium font-display text-[var(--text)]">Share Club Resource</div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
@@ -792,43 +684,42 @@ export default function LinksResources({
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
+            <Button
+              variant="text"
               onClick={() => setShowAdd(false)}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="filled"
               type="submit"
-              className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
+              disabled={saving}
             >
-              Save Resource
-            </button>
+              {saving ? 'Saving…' : 'Save resource'}
+            </Button>
           </div>
         </form>
+      )}
+
+      {pinnedShelfLinks.length > 0 && (
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-2 pb-2 border-b border-[var(--border-subtle)]">
+            <IconBadge color="blue" size={26} radius={9999}>
+              <Pin size={13} />
+            </IconBadge>
+            <h3 className="text-sm font-medium font-display text-[var(--text)]">Pinned Quick Access</h3>
+            <BubbleTag label={`${pinnedShelfLinks.length}`} color="blue" size="sm" />
+          </div>
+          <div className={cardGridClass}>
+            {pinnedShelfLinks.map(link => renderResourceCard(link))}
+          </div>
+        </section>
       )}
 
       {/* ── Organized Resources Display ── */}
       {filteredLinks.length > 0 ? (
         groupMode === 'category' ? (
           <div className={isCompact ? 'space-y-5' : 'space-y-6'}>
-            {/* 1. Pinned Quick-Access Shelf */}
-            {pinnedShelfLinks.length > 0 && (
-              <section className="space-y-2.5">
-                <div className="flex items-center gap-2 pb-2 border-b border-[var(--border-subtle)]">
-                  <IconBadge color="blue" size={26} radius={8}>
-                    <Pin size={13} />
-                  </IconBadge>
-                  <h3 className="text-sm font-bold text-[var(--text)]">Pinned Quick Access</h3>
-                  <BubbleTag label={`${pinnedShelfLinks.length}`} color="blue" size="sm" />
-                </div>
-                <div className={cardGridClass}>
-                  {pinnedShelfLinks.map(link => renderResourceCard(link))}
-                </div>
-              </section>
-            )}
-
             {/* 2. Structured Category Sections */}
             {groupedByCategory.map(sec => {
               const isSocialsInOverview = filterTab === 'All' && sec.id === 'socials'
@@ -848,13 +739,12 @@ export default function LinksResources({
               const isExpanded =
                 Boolean(expandedGroups[sec.id]) || Boolean(searchQuery.trim())
               const visibleItems = isExpanded ? sec.items : sec.items.slice(0, defaultCap)
-              const remaining = sec.items.length - visibleItems.length
 
               return (
                 <section key={sec.id} className="space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <IconBadge color={sec.color} size={28} radius={8}>
+                      <IconBadge color={sec.color} size={28} radius={9999}>
                         <ResourceGlyph
                           iconKey={
                             sec.id === 'forms'
@@ -874,7 +764,7 @@ export default function LinksResources({
                       </IconBadge>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm sm:text-[15px] font-bold text-[var(--text)]">
+                          <h3 className="text-sm sm:text-[15px] font-medium font-display text-[var(--text)]">
                             {sec.label}
                           </h3>
                           <BubbleTag label={`${sec.items.length}`} color={sec.color} size="sm" />
@@ -888,21 +778,19 @@ export default function LinksResources({
                     </div>
 
                     {sec.items.length > defaultCap && !searchQuery.trim() && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="text"
+                        size="sm"
+                        trailingIcon={isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                         onClick={() =>
                           setExpandedGroups(prev => ({
                             ...prev,
                             [sec.id]: !prev[sec.id],
                           }))
                         }
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
                       >
-                        <span>
-                          {isExpanded ? 'Show fewer' : `Show all ${sec.items.length}`}
-                        </span>
-                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                      </button>
+                        {isExpanded ? 'Show fewer' : `Show all ${sec.items.length}`}
+                      </Button>
                     )}
                   </div>
 
@@ -910,22 +798,6 @@ export default function LinksResources({
                     {visibleItems.map(link => renderResourceCard(link))}
                   </div>
 
-                  {remaining > 0 && !searchQuery.trim() && (
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedGroups(prev => ({ ...prev, [sec.id]: true }))
-                        }
-                        className="inline-flex items-center gap-1.5 px-3.5 min-h-[32px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
-                      >
-                        <span>
-                          View {remaining} more in {sec.shortLabel}
-                        </span>
-                        <ChevronDown size={13} />
-                      </button>
-                    </div>
-                  )}
                 </section>
               )
             })}
@@ -958,7 +830,7 @@ export default function LinksResources({
                         <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <ClubAvatar club={group.club} size={28} />
-                            <h3 className="text-sm font-bold text-[var(--text)] truncate">
+                            <h3 className="text-sm font-medium font-display text-[var(--text)] truncate">
                               {group.clubName}
                             </h3>
                             <BubbleTag
@@ -971,27 +843,21 @@ export default function LinksResources({
                           {group.items.length > itemCap &&
                             !searchQuery.trim() &&
                             clubFilter === 'all' && (
-                              <button
-                                type="button"
+                              <Button
+                                variant="text"
+                                size="sm"
+                                trailingIcon={clubExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                 onClick={() =>
                                   setExpandedGroups(prev => ({
                                     ...prev,
                                     [`club_${group.key}`]: !prev[`club_${group.key}`],
                                   }))
                                 }
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
                               >
-                                <span>
-                                  {clubExpanded
-                                    ? 'Show fewer'
-                                    : `All ${group.items.length} links`}
-                                </span>
-                                {clubExpanded ? (
-                                  <ChevronUp size={13} />
-                                ) : (
-                                  <ChevronDown size={13} />
-                                )}
-                              </button>
+                                {clubExpanded
+                                  ? 'Show fewer'
+                                  : `All ${group.items.length} links`}
+                              </Button>
                             )}
                         </div>
 
@@ -1006,19 +872,19 @@ export default function LinksResources({
 
                   {remainingClubs > 0 && (
                     <div className="pt-1">
-                      <button
-                        type="button"
+                      <Button
+                        variant="tonal"
+                        size="sm"
+                        trailingIcon={<ChevronDown size={14} />}
                         onClick={() =>
                           setExpandedGroups(prev => ({
                             ...prev,
                             __all_clubs__: !prev.__all_clubs__,
                           }))
                         }
-                        className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
                       >
-                        <span>Show {remainingClubs} more clubs with resources</span>
-                        <ChevronDown size={14} />
-                      </button>
+                        Show {remainingClubs} more clubs with resources
+                      </Button>
                     </div>
                   )}
                 </>
@@ -1035,19 +901,20 @@ export default function LinksResources({
             Try switching to All Resources or selecting All Campus Clubs.
           </p>
           {(filterTab !== 'All' || clubFilter !== 'all') && (
-            <button
-              type="button"
+            <Button
+              variant="filled"
+              size="sm"
               onClick={() => {
                 setFilterTab('All')
                 setClubFilter('all')
               }}
-              className="mt-1 px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
+              className="mt-1"
             >
               Reset Resource Filters
-            </button>
+            </Button>
           )}
         </div>
       )}
-    </Card>
+    </div>
   )
 }

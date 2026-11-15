@@ -206,7 +206,7 @@ export async function authenticateWorkspaceEmail({
             id: sbAuth.user.id,
             email: sbAuth.user.email,
             fullName: sbAuth.user.user_metadata?.full_name || fullName || email.split('@')[0],
-            avatarBg: avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+            avatarBg: avatarBg || '#1A73E8',
           },
           token: sbAuth.session.access_token,
           memberships: [],

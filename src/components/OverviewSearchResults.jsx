@@ -9,7 +9,7 @@ import {
   Plus,
   MapPin,
 } from 'lucide-react'
-import { Card, ClubAvatar, BubbleTag, IconBadge, cleanText } from './ui'
+import { Card, ClubAvatar, BubbleTag, IconBadge, Button, cleanText } from './ui'
 import { filterAndRankBySearch } from '../utils/search'
 
 export default function OverviewSearchResults({
@@ -93,13 +93,13 @@ export default function OverviewSearchResults({
   return (
     <Card className={`${isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} space-y-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[var(--border)]">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <IconBadge color="blue" size={34} radius={10}>
-            <Search size={16} />
+        <div className="flex items-center gap-3 min-w-0">
+          <IconBadge color="blue" size={38} radius={9999}>
+            <Search size={17} />
           </IconBadge>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm sm:text-base font-bold text-[var(--text)] truncate">
+              <h2 className="font-display text-base font-medium text-[var(--text)] truncate">
                 Search results for &ldquo;{trimmedQuery}&rdquo;
               </h2>
               <BubbleTag
@@ -115,24 +115,24 @@ export default function OverviewSearchResults({
         </div>
 
         {onClearQuery && (
-          <button
-            type="button"
+          <Button
+            variant="outlined-neutral"
+            size="sm"
+            icon={<X size={14} />}
             onClick={onClearQuery}
-            className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors shrink-0"
           >
-            <X size={13} />
-            <span>Clear search</span>
-          </button>
+            Clear search
+          </Button>
         )}
       </div>
 
       {totalMatches === 0 ? (
         <div className="py-6 text-center space-y-1.5">
-          <p className="text-sm font-semibold text-[var(--text)]">
+          <p className="text-sm font-medium text-[var(--text)]">
             No clubs, events, announcements, or links matched &ldquo;{trimmedQuery}&rdquo;
           </p>
           <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-            Try searching by club name, @handle, building/room, or topic — or use the AI Club Matchmaker below to explore by interest.
+            Try searching by club name, @handle, building/room, or topic — or use the AI Club Search &amp; Advisor below to explore by interest.
           </p>
         </div>
       ) : (
@@ -141,20 +141,20 @@ export default function OverviewSearchResults({
           {matchedClubs.length > 0 && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <span className="text-sm font-display font-medium text-[var(--text)]">
                   Clubs ({matchedClubs.length})
                 </span>
                 {onNav && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="text"
+                    size="sm"
+                    trailingIcon={<ArrowRight size={13} />}
                     onClick={() =>
                       onNav('clubs', { section: 'discover', searchQuery: trimmedQuery })
                     }
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
                   >
-                    <span>View all in Clubs</span>
-                    <ArrowRight size={12} />
-                  </button>
+                    View all in Clubs
+                  </Button>
                 )}
               </div>
 
@@ -164,41 +164,32 @@ export default function OverviewSearchResults({
                   return (
                     <div
                       key={club.id}
-                      onClick={() =>
-                        onNav &&
-                        onNav('clubs', {
-                          clubId: club.id,
-                          section: 'discover',
-                          searchQuery: club.name || trimmedQuery,
-                        })
-                      }
-                      className="p-3 rounded-xl content-tile content-tile-interactive cursor-pointer flex items-center justify-between gap-2.5"
+                      className="p-2.5 rounded-xl content-tile flex items-center justify-between gap-2.5"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <ClubAvatar club={club} size={34} />
+                        <ClubAvatar club={club} size={36} />
                         <div className="min-w-0">
-                          <div className="text-xs sm:text-[13px] font-bold text-[var(--text)] truncate">
+                          <button type="button" className="ui-touch text-left text-sm font-medium hover:underline break-words"
+                            onClick={() => onNav?.('clubs', {
+                              clubId: club.id, section: 'discover', searchQuery: club.name || trimmedQuery,
+                            })}>
                             {cleanText(club.name)}
-                          </div>
-                          <div className="text-[11px] text-[var(--text-muted)] truncate">
+                          </button>
+                          <div className="text-xs text-[var(--text-muted)] truncate">
                             {club.categoryLabel || club.category}
                             {club.instagram ? ` · @${club.instagram}` : ''}
                           </div>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
+                      <Button
+                        size="sm"
+                        variant={isJoined ? 'outlined' : 'tonal'}
+                        icon={isJoined ? <Check size={13} /> : <Plus size={13} />}
                         onClick={e => handleJoin(e, club)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border shrink-0 ${
-                          isJoined
-                            ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
-                            : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white'
-                        }`}
                       >
-                        {isJoined ? <Check size={11} /> : <Plus size={11} />}
-                        <span>{isJoined ? 'Joined' : 'Join'}</span>
-                      </button>
+                        {isJoined ? 'Joined' : 'Join'}
+                      </Button>
                     </div>
                   )
                 })}
@@ -208,20 +199,20 @@ export default function OverviewSearchResults({
 
           {/* 2. Matching Events */}
           {matchedEvents.length > 0 && (
-            <div className="space-y-2.5 pt-2 border-t border-[var(--border-subtle)]">
+            <div className="space-y-2.5 pt-3 border-t border-[var(--border)]">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Upcoming Events ({matchedEvents.length})
+                <span className="text-sm font-display font-medium text-[var(--text)]">
+                  Upcoming events ({matchedEvents.length})
                 </span>
                 {onNav && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="text"
+                    size="sm"
+                    trailingIcon={<ArrowRight size={13} />}
                     onClick={() => onNav('calendar', { searchQuery: trimmedQuery })}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
                   >
-                    <span>Open in Calendar</span>
-                    <ArrowRight size={12} />
-                  </button>
+                    Open in Calendar
+                  </Button>
                 )}
               </div>
 
@@ -229,24 +220,24 @@ export default function OverviewSearchResults({
                 {matchedEvents.slice(0, 4).map(ev => (
                   <div
                     key={ev.id}
-                    onClick={() => onNav && onNav('calendar', { searchQuery: trimmedQuery })}
-                    className="p-3 rounded-xl content-tile content-tile-interactive cursor-pointer flex items-start justify-between gap-2.5"
+                    className="p-2.5 rounded-xl content-tile flex flex-wrap items-start justify-between gap-2"
                   >
                     <div className="min-w-0 space-y-0.5">
-                      <div className="text-xs sm:text-[13px] font-bold text-[var(--text)] truncate">
+                      <button type="button" className="ui-touch text-left text-sm font-medium hover:underline break-words"
+                        onClick={() => onNav?.('calendar', { searchQuery: trimmedQuery })}>
                         {cleanText(ev.event)}
-                      </div>
-                      <div className="text-[11px] font-medium text-[var(--blue-ink)] truncate">
+                      </button>
+                      <div className="text-xs font-medium text-[var(--blue)] truncate">
                         {cleanText(ev.club)}
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] truncate">
+                      <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] truncate pt-0.5">
                         <span className="inline-flex items-center gap-1 shrink-0">
-                          <Calendar size={11} />
+                          <Calendar size={12} />
                           {ev.day} {ev.date} · {ev.time}
                         </span>
                         {ev.location && (
                           <span className="inline-flex items-center gap-1 truncate">
-                            <MapPin size={11} className="shrink-0" />
+                            <MapPin size={12} className="shrink-0" />
                             <span className="truncate">{cleanText(ev.location)}</span>
                           </span>
                         )}
@@ -257,12 +248,11 @@ export default function OverviewSearchResults({
                         href={ev.permalink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
                         title="Open original post"
-                        className="inline-flex items-center gap-1 px-2.5 min-h-[26px] rounded-full bg-[var(--bg-card)] text-[11px] font-semibold text-[var(--blue-ink)] border border-[var(--border)] hover:border-[var(--blue)] no-underline shrink-0"
+                        className="md-state-layer inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-transparent text-xs font-medium text-[var(--blue)] border border-[var(--md-outline)] hover:border-[var(--blue)] no-underline shrink-0"
                       >
                         <span>Original Post</span>
-                        <ExternalLink size={10.5} />
+                        <ExternalLink size={12} />
                       </a>
                     )}
                   </div>
@@ -273,20 +263,20 @@ export default function OverviewSearchResults({
 
           {/* 3. Matching Shared Links */}
           {matchedLinks.length > 0 && (
-            <div className="space-y-2.5 pt-2 border-t border-[var(--border-subtle)]">
+            <div className="space-y-2.5 pt-3 border-t border-[var(--border)]">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Shared Links &amp; Docs ({matchedLinks.length})
+                <span className="text-sm font-display font-medium text-[var(--text)]">
+                  Shared links &amp; docs ({matchedLinks.length})
                 </span>
                 {onNav && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="text"
+                    size="sm"
+                    trailingIcon={<ArrowRight size={13} />}
                     onClick={() => onNav('links', { searchQuery: trimmedQuery })}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
                   >
-                    <span>View in Resources</span>
-                    <ArrowRight size={12} />
-                  </button>
+                    View in Resources
+                  </Button>
                 )}
               </div>
 
@@ -297,18 +287,18 @@ export default function OverviewSearchResults({
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-2.5 rounded-xl content-tile content-tile-interactive no-underline flex items-center justify-between gap-2.5"
+                    className="p-3 rounded-xl content-tile content-tile-interactive no-underline flex items-center justify-between gap-2.5"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-[var(--text)] truncate">
+                      <div className="text-sm font-medium text-[var(--text)] truncate">
                         {cleanText(link.rawLabel || link.title)}
                       </div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate">
+                      <div className="text-xs text-[var(--text-muted)] truncate mt-0.5">
                         {link.clubName ? `${cleanText(link.clubName)} · ` : ''}
                         {link.category || 'Resource'}
                       </div>
                     </div>
-                    <ExternalLink size={13} className="text-[var(--text-light)] shrink-0" />
+                    <ExternalLink size={14} className="text-[var(--text-muted)] shrink-0" />
                   </a>
                 ))}
               </div>

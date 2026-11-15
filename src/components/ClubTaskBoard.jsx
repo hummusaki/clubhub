@@ -32,6 +32,13 @@ import {
   ClubAvatar,
   IconBadge,
   cleanText,
+  Button,
+  IconButton,
+  ActionDisclosure,
+  ActionItem,
+  PageToolbar,
+  SegmentedControl,
+  FilterChip,
 } from './ui'
 import {
   getClubTasksBoard,
@@ -341,7 +348,7 @@ function MemberTaskReminderModal({
       >
         <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-extrabold text-[var(--text)]">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text)]">
               <Bell size={15} className="text-[var(--blue)] shrink-0" />
               <span>Personal Reminder</span>
             </div>
@@ -463,21 +470,21 @@ function MemberTaskReminderModal({
           </button>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="text"
+              size="sm"
               onClick={onClose}
-              className="px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
             >
               Cancel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="filled"
+              size="sm"
               disabled={busy}
               onClick={() => onSave({ enabled, offsetMinutes, channels })}
-              className="px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
             >
               Save
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1575,6 +1582,44 @@ export default function ClubTaskBoard({
         )
       }
     } else {
+      const isConstraintError =
+        res?.code === 'TASKS_CHECK_CONSTRAINT_VIOLATION' ||
+        /tasks_(audience|visibility)_check/i.test(res?.error || '')
+      if (isConstraintError) {
+        mutateLocalOrDemoBoard((base, cid) => {
+          const created = {
+            id: `local_ptsk_${cid}_${Date.now()}`,
+            clubId: cid,
+            sectionId: pSec.id,
+            title: cleanTitle,
+            notes: cleanNotes,
+            visibility: 'personal',
+            audience: 'personal',
+            isPersonal: true,
+            status: 'not_started',
+            priority: draft.priority || 'medium',
+            dueDate: cleanDate,
+            dueTime: cleanTime,
+            reminder: reminderPayload,
+            assignees: [],
+            groupIds: [],
+            completedBy: [],
+          }
+          return {
+            ...base,
+            personalTasks: [...(base.personalTasks || []), created],
+          }
+        })
+        setQuickDrafts(prev => ({ ...prev, [pSec.id]: makeBlankDraft() }))
+        if (onNotify) {
+          onNotify(
+            'Saved to your local to-do list. Update your Supabase schema (tasks_audience_check) to sync to cloud.',
+            { type: 'warning' }
+          )
+        }
+        return
+      }
+
       if (res?.status === 403) loadBoard()
       if (onNotify) onNotify(res?.error || 'Could not add personal to-do.', { type: 'error' })
     }
@@ -1706,6 +1751,48 @@ export default function ClubTaskBoard({
         )
       }
     } else {
+      const isConstraintError =
+        res?.code === 'TASKS_CHECK_CONSTRAINT_VIOLATION' ||
+        /tasks_(audience|visibility)_check/i.test(res?.error || '')
+      if (isConstraintError && isPersonalPayload) {
+        mutateLocalOrDemoBoard((base, cid) => {
+          const created = {
+            id: editingTask?.id || `local_ptsk_${cid}_${Date.now()}`,
+            clubId: cid,
+            sectionId: payload.sectionId || personalSections[0]?.id || '',
+            title: payload.title,
+            notes: payload.notes || '',
+            visibility: 'personal',
+            audience: 'personal',
+            isPersonal: true,
+            status: payload.status || 'not_started',
+            priority: payload.priority || 'medium',
+            dueDate: payload.dueDate || '',
+            dueTime: payload.dueDate ? payload.dueTime || '' : '',
+            reminder: payload.reminder || { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
+            assignees: [],
+            groupIds: [],
+            completedBy: [],
+          }
+          return {
+            ...base,
+            personalTasks: editingTask?.id
+              ? (base.personalTasks || []).map(t => (t.id === editingTask.id ? { ...t, ...created } : t))
+              : [...(base.personalTasks || []), created],
+          }
+        })
+        setModalOpen(false)
+        setEditingTask(null)
+        setModalPersonalOnly(false)
+        if (onNotify) {
+          onNotify(
+            'Saved to your local to-do list. Update your Supabase schema (tasks_audience_check) to sync to cloud.',
+            { type: 'warning' }
+          )
+        }
+        return
+      }
+
       if (res?.status === 403) loadBoard()
       if (onNotify) onNotify(res?.error || 'Permission denied.', { type: 'error' })
     }
@@ -1940,215 +2027,120 @@ export default function ClubTaskBoard({
 
   if (!canUseBoard) {
     return (
-      <Card className="p-6 text-center space-y-2">
-        <Lock size={22} className="mx-auto text-[var(--blue)]" />
-        <h3 className="text-base font-bold text-[var(--text)]">Sign In to Access Club Task Boards</h3>
-        <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-          Sign in with your account to view tasks for the clubs you&apos;re in, keep your own private to-do list per server, or manage your club&apos;s Board Task View.
-        </p>
-      </Card>
+      <div className="page-stack">
+        <PageToolbar title="Task board" />
+        <Card className="p-6 text-center space-y-2">
+          <Lock size={22} className="mx-auto text-[var(--blue)]" />
+          <h3 className="text-base font-bold text-[var(--text)]">Sign In to Access Club Task Boards</h3>
+          <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+            Sign in with your account to view tasks for the clubs you&apos;re in, keep your own private to-do list per server, or manage your club&apos;s Board Task View.
+          </p>
+        </Card>
+      </div>
     )
   }
 
   // Strictly enforce: you can only see task boards for clubs you are in
   if (memberClubs.length === 0) {
     return (
-      <Card className="p-7 text-center space-y-3" delay={1}>
-        <div className="w-12 h-12 rounded-2xl bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center mx-auto">
-          <Users size={22} />
-        </div>
-        <div className="space-y-1">
-          <h3 className="text-base font-bold text-[var(--text)]">Join a Club to Unlock Its Task Board</h3>
-          <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
-            Task boards only show servers you&apos;re a member of. Once you join a club, you&apos;ll get its shared club checklist plus your own private to-do list for that server.
-          </p>
-        </div>
-        {(onBrowseClubs || onOpenClubsRbac) && (
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => (onBrowseClubs ? onBrowseClubs() : onOpenClubsRbac(''))}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <Compass size={14} />
-              <span>Browse &amp; Join Clubs</span>
-            </button>
+      <div className="page-stack">
+        <PageToolbar title="Task board" />
+        <Card className="p-7 text-center space-y-3" delay={1}>
+          <div className="w-12 h-12 rounded-2xl bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center mx-auto">
+            <Users size={22} />
           </div>
-        )}
-      </Card>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-[var(--text)]">Join a Club to Unlock Its Task Board</h3>
+            <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
+              Task boards only show servers you&apos;re a member of. Once you join a club, you&apos;ll get its shared club checklist plus your own private to-do list for that server.
+            </p>
+          </div>
+          {(onBrowseClubs || onOpenClubsRbac) && (
+            <div className="pt-1">
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<Compass size={14} />}
+                onClick={() => (onBrowseClubs ? onBrowseClubs() : onOpenClubsRbac(''))}
+              >
+                Browse &amp; Join Clubs
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
     )
   }
 
   const showPersonalZone = focusTab === 'all' || focusTab === 'personal'
   const showClubZone = focusTab === 'all' || focusTab === 'club'
 
+  const filterCount = advancedFilterCount + Number(hideDone) + Number(onlyAssignedToMe) + Number(Boolean(kpiQuickFilter))
+
   return (
-    <div className="space-y-5">
-      {/* ── Top Workspace Card: Joined Server Switcher + Active Server Header + Smart Focus/Filter Bar ── */}
-      <Card className="p-4 sm:p-5 space-y-4" delay={1}>
-        {/* Server Switcher Rail (only shown when member of 2+ clubs — zero redundant dual dropdowns) */}
-        {memberClubs.length > 1 && (
-          <div className="flex items-center justify-between gap-2 pb-3.5 border-b border-[var(--border-subtle)]">
-            <div className="mobile-pill-rail flex-1 min-w-0">
-              {memberClubs.map(c => {
-                const isSelected = normalizeClubId(c.id) === normalizeClubId(selectedClubId)
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedClubId(c.id)}
-                    className={`inline-flex items-center gap-2 pl-1.5 pr-3 min-h-[36px] rounded-xl text-xs font-semibold border shrink-0 cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)] shadow-2xs'
-                        : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
-                    }`}
-                  >
-                    <ClubAvatar club={c} size={24} className="rounded-lg" />
-                    <span className="truncate max-w-[170px]">{cleanText(c.name)}</span>
-                  </button>
-                )
-              })}
-            </div>
+    <div className="page-stack">
+      <div className="space-y-2 dense-controls">
+        <PageToolbar title="Task board" actions={
+          <>
+            <ActionDisclosure label="Task settings" icon={<SlidersHorizontal size={14} />}>
+              {close => (
+                <>
+                  <ActionItem icon={<BellRing size={14} />} onClick={() => {
+                    setShowReminderPanel(value => !value)
+                    close()
+                  }}>
+                    {showReminderPanel ? 'Hide reminders' : 'Configure reminders'}
+                  </ActionItem>
+                  {onOpenClubsRbac && selectedClub && (
+                    <ActionItem icon={<Users size={14} />} onClick={() => {
+                      close()
+                      onOpenClubsRbac(selectedClub.id)
+                    }}>
+                      {isBoard ? 'Roster & groups' : 'Roles & groups'}
+                    </ActionItem>
+                  )}
+                </>
+              )}
+            </ActionDisclosure>
+            {isBoard && (
+              <Button size="sm" icon={<Plus size={14} />} onClick={() => {
+                setEditingTask(null)
+                setModalPersonalOnly(false)
+                setModalDefaultSectionId(visibleSections[0]?.id || '')
+                setModalOpen(true)
+              }}>
+                Create club task
+              </Button>
+            )}
+          </>
+        } />
 
-            {memberClubs.length > 6 && (
-              <select
-                value={selectedClub?.id || selectedClubId}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:max-w-full min-w-0">
+            <ClubAvatar club={selectedClub} size={28} />
+            {memberClubs.length > 1 ? (
+              <select value={selectedClub?.id || selectedClubId}
                 onChange={e => setSelectedClubId(e.target.value)}
-                aria-label="Jump to joined club server"
-                className="hidden sm:block min-h-[36px] px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] shrink-0"
-              >
-                {memberClubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
+                aria-label="Task board club" className="control-select min-w-0 max-w-full flex-1 sm:max-w-72">
+                {memberClubs.map(c => <option key={c.id} value={c.id}>{cleanText(c.name)}</option>)}
               </select>
+            ) : (
+              <span className="text-sm font-medium break-words min-w-0">{cleanText(selectedClub?.name)}</span>
             )}
           </div>
-        )}
-
-        {/* Active Server Identity & Primary Actions */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-          <div className="flex items-center gap-3 min-w-0">
-            <ClubAvatar club={selectedClub} size={44} />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-[var(--text)] truncate">
-                  {cleanText(selectedClub?.name || 'Club Server')}
-                </h2>
-                {boardData?.permission && (
-                  <BubbleTag
-                    label={
-                      isBoard
-                        ? `Board · ${cleanText(boardData.permission.roleTitle || 'Officer')}`
-                        : isDemo
-                          ? 'Demo Member'
-                          : 'Member'
-                    }
-                    color={isBoard ? 'purple' : 'blue'}
-                    size="sm"
-                  />
-                )}
-                {loading && boardData && boardData.clubId === normSelectedClubId && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--blue-light)] text-[var(--blue-ink)] animate-pulse">
-                    <Loader2 size={11} className="animate-spin text-[var(--blue)]" />
-                    <span>Syncing…</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                {openPersonalCount === 0
-                  ? 'All caught up on personal to-dos'
-                  : `${openPersonalCount} personal ${openPersonalCount === 1 ? 'to-do' : 'to-dos'} left`}
-                {' · '}
-                {openClubCount === 0
-                  ? '0 open club tasks'
-                  : `${openClubCount} open club ${openClubCount === 1 ? 'task' : 'tasks'}`}
-              </p>
-            </div>
+          <div className="flex items-center flex-wrap gap-x-2 text-xs text-[var(--text-muted)]">
+            <span>{openPersonalCount} open personal · {openClubCount} open club</span>
+            {boardData?.permission && (
+              <span>{isBoard ? cleanText(boardData.permission.roleTitle || 'Officer') : isDemo ? 'Demo member' : 'Member'}</span>
+            )}
+            {activeReminderCount > 0 && <span>{activeReminderCount} active reminders</span>}
+            {loading && boardData?.clubId === normSelectedClubId && <span role="status">Syncing…</span>}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {isBoard && (
-              <div className="segmented-track w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setViewTierForCurrentClub('member')}
-                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    effectiveTier === 'member'
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <Users size={13} />
-                  <span>Member View</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewTierForCurrentClub('board')}
-                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    effectiveTier === 'board'
-                      ? 'bg-[var(--purple)] text-white shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <Shield size={13} />
-                  <span>Board View</span>
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowReminderPanel(v => !v)}
-              className={`inline-flex items-center justify-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                showReminderPanel || activeReminderCount > 0
-                  ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                  : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-              }`}
-            >
-              <BellRing size={13} />
-              <span>Reminders</span>
-              {activeReminderCount > 0 && (
-                <span className="px-1.5 rounded-full bg-[var(--blue)] text-white text-[10px] font-mono-num">
-                  {activeReminderCount}
-                </span>
-              )}
-              {(integrationSummary.discordReady || integrationSummary.emailReady) && (
-                <span
-                  className="w-2 h-2 rounded-full bg-[var(--green)]"
-                  title="Discord / Email channel ready"
-                />
-              )}
-            </button>
-
-            {onOpenClubsRbac && selectedClub && (
-              <button
-                type="button"
-                onClick={() => onOpenClubsRbac(selectedClub.id)}
-                className="inline-flex items-center justify-center gap-1.5 px-3 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-              >
-                <Users size={13} />
-                <span>{isBoard ? 'Roster & Groups' : 'Roles & Groups'}</span>
-              </button>
-            )}
-
-            {isBoard && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingTask(null)
-                  setModalPersonalOnly(false)
-                  setModalDefaultSectionId(visibleSections[0]?.id || '')
-                  setModalOpen(true)
-                }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <Plus size={14} />
-                <span>New Club Task</span>
-              </button>
-            )}
-          </div>
+          {isBoard && (
+            <SegmentedControl size="sm" ariaLabel="Task board view" value={effectiveTier}
+              onChange={setViewTierForCurrentClub}
+              options={[{ value: 'member', label: 'Member view' }, { value: 'board', label: 'Board view' }]} />
+          )}
         </div>
 
         {/* Inline Discord & Email Reminder Settings Drawer */}
@@ -2156,7 +2148,7 @@ export default function ClubTaskBoard({
           <div className="content-tile p-3.5 sm:p-4 rounded-2xl space-y-3 fade-in">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-[var(--text)]">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
                   <BellRing size={13.5} className="text-[var(--blue)]" />
                   <span>Task Reminder Notifications (Discord &amp; Email)</span>
                 </div>
@@ -2179,8 +2171,8 @@ export default function ClubTaskBoard({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
               {/* Left: Clean Labeled Default Lead Time & Checkboxes */}
               <div className="space-y-3 bg-[var(--bg-card)] p-3.5 rounded-xl border border-[var(--border)]">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Default Reminder Preferences
+                <div className="text-xs font-medium text-[var(--text-muted)]">
+                  Default reminder preferences
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -2261,8 +2253,8 @@ export default function ClubTaskBoard({
               {/* Right: Quick Discord Webhook + Email Destination Config */}
               <div className="space-y-2 bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border)]">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Notification Destinations
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    Notification destinations
                   </div>
                   <span className="text-[10.5px] font-semibold text-[var(--green-ink)]">
                     {integrationSummary.discordReady && integrationSummary.emailReady
@@ -2289,7 +2281,7 @@ export default function ClubTaskBoard({
                           ? serverIntegrationMeta.webhookMasked || 'Connected via server ✓'
                           : 'https://discord.com/api/webhooks/...'
                       }
-                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[#5865F2]"
+                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--md-primary)]"
                     />
                   </div>
                   <div>
@@ -2307,18 +2299,18 @@ export default function ClubTaskBoard({
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="filled"
+                    size="sm"
                     onClick={async () => {
                       const ok = await handleSaveChannelPrefs()
                       if (ok && onNotify) {
                         onNotify('Saved reminder Discord & Email destinations!')
                       }
                     }}
-                    className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
                   >
                     Save Channels
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2332,18 +2324,18 @@ export default function ClubTaskBoard({
             {effectiveTier === 'board' && showClubZone && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="content-tile px-3 py-2.5 rounded-xl">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Club Tasks
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    Club tasks
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--text)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--text)] mt-0.5">
                     {kpis.total}
                   </div>
                 </div>
                 <div className="px-3 py-2.5 rounded-xl bg-[var(--green-light)] border border-[var(--green)]/30">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--green-ink)]">
+                  <div className="text-xs font-medium text-[var(--green-ink)]">
                     Completed
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--green-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--green-ink)] mt-0.5">
                     {kpis.done} ({kpis.pct}%)
                   </div>
                 </div>
@@ -2356,10 +2348,10 @@ export default function ClubTaskBoard({
                       : 'bg-[var(--red-light)]/80 border-[var(--red)]/30 hover:border-[var(--red)]'
                   }`}
                 >
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--red-ink)]">
+                  <div className="text-xs font-medium text-[var(--red-ink)]">
                     Blocked / Urgent
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--red-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--red-ink)] mt-0.5">
                     {kpis.stuck}
                   </div>
                 </button>
@@ -2372,10 +2364,10 @@ export default function ClubTaskBoard({
                       : 'bg-[var(--yellow-light)]/80 border-[var(--yellow)]/30 hover:border-[var(--yellow)]'
                   }`}
                 >
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--yellow-ink)]">
+                  <div className="text-xs font-medium text-[var(--yellow-ink)]">
                     Overdue
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--yellow-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--yellow-ink)] mt-0.5">
                     {kpis.overdue}
                   </div>
                 </button>
@@ -2395,6 +2387,7 @@ export default function ClubTaskBoard({
                     <button
                       key={tab.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setFocusTab(tab.id)}
                       className={`flex-1 md:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                         active
@@ -2419,9 +2412,9 @@ export default function ClubTaskBoard({
                 })}
               </div>
 
-              {/* Search + Quick Filter Pills */}
+              {/* Search and filters */}
               <div className="flex flex-wrap items-center gap-2 flex-1 md:justify-end">
-                <div className="relative flex-1 min-w-[170px] md:max-w-[250px]">
+                <div className="relative flex-1 min-w-0 md:max-w-[250px]">
                   <Search
                     size={13}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-light)] pointer-events-none"
@@ -2431,23 +2424,63 @@ export default function ClubTaskBoard({
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Search tasks…"
-                    className="w-full min-h-[36px] pl-8 pr-7 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    aria-label="Search tasks"
+                    className="w-full min-h-[36px] max-sm:min-h-11 pl-8 pr-11 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
                       aria-label="Clear search"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0.5"
+                      className="ui-touch flex items-center justify-center absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0.5"
                     >
                       <X size={13} />
                     </button>
                   )}
                 </div>
 
+                <button
+                  type="button"
+                  aria-expanded={showAdvancedFilters}
+                  aria-controls="task-board-filters"
+                  onKeyDown={e => {
+                    if (e.key === 'Escape' && showAdvancedFilters) {
+                      e.stopPropagation()
+                      setShowAdvancedFilters(false)
+                    }
+                  }}
+                  onClick={() => setShowAdvancedFilters(v => !v)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                    showAdvancedFilters || advancedFilterCount > 0
+                      ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
+                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  <SlidersHorizontal size={12} />
+                  <span>Filters</span>
+                  {filterCount > 0 && (
+                    <span className="px-1.5 rounded-full bg-[var(--secondary-container)] text-[var(--on-secondary-container)] text-[10px] font-mono-num">
+                      {filterCount}
+                    </span>
+                  )}
+                </button>
+
+              </div>
+            </div>
+
+            {showAdvancedFilters && (
+              <div id="task-board-filters" className="section-pad bg-[var(--bg-card)] rounded-xl border border-[var(--border)] space-y-2"
+                onKeyDown={e => {
+                  if (e.key !== 'Escape') return
+                  e.stopPropagation()
+                  e.currentTarget.previousElementSibling?.querySelector('[aria-controls="task-board-filters"]')?.focus()
+                  setShowAdvancedFilters(false)
+                }}>
+                <div className="flex flex-wrap items-center gap-2">
                 {showClubZone && (assignedToMeCount > 0 || onlyAssignedToMe) && (
                   <button
                     type="button"
+                    aria-pressed={onlyAssignedToMe}
                     onClick={() => setOnlyAssignedToMe(v => !v)}
                     className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                       onlyAssignedToMe
@@ -2462,6 +2495,7 @@ export default function ClubTaskBoard({
 
                 <button
                   type="button"
+                  aria-pressed={hideDone}
                   onClick={() => setHideDone(v => !v)}
                   className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                     hideDone
@@ -2470,24 +2504,6 @@ export default function ClubTaskBoard({
                   }`}
                 >
                   <span>Hide Done</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedFilters(v => !v)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                    showAdvancedFilters || advancedFilterCount > 0
-                      ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <SlidersHorizontal size={12} />
-                  <span>Filters</span>
-                  {advancedFilterCount > 0 && (
-                    <span className="px-1.5 rounded-full bg-[var(--blue)] text-white text-[10px] font-mono-num">
-                      {advancedFilterCount}
-                    </span>
-                  )}
                 </button>
 
                 {hasAnyActiveFilter && (
@@ -2499,11 +2515,8 @@ export default function ClubTaskBoard({
                     Reset
                   </button>
                 )}
-              </div>
-            </div>
-
-            {showAdvancedFilters && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 fade-in">
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
@@ -2549,11 +2562,12 @@ export default function ClubTaskBoard({
                     No sub-groups created on this server yet
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Loading Skeleton */}
       {loading && (!boardData || boardData.clubId !== normSelectedClubId) && (
@@ -2575,15 +2589,15 @@ export default function ClubTaskBoard({
           <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
             Confirm your membership on this server to load its shared task board and your personal to-do list.
           </p>
-          <button
-            type="button"
+          <Button
+            variant="filled"
+            size="md"
+            leadingIcon={<UserPlus size={14} />}
             disabled={actionBusy}
             onClick={handleJoinCurrentClub}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
           >
-            <UserPlus size={14} />
-            <span>{actionBusy ? 'Syncing…' : 'Confirm Membership'}</span>
-          </button>
+            {actionBusy ? 'Syncing…' : 'Confirm Membership'}
+          </Button>
         </Card>
       )}
 
@@ -2591,35 +2605,27 @@ export default function ClubTaskBoard({
           ZONE 1: YOUR PERSONAL TO-DO LISTS (Private per user, isolated per server)
          ══════════════════════════════════════════════════════════════════════ */}
       {!notMember && boardData && showPersonalZone && (!loading || boardData.clubId === normSelectedClubId) && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <IconBadge color="green" size={30} radius={9}>
-                <Lock size={14} />
-              </IconBadge>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-extrabold text-[var(--text)]">
-                    Your Personal To-Dos
-                  </h3>
-                  <span className="text-[11px] font-medium text-[var(--green-ink)] bg-[var(--green-light)] px-2 py-0.5 rounded-full">
-                    Only visible to you
-                  </span>
-                </div>
-                <p className="text-[11.5px] text-[var(--text-muted)]">
-                  Jot down timed deadlines &amp; private reminders for yourself in {cleanText(selectedClub?.name || 'this server')}
-                </p>
-              </div>
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            <div>
+              <h2 className="text-sm font-semibold">Personal tasks</h2>
+              <span className="text-xs text-[var(--text-muted)]">Only visible to you</span>
             </div>
-
-            <button
-              type="button"
-              onClick={() => openSectionCreator('personal')}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-tile)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-            >
-              <FolderPlus size={13} />
-              <span>{sectionCreatorMode === 'personal' ? 'Cancel' : 'New Personal List'}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button variant="text-neutral" size="sm" className="!px-2"
+                onClick={() => openSectionCreator('personal')}>
+                {sectionCreatorMode === 'personal' ? 'Close list form' : 'New list'}
+              </Button>
+              <Button variant={isBoard ? 'outlined' : 'filled'} size="sm" className="!px-2"
+                onClick={() => {
+                  setEditingTask(null)
+                  setModalPersonalOnly(true)
+                  setModalDefaultSectionId(personalSections[0]?.id || '')
+                  setModalOpen(true)
+                }}>
+                Add personal task
+              </Button>
+            </div>
           </div>
 
           {sectionCreatorMode === 'personal' && (
@@ -2639,13 +2645,14 @@ export default function ClubTaskBoard({
                 />
                 <div className="flex items-center justify-between sm:justify-end gap-2">
                   <ColorPickerDots value={newSectionColor} onChange={setNewSectionColor} />
-                  <button
+                  <Button
+                    variant="filled"
+                    size="sm"
                     type="submit"
                     disabled={actionBusy || !newSectionTitle.trim()}
-                    className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
                   >
                     Create List
-                  </button>
+                  </Button>
                 </div>
               </form>
             </Card>
@@ -2705,7 +2712,7 @@ export default function ClubTaskBoard({
               <Card key={pSec.id} className="overflow-visible p-0" delay={2}>
                 {/* Personal List Header */}
                 <div
-                  className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] ${
+                  className={`flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[var(--bg-surface)] ${
                     isCollapsed
                       ? 'rounded-[var(--radius)]'
                       : 'rounded-t-[var(--radius)] border-b border-[var(--border)]'
@@ -2715,7 +2722,7 @@ export default function ClubTaskBoard({
                   <button
                     type="button"
                     onClick={() => setCollapsedSections(p => ({ ...p, [pSec.id]: !p[pSec.id] }))}
-                    className="flex items-center gap-2 min-h-[32px] bg-transparent border-none cursor-pointer text-left flex-wrap"
+                    className="ui-touch flex items-center gap-2 min-h-[32px] bg-transparent border-none cursor-pointer text-left flex-wrap"
                   >
                     {isCollapsed ? (
                       <ChevronRight size={16} style={{ color: accentInk }} />
@@ -2723,7 +2730,7 @@ export default function ClubTaskBoard({
                       <ChevronDown size={16} style={{ color: accentInk }} />
                     )}
                     <CheckSquare size={15} style={{ color: accentInk }} />
-                    <span className="text-sm font-extrabold" style={{ color: accentInk }}>
+                    <span className="text-sm font-semibold" style={{ color: accentInk }}>
                       {cleanText(pSec.title)}
                     </span>
                     {totalInSec.length > 0 && (
@@ -2767,13 +2774,243 @@ export default function ClubTaskBoard({
 
                 {!isCollapsed && (
                   <div>
+                    {/* Checklist Items */}
+                    {matchingTasks.length === 0 ? (
+                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center rounded-b-[var(--radius)]">
+                        {totalInSec.length === 0
+                          ? `Nothing on your ${cleanText(selectedClub?.name || 'server')} to-do list yet. Add a task below.`
+                          : 'No personal to-dos match your active filter.'}
+                      </div>
+                    ) : (
+                      <div className="task-rows divide-y divide-[var(--border-subtle)]">
+                        {activeItems.map(task => {
+                          const sMeta =
+                            TASK_STATUS_META[task.status] || TASK_STATUS_META.not_started
+                          const pMeta =
+                            TASK_PRIORITY_META[task.priority] || TASK_PRIORITY_META.medium
+                          const isInlineEditing = inlineEditingId === task.id
+                          const openPersonalEditor = () => {
+                            setEditingTask(task)
+                            setModalPersonalOnly(true)
+                            setModalOpen(true)
+                          }
+
+                          return (
+                            <div
+                              key={task.id}
+                              className="group px-3.5 sm:px-4 py-3 hover:bg-[var(--bg-surface)]/55 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                            >
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleInlineTaskPatch(task, { toggleCompletedForSelf: true })
+                                  }
+                                  aria-label={`Complete "${cleanText(task.title)}"`}
+                                  className="ui-touch mt-0.5 w-[22px] h-[22px] rounded-lg border-2 border-[var(--border-strong)] hover:border-[var(--green)] bg-[var(--bg-card)] text-transparent hover:text-[var(--green)] flex items-center justify-center shrink-0 cursor-pointer transition-all"
+                                >
+                                  <Check size={13} strokeWidth={2.75} />
+                                </button>
+
+                                <div className="min-w-0 flex-1">
+                                  {isInlineEditing ? (
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={inlineEditTitle}
+                                      onChange={e => setInlineEditTitle(e.target.value)}
+                                      onBlur={() => commitInlinePersonalRename(task)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault()
+                                          commitInlinePersonalRename(task)
+                                        } else if (e.key === 'Escape') {
+                                          setInlineEditingId(null)
+                                        }
+                                      }}
+                                      className="w-full min-h-[30px] px-2 py-0.5 rounded-lg bg-[var(--bg-card)] text-sm font-semibold text-[var(--text)] border border-[var(--blue)] outline-none"
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setInlineEditingId(task.id)
+                                        setInlineEditTitle(task.title)
+                                      }}
+                                      title="Click to rename"
+                                      className="text-left font-semibold text-sm text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none cursor-text p-0 leading-snug break-words"
+                                    >
+                                      {cleanText(task.title)}
+                                    </button>
+                                  )}
+
+                                  {task.notes && (
+                                    <p className="hidden sm:block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed line-clamp-2">
+                                      {cleanText(task.notes)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                <DueDateBadge
+                                  dueDate={task.dueDate}
+                                  dueTime={task.dueTime}
+                                  reminder={task.reminder}
+                                  isDone={false}
+                                  now={clockNow}
+                                  timeFormat={timeFormat}
+                                  onClick={openPersonalEditor}
+                                  title="Click to edit due date, time, or reminder"
+                                />
+
+                                {task.status && task.status !== 'not_started' && (
+                                  <span
+                                    style={{
+                                      background: sMeta.bg,
+                                      color: sMeta.color,
+                                      border: `1px solid color-mix(in srgb, ${sMeta.dot} 30%, transparent)`,
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: sMeta.dot }}
+                                    />
+                                    <span>{sMeta.label}</span>
+                                  </span>
+                                )}
+
+                                {task.priority && task.priority !== 'medium' && (
+                                  <span
+                                    style={{
+                                      background: pMeta.bg,
+                                      color: pMeta.color,
+                                      border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: pMeta.dot }}
+                                    />
+                                    <span>{pMeta.label}</span>
+                                  </span>
+                                )}
+
+                                <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    onClick={openPersonalEditor}
+                                    aria-label="Edit personal to-do details"
+                                    title="Edit due date, time, reminder, or priority"
+                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTaskClick(task)}
+                                    aria-label="Delete personal to-do"
+                                    title="Delete to-do"
+                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+
+                        {/* Collapsible Completed Personal To-Dos Drawer */}
+                        {completedItems.length > 0 && (
+                          <div className="bg-[var(--bg-surface)]/35">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowCompletedPersonal(prev => ({
+                                  ...prev,
+                                  [pSec.id]: !showCompleted,
+                                }))
+                              }
+                              className="w-full px-4 py-2 flex items-center justify-between text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {showCompleted ? (
+                                  <ChevronDown size={13} />
+                                ) : (
+                                  <ChevronRight size={13} />
+                                )}
+                                <span>Completed ({completedItems.length})</span>
+                              </span>
+                              <span className="text-[11px] text-[var(--text-light)]">
+                                {showCompleted ? 'Hide' : 'Show'}
+                              </span>
+                            </button>
+
+                            {showCompleted && (
+                              <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+                                {completedItems.map(task => (
+                                  <div
+                                    key={task.id}
+                                    className="px-3.5 sm:px-4 py-2.5 flex items-center justify-between gap-2.5 opacity-80 hover:opacity-100 transition-opacity"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleInlineTaskPatch(task, {
+                                            toggleCompletedForSelf: true,
+                                          })
+                                        }
+                                        aria-label={`Mark "${cleanText(task.title)}" incomplete`}
+                                        style={{
+                                          background: 'var(--green)',
+                                          borderColor: 'var(--green)',
+                                          color: '#ffffff',
+                                        }}
+                                        className="ui-touch w-[22px] h-[22px] rounded-lg border flex items-center justify-center shrink-0 cursor-pointer"
+                                      >
+                                        <Check size={13} strokeWidth={3} />
+                                      </button>
+                                      <span className="text-sm line-through text-[var(--text-muted)] truncate">
+                                        {cleanText(task.title)}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <DueDateBadge
+                                        dueDate={task.dueDate}
+                                        dueTime={task.dueTime}
+                                        isDone={true}
+                                        now={clockNow}
+                                        timeFormat={timeFormat}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteTaskClick(task)}
+                                        aria-label="Delete completed to-do"
+                                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Clean 1-Line To-Do Composer + Optional Structured Schedule Drawer */}
                     <form
                       onSubmit={e => handleQuickAddPersonalTask(e, pSec)}
-                      className="p-3 sm:px-4 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] space-y-2.5"
+                      className="px-2 py-2 sm:px-3 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] space-y-2.5"
                     >
-                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-                        <div className="flex items-center gap-2.5 flex-1 min-w-[200px]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-[160px]">
                           <span
                             className="w-5 h-5 rounded-md border border-dashed flex items-center justify-center shrink-0"
                             style={{ borderColor: accent, color: accentInk }}
@@ -2786,7 +3023,7 @@ export default function ClubTaskBoard({
                             onChange={e => updateDraftForSection(pSec.id, { title: e.target.value })}
                             placeholder={`Add a to-do for ${cleanText(selectedClub?.name || 'this server')}…`}
                             aria-label={`Add a to-do in ${cleanText(pSec.title)}`}
-                            className="flex-1 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
+                            className="flex-1 min-w-0 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
                           />
                         </div>
 
@@ -2813,13 +3050,15 @@ export default function ClubTaskBoard({
                             />
                           </button>
 
-                          <button
+                          <Button
+                            variant="filled"
+                            size="md"
                             type="submit"
                             disabled={quickBusy || !String(draft.title || '').trim()}
-                            className="px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-45 shrink-0 transition-opacity"
+                            className="shrink-0"
                           >
                             {quickBusy ? 'Adding…' : 'Add'}
-                          </button>
+                          </Button>
                         </div>
                       </div>
 
@@ -2963,236 +3202,6 @@ export default function ClubTaskBoard({
                       )}
                     </form>
 
-                    {/* Checklist Items */}
-                    {matchingTasks.length === 0 ? (
-                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center rounded-b-[var(--radius)]">
-                        {totalInSec.length === 0
-                          ? `Nothing on your ${cleanText(selectedClub?.name || 'server')} to-do list yet — type above and press Enter.`
-                          : 'No personal to-dos match your active filter.'}
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-[var(--border-subtle)] rounded-b-[var(--radius)] overflow-hidden">
-                        {activeItems.map(task => {
-                          const sMeta =
-                            TASK_STATUS_META[task.status] || TASK_STATUS_META.not_started
-                          const pMeta =
-                            TASK_PRIORITY_META[task.priority] || TASK_PRIORITY_META.medium
-                          const isInlineEditing = inlineEditingId === task.id
-                          const openPersonalEditor = () => {
-                            setEditingTask(task)
-                            setModalPersonalOnly(true)
-                            setModalOpen(true)
-                          }
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="group px-3.5 sm:px-4 py-3 hover:bg-[var(--bg-surface)]/55 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                            >
-                              <div className="flex items-start gap-3 min-w-0 flex-1">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleInlineTaskPatch(task, { toggleCompletedForSelf: true })
-                                  }
-                                  aria-label={`Complete "${cleanText(task.title)}"`}
-                                  className="mt-0.5 w-[22px] h-[22px] rounded-lg border-2 border-[var(--border-strong)] hover:border-[var(--green)] bg-[var(--bg-card)] text-transparent hover:text-[var(--green)] flex items-center justify-center shrink-0 cursor-pointer transition-all"
-                                >
-                                  <Check size={13} strokeWidth={2.75} />
-                                </button>
-
-                                <div className="min-w-0 flex-1">
-                                  {isInlineEditing ? (
-                                    <input
-                                      type="text"
-                                      autoFocus
-                                      value={inlineEditTitle}
-                                      onChange={e => setInlineEditTitle(e.target.value)}
-                                      onBlur={() => commitInlinePersonalRename(task)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault()
-                                          commitInlinePersonalRename(task)
-                                        } else if (e.key === 'Escape') {
-                                          setInlineEditingId(null)
-                                        }
-                                      }}
-                                      className="w-full min-h-[30px] px-2 py-0.5 rounded-lg bg-[var(--bg-card)] text-sm font-semibold text-[var(--text)] border border-[var(--blue)] outline-none"
-                                    />
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setInlineEditingId(task.id)
-                                        setInlineEditTitle(task.title)
-                                      }}
-                                      title="Click to rename"
-                                      className="text-left font-semibold text-sm text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none cursor-text p-0 leading-snug break-words"
-                                    >
-                                      {cleanText(task.title)}
-                                    </button>
-                                  )}
-
-                                  {task.notes && (
-                                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed line-clamp-2">
-                                      {cleanText(task.notes)}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-1.5 pl-8 sm:pl-0 shrink-0">
-                                <DueDateBadge
-                                  dueDate={task.dueDate}
-                                  dueTime={task.dueTime}
-                                  reminder={task.reminder}
-                                  isDone={false}
-                                  now={clockNow}
-                                  timeFormat={timeFormat}
-                                  onClick={openPersonalEditor}
-                                  title="Click to edit due date, time, or reminder"
-                                />
-
-                                {task.status && task.status !== 'not_started' && (
-                                  <span
-                                    style={{
-                                      background: sMeta.bg,
-                                      color: sMeta.color,
-                                      border: `1px solid color-mix(in srgb, ${sMeta.dot} 30%, transparent)`,
-                                    }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
-                                  >
-                                    <span
-                                      className="w-1.5 h-1.5 rounded-full"
-                                      style={{ background: sMeta.dot }}
-                                    />
-                                    <span>{sMeta.label}</span>
-                                  </span>
-                                )}
-
-                                {task.priority && task.priority !== 'medium' && (
-                                  <span
-                                    style={{
-                                      background: pMeta.bg,
-                                      color: pMeta.color,
-                                      border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
-                                    }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
-                                  >
-                                    <span
-                                      className="w-1.5 h-1.5 rounded-full"
-                                      style={{ background: pMeta.dot }}
-                                    />
-                                    <span>{pMeta.label}</span>
-                                  </span>
-                                )}
-
-                                <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={openPersonalEditor}
-                                    aria-label="Edit personal to-do details"
-                                    title="Edit due date, time, reminder, or priority"
-                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  >
-                                    <Pencil size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteTaskClick(task)}
-                                    aria-label="Delete personal to-do"
-                                    title="Delete to-do"
-                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-
-                        {/* Collapsible Completed Personal To-Dos Drawer */}
-                        {completedItems.length > 0 && (
-                          <div className="bg-[var(--bg-surface)]/35">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowCompletedPersonal(prev => ({
-                                  ...prev,
-                                  [pSec.id]: !showCompleted,
-                                }))
-                              }
-                              className="w-full px-4 py-2 flex items-center justify-between text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer"
-                            >
-                              <span className="inline-flex items-center gap-1.5">
-                                {showCompleted ? (
-                                  <ChevronDown size={13} />
-                                ) : (
-                                  <ChevronRight size={13} />
-                                )}
-                                <span>Completed ({completedItems.length})</span>
-                              </span>
-                              <span className="text-[11px] text-[var(--text-light)]">
-                                {showCompleted ? 'Hide' : 'Show'}
-                              </span>
-                            </button>
-
-                            {showCompleted && (
-                              <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
-                                {completedItems.map(task => (
-                                  <div
-                                    key={task.id}
-                                    className="px-3.5 sm:px-4 py-2.5 flex items-center justify-between gap-2.5 opacity-80 hover:opacity-100 transition-opacity"
-                                  >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleInlineTaskPatch(task, {
-                                            toggleCompletedForSelf: true,
-                                          })
-                                        }
-                                        aria-label={`Mark "${cleanText(task.title)}" incomplete`}
-                                        style={{
-                                          background: 'var(--green)',
-                                          borderColor: 'var(--green)',
-                                          color: '#ffffff',
-                                        }}
-                                        className="w-[22px] h-[22px] rounded-lg border flex items-center justify-center shrink-0 cursor-pointer"
-                                      >
-                                        <Check size={13} strokeWidth={3} />
-                                      </button>
-                                      <span className="text-sm line-through text-[var(--text-muted)] truncate">
-                                        {cleanText(task.title)}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <DueDateBadge
-                                        dueDate={task.dueDate}
-                                        dueTime={task.dueTime}
-                                        isDone={true}
-                                        now={clockNow}
-                                        timeFormat={timeFormat}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTaskClick(task)}
-                                        aria-label="Delete completed to-do"
-                                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </Card>
@@ -3216,14 +3225,9 @@ export default function ClubTaskBoard({
                 {effectiveTier === 'board' ? <Shield size={14} /> : <Users size={14} />}
               </IconBadge>
               <div className="min-w-0">
-                <h3 className="text-sm font-extrabold text-[var(--text)]">
+                <h3 className="text-sm font-semibold text-[var(--text)]">
                   {cleanText(selectedClub?.name || 'Club')} Shared Tasks
                 </h3>
-                <p className="text-[11.5px] text-[var(--text-muted)]">
-                  {effectiveTier === 'board'
-                    ? 'Master Board View across club checklists, sub-group sprints, and officer tasks'
-                    : 'Club-wide checklists and tasks assigned to you or your sub-groups'}
-                </p>
               </div>
             </div>
 
@@ -3275,13 +3279,14 @@ export default function ClubTaskBoard({
                       </button>
                     ))}
                   </div>
-                  <button
+                  <Button
+                    variant="filled"
+                    size="sm"
                     type="submit"
                     disabled={actionBusy || !newSectionTitle.trim()}
-                    className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
                   >
                     Create Section
-                  </button>
+                  </Button>
                 </div>
               </form>
             </Card>
@@ -3294,7 +3299,7 @@ export default function ClubTaskBoard({
             const isCollapsed = Boolean(collapsedSections[sec.id])
 
             return (
-              <Card key={sec.id} className="overflow-hidden p-0" delay={2}>
+              <Card key={sec.id} className="task-rows p-0" delay={2}>
                 <div
                   className="flex items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border)]"
                   style={{ borderLeft: `5px solid ${accent}` }}
@@ -3309,7 +3314,7 @@ export default function ClubTaskBoard({
                     ) : (
                       <ChevronDown size={16} style={{ color: accentInk }} />
                     )}
-                    <span className="text-sm font-extrabold" style={{ color: accentInk }}>
+                    <span className="text-sm font-semibold" style={{ color: accentInk }}>
                       {cleanText(sec.title)}
                     </span>
                     <span className="text-xs text-[var(--text-muted)] font-mono-num">
@@ -3684,6 +3689,7 @@ export default function ClubTaskBoard({
           sections={(boardData?.sections || []).filter(s => s.visibility !== 'personal')}
           personalSections={personalSections}
           personalOnly={!isBoard || modalPersonalOnly}
+          clubOnly={isBoard && !modalPersonalOnly && !editingTask}
           clubPeople={clubPeople}
           initialTask={editingTask}
           defaultSectionId={modalDefaultSectionId}

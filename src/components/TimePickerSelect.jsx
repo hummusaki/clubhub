@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useId } from 'react'
 import { Calendar, Clock, ChevronDown, Check, X } from 'lucide-react'
 import { normalizeTime24h, formatClockTime } from '../utils/taskReminders'
 
@@ -69,8 +69,10 @@ export function TimePickerSelect({
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef(null)
+  const triggerRef = useRef(null)
   const listRef = useRef(null)
   const activeOptionRef = useRef(null)
+  const optionsId = useId()
 
   const is24h = timeFormat === '24h'
   const cleanVal = normalizeTime24h(value)
@@ -89,26 +91,17 @@ export function TimePickerSelect({
         setOpen(false)
       }
     }
-    const handleKeyDown = e => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        setOpen(false)
-      }
-    }
-
     document.addEventListener('pointerdown', handlePointerDown)
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown)
-      window.removeEventListener('keydown', handleKeyDown, true)
-    }
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [open])
 
   useEffect(() => {
     if (!open) return
     const timer = requestAnimationFrame(() => {
-      if (activeOptionRef.current && typeof activeOptionRef.current.scrollIntoView === 'function') {
-        activeOptionRef.current.scrollIntoView({ block: 'center' })
+      const selected = activeOptionRef.current
+      const list = listRef.current
+      if (selected && list) {
+        list.scrollTop += selected.getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientHeight / 2
       }
     })
     return () => cancelAnimationFrame(timer)
@@ -117,6 +110,7 @@ export function TimePickerSelect({
   function handleSelectSlot(nextVal) {
     if (onChange) onChange(nextVal)
     setOpen(false)
+    triggerRef.current?.focus({ preventScroll: true })
   }
 
   function handlePartChange(patch) {
@@ -127,21 +121,27 @@ export function TimePickerSelect({
   const scrollTargetSlot = cleanVal || '09:00'
 
   return (
-    <div ref={rootRef} className="relative w-full">
+    <div ref={rootRef} className="relative w-full" onKeyDown={e => {
+      if (e.key !== 'Escape' || !open) return
+      e.stopPropagation()
+      setOpen(false)
+      triggerRef.current?.focus({ preventScroll: true })
+    }}>
       <div
         className={`w-full ${
-          compact ? 'min-h-[38px]' : 'min-h-[42px]'
-        } px-3 rounded-xl bg-[var(--bg-surface)] border ${
-          open ? 'border-[var(--blue)] ring-2 ring-[var(--blue)]/15' : 'border-[var(--border)]'
+          compact ? 'min-h-[38px]' : 'min-h-[40px]'
+        } px-3 rounded-lg bg-[var(--bg-surface)] border ${
+          open ? 'border-[var(--blue)] ring-2 ring-[var(--blue)]/15' : 'border-[var(--md-outline)]'
         } flex items-center justify-between gap-2 transition-colors`}
       >
         <button
+          ref={triggerRef}
           type="button"
           aria-label={ariaLabel}
-          aria-haspopup="listbox"
+          aria-controls={optionsId}
           aria-expanded={open}
           onClick={() => setOpen(v => !v)}
-          className="flex-1 min-w-0 flex items-center gap-2 py-1.5 bg-transparent border-none text-left cursor-pointer"
+          className="ui-touch flex-1 min-w-0 flex items-center gap-2 py-1.5 bg-transparent border-none text-left cursor-pointer"
         >
           <Clock
             size={14}
@@ -154,6 +154,8 @@ export function TimePickerSelect({
           >
             {cleanVal ? formatClockTime(cleanVal, timeFormat) : placeholder}
           </span>
+          <ChevronDown aria-hidden="true" size={14}
+            className={`ml-auto shrink-0 transition-transform ${open ? 'rotate-180 text-[var(--blue)]' : 'text-[var(--text-light)]'}`} />
         </button>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -166,30 +168,18 @@ export function TimePickerSelect({
               }}
               aria-label="Clear due time"
               title="Clear time (set to All day)"
-              className="w-5 h-5 rounded-md bg-transparent hover:bg-[var(--bg-subtle)] text-[var(--text-light)] hover:text-[var(--text)] border-none flex items-center justify-center cursor-pointer"
+              className="ui-touch w-5 h-5 rounded-md bg-transparent hover:bg-[var(--bg-subtle)] text-[var(--text-light)] hover:text-[var(--text)] border-none flex items-center justify-center cursor-pointer"
             >
               <X size={12} />
             </button>
           )}
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => setOpen(v => !v)}
-            className="w-5 h-5 bg-transparent border-none text-[var(--text-light)] flex items-center justify-center cursor-pointer"
-          >
-            <ChevronDown
-              size={14}
-              className={`transition-transform ${open ? 'rotate-180 text-[var(--blue)]' : ''}`}
-            />
-          </button>
         </div>
       </div>
 
       {open && (
         <div
-          role="listbox"
-          aria-label="Select due time"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-[140] rounded-xl bg-[var(--bg-card)] border border-[var(--border-strong)] shadow-lg overflow-hidden fade-in"
+          id={optionsId}
+          className="dense-controls mt-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-strong)] overflow-hidden fade-in"
         >
           {/* 1. All-Day Option */}
           <div className="p-1.5 border-b border-[var(--border-subtle)]">
@@ -238,8 +228,8 @@ export function TimePickerSelect({
           </div>
 
           {/* 3. Exact Custom Hour : Minute Controls */}
-          <div className="p-2 bg-[var(--bg-surface)] border-t border-[var(--border)] flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1 min-w-0">
+          <div className="p-2 bg-[var(--bg-surface)] border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-1.5">
+            <div className="flex flex-wrap items-center gap-1 min-w-0">
               <span className="text-[10.5px] font-semibold text-[var(--text-muted)] mr-0.5 shrink-0">
                 Exact:
               </span>
@@ -294,8 +284,9 @@ export function TimePickerSelect({
                   onChange(build24hFromParts(parts, is24h))
                 }
                 setOpen(false)
+                triggerRef.current?.focus({ preventScroll: true })
               }}
-              className="px-2.5 min-h-[28px] rounded-lg bg-[var(--blue)] text-white text-[11px] font-semibold border-none cursor-pointer shrink-0 hover:opacity-90"
+              className="px-2.5 min-h-[28px] rounded-lg bg-[var(--blue)] text-[var(--on-blue)] text-[11px] font-medium border-none cursor-pointer shrink-0 hover:opacity-90"
             >
               Done
             </button>
@@ -332,8 +323,8 @@ export function DateInputField({
   return (
     <div
       className={`relative w-full ${
-        compact ? 'min-h-[38px]' : 'min-h-[42px]'
-      } px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] focus-within:ring-2 focus-within:ring-[var(--blue)]/15 flex items-center gap-2 transition-colors`}
+        compact ? 'min-h-[38px]' : 'min-h-[40px]'
+      } px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] focus-within:border-[var(--blue)] focus-within:ring-2 focus-within:ring-[var(--blue)]/15 flex items-center gap-2 transition-colors`}
     >
       <Calendar
         size={14}

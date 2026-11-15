@@ -7,10 +7,8 @@ export default function StatCards({
   joinedCount = 0,
   eventsCount = 6,
   linksCount = 5,
-  userSettings = {},
   onNav,
 }) {
-  const isCompact = Boolean(userSettings?.compactCards)
   const stats =
     items && items.length > 0
       ? items
@@ -22,45 +20,27 @@ export default function StatCards({
         })
 
   return (
-    <div
-      className={`grid grid-cols-2 lg:grid-cols-4 ${
-        isCompact ? 'gap-3 sm:gap-3.5 mb-3.5 sm:mb-4' : 'gap-3.5 sm:gap-4.5 mb-5 sm:mb-6'
-      }`}
-    >
-      {stats.map(stat => (
-        <div
-          key={stat.label}
-          onClick={stat.navTarget && onNav ? () => onNav(stat.navTarget) : undefined}
-          style={{
-            borderTopWidth: '3px',
-            borderTopColor: `var(--${stat.color})`,
-          }}
-          className={`content-tile content-tile-interactive rounded-[var(--radius)] ${
-            stat.navTarget && onNav ? 'cursor-pointer' : ''
-          } ${isCompact ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'} flex items-center`}
-        >
-          <IconBadge color={stat.color} size={isCompact ? 34 : 42} radius={isCompact ? 10 : 13}>
-            <StatIcon name={stat.icon} size={isCompact ? 18 : 22} />
-          </IconBadge>
-
-          <div className="min-w-0">
-            <div
-              className={`${
-                isCompact ? 'text-xl sm:text-[22px]' : 'text-2xl sm:text-[26px]'
-              } font-bold font-mono-num leading-none text-[var(--text)]`}
+    <ul className="grid grid-cols-2 sm:grid-cols-4 list-none rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+      {stats.map(stat => {
+        const interactive = stat.navTarget && onNav
+        const Element = interactive ? 'button' : 'div'
+        return (
+          <li key={stat.label} className="min-w-0 border-b border-r border-[var(--border)] [&:nth-child(2n)]:border-r-0 [&:nth-last-child(-n+2)]:border-b-0 sm:border-b-0 sm:[&:nth-child(2)]:border-r">
+            <Element
+              {...(interactive ? { type: 'button', onClick: () => onNav(stat.navTarget) } : {})}
+              className={`flex h-full w-full items-center gap-2 px-2 py-2 sm:px-3 text-left ${interactive ? 'ui-touch md-state-layer hover:bg-[var(--bg-subtle)] focus-visible:outline-offset-[-3px]' : ''}`}
             >
-              {stat.value}
-            </div>
-            <div
-              className={`${
-                isCompact ? 'text-[11px] mt-0.5' : 'text-xs mt-1'
-              } font-medium text-[var(--text-muted)] truncate`}
-            >
-              {stat.label}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+              <IconBadge color={stat.color} size={26} radius={9999}>
+                <StatIcon name={stat.icon} size={14} />
+              </IconBadge>
+              <div className="min-w-0">
+                <div className="text-base font-medium font-mono-num leading-tight break-words">{stat.value}</div>
+                <div className="text-xs leading-tight text-[var(--text-muted)]">{stat.label}</div>
+              </div>
+            </Element>
+          </li>
+        )
+      })}
+    </ul>
   )
 }

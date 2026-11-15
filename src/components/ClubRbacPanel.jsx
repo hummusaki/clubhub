@@ -12,7 +12,7 @@ import {
   ArrowRight,
   UserPlus,
 } from 'lucide-react'
-import { Card, BubbleTag, Avatar, SectionHeader, cleanText } from './ui'
+import { Card, BubbleTag, Avatar, SectionHeader, cleanText, Button, IconButton, FilterChip } from './ui'
 import {
   getClubPeopleAndGroups,
   joinWorkspaceClub,
@@ -391,19 +391,19 @@ export default function ClubRbacPanel({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="content-tile p-4 rounded-2xl space-y-3.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <div className="text-xs font-medium text-[var(--text-muted)]">
               Account &amp; Roster Position Claiming
             </div>
             {!perm.isMember && !isDemo && user && (
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="sm"
+                leadingIcon={<UserPlus size={13} />}
                 disabled={busyAction === 'join'}
                 onClick={handleJoinClub}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
-                <UserPlus size={13} />
-                <span>Join as Member</span>
-              </button>
+                Join as Member
+              </Button>
             )}
           </div>
 
@@ -416,14 +416,14 @@ export default function ClubRbacPanel({
               <div className="text-xs text-[var(--text)] leading-relaxed">
                 You hold the verified <strong>{perm.roleTitle}</strong> seat with elevated <strong>Board / Leadership</strong> permissions.
               </div>
-              <button
-                type="button"
+              <Button
+                variant="outlined-neutral"
+                size="sm"
                 disabled={busyAction === 'revoke'}
                 onClick={handleStepDown}
-                className="px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:border-[var(--red)]/40 cursor-pointer transition-colors"
               >
                 Release Claimed Position
-              </button>
+              </Button>
             </div>
           ) : (
             <form onSubmit={handleClaimSubmit} className="space-y-2.5">
@@ -436,7 +436,7 @@ export default function ClubRbacPanel({
                 <select
                   value={selectedSeatId}
                   onChange={e => setSelectedSeatId(e.target.value)}
-                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
                 >
                   <option value="">Select roster seat…</option>
                   {rosterPositions.map(pos => (
@@ -450,7 +450,7 @@ export default function ClubRbacPanel({
                   value={customRoleTitle}
                   onChange={e => setCustomRoleTitle(e.target.value)}
                   placeholder="Or custom officer title…"
-                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
               <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2">
@@ -459,15 +459,17 @@ export default function ClubRbacPanel({
                   value={claimNotes}
                   onChange={e => setClaimNotes(e.target.value)}
                   placeholder="Optional verification note for Board…"
-                  className="flex-1 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                  className="flex-1 min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
                 />
-                <button
+                <Button
+                  variant="filled"
+                  size="sm"
                   type="submit"
                   disabled={busyAction === 'claim' || loading}
-                  className="px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 shrink-0"
+                  className="shrink-0"
                 >
                   {busyAction === 'claim' ? 'Claiming…' : 'Claim Seat'}
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -493,7 +495,7 @@ export default function ClubRbacPanel({
           {/* Pending Claim Review Queue (Strictly Board Only) */}
           {perm.isBoard && (clubPeople?.pendingClaims || []).length > 0 && (
             <div className="pt-2.5 border-t border-[var(--border)] space-y-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--purple-ink)]">
+              <div className="text-xs font-medium text-[var(--purple-ink)]">
                 Pending Claim Approvals ({clubPeople.pendingClaims.length})
               </div>
               {clubPeople.pendingClaims.map(cl => (
@@ -506,20 +508,20 @@ export default function ClubRbacPanel({
                     <span className="text-[var(--text-muted)]"> → {cl.requestedRole}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
+                    <Button
+                      variant="filled"
+                      size="sm"
                       onClick={() => handleReviewClaim(cl.id, 'approve')}
-                      className="px-2.5 min-h-[32px] rounded-lg bg-[var(--green)] text-white text-[11px] font-semibold border-none cursor-pointer"
                     >
                       Approve
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="danger-tonal"
+                      size="sm"
                       onClick={() => handleReviewClaim(cl.id, 'reject')}
-                      className="px-2.5 min-h-[32px] rounded-lg bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer"
                     >
                       Reject
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -530,19 +532,19 @@ export default function ClubRbacPanel({
         {/* Section 2: Club Sub-Groups ("Marketing", "Events", etc.) */}
         <div className="content-tile p-4 rounded-2xl space-y-3.5">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
               <Layers size={13} className="text-[var(--teal-ink)]" />
               <span>Club Sub-Groups ({clubPeople?.groups?.length || 0})</span>
             </div>
             {perm.isBoard && (
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="sm"
+                leadingIcon={showGroupForm ? <X size={12} /> : <Plus size={12} />}
                 onClick={() => setShowGroupForm(v => !v)}
-                className="inline-flex items-center gap-1 px-3 min-h-[36px] rounded-xl bg-[var(--teal)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
-                {showGroupForm ? <X size={12} /> : <Plus size={12} />}
-                <span>{showGroupForm ? 'Close' : 'New Sub-Group'}</span>
-              </button>
+                {showGroupForm ? 'Close' : 'New Sub-Group'}
+              </Button>
             )}
           </div>
 
@@ -554,13 +556,13 @@ export default function ClubRbacPanel({
                   value={groupName}
                   onChange={e => setGroupName(e.target.value)}
                   placeholder="Sub-group name (e.g., Marketing, Events)"
-                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
                 />
                 <select
                   value={groupColor}
                   onChange={e => setGroupColor(e.target.value)}
                   aria-label="Sub-group color"
-                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
                 >
                   {GROUP_COLORS.map(c => (
                     <option key={c} value={c}>{c}</option>
@@ -572,40 +574,35 @@ export default function ClubRbacPanel({
                 value={groupDesc}
                 onChange={e => setGroupDesc(e.target.value)}
                 placeholder="Optional purpose / channel description…"
-                className="w-full min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
+                className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
               />
               {(clubPeople?.everyone || []).length > 0 && (
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                   {clubPeople.everyone.map(p => {
                     const checked = selectedGroupMemberKeys.includes(p.memberKey)
                     return (
-                      <button
+                      <FilterChip
                         key={p.memberKey}
-                        type="button"
+                        selected={checked}
                         onClick={() =>
                           setSelectedGroupMemberKeys(prev =>
                             checked ? prev.filter(k => k !== p.memberKey) : [...prev, p.memberKey]
                           )
                         }
-                        className={`px-2.5 min-h-[30px] rounded-lg text-[11px] font-medium border cursor-pointer transition-colors ${
-                          checked
-                            ? 'bg-[var(--teal)] text-white border-[var(--teal)]'
-                            : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
-                        }`}
-                      >
-                        {p.name}
-                      </button>
+                        label={p.name}
+                      />
                     )
                   })}
                 </div>
               )}
-              <button
+              <Button
+                variant="filled"
+                size="sm"
                 type="submit"
                 disabled={busyAction === 'create_group'}
-                className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
                 Create Sub-Group
-              </button>
+              </Button>
             </form>
           )}
 
