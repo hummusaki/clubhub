@@ -11,6 +11,10 @@ import {
   ArrowRight,
   UserPlus,
   X,
+  Layers,
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import {
   clubs as defaultClubs,
@@ -18,14 +22,13 @@ import {
   memberActivity as initialMembers,
 } from '../data/sampleData'
 import { Card, ClubAvatar, Avatar, BubbleTag, IconBadge, cleanText } from './ui'
-import { PlatformIcon } from './icons'
+import { PlatformIcon, ClubEmblemSvg } from './icons'
 import { ingestFromSource } from '../api/client'
-
-function formatCategoryLabel(raw) {
-  const s = String(raw || 'other').trim()
-  if (!s) return 'Other'
-  return s.replace(/\b\w/g, ch => ch.toUpperCase())
-}
+import {
+  CLUB_CATEGORIES,
+  categorizeClub,
+  getClubCategoryMeta,
+} from '../utils/clubCategories'
 
 const SOURCE_FILTERS = [
   { id: 'all',       label: 'All Channels', color: 'blue' },
@@ -82,8 +85,22 @@ export default function ClubsHub({
   onNotify,
 }) {
   const allClubs = useMemo(() => {
-    if (items && items.length > 0) return items
-    return clubsData && clubsData.length > 0 ? clubsData : defaultClubs
+    const raw =
+      items && items.length > 0
+        ? items
+        : clubsData && clubsData.length > 0
+          ? clubsData
+          : defaultClubs
+    return raw.map(c => {
+      const catId = categorizeClub(c)
+      const catMeta = getClubCategoryMeta(catId)
+      return {
+        ...c,
+        category: catId,
+        categoryLabel: c.categoryLabel || catMeta.label,
+        avatarBg: c.avatarBg || catMeta.gradient,
+      }
+    })
   }, [items, clubsData])
 
   const joinedClubs = useMemo(
@@ -95,6 +112,8 @@ export default function ClubsHub({
     () => initialSection || (joinedClubs.length === 0 ? 'discover' : 'myclubs')
   ) // 'myclubs' | 'discover' | 'updates' | 'directory'
   const [category, setCategory] = useState('All')
+  const [clubLayout, setClubLayout] = useState('grouped') // 'grouped' | 'grid'
+  const [expandedCategories, setExpandedCategories] = useState({})
   const [selectedSource, setSelectedSource] = useState('all')
   const [feedScope, setFeedScope] = useState('myclubs') // 'myclubs' | 'all'
 
@@ -129,15 +148,17 @@ export default function ClubsHub({
     const pool = section === 'discover' ? allClubs : joinedClubs
     const counts = new Map()
     for (const c of pool) {
-      const key = String(c.category || 'other').toLowerCase().trim()
-      if (!key) continue
+      const key = categorizeClub(c)
       counts.set(key, (counts.get(key) || 0) + 1)
     }
-    const sorted = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 7)
-      .map(([key]) => ({ value: key, label: formatCategoryLabel(key) }))
-    return [{ value: 'All', label: 'All' }, ...sorted]
+    const ordered = CLUB_CATEGORIES.filter(cat => (counts.get(cat.id) || 0) > 0).map(cat => ({
+      value: cat.id,
+      label: cat.label,
+      shortLabel: cat.shortLabel,
+      color: cat.color,
+      count: counts.get(cat.id) || 0,
+    }))
+    return [{ value: 'All', label: 'All Categories', shortLabel: 'All', count: pool.length }, ...ordered]
   }, [allClubs, joinedClubs, section])
 
   const filteredClubs = useMemo(() => {
@@ -145,7 +166,7 @@ export default function ClubsHub({
     return pool.filter(c => {
       if (
         category !== 'All' &&
-        String(c.category || 'other').toLowerCase().trim() !== category.toLowerCase()
+        categorizeClub(c) !== category.toLowerCase()
       ) {
         return false
       }
@@ -154,12 +175,26 @@ export default function ClubsHub({
         return (
           (c.name || '').toLowerCase().includes(q) ||
           (c.description || '').toLowerCase().includes(q) ||
+          (c.categoryLabel || '').toLowerCase().includes(q) ||
           (c.tags || []).some(t => t.label.toLowerCase().includes(q))
         )
       }
       return true
     })
   }, [allClubs, joinedClubs, section, category, searchQuery])
+
+  const groupedClubs = useMemo(() => {
+    const groups = new Map()
+    for (const c of filteredClubs) {
+      const key = categorizeClub(c)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(c)
+    }
+    return CLUB_CATEGORIES.filter(cat => groups.has(cat.id)).map(cat => ({
+      ...cat,
+      clubs: groups.get(cat.id),
+    }))
+  }, [filteredClubs])
 
   const joinedIdSet = useMemo(
     () => new Set(joinedClubs.map(c => String(c.id))),
@@ -401,19 +436,23 @@ export default function ClubsHub({
       <div
         key={club.id}
         className={`${
-          isCompactDensity ? 'p-3.5 gap-2.5' : 'p-4 gap-3.5'
+          isCompactDensity ? 'p-3 gap-2' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between transition-all hover:border-[var(--border-strong)]`}
       >
         <div>
-          <div className="flex items-start justify-between gap-3 mb-2.5">
-            <div className="flex items-center gap-3 min-w-0">
-              <ClubAvatar club={club} size={42} />
+          <div className={`flex items-start justify-between gap-2.5 ${isCompactDensity ? 'mb-1.5' : 'mb-2.5'}`}>
+            <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
+              <ClubAvatar club={club} size={isCompactDensity ? 34 : 42} />
               <div className="min-w-0">
-                <div className="font-semibold text-sm text-[var(--text)] truncate">
+                <div
+                  className={`font-semibold ${
+                    isCompactDensity ? 'text-[13px]' : 'text-sm'
+                  } text-[var(--text)] truncate`}
+                >
                   {cleanText(club.name)}
                 </div>
-                <div className="text-xs text-[var(--text-muted)]">
-                  {club.members} members
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  {club.members} {club.members === 1 ? 'member' : 'members'}
                 </div>
               </div>
             </div>
@@ -432,7 +471,9 @@ export default function ClubsHub({
                     )
                   }
                 }}
-                className={`inline-flex items-center gap-1 px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border shrink-0 transition-colors ${
+                className={`inline-flex items-center gap-1 ${
+                  isCompactDensity ? 'px-2.5 min-h-[27px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
+                } rounded-full font-semibold cursor-pointer border shrink-0 transition-colors ${
                   isJoined
                     ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent hover:opacity-85'
                     : 'bg-[var(--blue)] text-white border-[var(--blue)] hover:opacity-90'
@@ -445,7 +486,11 @@ export default function ClubsHub({
           </div>
 
           {club.description && (
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3 line-clamp-2">
+            <p
+              className={`text-xs text-[var(--text-muted)] leading-relaxed ${
+                isCompactDensity ? 'mb-2 line-clamp-1' : 'mb-3 line-clamp-2'
+              }`}
+            >
               {cleanText(club.description)}
             </p>
           )}
@@ -462,9 +507,13 @@ export default function ClubsHub({
           </div>
         </div>
 
-        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs text-[var(--text-muted)] min-w-0">
+        <div
+          className={`${
+            isCompactDensity ? 'pt-2' : 'pt-2.5'
+          } border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs text-[var(--text-muted)] min-w-0`}
+        >
           <div className="flex items-center gap-1.5 min-w-0">
-            <Calendar size={13} className="text-[var(--text-light)] shrink-0" />
+            <Calendar size={12} className="text-[var(--text-light)] shrink-0" />
             <span className="truncate">{cleanText(club.schedule || 'Weekly meetings')}</span>
           </div>
 
@@ -483,13 +532,22 @@ export default function ClubsHub({
     )
   }
 
+  const clubGridClasses = isCompactDensity
+    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5'
+    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
-    const previewClubs = joinedClubs.slice(0, 3)
-    const suggestedClubs = allClubs.slice(0, 3)
+    const previewLimit = isCompactDensity ? 4 : 3
+    const previewClubs = joinedClubs.slice(0, previewLimit)
+    const suggestedClubs = allClubs.slice(0, previewLimit)
+    const overviewGridClasses = isCompactDensity
+      ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5'
+      : 'grid grid-cols-1 md:grid-cols-3 gap-3.5'
+
     return (
-      <Card className="p-4 sm:p-[22px]" delay={4}>
-        <div className="flex items-center justify-between gap-2 mb-4">
+      <Card className={isCompactDensity ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} delay={4}>
+        <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-[var(--text)]">My Clubs</h2>
             <BubbleTag label={`${joinedClubs.length}`} color="blue" size="sm" />
@@ -516,14 +574,14 @@ export default function ClubsHub({
         </div>
 
         {previewClubs.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className={overviewGridClasses}>
             {previewClubs.map(c => renderClubCard(c))}
           </div>
         ) : (
-          <div className="space-y-3.5">
+          <div className={isCompactDensity ? 'space-y-2.5' : 'space-y-3.5'}>
             <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="text-xs text-[var(--text-muted)]">
-                You haven&apos;t joined any clubs yet. Join a club below or browse all campus clubs to personalize your dashboard.
+                You haven&apos;t joined any clubs yet. Join a club below or browse all campus clubs automatically organized by category.
               </span>
               {onOpenClubs && (
                 <button
@@ -537,7 +595,7 @@ export default function ClubsHub({
             </div>
 
             {suggestedClubs.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              <div className={overviewGridClasses}>
                 {suggestedClubs.map(c => renderClubCard(c))}
               </div>
             )}
@@ -548,80 +606,126 @@ export default function ClubsHub({
   }
 
   const totalDirectoryPeople = filteredOfficers.length + filteredMembers.length
+  const showGroupedSections =
+    clubLayout === 'grouped' && category === 'All' && groupedClubs.length > 1
 
   // ── 2. FULL CLUBS & COMMUNITY PAGE ────────────────────────────────
   return (
-    <Card className="p-4 sm:p-6" delay={2}>
+    <Card className={isCompactDensity ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={2}>
       {/* Sub-navigation Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-5 border-b border-[var(--border)]">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
-            { id: 'discover',  label: `Discover (${allClubs.length})` },
-            { id: 'updates',   label: 'Club Feed' },
-            { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
-          ].map(tab => {
-            const isActive = section === tab.id
-            return (
+      <div className={`flex flex-col gap-3 ${isCompactDensity ? 'pb-3 mb-4' : 'pb-4 mb-5'} border-b border-[var(--border)]`}>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
+              { id: 'discover',  label: `Discover (${allClubs.length})` },
+              { id: 'updates',   label: 'Club Feed' },
+              { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
+            ].map(tab => {
+              const isActive = section === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setSection(tab.id)
+                    setCategory('All')
+                  }}
+                  className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
+                    isActive
+                      ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {(section === 'myclubs' || section === 'discover') && filteredClubs.length > 6 && (
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
               <button
-                key={tab.id}
                 type="button"
                 onClick={() => {
-                  setSection(tab.id)
+                  setClubLayout('grouped')
                   setCategory('All')
                 }}
-                className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
-                  isActive
-                    ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                  clubLayout === 'grouped' && category === 'All'
+                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {tab.label}
+                <Layers size={13} />
+                <span>By Category</span>
               </button>
-            )
-          })}
+              <button
+                type="button"
+                onClick={() => setClubLayout('grid')}
+                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                  clubLayout === 'grid' || category !== 'All'
+                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                <LayoutGrid size={13} />
+                <span>All Grid</span>
+              </button>
+            </div>
+          )}
+
+          {section === 'updates' && (
+            <button
+              type="button"
+              onClick={() => setShowPostForm(prev => !prev)}
+              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+            >
+              {showPostForm ? <X size={14} /> : <Plus size={14} />}
+              <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
+            </button>
+          )}
+
+          {section === 'directory' && (
+            <button
+              type="button"
+              onClick={() => setShowAddPersonForm(prev => !prev)}
+              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+            >
+              {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
+              <span>{showAddPersonForm ? 'Cancel' : 'Add Member / Officer'}</span>
+            </button>
+          )}
         </div>
 
-        {/* Contextual Toolbar Action */}
+        {/* Auto-Categorized Filter Pills */}
         {(section === 'myclubs' || section === 'discover') && categoryFilters.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {categoryFilters.map(cat => (
-              <button
-                key={cat.value}
-                type="button"
-                onClick={() => setCategory(cat.value)}
-                className={`px-3 min-h-[32px] rounded-full text-xs font-medium cursor-pointer border transition-colors ${
-                  category === cat.value
-                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30 font-semibold'
-                    : 'bg-transparent text-[var(--text-muted)] border-transparent hover:bg-[var(--bg-surface)]'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
+            {categoryFilters.map(cat => {
+              const active = category === cat.value
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategory(cat.value)}
+                  className={`inline-flex items-center gap-1.5 px-3 min-h-[30px] rounded-full text-xs cursor-pointer border transition-colors ${
+                    active
+                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] font-medium'
+                  }`}
+                >
+                  <span>{cat.shortLabel || cat.label}</span>
+                  <span
+                    className={`text-[10.5px] font-mono-num ${
+                      active ? 'text-[var(--blue-ink)]' : 'text-[var(--text-light)]'
+                    }`}
+                  >
+                    {cat.count}
+                  </span>
+                </button>
+              )
+            })}
           </div>
-        )}
-
-        {section === 'updates' && (
-          <button
-            type="button"
-            onClick={() => setShowPostForm(prev => !prev)}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
-          >
-            {showPostForm ? <X size={14} /> : <Plus size={14} />}
-            <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
-          </button>
-        )}
-
-        {section === 'directory' && (
-          <button
-            type="button"
-            onClick={() => setShowAddPersonForm(prev => !prev)}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
-          >
-            {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
-            <span>{showAddPersonForm ? 'Cancel' : 'Add Member / Officer'}</span>
-          </button>
         )}
       </div>
 
@@ -629,9 +733,76 @@ export default function ClubsHub({
       {(section === 'myclubs' || section === 'discover') && (
         <>
           {filteredClubs.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredClubs.map(club => renderClubCard(club))}
-            </div>
+            showGroupedSections ? (
+              <div className={isCompactDensity ? 'space-y-5' : 'space-y-7'}>
+                {groupedClubs.map(group => {
+                  const defaultCap = isCompactDensity ? 8 : 6
+                  const isExpanded = Boolean(expandedCategories[group.id]) || Boolean(searchQuery.trim())
+                  const visibleClubs = isExpanded ? group.clubs : group.clubs.slice(0, defaultCap)
+                  const hiddenCount = group.clubs.length - visibleClubs.length
+
+                  return (
+                    <section key={group.id} className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs"
+                            style={{ background: group.gradient }}
+                          >
+                            <ClubEmblemSvg club={{ category: group.id }} size={15} />
+                          </div>
+                          <h3 className="text-sm sm:text-[15px] font-bold text-[var(--text)] truncate">
+                            {group.label}
+                          </h3>
+                          <BubbleTag label={`${group.clubs.length}`} color={group.color} size="sm" />
+                        </div>
+
+                        {group.clubs.length > defaultCap && !searchQuery.trim() && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCategories(prev => ({
+                                ...prev,
+                                [group.id]: !prev[group.id],
+                              }))
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+                          >
+                            <span>
+                              {isExpanded ? 'Show fewer' : `Show all ${group.clubs.length}`}
+                            </span>
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={clubGridClasses}>
+                        {visibleClubs.map(club => renderClubCard(club))}
+                      </div>
+
+                      {hiddenCount > 0 && !searchQuery.trim() && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCategories(prev => ({ ...prev, [group.id]: true }))
+                            }
+                            className="inline-flex items-center gap-1.5 px-3.5 min-h-[32px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                          >
+                            <span>View {hiddenCount} more in {group.shortLabel}</span>
+                            <ChevronDown size={13} />
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className={clubGridClasses}>
+                {filteredClubs.map(club => renderClubCard(club))}
+              </div>
+            )
           ) : (
             <div className="py-10 text-center space-y-2">
               <div className="text-sm font-semibold text-[var(--text)]">No clubs found</div>

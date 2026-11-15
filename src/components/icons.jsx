@@ -584,7 +584,26 @@ export function ClubEmblemSvg({ clubName = '', clubId = '', abbr = '', category 
   }
 
   // Category fallbacks for any dynamic club
-  if (cat === 'arts') {
+  if (cat === 'tech & science') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="3.2" fill="white" fillOpacity="0.22" stroke="white" strokeWidth="1.8" />
+        <path d="M8.8 9.5L6.2 12L8.8 14.5M15.2 9.5L17.8 12L15.2 14.5M13 8.8L11 15.2" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+
+  if (cat === 'performing arts') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M9.5 17.5V6.2L19.5 4.2V15.5" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="6.8" cy="17.5" r="2.6" fill="white" fillOpacity="0.3" stroke="white" strokeWidth="1.8" />
+        <circle cx="16.8" cy="15.5" r="2.6" fill="white" fillOpacity="0.3" stroke="white" strokeWidth="1.8" />
+      </svg>
+    )
+  }
+
+  if (cat === 'arts' || cat === 'media & arts') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <path
@@ -599,7 +618,61 @@ export function ClubEmblemSvg({ clubName = '', clubId = '', abbr = '', category 
     )
   }
 
-  if (cat === 'social') {
+  if (cat === 'cultural') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="8.5" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.8" />
+        <ellipse cx="12" cy="12" rx="4" ry="8.5" stroke="white" strokeWidth="1.65" />
+        <path d="M3.8 12H20.2" stroke="white" strokeWidth="1.65" />
+      </svg>
+    )
+  }
+
+  if (cat === 'service & advocacy') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path
+          d="M12 20.2C12 20.2 4 15.2 4 9.1C4 6.5 6.05 4.5 8.6 4.5C10.15 4.5 11.45 5.28 12 6.45C12.55 5.28 13.85 4.5 15.4 4.5C17.95 4.5 20 6.5 20 9.1C20 15.2 12 20.2 12 20.2Z"
+          fill="white"
+          fillOpacity="0.24"
+          stroke="white"
+          strokeWidth="1.85"
+          strokeLinejoin="round"
+        />
+      </svg>
+    )
+  }
+
+  if (cat === 'greek') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M3.5 9L12 4L20.5 9H3.5Z" fill="white" fillOpacity="0.26" stroke="white" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M6.5 9V17.5M12 9V17.5M17.5 9V17.5M4 18H20" stroke="white" strokeWidth="1.85" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  if (cat === 'gaming') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="7" width="18" height="10.5" rx="5" fill="white" fillOpacity="0.22" stroke="white" strokeWidth="1.85" />
+        <path d="M8.2 10.4V14M6.4 12.2H10" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="15.2" cy="11.2" r="1.1" fill="white" />
+        <circle cx="17.4" cy="13.2" r="1.1" fill="white" />
+      </svg>
+    )
+  }
+
+  if (cat === 'faith') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="4.2" fill="white" fillOpacity="0.28" stroke="white" strokeWidth="1.8" />
+        <path d="M12 3.2V5.4M12 18.6V20.8M3.2 12H5.4M18.6 12H20.8M5.8 5.8L7.4 7.4M16.6 16.6L18.2 18.2M18.2 5.8L16.6 7.4M7.4 16.6L5.8 18.2" stroke="white" strokeWidth="1.75" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  if (cat === 'social' || cat === 'community') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <path
