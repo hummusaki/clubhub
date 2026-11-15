@@ -93,10 +93,14 @@ export default function AiClubAgentModal({
 
       {/* ── AI Club Matchmaker Modal ── */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/45 backdrop-blur-[2px] fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/30 fade-in"
+          onClick={() => setIsOpen(false)}
+        >
           <div
             className="w-full max-w-[540px] bg-[var(--bg-card)] border border-[var(--border)]
               rounded-[24px] shadow-[var(--shadow-lg)] overflow-hidden flex flex-col max-h-[85vh]"
+            onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="px-5 py-4 bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between gap-3">
@@ -241,11 +245,10 @@ export default function AiClubAgentModal({
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <span
-                                  className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${
-                                    matchScore >= 80
+                                  className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${matchScore >= 80
                                       ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
                                       : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
-                                  }`}
+                                    }`}
                                 >
                                   {matchScore}% Match
                                 </span>
@@ -253,11 +256,10 @@ export default function AiClubAgentModal({
                                 <button
                                   type="button"
                                   onClick={e => handleJoin(e, club)}
-                                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${
-                                    isJoined
+                                  className={`px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${isJoined
                                       ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
                                       : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
-                                  }`}
+                                    }`}
                                 >
                                   {isJoined ? (
                                     <>
