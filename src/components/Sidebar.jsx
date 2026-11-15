@@ -1,19 +1,9 @@
-<<<<<<< Updated upstream
-import {
-  LayoutGrid, Heart, Search, Calendar, Users, Link, Moon, Sun, Sparkles, Clock, X, LogIn,
-} from 'lucide-react'
+import { Moon, Sun, X, LogIn } from 'lucide-react'
 import { UserButton } from '@clerk/react'
 import { navItems } from '../data/sampleData'
 import { Avatar, ClubHubLogo } from './ui'
-import { getUserButtonAppearance } from '../clerkTheme'
-
-const iconMap = { LayoutGrid, Heart, Search, Calendar, Users, Link }
-=======
-import { Moon, Sun, X } from 'lucide-react'
-import { navItems } from '../data/sampleData'
-import { Avatar, ClubHubLogo } from './ui'
 import { NavIcon } from './icons'
->>>>>>> Stashed changes
+import { getUserButtonAppearance } from '../clerkTheme'
 
 export default function Sidebar({
   activeNav,
@@ -110,18 +100,15 @@ export default function Sidebar({
             </button>
           </div>
 
-<<<<<<< Updated upstream
-          {/* User profile */}
           {hasClerkKey && user ? (
-            <div
-              className="flex items-center justify-between px-2.5 py-2 rounded-[var(--radius-sm)]
-                hover:bg-[var(--bg-surface)] transition-colors"
-            >
+            <div className="flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <UserButton appearance={getUserButtonAppearance(dark)} />
                 <div className="min-w-0">
-                  <div className="text-[13px] font-bold text-[var(--text)] truncate">
-                    {user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Student'}
+                  <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                    {user.fullName ||
+                      user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+                      'Student'}
                   </div>
                   <div className="text-[11px] text-[var(--text-muted)] truncate">
                     {user.primaryEmailAddress?.emailAddress || 'Verified Member'}
@@ -130,32 +117,27 @@ export default function Sidebar({
               </div>
             </div>
           ) : isDemo ? (
-            <div
-              className="flex items-center justify-between px-2.5 py-2 rounded-[var(--radius-sm)]
-                hover:bg-[var(--bg-surface)] transition-colors"
-            >
+            <div className="flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="relative">
-                  <Avatar
-                    initials="DM"
-                    bg="linear-gradient(135deg, var(--blue), var(--purple))"
-                    size={34}
-                  />
-                  <span
-                    className="w-2.5 h-2.5 rounded-full bg-[var(--yellow)] border-2 border-[var(--bg-card)]
-                      absolute -bottom-0.5 -right-0.5"
-                  />
-                </div>
+                <Avatar
+                  initials="DM"
+                  bg="linear-gradient(135deg, var(--blue), var(--purple))"
+                  size={32}
+                />
                 <div className="min-w-0">
-                  <div className="text-[13px] font-bold text-[var(--text)] truncate">Demo Student</div>
-                  <div className="text-[11px] text-[var(--text-muted)] truncate">Preview Mode</div>
+                  <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                    Demo Student
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] truncate">
+                    Preview Mode
+                  </div>
                 </div>
               </div>
               {onExitDemo && (
                 <button
                   type="button"
                   onClick={onExitDemo}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[var(--blue-ink)] hover:underline cursor-pointer bg-transparent border-none p-0"
+                  className="flex items-center gap-1 text-[11px] font-semibold text-[var(--blue-ink)] hover:underline cursor-pointer bg-transparent border-none p-0"
                 >
                   <LogIn size={12} />
                   <span>Sign In</span>
@@ -163,47 +145,22 @@ export default function Sidebar({
               )}
             </div>
           ) : (
-            <div
-              className="flex items-center justify-between px-2.5 py-2 rounded-[var(--radius-sm)]
-                hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="relative">
-                  <Avatar
-                    initials="JD"
-                    bg="linear-gradient(135deg, var(--teal), var(--green))"
-                    size={34}
-                  />
-                  <span
-                    className="w-2.5 h-2.5 rounded-full bg-[var(--green)] border-2 border-[var(--bg-card)]
-                      absolute -bottom-0.5 -right-0.5"
-                  />
+            <div className="flex items-center gap-2.5 px-3 py-2">
+              <Avatar
+                initials="JD"
+                bg="linear-gradient(135deg, var(--teal), var(--green))"
+                size={32}
+              />
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                  Jane Doe
                 </div>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-bold text-[var(--text)] truncate">Jane Doe</div>
-                  <div className="text-[11px] text-[var(--text-muted)] truncate">
-                    CS &apos;27 · President
-                  </div>
+                <div className="text-[11px] text-[var(--text-muted)] truncate">
+                  jdoe@university.edu
                 </div>
               </div>
-              <Sparkles size={14} className="text-[var(--text-light)] shrink-0" />
             </div>
           )}
-=======
-          <div className="flex items-center gap-2.5 px-3 py-2">
-            <Avatar
-              initials="JD"
-              bg="linear-gradient(135deg, var(--teal), var(--green))"
-              size={32}
-            />
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-[var(--text)] truncate">Jane Doe</div>
-              <div className="text-[11px] text-[var(--text-muted)] truncate">
-                jdoe@university.edu
-              </div>
-            </div>
-          </div>
->>>>>>> Stashed changes
         </div>
       </nav>
     </>

@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-<<<<<<< Updated upstream
-import { Bell, Calendar, CheckCheck, Sparkles, Menu, Moon, Sun } from 'lucide-react'
-import { UserButton } from '@clerk/react'
-import { SearchBox, BubbleTag, ClubHubLogo } from './ui'
-=======
 import { Bell, CheckCheck, Menu, Moon, Sun, ArrowLeft } from 'lucide-react'
+import { UserButton } from '@clerk/react'
 import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, cleanText } from './ui'
 import { AnnouncementTypeIcon } from './icons'
->>>>>>> Stashed changes
 import { announcements as initialAnnouncements } from '../data/sampleData'
 import { getUserButtonAppearance } from '../clerkTheme'
 
@@ -54,21 +49,12 @@ export default function Header({
   const greetingName = firstName || (isDemo ? 'Guest' : 'Jane')
 
   const viewTitles = {
-<<<<<<< Updated upstream
-    overview: `Good afternoon, ${greetingName} 👋`,
-    myclubs: 'My Campus Clubs',
-    discover: 'Discover Campus Clubs',
-    calendar: 'Schedule & Events',
-    members: 'Member Directory & Activity',
-    links: 'Shared Links & Resources',
-=======
-    overview: 'Good afternoon, Jane',
+    overview: `Good afternoon, ${greetingName}`,
     myclubs: 'My Clubs',
     discover: 'Discover Clubs',
     calendar: 'Schedule',
     members: 'Members',
     links: 'Links & Resources',
->>>>>>> Stashed changes
   }
 
   return (
@@ -189,7 +175,6 @@ export default function Header({
             </button>
           </div>
 
-          {/* Desktop User Avatar / Account (lg+) */}
           {hasClerkKey && user && (
             <div className="hidden lg:flex items-center pl-1">
               <UserButton appearance={getUserButtonAppearance(dark)} />

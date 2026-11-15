@@ -11,11 +11,8 @@ import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
 import SourceFeedHub from './components/SourceFeedHub'
-<<<<<<< Updated upstream
 import SignInPage from './components/SignInPage'
-=======
 import { cleanText } from './components/ui'
->>>>>>> Stashed changes
 import { clubs as initialClubs } from './data/sampleData'
 import {
   getClubHub,
@@ -40,16 +37,6 @@ const KIND_COLOR_MAP = {
   website: 'green',
 }
 
-<<<<<<< Updated upstream
-function MainDashboard({
-  dark,
-  toggleDark,
-  user = null,
-  isDemo = false,
-  onExitDemo,
-  hasClerkKey = false,
-}) {
-=======
 const CLUB_AVATAR_GRADIENTS = [
   'linear-gradient(135deg, var(--blue), #4B7BE5)',
   'linear-gradient(135deg, var(--red), #D46B6B)',
@@ -59,9 +46,14 @@ const CLUB_AVATAR_GRADIENTS = [
   'linear-gradient(135deg, var(--yellow), #E09F2D)',
 ]
 
-export default function App() {
-  const [dark, setDark] = useState(false)
->>>>>>> Stashed changes
+function MainDashboard({
+  dark,
+  toggleDark,
+  user = null,
+  isDemo = false,
+  onExitDemo,
+  hasClerkKey = false,
+}) {
   const [activeNav, setActiveNav] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData, setClubsData] = useState(initialClubs)
@@ -437,4 +429,3 @@ export default function App({ hasClerkKey = Boolean(import.meta.env.VITE_CLERK_P
 
   return <FallbackApp dark={dark} toggleDark={toggleDark} />
 }
-
