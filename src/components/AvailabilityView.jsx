@@ -6,6 +6,8 @@ import {
   Sparkles,
   Plus,
   Trash2,
+  Archive,
+  ArchiveRestore,
   ChevronLeft,
   ChevronRight,
   Shield,
@@ -21,14 +23,19 @@ import { Card, BubbleTag, Avatar, cleanText } from './ui'
 import { PlatformIcon } from './icons'
 import {
   getSchedulerPolls,
+  getSchedulerPoll,
   bookSchedulerSlot,
   unbookSchedulerSlot,
 } from '../api/client'
 import {
+  ensureWorkspaceAuthReady,
+  getWorkspaceMe,
   getClubPeopleAndGroups,
   createVerifiedPoll,
   inviteShortcutsToPoll,
   submitVerifiedPollResponse,
+  archiveVerifiedPoll,
+  deleteVerifiedPoll,
 } from '../api/workspaceClient'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import {
@@ -241,6 +248,7 @@ export default function AvailabilityView({
     'Guest'
 
   const signedInUserId = effectiveUser?.id || ''
+  const [workspaceUserId, setWorkspaceUserId] = useState('')
   const signedInAvatarBg =
     userSettings?.avatarBg ||
     effectiveUser?.avatarBg ||
@@ -256,7 +264,16 @@ export default function AvailabilityView({
   const [gridMode, setGridMode] = useState('mine')
 
   const activePersonName = defaultUserName
-  const currentUserId = signedInUserId
+  const currentUserId = workspaceUserId || signedInUserId
+  const isMyUserId = useCallback(
+    uid =>
+      Boolean(
+        uid &&
+          ((workspaceUserId && uid === workspaceUserId) ||
+            (signedInUserId && uid === signedInUserId))
+      ),
+    [workspaceUserId, signedInUserId]
+  )
 
   // Spotlight filter: click a responder in the Responders card to highlight their free times
   const [spotlightUserId, setSpotlightUserId] = useState(null)
@@ -295,13 +312,51 @@ export default function AvailabilityView({
   const [inviteBusy, setInviteBusy] = useState(false)
   const [clubPeopleCache, setClubPeopleCache] = useState({})
 
+  // Poll creator lifecycle controls (Archive / Unarchive & Delete)
+  const [showArchivedPolls, setShowArchivedPolls] = useState(false)
+  const [pollActionBusy, setPollActionBusy] = useState('')
+  const [confirmDeletePollId, setConfirmDeletePollId] = useState(null)
+
   const saveTimerRef = useRef(null)
 
-  const activePoll = useMemo(
-    () => polls.find(p => p.id === selectedPollId) || polls[0] || EMPTY_POLL_TEMPLATE,
-    [polls, selectedPollId]
-  )
+  const activePolls = useMemo(() => polls.filter(p => !p.archived), [polls])
+  const archivedPolls = useMemo(() => polls.filter(p => Boolean(p.archived)), [polls])
+
+  const activePoll = useMemo(() => {
+    const explicit = selectedPollId ? polls.find(p => p.id === selectedPollId) : null
+    if (explicit) return explicit
+    return (
+      activePolls[0] ||
+      (showArchivedPolls ? archivedPolls[0] : null) ||
+      EMPTY_POLL_TEMPLATE
+    )
+  }, [polls, selectedPollId, activePolls, archivedPolls, showArchivedPolls])
+
   const hasActivePoll = Boolean(activePoll.id)
+  const isActivePollArchived = Boolean(hasActivePoll && activePoll.archived)
+  const isActivePollCreator = Boolean(
+    hasActivePoll &&
+      isAuthenticated &&
+      (activePoll.isCreator || isMyUserId(activePoll.createdByUserId))
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    if (!isAuthenticated) {
+      setWorkspaceUserId('')
+      return undefined
+    }
+    ;(async () => {
+      await ensureWorkspaceAuthReady(effectiveUser)
+      const me = await getWorkspaceMe()
+      if (!cancelled && me?.ok && me.user?.id) {
+        setWorkspaceUserId(me.user.id)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, signedInUserId, effectiveUser])
 
   // Load club people & sub-groups for RBAC shortcut buttons when creating or viewing a club poll
   const ensureClubPeopleLoaded = useCallback(async clubId => {
@@ -370,23 +425,39 @@ export default function AvailabilityView({
       }
     }
 
-    const data = await getSchedulerPolls()
-    const list = Array.isArray(data) ? data : []
+    if (isAuthenticated) {
+      await ensureWorkspaceAuthReady(effectiveUser)
+    }
+
+    const data = await getSchedulerPolls({ includeArchived: '1' })
+    let list = Array.isArray(data) ? data : []
+    if (requestedPollId && !list.some(p => p.id === requestedPollId)) {
+      const directPoll = await getSchedulerPoll(requestedPollId)
+      if (directPoll?.id) {
+        list = [directPoll, ...list]
+      }
+    }
     setPolls(list)
     if (list.length > 0) {
+      const requestedMatch = requestedPollId ? list.find(p => p.id === requestedPollId) : null
+      if (requestedMatch?.archived) {
+        setShowArchivedPolls(true)
+      }
       setSelectedPollId(prev => {
-        if (requestedPollId && list.some(p => p.id === requestedPollId)) return requestedPollId
-        return list.some(p => p.id === prev) ? prev : list[0].id
+        if (requestedMatch) return requestedMatch.id
+        if (prev && list.some(p => p.id === prev)) return prev
+        const firstActive = list.find(p => !p.archived)
+        return firstActive ? firstActive.id : ''
       })
     } else {
       setSelectedPollId('')
     }
     setPollsLoading(false)
-  }, [])
+  }, [isAuthenticated, effectiveUser])
 
   useEffect(() => {
     loadPolls()
-  }, [loadPolls, signedInUserId])
+  }, [loadPolls, signedInUserId, workspaceUserId])
 
   // Sync displayed week whenever the user switches to a poll with its own target week
   useEffect(() => {
@@ -398,6 +469,7 @@ export default function AvailabilityView({
     setPinnedSlotIso(null)
     setShowExistingInviteShortcuts(false)
     setExistingInviteShortcuts([])
+    setConfirmDeletePollId(null)
   }, [activePoll?.id])
 
   const pollLocalMap = useMemo(
@@ -408,15 +480,27 @@ export default function AvailabilityView({
   // Authenticated user's live free slots on the active poll (strictly bound to DB responses + in-flight edits)
   const myFreeSlots = useMemo(() => {
     if (!currentUserId || !activePoll.id) return new Set()
-    if (pollLocalMap[currentUserId]) {
-      return pollLocalMap[currentUserId]
+    const localSet =
+      pollLocalMap[currentUserId] ||
+      (workspaceUserId ? pollLocalMap[workspaceUserId] : null) ||
+      (signedInUserId ? pollLocalMap[signedInUserId] : null)
+    if (localSet) {
+      return localSet
     }
-    const existingResp = (activePoll.responses || []).find(r => r.userId === currentUserId)
+    const existingResp = (activePoll.responses || []).find(r => isMyUserId(r.userId))
     if (existingResp && Array.isArray(existingResp.freeSlots)) {
       return new Set(existingResp.freeSlots)
     }
     return new Set()
-  }, [pollLocalMap, currentUserId, activePoll.responses, activePoll.id])
+  }, [
+    pollLocalMap,
+    currentUserId,
+    workspaceUserId,
+    signedInUserId,
+    isMyUserId,
+    activePoll.responses,
+    activePoll.id,
+  ])
 
   // Sync authenticated user's availability directly to the database (zero localStorage PII)
   const persistPollUserSlots = useCallback(
@@ -426,11 +510,15 @@ export default function AvailabilityView({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(async () => {
         const freeArr = Array.from(nextByPoll?.[targetPollId]?.[targetUserId] || [])
-        const res = await submitVerifiedPollResponse(targetPollId, {
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
-          freeSlots: freeArr,
-          busySlots: [],
-        })
+        const res = await submitVerifiedPollResponse(
+          targetPollId,
+          {
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
+            freeSlots: freeArr,
+            busySlots: [],
+          },
+          effectiveUser
+        )
         if (res?.ok && res.data?.id) {
           setPolls(prev => prev.map(p => (p.id === res.data.id ? res.data : p)))
         } else if (!res?.ok && onNotify) {
@@ -439,7 +527,7 @@ export default function AvailabilityView({
         setAutoSaveState('saved')
       }, 350)
     },
-    [onNotify]
+    [onNotify, effectiveUser]
   )
 
   const commitUserSet = useCallback(
@@ -451,6 +539,15 @@ export default function AvailabilityView({
         return
       }
       if (!targetPollId) return
+      const targetPollObj = polls.find(p => p.id === targetPollId)
+      if (targetPollObj?.archived) {
+        if (onNotify) {
+          onNotify('This poll is archived. Unarchive it first to edit availability.', {
+            type: 'info',
+          })
+        }
+        return
+      }
       const prev = slotsByPollRef.current
       const nextByPoll = {
         ...prev,
@@ -463,7 +560,7 @@ export default function AvailabilityView({
       setSlotsByPoll(nextByPoll)
       persistPollUserSlots(nextByPoll, targetPollId, targetUserId)
     },
-    [activePoll.id, currentUserId, isAuthenticated, onNotify, persistPollUserSlots]
+    [activePoll.id, currentUserId, isAuthenticated, onNotify, persistPollUserSlots, polls]
   )
 
   useEffect(() => {
@@ -625,18 +722,19 @@ export default function AvailabilityView({
     const map = new Map()
     let colorIdx = 0
 
-    if (isAuthenticated && signedInUserId) {
-      const signedUserLocalSet = pollLocalMap[signedInUserId]
-      const signedExistingResp = (activePoll.responses || []).find(
-        r => r.userId === signedInUserId
-      )
+    if (isAuthenticated && currentUserId) {
+      const signedUserLocalSet =
+        pollLocalMap[currentUserId] ||
+        (workspaceUserId ? pollLocalMap[workspaceUserId] : null) ||
+        (signedInUserId ? pollLocalMap[signedInUserId] : null)
+      const signedExistingResp = (activePoll.responses || []).find(r => isMyUserId(r.userId))
       const liveSlots = signedUserLocalSet
         ? Array.from(signedUserLocalSet)
         : signedExistingResp?.freeSlots || []
 
       if (signedExistingResp || (signedUserLocalSet && signedUserLocalSet.size > 0)) {
-        map.set(signedInUserId, {
-          userId: signedInUserId,
+        map.set(currentUserId, {
+          userId: currentUserId,
           userName: signedExistingResp?.userName || defaultUserName,
           initials: getInitials(signedExistingResp?.userName || defaultUserName),
           avatarBg: signedInAvatarBg,
@@ -650,19 +748,19 @@ export default function AvailabilityView({
 
     for (const r of activePoll.responses || []) {
       if (!r?.userId) continue
-      if (r.userId === signedInUserId && map.has(signedInUserId)) continue
+      if (isMyUserId(r.userId) && map.has(currentUserId)) continue
       const cleanName = cleanText(r.userName || 'Member')
+      const isSelf = isMyUserId(r.userId)
       map.set(r.userId, {
         userId: r.userId,
         userName: cleanName,
         initials: getInitials(cleanName),
-        avatarBg:
-          r.userId === signedInUserId
-            ? signedInAvatarBg
-            : RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
+        avatarBg: isSelf
+          ? signedInAvatarBg
+          : RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
         roleTitle: cleanText(r.roleTitle || ''),
         clubName: cleanText(r.clubName || ''),
-        isYou: r.userId === signedInUserId,
+        isYou: isSelf,
         freeSlots: r.freeSlots || [],
       })
     }
@@ -673,19 +771,22 @@ export default function AvailabilityView({
     isAuthenticated,
     activePoll.responses,
     pollLocalMap,
+    currentUserId,
+    workspaceUserId,
     signedInUserId,
+    isMyUserId,
     defaultUserName,
     signedInAvatarBg,
   ])
 
   const activeParticipant = useMemo(
     () =>
-      allParticipants.find(p => p.userId === currentUserId) || {
+      allParticipants.find(p => p.isYou || isMyUserId(p.userId)) || {
         userName: activePersonName,
         initials: getInitials(activePersonName),
         avatarBg: signedInAvatarBg,
       },
-    [allParticipants, currentUserId, activePersonName, signedInAvatarBg]
+    [allParticipants, isMyUserId, activePersonName, signedInAvatarBg]
   )
 
   const spotlitPerson = useMemo(
@@ -938,6 +1039,15 @@ export default function AvailabilityView({
 
     if (!isAuthenticated || !currentUserId) {
       if (onNotify) onNotify('Sign in with your account to mark availability.', { type: 'info' })
+      return
+    }
+
+    if (isActivePollArchived) {
+      if (onNotify) {
+        onNotify('This poll is archived. Unarchive it first to edit availability.', {
+          type: 'info',
+        })
+      }
       return
     }
 
@@ -1196,7 +1306,7 @@ export default function AvailabilityView({
         newPollClubId && newPollClubPeople?.permission?.isBoard ? newPollShortcuts : [],
     }
 
-    const res = await createVerifiedPoll(payload)
+    const res = await createVerifiedPoll(payload, effectiveUser)
     setCreatePollBusy(false)
 
     if (!res?.ok || !res.data?.id) {
@@ -1222,8 +1332,133 @@ export default function AvailabilityView({
     }
   }
 
+  async function handleToggleArchivePoll(
+    targetPoll = activePoll,
+    nextArchived = !targetPoll?.archived
+  ) {
+    if (!targetPoll?.id || pollActionBusy) return
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    setPollActionBusy('archive')
+    const res = await archiveVerifiedPoll(targetPoll.id, nextArchived, effectiveUser)
+    setPollActionBusy('')
+
+    const updatedPoll = res?.poll || res?.data || null
+    if (!res?.ok || !updatedPoll?.id) {
+      if (onNotify) {
+        onNotify(res?.error || 'Could not update poll archive status.', { type: 'error' })
+      }
+      return
+    }
+
+    setConfirmDeletePollId(null)
+    setPolls(prev => {
+      const nextList = prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p))
+      if (nextArchived) {
+        const nextActive = nextList.find(p => !p.archived)
+        setSelectedPollId(nextActive ? nextActive.id : '')
+      } else {
+        setSelectedPollId(updatedPoll.id)
+        if (!nextList.some(p => p.archived)) {
+          setShowArchivedPolls(false)
+        }
+      }
+      return nextList
+    })
+
+    if (onNotify) {
+      const titleText = cleanText(updatedPoll.title || targetPoll.title)
+      if (nextArchived) {
+        onNotify(`Archived "${titleText}".`, {
+          actionLabel: 'Undo',
+          onAction: () => handleToggleArchivePoll(updatedPoll, false),
+        })
+      } else {
+        onNotify(`Restored "${titleText}" to active polls.`)
+      }
+    }
+  }
+
+  async function handleDeletePoll(targetPoll = activePoll) {
+    if (!targetPoll?.id || pollActionBusy) return
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    setPollActionBusy('delete')
+    const res = await deleteVerifiedPoll(targetPoll.id, effectiveUser)
+    setPollActionBusy('')
+
+    if (!res?.ok) {
+      if (onNotify) {
+        onNotify(res?.error || 'Could not delete poll.', { type: 'error' })
+      }
+      return
+    }
+
+    const deletedId = targetPoll.id
+    const titleText = cleanText(targetPoll.title)
+    setConfirmDeletePollId(null)
+    setSpotlightUserId(null)
+
+    const nextByPoll = { ...slotsByPollRef.current }
+    delete nextByPoll[deletedId]
+    slotsByPollRef.current = nextByPoll
+    setSlotsByPoll(nextByPoll)
+
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href)
+        if (url.searchParams.get('poll') === deletedId) {
+          url.searchParams.delete('poll')
+          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+        }
+      } catch {
+        // Ignore history state errors
+      }
+    }
+
+    if (Array.isArray(res?.removedEventIds) && res.removedEventIds.length > 0) {
+      if (onEventBooked) await onEventBooked()
+      if (onRemoveLocalEvent) {
+        for (const rid of res.removedEventIds) onRemoveLocalEvent(rid)
+      }
+    }
+
+    setPolls(prev => {
+      const remaining = prev.filter(p => p.id !== deletedId)
+      const remainingActive = remaining.filter(p => !p.archived)
+      const remainingArchived = remaining.filter(p => p.archived)
+      if (remainingArchived.length === 0) {
+        setShowArchivedPolls(false)
+      }
+      if (selectedPollId === deletedId || !selectedPollId) {
+        const fallback =
+          remainingActive[0]?.id ||
+          (showArchivedPolls ? remainingArchived[0]?.id : '') ||
+          ''
+        setSelectedPollId(fallback)
+      }
+      return remaining
+    })
+
+    if (onNotify) {
+      onNotify(`Deleted poll "${titleText}".`, { type: 'info' })
+    }
+  }
+
   async function handleScheduleSlot(slotIso) {
     if (!slotIso) return
+    if (isActivePollArchived) {
+      if (onNotify) {
+        onNotify('This poll is archived. Unarchive it before scheduling a meeting.', {
+          type: 'info',
+        })
+      }
+      return
+    }
     setBookingBusy(true)
     const endIso = new Date(new Date(slotIso).getTime() + durationMins * 60 * 1000).toISOString()
     const eventId = `collab_evt_${activePoll.id}_${new Date(slotIso).getTime()}`
@@ -1340,11 +1575,11 @@ export default function AvailabilityView({
   return (
     <div className={isCompact ? 'space-y-3.5' : 'space-y-4 sm:space-y-5'}>
       {/* ── 1. Streamlined Poll & Week Bar ── */}
-      <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={1}>
+      <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={0}>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Left: Poll Switcher + Location + New Poll */}
+          {/* Left: Poll Switcher + Location + New Poll + Archived Toggle */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            {polls.map(p => {
+            {activePolls.map(p => {
               const isSelected = p.id === activePoll.id
               return (
                 <button
@@ -1381,22 +1616,46 @@ export default function AvailabilityView({
               <span>{showNewPollForm ? 'Cancel' : 'New Poll'}</span>
             </button>
 
-            {activePoll.location && (
+            {archivedPolls.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextOpen = !(showArchivedPolls || isActivePollArchived)
+                  setShowArchivedPolls(nextOpen)
+                  if (nextOpen && !hasActivePoll && archivedPolls[0]?.id) {
+                    setSelectedPollId(archivedPolls[0].id)
+                  } else if (!nextOpen && isActivePollArchived) {
+                    setSelectedPollId(activePolls[0]?.id || '')
+                  }
+                }}
+                title="View your archived polls"
+                className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                  showArchivedPolls || isActivePollArchived
+                    ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
+                }`}
+              >
+                <Archive size={13} />
+                <span>Archived ({archivedPolls.length})</span>
+              </button>
+            )}
+
+            {activePoll.location && hasActivePoll && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text-muted)] font-medium border border-[var(--border-subtle)]">
-                <MapPin size={12} className="text-[var(--teal)] shrink-0" />
+                <MapPin size={12} className="text-[var(--teal-ink)] shrink-0" />
                 <span className="truncate max-w-[200px]">{cleanText(activePoll.location)}</span>
               </span>
             )}
           </div>
 
-          {/* Right: Week Stepper + Invite Link */}
+          {/* Right: Week Stepper + Invite Link + Creator Lifecycle Controls */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <div className="inline-flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+            <div className="segmented-track">
               <button
                 type="button"
                 onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}
                 aria-label="Previous week"
-                className="w-7 h-7 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+                className="w-8 h-8 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)] transition-colors"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -1407,7 +1666,7 @@ export default function AvailabilityView({
                 type="button"
                 onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}
                 aria-label="Next week"
-                className="w-7 h-7 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+                className="w-8 h-8 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)] transition-colors"
               >
                 <ChevronRight size={14} />
               </button>
@@ -1416,7 +1675,7 @@ export default function AvailabilityView({
                   type="button"
                   onClick={() => setWeekAnchorDate(defaultPollWeekStart)}
                   title="Jump back to poll week"
-                  className="inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11px] font-semibold border-none cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11px] font-semibold border-none cursor-pointer"
                 >
                   <RotateCcw size={11} />
                   <span>Poll Week</span>
@@ -1427,8 +1686,9 @@ export default function AvailabilityView({
             <div className="inline-flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
+                disabled={!hasActivePoll || isActivePollArchived}
                 onClick={handleCopyShareLink}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
               >
                 <Share2 size={13} className="text-[var(--blue)]" />
                 <span>Copy Invite Link</span>
@@ -1436,10 +1696,10 @@ export default function AvailabilityView({
 
               <button
                 type="button"
-                disabled={Boolean(shareBusy)}
+                disabled={Boolean(shareBusy) || !hasActivePoll || isActivePollArchived}
                 onClick={handleSharePollDiscord}
                 title="Post availability poll invite to Discord"
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
               >
                 <span className="text-[var(--blue)] flex items-center">
                   <PlatformIcon type="discord" size={13.5} />
@@ -1449,24 +1709,153 @@ export default function AvailabilityView({
 
               <button
                 type="button"
-                disabled={Boolean(shareBusy)}
+                disabled={Boolean(shareBusy) || !hasActivePoll || isActivePollArchived}
                 onClick={handleSharePollEmail}
                 title="Send availability poll invite via Email"
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
               >
                 <Mail size={13} className="text-[var(--yellow)]" />
                 <span>{shareBusy === 'email' ? 'Sending…' : 'Email'}</span>
               </button>
+
+              {isActivePollCreator && (
+                <>
+                  <button
+                    type="button"
+                    disabled={Boolean(pollActionBusy)}
+                    onClick={() => handleToggleArchivePoll(activePoll, !isActivePollArchived)}
+                    title={
+                      isActivePollArchived
+                        ? 'Restore this poll to active polls'
+                        : 'Archive this poll — preserves responses and stops new changes'
+                    }
+                    className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors disabled:opacity-60 ${
+                      isActivePollArchived
+                        ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30 hover:opacity-90'
+                        : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
+                    }`}
+                  >
+                    {isActivePollArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                    <span>
+                      {pollActionBusy === 'archive'
+                        ? isActivePollArchived
+                          ? 'Restoring…'
+                          : 'Archiving…'
+                        : isActivePollArchived
+                          ? 'Unarchive'
+                          : 'Archive'}
+                    </span>
+                  </button>
+
+                  {confirmDeletePollId === activePoll.id ? (
+                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-xl bg-[var(--red-light)] border border-[var(--red)]/35">
+                      <button
+                        type="button"
+                        disabled={Boolean(pollActionBusy)}
+                        onClick={() => handleDeletePoll(activePoll)}
+                        className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg bg-[var(--red)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-60"
+                      >
+                        <Trash2 size={12} />
+                        <span>{pollActionBusy === 'delete' ? 'Deleting…' : 'Confirm Delete'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(pollActionBusy)}
+                        onClick={() => setConfirmDeletePollId(null)}
+                        className="px-2 min-h-[28px] rounded-lg bg-transparent text-[var(--red-ink)] text-xs font-semibold border-none cursor-pointer hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={Boolean(pollActionBusy)}
+                      onClick={() => setConfirmDeletePollId(activePoll.id)}
+                      title="Permanently delete this poll and its responses"
+                      aria-label="Delete poll"
+                      className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--red-light)] text-[var(--text-muted)] hover:text-[var(--red-ink)] text-xs font-semibold border border-[var(--border)] hover:border-[var(--red)]/35 cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Creator's Archived Polls Tray */}
+        {(showArchivedPolls || isActivePollArchived) && archivedPolls.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-wrap items-center gap-2 fade-in">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-light)] mr-1">
+              <Archive size={11.5} />
+              <span>Archived Polls</span>
+            </span>
+            {archivedPolls.map(p => {
+              const isSelected = p.id === activePoll.id
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPollId(p.id)
+                    setSpotlightUserId(null)
+                    if (p.dates?.[0]) {
+                      setWeekAnchorDate(getWeekStartOfDate(p.dates[0], weekStartsOn))
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl text-xs font-semibold border cursor-pointer transition-all truncate max-w-full ${
+                    isSelected
+                      ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)] shadow-2xs'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-dashed border-[var(--border)]'
+                  }`}
+                >
+                  <Archive size={11.5} className="shrink-0 opacity-75" />
+                  <span className="truncate">{cleanText(p.title)}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Active Poll Archived Read-Only Notice */}
+        {isActivePollArchived && (
+          <div className="mt-3 p-3 rounded-xl bg-[var(--yellow-light)]/55 border border-[var(--yellow)]/35 flex flex-wrap items-center justify-between gap-2.5 fade-in">
+            <div className="flex items-center gap-2 text-xs text-[var(--yellow-ink)]">
+              <Archive size={14} className="shrink-0" />
+              <span>
+                <strong className="font-semibold">This poll is archived.</strong> Collected
+                responses and overlap windows are preserved, and new edits are paused.
+              </span>
+            </div>
+            {isActivePollCreator && (
+              <button
+                type="button"
+                disabled={Boolean(pollActionBusy)}
+                onClick={() => handleToggleArchivePoll(activePoll, false)}
+                className="inline-flex items-center gap-1.5 px-3 min-h-[30px] rounded-lg bg-[var(--bg-card)] text-[var(--text)] text-xs font-semibold border border-[var(--border)] cursor-pointer hover:border-[var(--blue)] disabled:opacity-60"
+              >
+                <ArchiveRestore size={12.5} className="text-[var(--blue)]" />
+                <span>Unarchive Poll</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Empty Polls Prompt */}
-        {!pollsLoading && polls.length === 0 && !showNewPollForm && (
+        {!pollsLoading && activePolls.length === 0 && !isActivePollArchived && !showNewPollForm && (
           <div className="mt-3 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-[var(--text-muted)]">
-              <strong className="text-[var(--text)] font-semibold">No availability polls yet.</strong>{' '}
-              Create a real multi-user poll for your club, board, or sub-groups — zero demo or fake responders.
+              <strong className="text-[var(--text)] font-semibold">
+                {archivedPolls.length > 0
+                  ? 'No active availability polls.'
+                  : 'No availability polls yet.'}
+              </strong>{' '}
+              {archivedPolls.length > 0
+                ? 'Restore an archived poll above or create a new poll for your club, board, or sub-groups.'
+                : 'Create a poll for your club, board, or sub-groups to compare schedules and find the best time to meet.'}
             </div>
             <button
               type="button"
@@ -1474,7 +1863,7 @@ export default function AvailabilityView({
               className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
             >
               <Plus size={13} />
-              <span>Create First Poll</span>
+              <span>{archivedPolls.length > 0 ? 'Create Poll' : 'Create First Poll'}</span>
             </button>
           </div>
         )}
@@ -1540,7 +1929,7 @@ export default function AvailabilityView({
                       setNewPollShortcuts([])
                       setNewPollVisibility('public_link')
                     }}
-                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
                     <option value="">Personal / Cross-Club Poll</option>
                     {clubs.map(c => (
@@ -1559,7 +1948,7 @@ export default function AvailabilityView({
                     <select
                       value={newPollVisibility}
                       onChange={e => setNewPollVisibility(e.target.value)}
-                      className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                      className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                     >
                       <option value="public_link">Anyone with Invite Link</option>
                       <option value="club_members">Club Members & Board Only</option>
@@ -1612,14 +2001,14 @@ export default function AvailabilityView({
         } items-start`}
       >
         {/* LEFT: 7-Day Availability Schedule */}
-        <Card className={`${isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-5'} select-none`} delay={2}>
+        <Card className={`${isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-5'} select-none`} delay={1}>
           {/* Mode Switcher + Quick Fill Controls */}
           <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[var(--border)]">
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+            <div className="segmented-track w-full xs:w-auto">
               <button
                 type="button"
                 onClick={() => setGridMode('mine')}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
                   gridMode === 'mine'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -1640,7 +2029,7 @@ export default function AvailabilityView({
               <button
                 type="button"
                 onClick={() => setGridMode('group')}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
                   gridMode === 'group'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -1728,7 +2117,9 @@ export default function AvailabilityView({
                     <span
                       key={a}
                       className="w-3.5 h-3.5 rounded inline-block"
-                      style={{ background: `rgba(16, 185, 129, ${a})` }}
+                      style={{
+                        background: `color-mix(in srgb, var(--green) ${Math.round(a * 100)}%, transparent)`,
+                      }}
                     />
                   ))}
                   <span>Everyone</span>
@@ -2095,8 +2486,8 @@ export default function AvailabilityView({
                               textColor = 'var(--green-ink)'
                             }
                           } else if (count > 0) {
-                            const alpha = (0.18 + ratio * 0.74).toFixed(2)
-                            bg = `rgba(16, 185, 129, ${alpha})`
+                            const pct = Math.round((0.18 + ratio * 0.74) * 100)
+                            bg = `color-mix(in srgb, var(--green) ${pct}%, transparent)`
                             textColor = ratio >= 0.55 ? '#ffffff' : 'var(--text)'
                           }
 
@@ -2297,7 +2688,7 @@ export default function AvailabilityView({
         {/* RIGHT STICKY RAIL: 1) Responders (Above) + 2) Best Meeting Windows (Below) */}
         <div className={`lg:sticky lg:top-5 ${isCompact ? 'space-y-3.5' : 'space-y-4'}`}>
           {/* Card 1 (TOP): Verified Team Responders */}
-          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={3}>
+          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={2}>
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
                 <Users size={15} className="text-[var(--blue)] shrink-0" />
@@ -2306,7 +2697,7 @@ export default function AvailabilityView({
                 </h3>
               </div>
 
-              {hasActivePoll && activePollClubPeople?.permission?.isBoard && (
+              {hasActivePoll && !isActivePollArchived && activePollClubPeople?.permission?.isBoard && (
                 <button
                   type="button"
                   onClick={() => setShowExistingInviteShortcuts(prev => !prev)}
@@ -2442,7 +2833,7 @@ export default function AvailabilityView({
           </Card>
 
           {/* Card 2 (BELOW RESPONDERS): Ranked Best Meeting Windows */}
-          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={4}>
+          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={3}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-[var(--yellow)] shrink-0" />
@@ -2451,7 +2842,7 @@ export default function AvailabilityView({
 
               {/* Meeting Length Selector right inside Best Meeting Windows */}
               <div
-                className="inline-flex items-center gap-0.5 bg-[var(--bg-surface)] p-0.5 rounded-lg border border-[var(--border)]"
+                className="segmented-track !p-0.5 !rounded-lg"
                 aria-label="Meeting duration"
               >
                 {[30, 60, 90, 120].map(mins => (
@@ -2459,7 +2850,7 @@ export default function AvailabilityView({
                     key={mins}
                     type="button"
                     onClick={() => setDurationMins(mins)}
-                    className={`px-2 min-h-[24px] rounded-md text-[11px] font-semibold cursor-pointer border-none transition-colors ${
+                    className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold cursor-pointer border-none transition-colors ${
                       durationMins === mins
                         ? 'bg-[var(--bg-card)] text-[var(--blue-ink)] shadow-2xs'
                         : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'

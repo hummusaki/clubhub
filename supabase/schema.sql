@@ -18,18 +18,26 @@ begin
 end;
 $$;
 
--- ── 1. USERS (1:1 profile with Supabase `auth.users`) ───────────────────────
+-- ── 1. USERS (Supports both Supabase Auth & Clerk Third-Party Auth JWTs) ────
 create table if not exists public.users (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  email        text unique not null,
-  full_name    text not null default '',
-  major        text not null default '',
-  grad_year    text not null default '',
-  avatar_bg    text not null default 'linear-gradient(135deg, var(--blue), var(--purple))',
-  verified_edu boolean not null default false,
-  created_at   timestamptz not null default timezone('utc', now()),
-  updated_at   timestamptz not null default timezone('utc', now())
+  id               uuid primary key default gen_random_uuid(),
+  external_auth_id text unique,
+  email            text unique not null,
+  full_name        text not null default '',
+  major            text not null default '',
+  grad_year        text not null default '',
+  avatar_bg        text not null default 'linear-gradient(135deg, var(--blue), var(--purple))',
+  theme_mode       text not null default 'system' check (theme_mode in ('system', 'light', 'dark')),
+  verified_edu     boolean not null default false,
+  created_at       timestamptz not null default timezone('utc', now()),
+  updated_at       timestamptz not null default timezone('utc', now())
 );
+
+-- Safe in-place migration if `public.users` was created with an earlier `auth.users` FK
+alter table public.users add column if not exists external_auth_id text unique;
+alter table public.users add column if not exists theme_mode text not null default 'system';
+alter table public.users alter column id set default gen_random_uuid();
+alter table public.users drop constraint if exists users_id_fkey;
 
 drop trigger if exists trg_users_updated_at on public.users;
 create trigger trg_users_updated_at
@@ -166,10 +174,15 @@ create table if not exists public.polls (
   invited_user_ids  uuid[] not null default '{}',
   target_group_ids  uuid[] not null default '{}',
   booked_events     jsonb not null default '[]'::jsonb,
+  archived          boolean not null default false,
+  archived_at       timestamptz,
   created_by        uuid not null references public.users(id) on delete cascade,
   created_at        timestamptz not null default timezone('utc', now()),
   updated_at        timestamptz not null default timezone('utc', now())
 );
+
+alter table public.polls add column if not exists archived boolean not null default false;
+alter table public.polls add column if not exists archived_at timestamptz;
 
 create index if not exists idx_polls_club on public.polls (club_id);
 
@@ -218,8 +231,8 @@ create table if not exists public.tasks (
   section_color         text not null default 'blue',
   title                 text not null,
   notes                 text not null default '',
-  visibility            text not null default 'members' check (visibility in ('members', 'board')),
-  audience              text not null default 'general' check (audience in ('general', 'targeted', 'board')),
+  visibility            text not null default 'members' check (visibility in ('members', 'board', 'personal')),
+  audience              text not null default 'general' check (audience in ('general', 'targeted', 'board', 'personal')),
   status                text not null default 'not_started' check (status in ('not_started', 'working_on_it', 'in_review', 'stuck', 'done')),
   priority              text not null default 'medium' check (priority in ('low', 'medium', 'high', 'critical')),
   due_date              date,
@@ -243,7 +256,20 @@ create trigger trg_tasks_updated_at
 -- SECURITY-DEFINER RBAC HELPERS & ATOMIC ROSTER CLAIM RPC
 -- ============================================================================
 
-create or replace function public.is_club_member(p_club_id text, p_uid uuid default auth.uid())
+create or replace function public.current_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select id from public.users
+  where (auth.jwt()->>'sub') is not null
+    and (id::text = (auth.jwt()->>'sub') or external_auth_id = (auth.jwt()->>'sub'))
+  limit 1;
+$$;
+
+create or replace function public.is_club_member(p_club_id text, p_uid uuid default public.current_user_id())
 returns boolean
 language sql
 stable
@@ -256,7 +282,7 @@ as $$
   );
 $$;
 
-create or replace function public.is_club_board(p_club_id text, p_uid uuid default auth.uid())
+create or replace function public.is_club_board(p_club_id text, p_uid uuid default public.current_user_id())
 returns boolean
 language sql
 stable
@@ -272,7 +298,7 @@ as $$
   );
 $$;
 
-create or replace function public.is_in_any_club_group(p_group_ids uuid[], p_uid uuid default auth.uid())
+create or replace function public.is_in_any_club_group(p_group_ids uuid[], p_uid uuid default public.current_user_id())
 returns boolean
 language sql
 stable
@@ -297,7 +323,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_uid uuid := auth.uid();
+  v_uid uuid := public.current_user_id();
   v_clean_pos text := trim(coalesce(p_position, ''));
   v_existing_board_count int;
   v_status text;
@@ -369,10 +395,14 @@ create policy users_select_authenticated on public.users
   for select to authenticated using (true);
 drop policy if exists users_insert_self on public.users;
 create policy users_insert_self on public.users
-  for insert to authenticated with check (id = auth.uid());
+  for insert to authenticated
+  with check (
+    (auth.jwt()->>'sub') is not null
+    and (id::text = (auth.jwt()->>'sub') or external_auth_id = (auth.jwt()->>'sub'))
+  );
 drop policy if exists users_update_self on public.users;
 create policy users_update_self on public.users
-  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+  for update to authenticated using (id = public.current_user_id()) with check (id = public.current_user_id());
 
 -- 2. CLUBS: Public directory read; authenticated create; board-only update/delete
 drop policy if exists clubs_select_all on public.clubs;
@@ -380,7 +410,7 @@ create policy clubs_select_all on public.clubs
   for select using (true);
 drop policy if exists clubs_insert_authenticated on public.clubs;
 create policy clubs_insert_authenticated on public.clubs
-  for insert to authenticated with check (auth.uid() is not null);
+  for insert to authenticated with check ((auth.jwt()->>'sub') is not null);
 drop policy if exists clubs_update_board on public.clubs;
 create policy clubs_update_board on public.clubs
   for update to authenticated using (public.is_club_board(id)) with check (public.is_club_board(id));
@@ -391,26 +421,26 @@ create policy clubs_delete_board on public.clubs
 -- 3. CLUB_MEMBERS: Club members see roster; users can join as 'member' or submit 'pending' claim; only Board approves/promotes
 drop policy if exists club_members_select on public.club_members;
 create policy club_members_select on public.club_members
-  for select to authenticated using (user_id = auth.uid() or public.is_club_member(club_id));
+  for select to authenticated using (user_id = public.current_user_id() or public.is_club_member(club_id));
 drop policy if exists club_members_insert_self on public.club_members;
 create policy club_members_insert_self on public.club_members
   for insert to authenticated
   with check (
-    user_id = auth.uid()
+    user_id = public.current_user_id()
     and role = 'member'
     and claim_status in ('none', 'pending')
   );
 drop policy if exists club_members_update_board_or_self on public.club_members;
 create policy club_members_update_board_or_self on public.club_members
   for update to authenticated
-  using (public.is_club_board(club_id) or user_id = auth.uid())
+  using (public.is_club_board(club_id) or user_id = public.current_user_id())
   with check (
     public.is_club_board(club_id)
-    or (user_id = auth.uid() and role = 'member' and claim_status in ('none', 'pending', 'revoked'))
+    or (user_id = public.current_user_id() and role = 'member' and claim_status in ('none', 'pending', 'revoked'))
   );
 drop policy if exists club_members_delete_board_or_self on public.club_members;
 create policy club_members_delete_board_or_self on public.club_members
-  for delete to authenticated using (user_id = auth.uid() or public.is_club_board(club_id));
+  for delete to authenticated using (user_id = public.current_user_id() or public.is_club_board(club_id));
 
 -- 4. CLUB_GROUPS: Visible to club members; strictly Board-managed CRUD
 drop policy if exists club_groups_select_members on public.club_groups;
@@ -433,9 +463,9 @@ drop policy if exists polls_select_scoped on public.polls;
 create policy polls_select_scoped on public.polls
   for select to authenticated
   using (
-    created_by = auth.uid()
+    created_by = public.current_user_id()
     or visibility = 'public_link'
-    or auth.uid() = any(invited_user_ids)
+    or public.current_user_id() = any(invited_user_ids)
     or public.is_in_any_club_group(target_group_ids)
     or (club_id is not null and visibility = 'club_members' and public.is_club_member(club_id))
     or (club_id is not null and visibility = 'board_only' and public.is_club_board(club_id))
@@ -444,18 +474,18 @@ drop policy if exists polls_insert_board_or_personal on public.polls;
 create policy polls_insert_board_or_personal on public.polls
   for insert to authenticated
   with check (
-    created_by = auth.uid()
+    created_by = public.current_user_id()
     and (club_id is null or public.is_club_board(club_id))
   );
 drop policy if exists polls_update_creator_or_board on public.polls;
 create policy polls_update_creator_or_board on public.polls
   for update to authenticated
-  using (created_by = auth.uid() or (club_id is not null and public.is_club_board(club_id)))
-  with check (created_by = auth.uid() or (club_id is not null and public.is_club_board(club_id)));
+  using (created_by = public.current_user_id() or (club_id is not null and public.is_club_board(club_id)))
+  with check (created_by = public.current_user_id() or (club_id is not null and public.is_club_board(club_id)));
 drop policy if exists polls_delete_creator_or_board on public.polls;
 create policy polls_delete_creator_or_board on public.polls
   for delete to authenticated
-  using (created_by = auth.uid() or (club_id is not null and public.is_club_board(club_id)));
+  using (created_by = public.current_user_id() or (club_id is not null and public.is_club_board(club_id)));
 
 -- 7. POLL_RESPONSES: Visible to poll participants; users can ONLY insert/update/delete their own response
 drop policy if exists poll_responses_select on public.poll_responses;
@@ -467,8 +497,8 @@ create policy poll_responses_select on public.poll_responses
 drop policy if exists poll_responses_write_self on public.poll_responses;
 create policy poll_responses_write_self on public.poll_responses
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid() and exists (select 1 from public.polls p where p.id = poll_id));
+  using (user_id = public.current_user_id())
+  with check (user_id = public.current_user_id() and exists (select 1 from public.polls p where p.id = poll_id));
 
 -- 8. ANNOUNCEMENTS: Scoped to targeted audience (public, members, group, or board); Board-only write
 drop policy if exists announcements_select_targeted on public.announcements;
@@ -477,11 +507,11 @@ create policy announcements_select_targeted on public.announcements
   using (
     visibility = 'public'
     or (
-      auth.uid() is not null
+      public.current_user_id() is not null
       and (
         public.is_club_board(club_id)
         or (visibility = 'members' and public.is_club_member(club_id))
-        or (visibility = 'group' and (public.is_in_any_club_group(target_group_ids) or auth.uid() = any(target_user_ids)))
+        or (visibility = 'group' and (public.is_in_any_club_group(target_group_ids) or public.current_user_id() = any(target_user_ids)))
       )
     )
   );
@@ -491,47 +521,101 @@ create policy announcements_manage_board on public.announcements
   using (public.is_club_board(club_id))
   with check (public.is_club_board(club_id));
 
--- 9. TASKS: Two-tier visibility (Member View vs. Board View) & scoped status updates
+-- 9. TASKS: Two-tier visibility (Member View vs. Board View), Per-Server Personal To-Dos & scoped status updates
 drop policy if exists tasks_select_two_tier on public.tasks;
 create policy tasks_select_two_tier on public.tasks
   for select to authenticated
   using (
-    public.is_club_board(club_id)
-    or (
-      visibility = 'members'
+    (
+      visibility = 'personal'
+      and created_by = public.current_user_id()
       and public.is_club_member(club_id)
+    )
+    or (
+      visibility <> 'personal'
       and (
-        audience = 'general'
-        or auth.uid() = any(assigned_user_ids)
-        or public.is_in_any_club_group(assigned_group_ids)
+        public.is_club_board(club_id)
+        or (
+          visibility = 'members'
+          and public.is_club_member(club_id)
+          and (
+            audience = 'general'
+            or public.current_user_id() = any(assigned_user_ids)
+            or public.is_in_any_club_group(assigned_group_ids)
+          )
+        )
       )
     )
   );
 drop policy if exists tasks_insert_board on public.tasks;
 create policy tasks_insert_board on public.tasks
-  for insert to authenticated with check (public.is_club_board(club_id));
+  for insert to authenticated
+  with check (
+    (
+      visibility = 'personal'
+      and audience = 'personal'
+      and created_by = public.current_user_id()
+      and public.is_club_member(club_id)
+    )
+    or (
+      visibility <> 'personal'
+      and public.is_club_board(club_id)
+    )
+  );
 drop policy if exists tasks_update_board_or_assignee on public.tasks;
 create policy tasks_update_board_or_assignee on public.tasks
   for update to authenticated
   using (
-    public.is_club_board(club_id)
-    or (
-      visibility = 'members'
+    (
+      visibility = 'personal'
+      and created_by = public.current_user_id()
       and public.is_club_member(club_id)
+    )
+    or (
+      visibility <> 'personal'
       and (
-        audience = 'general'
-        or auth.uid() = any(assigned_user_ids)
-        or public.is_in_any_club_group(assigned_group_ids)
+        public.is_club_board(club_id)
+        or (
+          visibility = 'members'
+          and public.is_club_member(club_id)
+          and (
+            audience = 'general'
+            or public.current_user_id() = any(assigned_user_ids)
+            or public.is_in_any_club_group(assigned_group_ids)
+          )
+        )
       )
     )
   )
   with check (
-    public.is_club_board(club_id)
-    or (
-      visibility = 'members'
+    (
+      visibility = 'personal'
+      and audience = 'personal'
+      and created_by = public.current_user_id()
       and public.is_club_member(club_id)
+    )
+    or (
+      visibility <> 'personal'
+      and (
+        public.is_club_board(club_id)
+        or (
+          visibility = 'members'
+          and public.is_club_member(club_id)
+        )
+      )
     )
   );
 drop policy if exists tasks_delete_board on public.tasks;
 create policy tasks_delete_board on public.tasks
-  for delete to authenticated using (public.is_club_board(club_id));
+  for delete to authenticated
+  using (
+    (
+      visibility = 'personal'
+      and created_by = public.current_user_id()
+      and public.is_club_member(club_id)
+    )
+    or (
+      visibility <> 'personal'
+      and public.is_club_board(club_id)
+    )
+  );

@@ -26,6 +26,7 @@ import {
   buildGoogleCalendarTemplateUrl,
   normalizeCalendarSyncSettings,
 } from '../utils/calendarSync'
+import { matchesSearchQuery, parseSearchQuery } from '../utils/search'
 
 function toLocalYmd(dateInput) {
   const dt = dateInput instanceof Date ? dateInput : new Date(dateInput)
@@ -117,6 +118,10 @@ export default function CalendarView({
   const [viewMode, setViewMode] = useState(
     () => initialView || userSettings?.defaultCalendarView || 'month'
   ) // 'month' | 'week' | 'agenda'
+
+  useEffect(() => {
+    if (initialView) setViewMode(initialView)
+  }, [initialView])
   const [clubScope, setClubScope] = useState('myclubs') // 'myclubs' | 'all'
   const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all'
   const [weekAnchor, setWeekAnchor] = useState(todayYmd)
@@ -193,12 +198,12 @@ export default function CalendarView({
         return false
       }
       if (!searchQuery.trim()) return true
-      const q = searchQuery.toLowerCase()
-      return (
-        (ev.club || '').toLowerCase().includes(q) ||
-        (ev.event || '').toLowerCase().includes(q) ||
-        (ev.location || '').toLowerCase().includes(q)
-      )
+      const parsedQ = parseSearchQuery(searchQuery)
+      return matchesSearchQuery(parsedQ, {
+        primary: [ev.event, ev.title],
+        secondary: [ev.club, ev.location, ev.day, ev.date, ev.time, ev.isGoing ? 'going rsvp' : ''],
+        tertiary: [ev.description, ev.notes, ev.source],
+      })
     })
   }, [enrichedEvents, joinedClubIdSet, clubScope, compact, searchQuery])
 
@@ -603,7 +608,7 @@ export default function CalendarView({
     return (
       <Card
         className={`${isCompactDensity ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
-        delay={2}
+        delay={1}
       >
         <div>
           <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
@@ -702,12 +707,12 @@ export default function CalendarView({
   })
 
   return (
-    <Card className="p-4 sm:p-6" delay={2}>
+    <Card className="p-4 sm:p-6" delay={0}>
       {/* Top Toolbar: View Switcher, Club/RSVP Filters & External Calendar Integration */}
       <div className="flex flex-col gap-3 pb-4 mb-4 border-b border-[var(--border)]">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border)]">
+            <div className="segmented-track w-full sm:w-auto">
               {[
                 { id: 'month', label: 'Full Calendar' },
                 { id: 'week', label: 'Week' },
@@ -717,7 +722,7 @@ export default function CalendarView({
                   key={tab.id}
                   type="button"
                   onClick={() => setViewMode(tab.id)}
-                  className={`px-3.5 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                  className={`flex-1 sm:flex-initial px-3.5 min-h-[36px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                     viewMode === tab.id
                       ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                       : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -729,7 +734,7 @@ export default function CalendarView({
             </div>
 
             {joinedClubIdSet.size > 0 && (
-              <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+              <div className="segmented-track">
                 {[
                   { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
                   { id: 'all', label: 'All Campus' },
@@ -738,7 +743,7 @@ export default function CalendarView({
                     key={opt.id}
                     type="button"
                     onClick={() => setClubScope(opt.id)}
-                    className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                    className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                       clubScope === opt.id
                         ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                         : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -755,7 +760,7 @@ export default function CalendarView({
                 type="button"
                 onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: !inAppRsvpOnly })}
                 title="Only show events you have RSVP'd to on the calendar"
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold cursor-pointer border transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold cursor-pointer border transition-colors ${
                   inAppRsvpOnly
                     ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/35'
                     : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
@@ -774,10 +779,12 @@ export default function CalendarView({
                 <button
                   type="button"
                   onClick={() => calendarIntegration.onQuickGoogleClick()}
-                  className="inline-flex items-center gap-2 px-3.5 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-2 px-3 sm:px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
                 >
                   <GoogleCalendarLogo size={15} />
-                  <span>Google Calendar</span>
+                  <span>
+                    Google<span className="hidden sm:inline"> Calendar</span>
+                  </span>
                   {calendarIntegration.googleLiveMeta?.connected && (
                     <span className="w-2 h-2 rounded-full bg-[var(--green)]" title="Live Auto-Sync Connected" />
                   )}
@@ -786,24 +793,28 @@ export default function CalendarView({
                 <button
                   type="button"
                   onClick={() => calendarIntegration.onSubscribeApple()}
-                  className="inline-flex items-center gap-2 px-3.5 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)] cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-2 px-3 sm:px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)] cursor-pointer transition-colors"
                 >
                   <AppleCalendarLogo size={14} />
-                  <span>Apple Calendar</span>
+                  <span>
+                    Apple<span className="hidden sm:inline"> Calendar</span>
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowSyncModal(true)}
                   title="Configure how Google & Apple Calendar integration works"
-                  className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                     calSyncSettings.rsvpOnly
                       ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
                       : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
                   }`}
                 >
                   <SlidersHorizontal size={14} />
-                  <span>Sync Settings</span>
+                  <span>
+                    Sync<span className="hidden sm:inline"> Settings</span>
+                  </span>
                   <span className="px-1.5 py-0.2 rounded-full bg-[var(--bg-card)] text-[10.5px] font-mono-num text-[var(--text)] border border-[var(--border-subtle)]">
                     {calendarIntegration.syncedEvents.length}
                   </span>
@@ -814,7 +825,7 @@ export default function CalendarView({
             <button
               type="button"
               onClick={() => setShowAddForm(prev => !prev)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
+              className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
             >
               {showAddForm ? <X size={15} /> : <Plus size={15} />}
               <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
@@ -851,7 +862,7 @@ export default function CalendarView({
       {showAddForm && (
         <form
           onSubmit={handleSubmitNewEvent}
-          className="mb-5 p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-4 fade-in"
+          className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
         >
           <div className="text-sm font-bold text-[var(--text)]">Add Club Event</div>
 
@@ -866,7 +877,7 @@ export default function CalendarView({
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
                 placeholder="e.g. Intro to Web Dev Workshop"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
             </div>
 
@@ -877,7 +888,7 @@ export default function CalendarView({
               <select
                 value={eventClubId}
                 onChange={e => setEventClubId(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
                 {clubs.map(c => (
                   <option key={c.id} value={c.id}>
@@ -897,7 +908,7 @@ export default function CalendarView({
                   required
                   value={eventDate}
                   onChange={e => setEventDate(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
 
@@ -910,7 +921,7 @@ export default function CalendarView({
                   required
                   value={eventTime}
                   onChange={e => setEventTime(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
             </div>
@@ -924,7 +935,7 @@ export default function CalendarView({
                 value={eventLocation}
                 onChange={e => setEventLocation(e.target.value)}
                 placeholder="e.g. Baskin Engineering 152 or Zoom"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
             </div>
           </div>
@@ -933,7 +944,7 @@ export default function CalendarView({
             <button
               type="button"
               onClick={() => setShowAddForm(false)}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
+              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
             >
               Cancel
             </button>

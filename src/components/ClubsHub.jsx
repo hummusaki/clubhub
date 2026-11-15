@@ -52,6 +52,7 @@ import {
   getClubCategoryMeta,
 } from '../utils/clubCategories'
 import { buildClubDirectoryData, toInitials } from '../utils/clubDirectory'
+import { filterAndRankBySearch, matchesSearchQuery, parseSearchQuery } from '../utils/search'
 import ClubRbacPanel from './ClubRbacPanel'
 
 const SOURCE_FILTERS = [
@@ -783,12 +784,13 @@ function DirectoryClubPicker({
     const q = query.trim().toLowerCase()
     const joinedSet = new Set(joinedClubs.map(c => String(c.id)))
 
+    const parsedPickerQuery = parseSearchQuery(query)
     const matchesQuery = c => {
-      if (!q) return true
-      const name = cleanText(c.name || '').toLowerCase()
-      const handle = String(c.instagram || c.id || '').toLowerCase()
-      const cat = String(c.categoryLabel || '').toLowerCase()
-      return name.includes(q) || handle.includes(q) || cat.includes(q)
+      if (parsedPickerQuery.tokens.length === 0) return true
+      return matchesSearchQuery(parsedPickerQuery, {
+        primary: [cleanText(c.name || ''), c.abbr, ...(c.alsoKnownAs || [])],
+        secondary: [c.instagram, c.id, c.categoryLabel],
+      })
     }
 
     const joinedList = joinedClubs
@@ -1109,6 +1111,7 @@ export default function ClubsHub({
   const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
   const [directoryScope, setDirectoryScope] = useState('all') // 'all' | 'myclubs'
   const [directoryClubFilter, setDirectoryClubFilter] = useState('all')
+  const [rbacInitialSeat, setRbacInitialSeat] = useState({ seatId: '', roleTitle: '' })
   const [directoryCategory, setDirectoryCategory] = useState('All')
   const [directoryGroupMode, setDirectoryGroupMode] = useState('role') // 'role' | 'club'
   const [visibleOfficersCount, setVisibleOfficersCount] = useState(DIRECTORY_PAGE_SIZE)
@@ -1239,12 +1242,12 @@ export default function ClubsHub({
   const filteredClubs = useMemo(() => {
     const pool = section === 'discover' ? allClubs : joinedClubs
     const catLower = category === 'All' ? null : category.toLowerCase()
-    const q = searchQuery.trim().toLowerCase()
-    return pool.filter(c => {
-      if (catLower && c.category !== catLower) return false
-      if (q && !c._searchText.includes(q)) return false
-      return true
-    })
+    const catScoped = catLower ? pool.filter(c => c.category === catLower) : pool
+    return filterAndRankBySearch(catScoped, searchQuery, c => ({
+      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
+      secondary: [c.instagram, c.id, c.categoryLabel, ...(c.tags || []).map(t => t.label)],
+      tertiary: [c.description, c.directoryDescription, c.email, c.schedule],
+    }))
   }, [allClubs, joinedClubs, section, category, searchQuery])
 
   const groupedClubs = useMemo(() => {
@@ -1316,7 +1319,7 @@ export default function ClubsHub({
 
     const channels = userSettings?.channels || {}
     const scopeToMyClubs = joinedIdSet.size > 0 && feedScope === 'myclubs'
-    const q = searchQuery.trim().toLowerCase()
+    const parsedFeedQuery = parseSearchQuery(searchQuery)
 
     return allNormalized.filter(post => {
       if (scopeToMyClubs && post.clubIdStr && !joinedIdSet.has(post.clubIdStr)) {
@@ -1331,7 +1334,14 @@ export default function ClubsHub({
         return false
       }
 
-      if (q && !post.searchHaystack.includes(q)) {
+      if (
+        parsedFeedQuery.tokens.length > 0 &&
+        !matchesSearchQuery(parsedFeedQuery, {
+          primary: [post.title, post.clubName],
+          secondary: [post.channel, post.eventLocation],
+          tertiary: [post.summary, post.searchHaystack],
+        })
+      ) {
         return false
       }
       return true
@@ -1398,11 +1408,10 @@ export default function ClubsHub({
 
   // Pre-category scoped lists (applies Scope + Specific Club + Search Query so category pills show live counts)
   const { preCatOfficers, preCatMembers } = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
     const scopeToJoined =
       directoryClubFilter === 'all' && directoryScope === 'myclubs' && joinedIdSet.size > 0
 
-    const nextOfficers = allOfficers.filter(m => {
+    const scopedOfficers = allOfficers.filter(m => {
       if (directoryClubFilter !== 'all') {
         const matchById = String(m.clubId || '') === String(directoryClubFilter)
         const matchByName =
@@ -1412,21 +1421,16 @@ export default function ClubsHub({
       } else if (scopeToJoined) {
         if (!m.clubId || !joinedIdSet.has(String(m.clubId))) return false
       }
-
-      if (q) {
-        return (
-          m.name.toLowerCase().includes(q) ||
-          m.role.toLowerCase().includes(q) ||
-          (m.club || '').toLowerCase().includes(q) ||
-          (m.major || '').toLowerCase().includes(q) ||
-          (m.email || '').toLowerCase().includes(q) ||
-          (m.categoryLabel || '').toLowerCase().includes(q)
-        )
-      }
       return true
     })
 
-    const nextMembers = allMembers.filter(m => {
+    const nextOfficers = filterAndRankBySearch(scopedOfficers, searchQuery, m => ({
+      primary: [m.name, m.role],
+      secondary: [m.club, m.email, m.categoryLabel],
+      tertiary: [m.major],
+    }))
+
+    const scopedMembers = allMembers.filter(m => {
       if (directoryClubFilter !== 'all') {
         const inSelectedClub = (m.clubs || []).some(
           c =>
@@ -1441,18 +1445,14 @@ export default function ClubsHub({
         )
         if (!inJoinedClub) return false
       }
-
-      if (q) {
-        return (
-          m.name.toLowerCase().includes(q) ||
-          (m.role || '').toLowerCase().includes(q) ||
-          (m.major || '').toLowerCase().includes(q) ||
-          (m.email || '').toLowerCase().includes(q) ||
-          (m.clubs || []).some(c => c.label.toLowerCase().includes(q))
-        )
-      }
       return true
     })
+
+    const nextMembers = filterAndRankBySearch(scopedMembers, searchQuery, m => ({
+      primary: [m.name, m.role],
+      secondary: [...(m.clubs || []).map(c => c.label), m.email],
+      tertiary: [m.major],
+    }))
 
     return { preCatOfficers: nextOfficers, preCatMembers: nextMembers }
   }, [
@@ -1620,15 +1620,17 @@ export default function ClubsHub({
     const q = searchQuery.trim().toLowerCase()
 
     if (q) {
-      return allClubs
-        .filter(
-          c =>
-            c.email &&
-            !listedOfficerClubIds.has(String(c.id)) &&
-            (directoryCategory === 'All' || c.category === directoryCategory) &&
-            (c._searchText.includes(q) || String(c.instagram || '').toLowerCase().includes(q))
-        )
-        .slice(0, 6)
+      const candidates = allClubs.filter(
+        c =>
+          c.email &&
+          !listedOfficerClubIds.has(String(c.id)) &&
+          (directoryCategory === 'All' || c.category === directoryCategory)
+      )
+      return filterAndRankBySearch(candidates, searchQuery, c => ({
+        primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
+        secondary: [c.instagram, c.id, c.email, c.categoryLabel],
+        tertiary: [c.description, c.directoryDescription],
+      })).slice(0, 6)
     }
 
     if (directoryScope === 'myclubs' && joinedClubs.length > 0 && roleFilter !== 'members') {
@@ -2029,7 +2031,7 @@ export default function ClubsHub({
                   setSection('rbac')
                   setDirectoryClubFilter(String(club.id))
                 }}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
               >
                 <Shield size={11.5} />
                 <span>Roles</span>
@@ -2056,8 +2058,18 @@ export default function ClubsHub({
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
     const previewLimit = isCompactDensity ? 4 : 3
-    const previewClubs = joinedClubs.slice(0, previewLimit)
-    const suggestedClubs = allClubs.slice(0, previewLimit)
+    const rankedJoined = filterAndRankBySearch(joinedClubs, searchQuery, c => ({
+      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
+      secondary: [c.instagram, c.id, c.categoryLabel],
+      tertiary: [c.description, c.directoryDescription, c.schedule],
+    }))
+    const rankedAll = filterAndRankBySearch(allClubs, searchQuery, c => ({
+      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
+      secondary: [c.instagram, c.id, c.categoryLabel],
+      tertiary: [c.description, c.directoryDescription, c.schedule],
+    }))
+    const previewClubs = rankedJoined.slice(0, previewLimit)
+    const suggestedClubs = rankedAll.slice(0, previewLimit)
     const overviewGridClasses = isCompactDensity
       ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5'
       : 'grid grid-cols-1 md:grid-cols-3 gap-3.5'
@@ -2224,7 +2236,7 @@ export default function ClubsHub({
               )}
               {m.office && (
                 <div className="flex items-center gap-1.5 text-[var(--text)] font-medium min-w-0">
-                  <Clock size={12} className="text-[var(--teal)] shrink-0" />
+                  <Clock size={12} className="text-[var(--teal-ink)] shrink-0" />
                   <span className="truncate">Office Hours: {m.office}</span>
                 </div>
               )}
@@ -2261,48 +2273,66 @@ export default function ClubsHub({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {m.email && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleCopyEmail(m.id, m.email)}
-                  title="Copy email address"
-                  className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
-                >
-                  {isCopied ? (
-                    <>
-                      <Check size={12} className="text-[var(--green)]" />
-                      <span>Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={12} className="text-[var(--text-muted)]" />
-                      <span>Copy</span>
-                    </>
-                  )}
-                </button>
-
-                <a
-                  href={`mailto:${m.email}`}
-                  title={`Email ${m.name}`}
-                  className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
-                >
-                  <Mail size={13} />
-                </a>
-              </>
-            )}
-
-            {m.isCustom && (
+            {!isDemo && m.clubId && !m.isSyntheticContact && (
               <button
                 type="button"
-                onClick={() => handleRemoveCustomPerson(m.id, 'officer')}
-                title="Remove custom entry"
-                aria-label={`Remove ${m.name}`}
-                className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red)] cursor-pointer transition-colors"
+                onClick={() => {
+                  setDirectoryClubFilter(String(m.clubId))
+                  setRbacInitialSeat({
+                    seatId: String(m.id || ''),
+                    roleTitle: String(m.role || 'Officer'),
+                  })
+                  setSection('rbac')
+                }}
+                title="Claim this officer position for elevated club permissions"
+                className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--purple-light)] hover:opacity-90 text-xs font-semibold text-[var(--purple-ink)] cursor-pointer transition-opacity"
               >
-                <Trash2 size={13} />
+                <Shield size={12} />
+                <span>Claim Role</span>
               </button>
             )}
+            {m.email && (
+              <>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyEmail(m.id, m.email)}
+                    title="Copy email address"
+                    className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check size={12} className="text-[var(--green-ink)]" />
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} className="text-[var(--text-muted)]" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href={`mailto:${m.email}`}
+                    title={`Email ${m.name}`}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+                  >
+                    <Mail size={13} />
+                  </a>
+                </>
+              )}
+
+              {m.isCustom && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCustomPerson(m.id, 'officer')}
+                  title="Remove custom entry"
+                  aria-label={`Remove ${m.name}`}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red-ink)] cursor-pointer transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
           </div>
         </div>
       </div>
@@ -2397,11 +2427,11 @@ export default function ClubsHub({
                   type="button"
                   onClick={() => handleCopyEmail(m.id, m.email)}
                   title="Copy email address"
-                  className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
                 >
                   {isCopied ? (
                     <>
-                      <Check size={12} className="text-[var(--green)]" />
+                      <Check size={12} className="text-[var(--green-ink)]" />
                       <span>Copied</span>
                     </>
                   ) : (
@@ -2415,7 +2445,7 @@ export default function ClubsHub({
                 <a
                   href={`mailto:${m.email}`}
                   title={`Email ${m.name}`}
-                  className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
                 >
                   <Mail size={13} />
                 </a>
@@ -2428,7 +2458,7 @@ export default function ClubsHub({
                 onClick={() => handleRemoveCustomPerson(m.id, 'member')}
                 title="Remove custom entry"
                 aria-label={`Remove ${m.name}`}
-                className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red)] cursor-pointer transition-colors"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red-ink)] cursor-pointer transition-colors"
               >
                 <Trash2 size={13} />
               </button>
@@ -2528,11 +2558,11 @@ export default function ClubsHub({
               type="button"
               onClick={() => handleCopyEmail(copyKey, clubEmail)}
               title="Copy club email"
-              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
             >
               {isCopied ? (
                 <>
-                  <Check size={12} className="text-[var(--green)]" />
+                  <Check size={12} className="text-[var(--green-ink)]" />
                   <span>Copied</span>
                 </>
               ) : (
@@ -2546,7 +2576,7 @@ export default function ClubsHub({
             <a
               href={`mailto:${clubEmail}`}
               title={`Email ${cleanText(club.name)}`}
-              className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
             >
               <Mail size={13} />
             </a>
@@ -2561,11 +2591,11 @@ export default function ClubsHub({
 
   // ── 2. FULL CLUBS & COMMUNITY PAGE ────────────────────────────────
   return (
-    <Card className={isCompactDensity ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={2}>
+    <Card className={isCompactDensity ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={0}>
       {/* Sub-navigation Tabs */}
       <div className={`flex flex-col gap-3 ${isCompactDensity ? 'pb-3 mb-4' : 'pb-4 mb-5'} border-b border-[var(--border)]`}>
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
             {[
               { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
               { id: 'rbac',      label: 'Roles & Sub-Groups' },
@@ -2582,7 +2612,7 @@ export default function ClubsHub({
                     setSection(tab.id)
                     setCategory('All')
                   }}
-                  className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
                     isActive
                       ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
@@ -2595,14 +2625,14 @@ export default function ClubsHub({
           </div>
 
           {(section === 'myclubs' || section === 'discover') && filteredClubs.length > 6 && (
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+            <div className="segmented-track">
               <button
                 type="button"
                 onClick={() => {
                   setClubLayout('grouped')
                   setCategory('All')
                 }}
-                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                   clubLayout === 'grouped' && category === 'All'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -2614,7 +2644,7 @@ export default function ClubsHub({
               <button
                 type="button"
                 onClick={() => setClubLayout('grid')}
-                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                   clubLayout === 'grid' || category !== 'All'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -2630,7 +2660,7 @@ export default function ClubsHub({
             <button
               type="button"
               onClick={() => setShowPostForm(prev => !prev)}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
             >
               {showPostForm ? <X size={14} /> : <Plus size={14} />}
               <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
@@ -2644,7 +2674,7 @@ export default function ClubsHub({
                 if (showAddPersonForm) setShowAddPersonForm(false)
                 else handleOpenAddPersonForClub()
               }}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
             >
               {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
               <span>{showAddPersonForm ? 'Cancel' : 'Add Member / Officer'}</span>
@@ -2654,7 +2684,7 @@ export default function ClubsHub({
 
         {/* Auto-Categorized Filter Pills */}
         {(section === 'myclubs' || section === 'discover') && categoryFilters.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="mobile-pill-rail pb-0.5 sm:pb-0">
             {categoryFilters.map(cat => {
               const active = category === cat.value
               return (
@@ -2662,7 +2692,7 @@ export default function ClubsHub({
                   key={cat.value}
                   type="button"
                   onClick={() => setCategory(cat.value)}
-                  className={`inline-flex items-center gap-1.5 px-3 min-h-[30px] rounded-full text-xs cursor-pointer border transition-colors ${
+                  className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs cursor-pointer border transition-colors ${
                     active
                       ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold'
                       : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] font-medium'
@@ -2787,7 +2817,12 @@ export default function ClubsHub({
         <ClubRbacPanel
           clubs={allClubs}
           selectedClubId={directoryClubFilter}
-          onSelectClub={cid => setDirectoryClubFilter(String(cid))}
+          initialSeatId={rbacInitialSeat.seatId}
+          initialRoleTitle={rbacInitialSeat.roleTitle}
+          onSelectClub={cid => {
+            setDirectoryClubFilter(String(cid))
+            setRbacInitialSeat({ seatId: '', roleTitle: '' })
+          }}
           user={user}
           isDemo={isDemo}
           onToggleJoin={onToggleJoin}
@@ -2801,7 +2836,7 @@ export default function ClubsHub({
       {section === 'updates' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
               {SOURCE_FILTERS.map(src => {
                 const isActive = selectedSource === src.id
                 return (
@@ -2809,7 +2844,7 @@ export default function ClubsHub({
                     key={src.id}
                     type="button"
                     onClick={() => setSelectedSource(src.id)}
-                    className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
+                    className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
                       isActive
                         ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
                         : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
@@ -2827,7 +2862,7 @@ export default function ClubsHub({
                 <button
                   type="button"
                   onClick={() => setExpandedPostIds({})}
-                  className="inline-flex items-center gap-1 px-3 min-h-[32px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1 px-3 min-h-[34px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
                 >
                   <span>Collapse all</span>
                   <ChevronUp size={13} />
@@ -2835,7 +2870,7 @@ export default function ClubsHub({
               )}
 
               {joinedClubs.length > 0 && (
-                <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                <div className="segmented-track">
                   {[
                     { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
                     { id: 'all',     label: 'All Campus' },
@@ -2844,7 +2879,7 @@ export default function ClubsHub({
                       key={opt.id}
                       type="button"
                       onClick={() => setFeedScope(opt.id)}
-                      className={`px-3 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                         feedScope === opt.id
                           ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                           : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -2861,10 +2896,10 @@ export default function ClubsHub({
           {showPostForm && (
             <form
               onSubmit={handlePostUpdateSubmit}
-              className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-3.5 fade-in"
+              className="p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
             >
               <div className="text-sm font-bold text-[var(--text)]">Post Club Announcement</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Club
@@ -2872,7 +2907,7 @@ export default function ClubsHub({
                   <select
                     value={postClubId}
                     onChange={e => setPostClubId(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
                     {allClubs.map(c => (
                       <option key={c.id} value={c.id}>
@@ -2889,7 +2924,7 @@ export default function ClubsHub({
                   <select
                     value={postSource}
                     onChange={e => setPostSource(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
                     <option value="discord">Discord</option>
                     <option value="instagram">Instagram</option>
@@ -2907,7 +2942,7 @@ export default function ClubsHub({
                     value={postTitle}
                     onChange={e => setPostTitle(e.target.value)}
                     placeholder="e.g. Friday Project Social"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
 
@@ -2920,7 +2955,7 @@ export default function ClubsHub({
                     value={postPermalink}
                     onChange={e => setPostPermalink(e.target.value)}
                     placeholder="https://instagram.com/p/... or Discord message link"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
 
@@ -2933,7 +2968,7 @@ export default function ClubsHub({
                     value={postSummary}
                     onChange={e => setPostSummary(e.target.value)}
                     placeholder="Full post details, meeting time, location, and sign-up links…"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] resize-y"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] resize-y"
                   />
                 </div>
               </div>
@@ -3061,7 +3096,7 @@ export default function ClubsHub({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
               {/* Left Cluster: Role Filter + Campus/My Clubs Scope */}
               <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                <div className="segmented-track w-full xs:w-auto">
                   {[
                     { id: 'all',      label: `All (${totalDirectoryPeople})` },
                     { id: 'officers', label: `Officers (${filteredOfficers.length})` },
@@ -3071,7 +3106,7 @@ export default function ClubsHub({
                       key={tab.id}
                       type="button"
                       onClick={() => setRoleFilter(tab.id)}
-                      className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      className={`flex-1 xs:flex-initial px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                         roleFilter === tab.id
                           ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                           : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -3083,7 +3118,7 @@ export default function ClubsHub({
                 </div>
 
                 {joinedClubs.length > 0 && directoryClubFilter === 'all' && (
-                  <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                  <div className="segmented-track">
                     {[
                       { id: 'all',     label: 'All Campus' },
                       { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
@@ -3092,7 +3127,7 @@ export default function ClubsHub({
                         key={opt.id}
                         type="button"
                         onClick={() => setDirectoryScope(opt.id)}
-                        className={`px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                        className={`px-2.5 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                           directoryScope === opt.id
                             ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                             : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -3108,11 +3143,11 @@ export default function ClubsHub({
               {/* Right Cluster: By Role / By Club Toggle + Searchable Club Picker across all clubs */}
               <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto">
                 {directoryClubFilter === 'all' && (
-                  <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] shrink-0">
+                  <div className="segmented-track shrink-0">
                     <button
                       type="button"
                       onClick={() => setDirectoryGroupMode('role')}
-                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                         directoryGroupMode === 'role'
                           ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                           : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -3124,7 +3159,7 @@ export default function ClubsHub({
                     <button
                       type="button"
                       onClick={() => setDirectoryGroupMode('club')}
-                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                         directoryGroupMode === 'club'
                           ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                           : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -3150,7 +3185,7 @@ export default function ClubsHub({
             {/* Elevated Category Filter Pills (replaces muddy low-contrast club pills) */}
             {directoryClubFilter === 'all' && directoryCategoryFilters.length > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
                   {directoryCategoryFilters.map(cat => {
                     const active = directoryCategory === cat.value
                     return (
@@ -3158,7 +3193,7 @@ export default function ClubsHub({
                         key={cat.value}
                         type="button"
                         onClick={() => setDirectoryCategory(cat.value)}
-                        className={`inline-flex items-center gap-1.5 px-3 min-h-[31px] rounded-full text-xs cursor-pointer border transition-all ${
+                        className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs cursor-pointer border transition-all ${
                           active
                             ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold shadow-2xs'
                             : 'bg-[var(--bg-tile)] hover:bg-[var(--bg-tile-hover)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border-tile)] hover:border-[var(--border-strong)] font-medium'
@@ -3447,6 +3482,32 @@ export default function ClubsHub({
                         <UserPlus size={13} className="text-[var(--blue)]" />
                         <span>Add to Roster</span>
                       </button>
+
+                      {!isDemo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDirectoryClubFilter(String(selectedDirectoryClub.id))
+                            setRbacInitialSeat({ seatId: '', roleTitle: '' })
+                            setSection('rbac')
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--purple-light)] hover:opacity-90 text-xs font-semibold text-[var(--purple-ink)] cursor-pointer transition-opacity"
+                        >
+                          <Shield size={13} />
+                          <span>Roles & Sub-Groups</span>
+                        </button>
+                      )}
+
+                      {onOpenTasks && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenTasks(selectedDirectoryClub.id)}
+                          className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                        >
+                          <Layers size={13} className="text-[var(--teal)]" />
+                          <span>Task Board</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"

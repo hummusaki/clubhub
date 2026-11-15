@@ -33,6 +33,8 @@ describe('Phase 2 & 5: Roster Claiming, RBAC & Multi-User Race Conditions', () =
       { method: 'POST', path: '/api/workspace/clubs/acm_club/announcements', body: { title: 'Hello' } },
       { method: 'POST', path: '/api/scheduler/polls', body: { title: 'Poll' } },
       { method: 'POST', path: '/api/scheduler/polls/fake/respond', body: { freeSlots: [] } },
+      { method: 'PATCH', path: '/api/scheduler/polls/fake/archive', body: { archived: true } },
+      { method: 'DELETE', path: '/api/scheduler/polls/fake' },
     ];
 
     for (const ep of endpoints) {

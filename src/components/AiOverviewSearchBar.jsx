@@ -8,39 +8,58 @@ import {
   Compass,
   Tag,
   Zap,
+  ChevronUp,
 } from 'lucide-react'
-import { BubbleTag, Avatar } from './ui'
+import { Card, IconBadge, ClubAvatar, BubbleTag } from './ui'
 import { recommendClubsForInterests, SAMPLE_INTEREST_PROMPTS } from '../utils/aiClubAgent'
 
 export default function AiOverviewSearchBar({
-  query = '',
+  query: controlledQuery,
   onChangeQuery,
   clubs = [],
+  userSettings = {},
   onToggleJoinClub,
   onOpenClub,
   onNotify,
-  placeholder = '✨ Describe your interests to get club recommendations…',
-  width = '100%',
+  placeholder = 'Try: coding, hiking, film, debate…',
 }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalQuery, setInternalQuery] = useState(controlledQuery || '')
+  const [showPrompts, setShowPrompts] = useState(false)
   const containerRef = useRef(null)
   const inputRef = useRef(null)
 
+  const isCompact = Boolean(userSettings?.compactCards)
+  const isControlled = controlledQuery !== undefined && typeof onChangeQuery === 'function'
+  const query = isControlled ? controlledQuery : internalQuery
+  const hasQuery = Boolean(query.trim())
+  const isExpanded = showPrompts || hasQuery
+
+  function updateQuery(nextValue) {
+    if (isControlled) {
+      onChangeQuery(nextValue)
+    } else {
+      setInternalQuery(nextValue)
+    }
+  }
+
   // Compute AI recommendations based on current query
   const aiResults = useMemo(() => {
-    return recommendClubsForInterests(clubs, query)
+    return recommendClubsForInterests(clubs, query, 6)
   }, [clubs, query])
 
-  // Handle clicking outside to dismiss dropdown
+  // Dismiss expanded prompt tray on outside click (when query is empty) or Escape
   useEffect(() => {
     function handleClickOutside(e) {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setIsOpen(false)
+        setShowPrompts(false)
       }
     }
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
-        setIsOpen(false)
+        setShowPrompts(false)
+        if (inputRef.current === document.activeElement) {
+          inputRef.current.blur()
+        }
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -52,10 +71,8 @@ export default function AiOverviewSearchBar({
   }, [])
 
   function handleSelectPrompt(promptQuery) {
-    if (onChangeQuery) {
-      onChangeQuery(promptQuery)
-    }
-    setIsOpen(true)
+    updateQuery(promptQuery)
+    setShowPrompts(true)
     if (inputRef.current) {
       inputRef.current.focus()
     }
@@ -67,236 +84,245 @@ export default function AiOverviewSearchBar({
       onToggleJoinClub(club.id)
       if (onNotify) {
         if (!club.joined) {
-          onNotify(`Joined ${club.name}! Added to your Overview and Calendar.`, 'success')
+          onNotify(`Joined ${club.name}! Added to your Overview and Calendar.`, {
+            type: 'success',
+          })
         } else {
-          onNotify(`Left ${club.name}.`, 'info')
+          onNotify(`Left ${club.name}.`, { type: 'info' })
         }
       }
     }
   }
 
   function handleViewClub(club) {
-    setIsOpen(false)
+    setShowPrompts(false)
     if (onOpenClub) {
-      onOpenClub({ clubId: club.id, section: 'discover' })
+      onOpenClub({
+        clubId: club.id,
+        section: 'discover',
+        searchQuery: club.name || '',
+      })
     }
   }
 
   return (
-    <div ref={containerRef} className="relative w-full" style={{ maxWidth: width }}>
-      {/* ── Main AI Search Input ── */}
-      <div
-        className={`flex items-center gap-2 px-3 sm:px-3.5 min-h-[42px] rounded-xl bg-[var(--bg-card)]
-          border transition-all duration-200 max-w-full min-w-0
-          ${isOpen
-            ? 'border-[var(--blue)] shadow-[0_0_0_3px_rgba(82,141,244,0.18)]'
-            : 'border-[var(--border)] hover:border-[var(--border-strong)]'
-          }`}
+    <div ref={containerRef}>
+      <Card
+        delay={1}
+        style={{
+          borderLeftWidth: '3.5px',
+          borderLeftColor: 'var(--blue)',
+        }}
+        className={isCompact ? 'p-3 sm:p-4 space-y-3' : 'p-4 sm:p-5 space-y-3.5'}
       >
-        {/* Animated AI Sparkles Badge */}
-        <button
-          type="button"
-          onClick={() => {
-            setIsOpen(prev => !prev)
-            if (!isOpen && inputRef.current) inputRef.current.focus()
-          }}
-          title="ClubHub AI Club Recommendation Agent"
-          aria-label="Toggle AI Club Matchmaker"
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)]
-            border border-[var(--blue)]/25 hover:opacity-90 transition-all cursor-pointer shrink-0"
-        >
-          <Sparkles size={14} className="animate-pulse text-[var(--blue)]" />
-          <span className="text-[11px] font-bold tracking-tight hidden xs:inline">AI Agent</span>
-        </button>
-
-        {/* Search Input Field */}
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onFocus={() => setIsOpen(true)}
-          onChange={e => onChangeQuery && onChangeQuery(e.target.value)}
-          placeholder={placeholder}
-          className="border-none outline-none bg-transparent text-[var(--text)] text-sm w-full min-w-0
-            placeholder:text-[var(--text-light)] font-normal"
-        />
-
-        {/* Clear Search Action */}
-        {query && (
-          <button
-            type="button"
-            onClick={() => {
-              if (onChangeQuery) onChangeQuery('')
-              if (inputRef.current) inputRef.current.focus()
-            }}
-            className="text-[var(--text-light)] hover:text-[var(--text)] p-1 cursor-pointer bg-transparent border-none flex items-center shrink-0"
-            aria-label="Clear search"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* ── AI Agent Recommendation Dropdown Popover ── */}
-      {isOpen && (
-        <div
-          className="absolute left-0 right-0 sm:left-auto sm:right-0 sm:w-[480px] md:w-[520px] top-full mt-2
-            bg-[var(--bg-card)] border border-[var(--border)] rounded-[20px] shadow-[var(--shadow-lg)]
-            z-50 overflow-hidden fade-in flex flex-col max-h-[82vh] sm:max-h-[580px]"
-        >
-          {/* Header Banner */}
-          <div className="px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-6 h-6 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center shrink-0">
-                <Sparkles size={13} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
-                  <span>ClubHub AI Club Matchmaker</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-semibold bg-[var(--green-light)] text-[var(--green-ink)]">
-                    Active
-                  </span>
-                </div>
-                <p className="text-[11px] text-[var(--text-muted)] truncate">
-                  {query.trim()
-                    ? `Matching campus clubs for "${query}"`
-                    : 'Tell me your interests or choose an interest below'}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="w-6 h-6 rounded-full hover:bg-[var(--bg-subtle)] flex items-center justify-center text-[var(--text-muted)] border-none bg-transparent cursor-pointer shrink-0"
-              aria-label="Close recommendations"
+        {/* ── Top Row: AI Matchmaker Identity + Dedicated Interest Prompt Input ── */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 shrink-0">
+            <IconBadge
+              color="blue"
+              size={isCompact ? 34 : 40}
+              radius={isCompact ? 10 : 12}
             >
-              <X size={14} />
-            </button>
+              <Sparkles size={isCompact ? 16 : 19} />
+            </IconBadge>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-[15px] font-bold text-[var(--text)] leading-snug">
+                  AI Club Matchmaker
+                </h2>
+                <BubbleTag label="AI Agent" color="blue" size="sm" dot />
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Describe your interests, major, or hobbies to get personalized club matches
+              </p>
+            </div>
           </div>
 
-          {/* Body Content (Scrollable) */}
-          <div className="p-3.5 sm:p-4 overflow-y-auto space-y-3.5 flex-1">
+          {/* Dedicated Interest Input Bar */}
+          <div className="flex items-center gap-2 w-full lg:flex-1 lg:max-w-[520px] min-w-0">
+            <div
+              className={`flex items-center gap-2.5 px-3.5 min-h-[42px] rounded-xl bg-[var(--bg-tile)]
+                border transition-all duration-200 w-full min-w-0
+                ${
+                  isExpanded
+                    ? 'border-[var(--blue)] shadow-[0_0_0_3px_color-mix(in_srgb,var(--blue)_16%,transparent)]'
+                    : 'border-[var(--border-tile)] hover:border-[var(--border-strong)]'
+                }`}
+            >
+              <Sparkles size={15} className="text-[var(--blue)] shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onFocus={() => setShowPrompts(true)}
+                onClick={() => setShowPrompts(true)}
+                onChange={e => {
+                  updateQuery(e.target.value)
+                  setShowPrompts(true)
+                }}
+                placeholder={placeholder}
+                aria-label="Describe your interests for AI club recommendations"
+                className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0
+                  placeholder:text-[var(--text-light)] font-normal"
+              />
+
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateQuery('')
+                    if (inputRef.current) inputRef.current.focus()
+                  }}
+                  className="text-[var(--text-light)] hover:text-[var(--text)] p-1 cursor-pointer bg-transparent border-none flex items-center shrink-0"
+                  aria-label="Clear AI interest prompt"
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowPrompts(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0 transition-colors"
+                >
+                  <Compass size={12} className="text-[var(--blue)]" />
+                  <span className="hidden sm:inline">{showPrompts ? 'Hide Ideas' : 'Ideas'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Expandable Prompts & Live Recommendations Drawer ── */}
+        {isExpanded && (
+          <div className="pt-3 border-t border-[var(--border)] space-y-3.5 fade-in">
             {/* 1. Quick Interest Prompts Pills */}
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
-                <Compass size={12} className="text-[var(--blue)]" />
-                <span>Popular Student Interests</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
+                  <Compass size={12} className="text-[var(--blue)]" />
+                  <span>Popular Student Interests</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateQuery('')
+                    setShowPrompts(false)
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0"
+                >
+                  <span>Collapse</span>
+                  <ChevronUp size={13} />
+                </button>
               </div>
+
               <div className="flex flex-wrap gap-1.5">
-                {SAMPLE_INTEREST_PROMPTS.map(p => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => handleSelectPrompt(p.query)}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[var(--bg-surface)]
-                      border border-[var(--border)] text-[var(--text)] hover:border-[var(--blue)]
-                      hover:bg-[var(--blue-light)] hover:text-[var(--blue-ink)] transition-colors cursor-pointer"
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {SAMPLE_INTEREST_PROMPTS.map(p => {
+                  const isActivePrompt = query.trim().toLowerCase() === p.query.toLowerCase()
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => handleSelectPrompt(p.query)}
+                      className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+                        isActivePrompt
+                          ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)] font-semibold'
+                          : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)] hover:text-[var(--blue-ink)]'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
-            {/* 2. AI Recommended Clubs Section */}
-            {query.trim() && (
-              <div className="space-y-2 pt-1 border-t border-[var(--border)]">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11.5px] font-bold text-[var(--text)] flex items-center gap-1.5">
+            {/* 2. AI Recommended Clubs Grid */}
+            {hasQuery && (
+              <div className="space-y-2.5 pt-2.5 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
                     <Zap size={13} className="text-[var(--yellow)]" />
                     <span>Top Recommended Clubs ({aiResults.matches.length})</span>
                   </div>
-                  {query && (
-                    <button
-                      type="button"
-                      onClick={() => onChangeQuery && onChangeQuery('')}
-                      className="text-[11px] text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
-                    >
-                      Clear search
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => updateQuery('')}
+                    className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+                  >
+                    Clear prompt
+                  </button>
                 </div>
 
                 {aiResults.hasMatches ? (
-                  <div className="space-y-2.5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {aiResults.matches.map(({ club, matchScore, aiRationale, matchedTerms }) => {
                       const isJoined = Boolean(club.joined)
-                      const initials = (club.abbr || club.name || 'CH')
-                        .split(' ')
-                        .map(w => w[0])
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase()
 
                       return (
                         <div
                           key={club.id}
-                          className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]
-                            hover:border-[var(--blue)]/50 transition-all space-y-2"
+                          className="p-3.5 rounded-2xl content-tile flex flex-col justify-between gap-2.5"
                         >
-                          {/* Top Row: Club info + Match Badge + Action */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <Avatar
-                                initials={initials}
-                                bg={club.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))'}
-                                size={34}
-                              />
-                              <div className="min-w-0">
-                                <div className="text-[13px] font-bold text-[var(--text)] truncate">
-                                  {club.name}
+                          <div className="space-y-2.5">
+                            {/* Club Header + Match Score + Join */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <ClubAvatar club={club} size={36} />
+                                <div className="min-w-0">
+                                  <div className="text-[13.5px] font-bold text-[var(--text)] truncate">
+                                    {club.name}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate">
+                                    <span>{club.categoryLabel || club.category}</span>
+                                    <span>•</span>
+                                    <span>{club.members || 0} members</span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                                  <span>{club.categoryLabel || club.category}</span>
-                                  <span>•</span>
-                                  <span>{club.members || 0} members</span>
-                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${
+                                    matchScore >= 80
+                                      ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
+                                      : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
+                                  }`}
+                                >
+                                  {matchScore}% Match
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={e => handleJoinClick(e, club)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${
+                                    isJoined
+                                      ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
+                                      : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
+                                  }`}
+                                >
+                                  {isJoined ? (
+                                    <>
+                                      <Check size={11} />
+                                      <span>Joined</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus size={11} />
+                                      <span>Join</span>
+                                    </>
+                                  )}
+                                </button>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {/* Match Score Badge */}
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${matchScore >= 80
-                                  ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
-                                  : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
-                                  }`}
-                              >
-                                {matchScore}% Match
-                              </span>
-
-                              {/* Join / Joined Button */}
-                              <button
-                                type="button"
-                                onClick={e => handleJoinClick(e, club)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${isJoined
-                                  ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
-                                  : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
-                                  }`}
-                              >
-                                {isJoined ? (
-                                  <>
-                                    <Check size={11} />
-                                    <span>Joined</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus size={11} />
-                                    <span>Join</span>
-                                  </>
-                                )}
-                              </button>
+                            {/* AI Rationale Box */}
+                            <div className="px-2.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[11.5px] text-[var(--text)] leading-relaxed flex items-start gap-1.5">
+                              <Sparkles size={12} className="text-[var(--blue)] shrink-0 mt-0.5" />
+                              <span>{aiRationale}</span>
                             </div>
                           </div>
 
-                          {/* AI Rationale Box */}
-                          <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[11px] text-[var(--text)] leading-relaxed flex items-start gap-1.5">
-                            <Sparkles size={12} className="text-[var(--blue)] shrink-0 mt-0.5" />
-                            <span>{aiRationale}</span>
-                          </div>
-
-                          {/* Matched Tags & View link */}
+                          {/* Matched Tags & View details */}
                           <div className="flex items-center justify-between text-[11px] pt-0.5">
                             <div className="flex items-center gap-1 flex-wrap">
                               {matchedTerms.map(term => (
@@ -324,26 +350,20 @@ export default function AiOverviewSearchBar({
                     })}
                   </div>
                 ) : (
-                  <div className="py-6 text-center space-y-1.5">
+                  <div className="py-5 text-center space-y-1">
                     <p className="text-xs font-semibold text-[var(--text)]">
                       No direct club matches found for &quot;{query}&quot;
                     </p>
-                    <p className="text-[11px] text-[var(--text-muted)] max-w-xs mx-auto">
-                      Try searching with broader interest keywords like coding, outdoors, visual arts, debate, robotics, or music!
+                    <p className="text-[11px] text-[var(--text-muted)] max-w-sm mx-auto">
+                      Try broader interest keywords like coding, outdoors, visual arts, debate, robotics, pre-med, or music.
                     </p>
                   </div>
                 )}
               </div>
             )}
           </div>
-
-          {/* Footer note */}
-          <div className="px-4 py-2 bg-[var(--bg-surface)] border-t border-[var(--border)] text-[10.5px] text-[var(--text-light)] flex items-center justify-between">
-            <span>Instant semantic AI matching across all campus clubs</span>
-            <span className="hidden sm:inline">Press Esc to close</span>
-          </div>
-        </div>
-      )}
+        )}
+      </Card>
     </div>
   )
 }

@@ -79,6 +79,65 @@ export function isSupabaseConfigured() {
   return Boolean(supabase)
 }
 
+let clerkSupabaseClient = null
+let hasNativeSupabaseSession = false
+let clerkJwtRejectedBySupabase = false
+
+if (supabase) {
+  supabase.auth
+    .getSession()
+    .then(({ data }) => {
+      hasNativeSupabaseSession = Boolean(data?.session?.access_token)
+    })
+    .catch(() => {})
+  supabase.auth.onAuthStateChange((_event, session) => {
+    hasNativeSupabaseSession = Boolean(session?.access_token)
+  })
+}
+
+export function markClerkSupabaseJwtRejected() {
+  clerkJwtRejectedBySupabase = true
+}
+
+export function isClerkSupabaseJwtRejected() {
+  return clerkJwtRejectedBySupabase
+}
+
+export function isJwtSignatureError(errOrMsg) {
+  const msg =
+    typeof errOrMsg === 'string'
+      ? errOrMsg
+      : String(errOrMsg?.message || errOrMsg?.error_description || '')
+  return /JWSInvalidSignature|JWT.*invalid|invalid.*JWT|No suitable key|wrong key type|bad_jwt/i.test(
+    msg
+  )
+}
+
+export function getActiveSupabaseClient() {
+  if (!supabaseConfigured) return null
+  // Prefer native Supabase Auth JWT whenever an active Supabase session exists
+  if (hasNativeSupabaseSession) return supabase
+  if (
+    typeof window !== 'undefined' &&
+    window.Clerk?.session &&
+    !clerkJwtRejectedBySupabase
+  ) {
+    if (!clerkSupabaseClient) {
+      clerkSupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        accessToken: async () => {
+          try {
+            return (await window.Clerk?.session?.getToken()) || null
+          } catch {
+            return null
+          }
+        },
+      })
+    }
+    return clerkSupabaseClient
+  }
+  return supabase
+}
+
 export async function getSupabaseAccessToken() {
   if (!supabase) return ''
   try {

@@ -1,9 +1,11 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react'
 import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
 import { Clock, ArrowRight } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
+import AiOverviewSearchBar from './components/AiOverviewSearchBar'
+import OverviewSearchResults from './components/OverviewSearchResults'
 import CalendarView from './components/CalendarView'
 import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
@@ -15,9 +17,11 @@ import SignInPage from './components/SignInPage'
 import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
 import {
   getWorkspaceMe,
+  updateWorkspaceProfile,
   logoutWorkspaceSession,
   joinWorkspaceClub,
   leaveWorkspaceClub,
+  syncWorkspaceMemberships,
   getWorkspaceAnnouncements,
   syncExternalWorkspaceSession,
   onWorkspacePermissionChange,
@@ -30,8 +34,6 @@ import {
 } from './data/sampleData'
 import {
   getClubHub,
-  getDictKey,
-  setDictKey,
   getAnnouncements,
   getEvents,
   getLinks,
@@ -336,17 +338,9 @@ function saveGuestThemeMode(mode) {
   }
 }
 
-function persistBackendAccountTheme(email, mode) {
-  if (!email || !isValidThemeMode(mode)) return
-  setDictKey(
-    `user_theme:${email.toLowerCase()}`,
-    {
-      themeMode: mode,
-      darkMode: mode === 'dark' ? true : mode === 'light' ? false : null,
-      updatedAt: new Date().toISOString(),
-    },
-    { namespace: 'user_prefs', source: 'account_theme' }
-  ).catch(() => {})
+function persistBackendAccountTheme(_email, mode) {
+  if (!isValidThemeMode(mode)) return
+  updateWorkspaceProfile({ themeMode: mode }).catch(() => {})
 }
 
 const KIND_ICON_MAP = {
@@ -590,6 +584,7 @@ function MainDashboard({
   const [clubsInitialSection, setClubsInitialSection] = useState(null)
   const [clubsInitialRbacClubId, setClubsInitialRbacClubId] = useState('')
   const [tasksInitialClubId, setTasksInitialClubId] = useState('')
+  const [settingsInitialSection, setSettingsInitialSection] = useState(null)
   const [workspaceAnnouncements, setWorkspaceAnnouncements] = useState([])
   const [calendarInitialView, setCalendarInitialView] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -717,15 +712,6 @@ function MainDashboard({
       return
     }
     setJoinedClubIds([])
-    if (accountEmail) {
-      getDictKey(`user_clubs:${accountEmail}`).then(entry => {
-        if (Array.isArray(entry?.value?.clubIds)) {
-          const remoteIds = entry.value.clubIds.map(String)
-          setJoinedClubIds(remoteIds)
-          saveStoredJoinedClubIds([accountKey, emailKey], remoteIds)
-        }
-      })
-    }
   }, [isDemo, accountKey, accountEmail, hasClerkKey, effectiveUser?.unsafeMetadata?.joinedClubIds])
 
   const loadBackendData = useCallback(async () => {
@@ -751,8 +737,12 @@ function MainDashboard({
     const nowRef = new Date()
     const calendarMinCutoffMs = new Date('2025-01-01T00:00:00Z').getTime()
 
+    let nextHub = null
+    let nextClubs = null
+    let nextDemoIds = null
+
     if (hub && Object.keys(hub).length > 0) {
-      setHubDict(hub)
+      nextHub = hub
       const mappedClubs = Object.values(hub).map(c => {
         const clubEvents = Array.isArray(c.events) ? c.events : []
         const upcomingEvt =
@@ -794,6 +784,8 @@ function MainDashboard({
           category: catId,
           categoryLabel: catMeta.label,
           description: rawDesc ? cleanText(rawDesc) : '',
+          directoryDescription: c.directoryDescription ? cleanText(c.directoryDescription) : '',
+          alsoKnownAs: Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : [],
           profilePictureUrl: c.profilePictureUrl || null,
           instagram: c.instagram || null,
           email: c.email || null,
@@ -827,7 +819,7 @@ function MainDashboard({
             }
           })
 
-        setLiveClubs([...mappedClubs, ...extraDiscoverClubs])
+        nextClubs = [...mappedClubs, ...extraDiscoverClubs]
 
         if (isDemo && !demoLiveSeededRef.current && !demoUserModifiedClubsRef.current) {
           demoLiveSeededRef.current = true
@@ -838,14 +830,14 @@ function MainDashboard({
             now: nowRef,
           })
           if (demoIds.length > 0) {
-            setJoinedClubIds(demoIds)
+            nextDemoIds = demoIds
           }
         }
       }
     }
 
+    let nextSchedule = null
     if (evts && evts.length > 0) {
-      setRawEvents(evts)
       // Keep ALL valid past + upcoming events (2025+) for the Full Calendar view
       const validEvts = evts.filter(e => {
         if (String(e.id || '').startsWith('collab_evt_') || e.isCustom) return true
@@ -855,67 +847,78 @@ function MainDashboard({
       const sortedEvts = [...validEvts].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
       )
-      setLiveSchedule(sortedEvts.map((e, i) => formatScheduleItem(e, i)))
+      nextSchedule = sortedEvts.map((e, i) => formatScheduleItem(e, i))
     }
 
-    if (anns && anns.length > 0) {
-      setLiveAnnouncements(
-        anns.map(a => {
-          const src = a.source || 'instagram'
-          const isDiscord = src === 'discord'
-          const isStory = src === 'instagram_story'
-          const isEmail = src === 'email'
-          return {
-            id: a.id,
-            clubId: a.clubId || null,
-            source: src,
-            permalink: a.permalink || null,
-            type: a.important
-              ? 'Urgent'
-              : isDiscord
-                ? 'Discord'
-                : isStory
-                  ? 'IG Story'
-                  : isEmail
-                    ? 'Email'
-                    : 'Announcement',
-            color: a.important ? 'red' : isDiscord ? 'blue' : isStory ? 'purple' : 'yellow',
-            time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
-            title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
-            description: cleanText(a.summary || ''),
-            navTarget: 'clubs',
-          }
-        })
-      )
-    }
+    const nextAnnouncements =
+      anns && anns.length > 0
+        ? anns.map(a => {
+            const src = a.source || 'instagram'
+            const isDiscord = src === 'discord'
+            const isStory = src === 'instagram_story'
+            const isEmail = src === 'email'
+            return {
+              id: a.id,
+              clubId: a.clubId || null,
+              source: src,
+              permalink: a.permalink || null,
+              type: a.important
+                ? 'Urgent'
+                : isDiscord
+                  ? 'Discord'
+                  : isStory
+                    ? 'IG Story'
+                    : isEmail
+                      ? 'Email'
+                      : 'Announcement',
+              color: a.important ? 'red' : isDiscord ? 'blue' : isStory ? 'purple' : 'yellow',
+              time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
+              title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
+              description: cleanText(a.summary || ''),
+              navTarget: 'clubs',
+            }
+          })
+        : null
 
-    if (lnks && lnks.length > 0) {
-      setLiveLinks(
-        lnks.map(l => ({
-          id: l.id,
-          clubId: l.clubId || null,
-          clubName: l.clubName ? cleanText(l.clubName) : '',
-          rawLabel: l.label ? cleanText(l.label) : '',
-          kind: l.kind || 'website',
-          postId: l.postId || null,
-          title: cleanText(`${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`),
-          subtitle: l.url,
-          url: l.url,
-          category: KIND_CATEGORY_MAP[l.kind] || 'Resources',
-          color: KIND_COLOR_MAP[l.kind] || 'blue',
-          icon: KIND_ICON_MAP[l.kind] || 'Globe',
-        }))
-      )
-    }
+    const nextLinks =
+      lnks && lnks.length > 0
+        ? lnks.map(l => ({
+            id: l.id,
+            clubId: l.clubId || null,
+            clubName: l.clubName ? cleanText(l.clubName) : '',
+            rawLabel: l.label ? cleanText(l.label) : '',
+            kind: l.kind || 'website',
+            postId: l.postId || null,
+            title: cleanText(
+              `${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`
+            ),
+            subtitle: l.url,
+            url: l.url,
+            category: KIND_CATEGORY_MAP[l.kind] || 'Resources',
+            color: KIND_COLOR_MAP[l.kind] || 'blue',
+            icon: KIND_ICON_MAP[l.kind] || 'Globe',
+          }))
+        : null
 
-    if (dbStats) {
-      setLiveStats([
-        { label: 'My Clubs',        value: 0,                   color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
-        { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
-        { label: 'Group Polls',     value: 1,                   color: 'green',  icon: 'Clock',    navTarget: 'availability' },
-        { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
-      ])
-    }
+    const nextStats = dbStats
+      ? [
+          { label: 'My Clubs',        value: 0,                   color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
+          { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
+          { label: 'Group Polls',     value: 1,                   color: 'green',  icon: 'Clock',    navTarget: 'availability' },
+          { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
+        ]
+      : null
+
+    startTransition(() => {
+      if (nextHub) setHubDict(nextHub)
+      if (nextClubs) setLiveClubs(nextClubs)
+      if (nextDemoIds) setJoinedClubIds(nextDemoIds)
+      if (evts && evts.length > 0) setRawEvents(evts)
+      if (nextSchedule) setLiveSchedule(nextSchedule)
+      if (nextAnnouncements) setLiveAnnouncements(nextAnnouncements)
+      if (nextLinks) setLiveLinks(nextLinks)
+      if (nextStats) setLiveStats(nextStats)
+    })
   }, [isDemo])
 
   useEffect(() => {
@@ -931,6 +934,7 @@ function MainDashboard({
     if (hasClerkKey && effectiveUser && accountEmail && !effectiveUser.workspaceSynced) {
       await syncExternalWorkspaceSession({
         provider: 'clerk',
+        clerkUserId: effectiveUser.id,
         email: accountEmail,
         fullName: effectiveUser.fullName || accountEmail.split('@')[0],
       }).catch(() => {})
@@ -939,37 +943,57 @@ function MainDashboard({
       effectiveUser ? getWorkspaceMe() : Promise.resolve(null),
       getWorkspaceAnnouncements(),
     ])
-    if (meRes?.ok && Array.isArray(meRes.memberships) && meRes.memberships.length > 0) {
-      const dbClubIds = meRes.memberships.map(m => String(m.clubId))
-      setJoinedClubIds(prev => Array.from(new Set([...prev, ...dbClubIds])))
-    }
-    if (annRes?.ok && Array.isArray(annRes.announcements)) {
-      setWorkspaceAnnouncements(
-        annRes.announcements.map(a => ({
-          id: a.id,
-          clubId: a.clubId,
-          source: 'workspace',
-          permalink: a.permalink || null,
-          type:
-            a.visibility === 'board'
-              ? 'Board Only'
-              : a.visibility === 'group'
-                ? 'Sub-Group'
-                : a.type || 'Club Notice',
-          color:
-            a.visibility === 'board'
-              ? 'purple'
-              : a.visibility === 'group'
-                ? 'teal'
-                : 'blue',
-          time: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : 'Just now',
-          title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
-          description: cleanText(a.body || a.recipientsSummary || ''),
-          navTarget: 'clubs',
-        }))
+    const dbClubIds =
+      meRes?.ok && Array.isArray(meRes.memberships) && meRes.memberships.length > 0
+        ? meRes.memberships.map(m => String(m.clubId || m.club_id || '')).filter(Boolean)
+        : null
+    if (meRes?.ok && Array.isArray(meRes.memberships) && accountKey !== 'guest') {
+      const existingLower = new Set(
+        meRes.memberships.map(m => String(m.clubId || m.club_id || '').toLowerCase())
       )
+      const localClubIds = getStoredJoinedClubIds(accountKey)
+      const unsyncedIds = localClubIds.filter(
+        cid => cid && !existingLower.has(String(cid).toLowerCase())
+      )
+      if (unsyncedIds.length > 0) {
+        await syncWorkspaceMemberships(unsyncedIds).catch(() => {})
+      }
     }
-  }, [isDemo, hasClerkKey, effectiveUser, accountEmail])
+    const mappedWorkspaceAnns =
+      annRes?.ok && Array.isArray(annRes.announcements)
+        ? annRes.announcements.map(a => ({
+            id: a.id,
+            clubId: a.clubId,
+            source: 'workspace',
+            permalink: a.permalink || null,
+            type:
+              a.visibility === 'board'
+                ? 'Board Only'
+                : a.visibility === 'group'
+                  ? 'Sub-Group'
+                  : a.type || 'Club Notice',
+            color:
+              a.visibility === 'board'
+                ? 'purple'
+                : a.visibility === 'group'
+                  ? 'teal'
+                  : 'blue',
+            time: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : 'Just now',
+            title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
+            description: cleanText(a.body || a.recipientsSummary || ''),
+            navTarget: 'clubs',
+          }))
+        : null
+
+    startTransition(() => {
+      if (dbClubIds) {
+        setJoinedClubIds(prev => Array.from(new Set([...prev, ...dbClubIds])))
+      }
+      if (mappedWorkspaceAnns) {
+        setWorkspaceAnnouncements(mappedWorkspaceAnns)
+      }
+    })
+  }, [isDemo, hasClerkKey, effectiveUser, accountEmail, accountKey])
 
   useEffect(() => {
     loadWorkspaceState()
@@ -996,6 +1020,11 @@ function MainDashboard({
     if (nextNav === 'tasks' && options.clubId !== undefined) {
       setTasksInitialClubId(options.clubId || '')
     }
+    if (nextNav === 'settings') {
+      setSettingsInitialSection(options.section || null)
+    } else {
+      setSettingsInitialSection(null)
+    }
     if (nextNav === 'calendar') {
       setCalendarInitialView(options.view || null)
     } else {
@@ -1005,7 +1034,13 @@ function MainDashboard({
     if (nextNav === 'overview' || nextNav === 'settings') {
       setPageSubContext(null)
     }
-    if (nextNav === 'availability' || nextNav === 'settings') {
+    if (options.searchQuery !== undefined) {
+      setSearchQuery(options.searchQuery)
+    } else if (
+      nextNav === 'availability' ||
+      nextNav === 'settings' ||
+      nextNav === 'tasks'
+    ) {
       setSearchQuery('')
     }
   }
@@ -1124,13 +1159,6 @@ function MainDashboard({
             },
           })
           .catch(() => {})
-      }
-      if (accountEmail) {
-        setDictKey(
-          `user_clubs:${accountEmail}`,
-          { clubIds: next, updatedAt: new Date().toISOString() },
-          { namespace: 'user_prefs', source: 'joined_clubs' }
-        ).catch(() => {})
       }
       return next
     })
@@ -1697,7 +1725,7 @@ function MainDashboard({
   ])
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <div className="min-h-dvh bg-[var(--bg)] text-[var(--text)]">
       {/* Floating Non-Shifting Toast Notifications */}
       <ToastViewport toast={toast} onDismiss={() => setToast(null)} />
 
@@ -1714,11 +1742,13 @@ function MainDashboard({
         onSignOut={onSignOut}
       />
 
-      {/* Main Content Area (Offset by Fixed Sidebar on Desktop) */}
+      {/* Main Content Area (Offset by Fixed Sidebar on Desktop, Cleared of Bottom Nav < lg) */}
       <main className="w-full min-w-0 lg:pl-[252px]">
         <div
           className={`px-3.5 sm:px-6 lg:px-8 ${
-            isCompactDensity ? 'pt-3 pb-24 sm:py-5 lg:pb-16' : 'pt-3.5 pb-28 sm:py-7 lg:pb-20'
+            isCompactDensity
+              ? 'pt-3 sm:pt-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-16'
+              : 'pt-3.5 sm:pt-7 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] lg:pb-20'
           }`}
         >
           <Header
@@ -1735,14 +1765,26 @@ function MainDashboard({
             onSignOut={onSignOut}
             announcements={personalizedAnnouncements}
             upcomingCount={visibleOverviewUpcomingCount}
-            clubs={effectiveClubs}
-            onToggleJoinClub={toggleJoinClub}
-            onNotify={showToast}
           />
 
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
             <div className={isCompactDensity ? 'space-y-3.5' : 'space-y-5 sm:space-y-6'}>
+              {searchQuery.trim() && (
+                <OverviewSearchResults
+                  query={searchQuery}
+                  onClearQuery={() => setSearchQuery('')}
+                  clubs={effectiveClubs}
+                  events={upcomingSchedule}
+                  announcements={liveAnnouncements || []}
+                  links={[...localAddedLinks, ...(liveLinks || fallbackLinks)]}
+                  userSettings={userSettings}
+                  onToggleJoinClub={toggleJoinClub}
+                  onNav={handleNavigate}
+                  onNotify={showToast}
+                />
+              )}
+
               <StatCards
                 items={effectiveStats}
                 joinedCount={joinedCount}
@@ -1754,6 +1796,15 @@ function MainDashboard({
                     ? handleNavigate('clubs', { section: 'discover' })
                     : handleNavigate(target)
                 }
+              />
+
+              {/* Dedicated AI Club Matchmaker (separate from normal site-wide search) */}
+              <AiOverviewSearchBar
+                clubs={effectiveClubs}
+                userSettings={userSettings}
+                onToggleJoinClub={toggleJoinClub}
+                onOpenClub={opts => handleNavigate('clubs', opts)}
+                onNotify={showToast}
               />
 
               <div
@@ -1786,7 +1837,7 @@ function MainDashboard({
 
               {/* Shortcut Card to Separated Group Availability Tool */}
               <Card
-                delay={4}
+                delay={3}
                 onClick={() => handleNavigate('availability')}
                 style={{
                   borderLeftWidth: '3.5px',
@@ -1812,8 +1863,8 @@ function MainDashboard({
 
                 <span
                   className={`inline-flex items-center gap-1.5 ${
-                    isCompactDensity ? 'px-3 min-h-[32px]' : 'px-4 min-h-[38px]'
-                  } rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto`}
+                    isCompactDensity ? 'px-3 min-h-[34px]' : 'px-4 min-h-[38px]'
+                  } rounded-xl bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/25 text-xs font-semibold shrink-0 self-start sm:self-auto`}
                 >
                   <span>Open Availability</span>
                   <ArrowRight size={14} />
@@ -1838,7 +1889,7 @@ function MainDashboard({
           {/* ── 2. CALENDAR ── */}
           {activeNav === 'calendar' && (
             <CalendarView
-              key={`cal_${calendarInitialView || userSettings?.defaultCalendarView}_${resetGeneration}`}
+              key={`cal_${resetGeneration}`}
               items={effectiveSchedule}
               clubs={effectiveClubs}
               initialView={calendarInitialView}
@@ -1869,7 +1920,7 @@ function MainDashboard({
               onAddLocalEvent={handleAddLocalCollabEvent}
               onRemoveLocalEvent={handleRemoveLocalCollabEvent}
               onOpenCalendar={() => handleNavigate('calendar')}
-              onOpenSettings={() => handleNavigate('settings')}
+              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
               onPageContextChange={setPageSubContext}
               onNotify={showToast}
             />
@@ -1878,7 +1929,7 @@ function MainDashboard({
           {/* ── 4. CLUBS & COMMUNITY ── */}
           {activeNav === 'clubs' && (
             <ClubsHub
-              key={`clubs_${resetGeneration}_${clubsInitialSection || 'auto'}_${clubsInitialRbacClubId || 'none'}`}
+              key={`clubs_${resetGeneration}`}
               user={effectiveUser}
               accountKey={accountKey}
               isDemo={isDemo}
@@ -1893,7 +1944,7 @@ function MainDashboard({
               onRefresh={loadBackendData}
               onRefreshAnnouncements={loadWorkspaceState}
               onOpenTasks={cid => handleNavigate('tasks', { clubId: cid })}
-              onOpenSettings={() => handleNavigate('settings')}
+              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
               localPosts={localClubPosts}
               onAddLocalPost={handleAddLocalClubPost}
               onPageContextChange={setPageSubContext}
@@ -1904,8 +1955,9 @@ function MainDashboard({
           {/* ── 4B. MONDAY.COM-STYLE CLUB TASK BOARD ── */}
           {activeNav === 'tasks' && (
             <ClubTaskBoard
-              key={`tasks_${resetGeneration}_${tasksInitialClubId || 'auto'}`}
+              key={`tasks_${resetGeneration}`}
               user={effectiveUser}
+              accountKey={accountKey}
               isDemo={isDemo}
               clubs={effectiveClubs}
               joinedClubIds={joinedClubIds}
@@ -1917,6 +1969,7 @@ function MainDashboard({
                 loadWorkspaceState()
               }}
               onOpenClubsRbac={cid => handleNavigate('clubs', { section: 'rbac', clubId: cid })}
+              onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
               onNotify={showToast}
             />
           )}
@@ -1946,6 +1999,7 @@ function MainDashboard({
               accountKey={accountKey}
               isDemo={isDemo}
               hasClerkKey={hasClerkKey}
+              initialSection={settingsInitialSection}
               userSettings={userSettings}
               onUpdateSettings={onUpdateSettings}
               onSetThemeMode={onSetExplicitThemeMode}
@@ -2222,22 +2276,24 @@ function ClerkAppWrapper({
 
       if (clerkEmail) {
         let cancelled = false
-        getDictKey(`user_theme:${clerkEmail}`).then(entry => {
-          if (cancelled || isValidThemeMode(getAccountThemeMap()[clerkKey])) return
-          const remoteMode = entry?.value?.themeMode
-          if (isValidThemeMode(remoteMode)) {
-            applyAccountThemeMode(remoteMode)
-            saveAccountThemeForKeys([clerkKey, emailKey], remoteMode)
-            user
-              .update({
-                unsafeMetadata: {
-                  ...(user.unsafeMetadata || {}),
-                  themeMode: remoteMode,
-                },
-              })
-              .catch(() => {})
-          }
-        })
+        getWorkspaceMe()
+          .then(meRes => {
+            if (cancelled || isValidThemeMode(getAccountThemeMap()[clerkKey])) return
+            const remoteMode = meRes?.user?.themeMode
+            if (isValidThemeMode(remoteMode)) {
+              applyAccountThemeMode(remoteMode)
+              saveAccountThemeForKeys([clerkKey, emailKey], remoteMode)
+              user
+                .update({
+                  unsafeMetadata: {
+                    ...(user.unsafeMetadata || {}),
+                    themeMode: remoteMode,
+                  },
+                })
+                .catch(() => {})
+            }
+          })
+          .catch(() => {})
         return () => {
           cancelled = true
         }
@@ -2260,14 +2316,16 @@ function ClerkAppWrapper({
         applyAccountThemeMode('system')
       }
       let cancelled = false
-      getDictKey(`user_theme:${localEmail}`).then(entry => {
-        if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
-        const remoteMode = entry?.value?.themeMode
-        if (isValidThemeMode(remoteMode)) {
-          applyAccountThemeMode(remoteMode)
-          saveAccountThemeForKeys([emailKey], remoteMode)
-        }
-      })
+      getWorkspaceMe()
+        .then(meRes => {
+          if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
+          const remoteMode = meRes?.user?.themeMode
+          if (isValidThemeMode(remoteMode)) {
+            applyAccountThemeMode(remoteMode)
+            saveAccountThemeForKeys([emailKey], remoteMode)
+          }
+        })
+        .catch(() => {})
       return () => {
         cancelled = true
       }
@@ -2360,7 +2418,7 @@ function ClerkAppWrapper({
 
   if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
         <span className="text-xs font-semibold text-[var(--text-muted)]">
           Completing Google Sign-In…
@@ -2411,7 +2469,7 @@ function ClerkAppWrapper({
 
   if (!isLoaded && !loadTimedOut) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
         <span className="text-xs font-semibold text-[var(--text-muted)]">Loading ClubHub…</span>
       </div>
@@ -2539,14 +2597,16 @@ function FallbackApp({
       applyAccountThemeMode('system')
     }
     let cancelled = false
-    getDictKey(`user_theme:${localEmail}`).then(entry => {
-      if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
-      const remoteMode = entry?.value?.themeMode
-      if (isValidThemeMode(remoteMode)) {
-        applyAccountThemeMode(remoteMode)
-        saveAccountThemeForKeys([emailKey], remoteMode)
-      }
-    })
+    getWorkspaceMe()
+      .then(meRes => {
+        if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
+        const remoteMode = meRes?.user?.themeMode
+        if (isValidThemeMode(remoteMode)) {
+          applyAccountThemeMode(remoteMode)
+          saveAccountThemeForKeys([emailKey], remoteMode)
+        }
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -2754,6 +2814,7 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
             email: res.user.email,
             fullName: res.user.displayName || prev?.fullName || res.user.email,
             avatarBg: res.user.avatarBg || prev?.avatarBg,
+            ...(isValidThemeMode(res.user.themeMode) ? { themeMode: res.user.themeMode } : {}),
           }
           try {
             sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(merged))

@@ -22,6 +22,7 @@ export default function Header({
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [readIds, setReadIds] = useState({})
+  const searchInputRef = useRef(null)
   const mobileNotifBtnRef = useRef(null)
   const desktopNotifBtnRef = useRef(null)
   const notifPanelRef = useRef(null)
@@ -62,6 +63,27 @@ export default function Header({
       if (e.key === 'Escape') {
         setNotifOpen(false)
         setUserMenuOpen(false)
+        return
+      }
+
+      // Global Cmd+K / Ctrl+K or "/" shortcut to focus site-wide search
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'
+      const target = e.target
+      const isEditableTarget =
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+
+      if (isCmdK || (e.key === '/' && !isEditableTarget && !e.metaKey && !e.ctrlKey && !e.altKey)) {
+        if (searchInputRef.current) {
+          e.preventDefault()
+          setNotifOpen(false)
+          setUserMenuOpen(false)
+          searchInputRef.current.focus()
+          searchInputRef.current.select()
+        }
       }
     }
     function handleClickOutside(e) {
@@ -137,6 +159,7 @@ export default function Header({
 
   const viewTitles = {
     overview: isDemo && !customFirst ? 'Welcome, Guest' : `Welcome back, ${greetingName}`,
+    tasks: 'Task Board',
     calendar: 'Calendar',
     availability: 'Group Availability',
     clubs: 'Clubs & Community',
@@ -146,21 +169,23 @@ export default function Header({
 
   const viewSubtitles = {
     overview: `${upcomingCount} upcoming ${upcomingCount === 1 ? 'event' : 'events'} across your campus clubs`,
+    tasks: 'Track club deliverables, section progress, and board assignments',
     calendar: 'Scheduled club meetings, workshops, and RSVPs',
     availability: 'Click or drag when you are free — group overlap updates automatically',
-    clubs: 'Manage your memberships, club feed, and officers & members directory',
+    clubs: 'Manage your memberships, roles, club feed, and directory',
     links: 'Pinned club documents, forms, and community links',
-    settings: 'Customize your profile, theme, calendar format, and notifications',
+    settings: 'Manage your profile, theme, calendar sync, integrations, and notifications',
   }
 
   const searchPlaceholders = {
-    overview: 'Search clubs, events, updates…',
-    calendar: 'Search events or locations…',
-    clubs: 'Search clubs, officers, or members…',
-    links: 'Search documents and links…',
+    overview: 'Search clubs, events, links…',
+    calendar: 'Search events, clubs, rooms…',
+    clubs: 'Search clubs, people, @handles…',
+    links: 'Search links, docs, clubs…',
   }
 
-  const showSearch = activeNav !== 'availability' && activeNav !== 'settings'
+  const showSearch =
+    activeNav !== 'availability' && activeNav !== 'settings' && activeNav !== 'tasks'
   const isCompact = Boolean(userSettings?.compactCards)
 
   return (
@@ -178,13 +203,13 @@ export default function Header({
           </span>
         </button>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onToggleDark}
             aria-label="Toggle dark mode"
-            className="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
-              flex items-center justify-center text-[var(--text-muted)] cursor-pointer"
+            className="w-9.5 h-9.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--border-strong)]
+              flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
           >
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -197,8 +222,8 @@ export default function Header({
               setNotifOpen(o => !o)
             }}
             aria-label="Notifications"
-            className="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
-              flex items-center justify-center cursor-pointer relative"
+            className="w-9.5 h-9.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--border-strong)]
+              flex items-center justify-center cursor-pointer relative transition-colors"
           >
             <Bell size={17} className="text-[var(--text-muted)]" />
             {unreadCount > 0 && (
@@ -222,7 +247,7 @@ export default function Header({
               }}
               title={`${displayName} — Account menu`}
               aria-label="Account menu"
-              className="flex items-center gap-1 pl-0.5 pr-1.5 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)] cursor-pointer"
+              className="flex items-center gap-1 pl-1 pr-2 h-9.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--border-strong)] cursor-pointer transition-colors"
             >
               <Avatar initials={initials} bg={avatarGradient} size={28} />
               <ChevronDown size={13} className="text-[var(--text-muted)]" />
@@ -233,7 +258,7 @@ export default function Header({
 
       {/* ── Page Title & Contextual Search Row ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text)]">
             {viewTitles[activeNav] || viewTitles.overview}
           </h1>
@@ -245,17 +270,19 @@ export default function Header({
         <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
           {showSearch && (
             <div
-              className="flex-1 sm:w-[250px] min-w-0"
+              className="flex-1 sm:w-[285px] md:w-[320px] lg:w-[350px] min-w-0"
               onFocusCapture={() => {
                 setNotifOpen(false)
                 setUserMenuOpen(false)
               }}
             >
               <SearchBox
+                inputRef={searchInputRef}
                 placeholder={searchPlaceholders[activeNav] || 'Search…'}
                 width="100%"
                 value={searchQuery}
                 onChange={onSearchChange}
+                shortcutHint="/"
               />
             </div>
           )}

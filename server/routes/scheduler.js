@@ -17,7 +17,9 @@ import {
   privQueryAll,
   privQueryGet,
   privExecute,
+  privBatch,
 } from '../privateDb.js';
+import { deletePollFromSupabase } from '../services/supabaseCloudPersistence.js';
 import {
   normalizeClubKey,
   normalizeEmail,
@@ -183,10 +185,40 @@ function getCampusCalendarEvents() {
   }
 }
 
+async function isUserPollCreator(pollRow, user) {
+  if (!pollRow || !user?.id) return false;
+  if (pollRow.createdByUserId) {
+    if (pollRow.createdByUserId === user.id) return true;
+    if (user.externalAuthId && pollRow.createdByUserId === user.externalAuthId) return true;
+    if (user.email) {
+      const creatorUser = await privQueryGet(
+        `SELECT email, externalAuthId FROM users WHERE id = ?`,
+        [pollRow.createdByUserId]
+      );
+      if (creatorUser) {
+        if (
+          creatorUser.email &&
+          normalizeEmail(creatorUser.email) === normalizeEmail(user.email)
+        ) {
+          return true;
+        }
+        if (
+          user.externalAuthId &&
+          creatorUser.externalAuthId &&
+          creatorUser.externalAuthId === user.externalAuthId
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 async function canUserAccessPoll(pollRow, user, explicitById = false) {
   const vis = pollRow.visibility || 'public_link';
   if (vis === 'public_link' && explicitById) return true;
-  if (pollRow.createdByUserId && user?.id && pollRow.createdByUserId === user.id) return true;
+  if (await isUserPollCreator(pollRow, user)) return true;
 
   // Check if user was explicitly invited by userId or email
   if (user) {
@@ -214,7 +246,7 @@ async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
   const hostPerm = row.hostClubId
     ? await getClubPermission(requesterUser, row.hostClubId)
     : { isBoard: false };
-  const isCreator = Boolean(requesterUser?.id && row.createdByUserId === requesterUser.id);
+  const isCreator = await isUserPollCreator(row, requesterUser);
   const canSeeEmails = Boolean(hostPerm.isBoard || isCreator);
 
   const responseRows = await privQueryAll(
@@ -296,6 +328,9 @@ async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
     baseTimezone: row.baseTimezone || 'America/Los_Angeles',
     location: row.location || 'TBD',
     visibility: row.visibility || 'public_link',
+    archived: Boolean(row.archived),
+    archivedAt: row.archivedAt || null,
+    isCreator,
     createdByUserId: row.createdByUserId || null,
     createdByName: row.createdByName || '',
     createdAt: row.createdAt,
@@ -307,6 +342,8 @@ async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
 
 // GET /api/scheduler/polls — list real polls visible to the signed-in user (ZERO fake demo polls!)
 router.get('/polls', optionalAuth, async (req, res) => {
+  const includeArchived =
+    req.query?.includeArchived === '1' || req.query?.includeArchived === 'true';
   const rows = await privQueryAll(`SELECT * FROM club_polls ORDER BY createdAt DESC LIMIT 50`);
   const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
   const myClubIds = new Set(Object.keys(overview?.permissionsByClub || {}));
@@ -324,6 +361,12 @@ router.get('/polls', optionalAuth, async (req, res) => {
 
   const visiblePolls = [];
   for (const row of rows) {
+    const isArchived = Boolean(row.archived);
+    if (isArchived) {
+      if (!includeArchived || !(await isUserPollCreator(row, req.user))) {
+        continue;
+      }
+    }
     if (!(await canUserAccessPoll(row, req.user, false))) continue;
     // Scope list view to polls created by user, responded by user, invited user, or belonging to user's clubs (or general campus polls if no hostClubId)
     if (req.user) {
@@ -469,6 +512,11 @@ router.post('/polls', requireAuth, async (req, res) => {
 router.post('/polls/:id/invite', requireAuth, async (req, res) => {
   const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Poll not found.' });
+  if (Boolean(row.archived)) {
+    return res.status(409).json({
+      error: 'This poll is archived. Unarchive it before inviting participants.',
+    });
+  }
 
   const targetClubId = normalizeClubKey(req.body?.clubId || row.hostClubId || '');
   if (!targetClubId) {
@@ -508,6 +556,11 @@ router.post('/polls/:id/respond', requireAuth, async (req, res) => {
   const pollId = req.params.id;
   const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [pollId]);
   if (!row) return res.status(404).json({ error: 'Poll not found.' });
+  if (Boolean(row.archived)) {
+    return res.status(409).json({
+      error: 'This poll is archived and no longer accepting responses.',
+    });
+  }
 
   if (!(await canUserAccessPoll(row, req.user, true))) {
     return res.status(403).json({ error: 'You do not have permission to respond to this poll.' });
@@ -593,6 +646,11 @@ router.post('/parse-text', (req, res) => {
 router.post('/polls/:id/book', requireAuth, async (req, res) => {
   const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).json({ error: 'Poll not found.' });
+  if (Boolean(row.archived)) {
+    return res.status(409).json({
+      error: 'This poll is archived. Unarchive it before scheduling a meeting.',
+    });
+  }
 
   const hostPerm = row.hostClubId
     ? await getClubPermission(req.user, row.hostClubId)
@@ -710,6 +768,71 @@ router.post('/polls/:id/unbook', requireAuth, async (req, res) => {
     unbooked: true,
     removedIds,
     poll: await formatFullPoll(updatedRow, req.user),
+  });
+});
+
+// PATCH /api/scheduler/polls/:id/archive — Archive or unarchive a poll (strictly poll creator only)
+router.patch('/polls/:id/archive', requireAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+
+  if (!(await isUserPollCreator(row, req.user))) {
+    return res.status(403).json({
+      error: 'Only the creator of this poll can archive or unarchive it.',
+    });
+  }
+
+  const nextArchived = req.body?.archived === undefined ? true : Boolean(req.body.archived);
+  const archivedAt = nextArchived ? new Date().toISOString() : null;
+
+  await privExecute(`UPDATE club_polls SET archived = ?, archivedAt = ? WHERE id = ?`, [
+    nextArchived ? 1 : 0,
+    archivedAt,
+    row.id,
+  ]);
+
+  const updatedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [row.id]);
+  res.json({
+    ok: true,
+    archived: nextArchived,
+    poll: await formatFullPoll(updatedRow, req.user),
+  });
+});
+
+// DELETE /api/scheduler/polls/:id — Permanently delete a poll & its responses (strictly poll creator only)
+router.delete('/polls/:id', requireAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+
+  if (!(await isUserPollCreator(row, req.user))) {
+    return res.status(403).json({
+      error: 'Only the creator of this poll can delete it.',
+    });
+  }
+
+  const prevBooked = parseJsonSafe(row.bookedEventsJson, []);
+  const removedEventIds = prevBooked.map(ev => ev?.id).filter(Boolean);
+
+  await privBatch([
+    { sql: `DELETE FROM club_poll_responses WHERE pollId = ?`, params: [row.id] },
+    { sql: `DELETE FROM club_polls WHERE id = ?`, params: [row.id] },
+  ]);
+
+  for (const rid of removedEventIds) {
+    try {
+      deleteRecord('events', rid);
+    } catch {
+      // ignore if not in public events
+    }
+  }
+
+  deletePollFromSupabase(row.id).catch(() => {});
+
+  res.json({
+    ok: true,
+    deleted: true,
+    id: row.id,
+    removedEventIds,
   });
 });
 

@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Moon, Sun, LogIn, LogOut, Settings, ChevronUp } from 'lucide-react'
 import { navItems } from '../data/sampleData'
-import { Avatar, ClubHubLogo } from './ui'
+import { Avatar, ClubHubLogo, ToggleSwitch } from './ui'
 import { NavIcon } from './icons'
+
+const MOBILE_NAV_LABELS = {
+  overview: 'Overview',
+  tasks: 'Tasks',
+  calendar: 'Calendar',
+  availability: 'Polls',
+  clubs: 'Clubs',
+  links: 'Links',
+}
 
 export default function Sidebar({
   activeNav,
@@ -131,21 +140,11 @@ export default function Sidebar({
                 {dark ? <Sun size={16} /> : <Moon size={16} />}
                 <span>Dark Mode</span>
               </div>
-              <button
-                type="button"
-                onClick={onToggleDark}
-                aria-label="Toggle dark mode"
-                className="w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-200 border-none"
-                style={{
-                  background: dark ? 'var(--blue)' : 'var(--border-strong)',
-                }}
-              >
-                <div
-                  className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform duration-200
-                    shadow-[0_1px_3px_rgba(0,0,0,0.22)]"
-                  style={{ left: 2, transform: dark ? 'translateX(20px)' : 'translateX(0)' }}
-                />
-              </button>
+              <ToggleSwitch
+                checked={Boolean(dark)}
+                onChange={() => onToggleDark()}
+                ariaLabel="Toggle dark mode"
+              />
             </div>
 
             {(user || isDemo) && (
@@ -212,32 +211,47 @@ export default function Sidebar({
 
       {/* ── Mobile Bottom Navigation Bar (< lg): 6 Core Destinations ── */}
       <nav
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-glass)] backdrop-blur-md
-          border-t border-[var(--border)] px-1 pt-1.5 grid grid-cols-6 select-none"
-        style={{
-          paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom))',
-        }}
+        aria-label="Mobile navigation"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--border)] select-none"
       >
-        {navItems.map(item => {
-          const isActive = activeNav === item.id
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onNav(item.id)}
-              className="flex flex-col items-center justify-center gap-0.5 py-1 px-1 rounded-xl
-                border-none bg-transparent cursor-pointer min-w-0"
-              style={{
-                color: isActive ? 'var(--blue-ink)' : 'var(--text-muted)',
-              }}
-            >
-              <NavIcon name={item.icon} active={isActive} size={18} />
-              <span className={`text-[10.5px] truncate max-w-full ${isActive ? 'font-bold' : 'font-medium'}`}>
-                {item.label}
-              </span>
-            </button>
-          )
-        })}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[var(--bg-sidebar)]/94 backdrop-blur-md"
+        />
+        <div
+          className="relative z-10 px-1.5 pt-1.5 grid grid-cols-6 gap-0.5"
+          style={{
+            paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          {navItems.map(item => {
+            const isActive = activeNav === item.id
+            const mobileLabel = MOBILE_NAV_LABELS[item.id] || item.label
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNav(item.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 min-h-[46px] py-1 px-0.5 rounded-xl
+                  border-none cursor-pointer min-w-0 transition-colors ${
+                    isActive
+                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+              >
+                <NavIcon name={item.icon} active={isActive} size={18} />
+                <span
+                  className={`text-[10.5px] sm:text-[11px] leading-tight truncate max-w-full ${
+                    isActive ? 'font-bold' : 'font-medium'
+                  }`}
+                >
+                  <span className="sm:hidden">{mobileLabel}</span>
+                  <span className="hidden sm:inline">{item.label}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </nav>
     </>
   )

@@ -40,8 +40,8 @@ export default function LeadershipShortcutBar({
 
   return (
     <div
-      className={`rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] ${
-        compact ? 'p-2.5 space-y-2' : 'p-3 space-y-2.5'
+      className={`content-tile rounded-xl ${
+        compact ? 'p-3 space-y-2' : 'p-3.5 space-y-2.5'
       }`}
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -57,15 +57,20 @@ export default function LeadershipShortcutBar({
         {coreButtons.map(btn => {
           const active = activeSet.has(btn.token)
           const IconComp = btn.icon
+          const isPurple = btn.accent === 'purple'
           return (
             <button
               key={btn.token}
               type="button"
               onClick={() => onToggleShortcut(btn.token)}
-              className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                 active
-                  ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                  : 'bg-[var(--bg-card)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
+                  ? isPurple
+                    ? 'bg-[var(--purple)] text-white border-[var(--purple)]'
+                    : 'bg-[var(--blue)] text-white border-[var(--blue)]'
+                  : isPurple
+                    ? 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--purple)]'
+                    : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
               }`}
             >
               {active ? <Check size={12} /> : <IconComp size={12} />}
@@ -83,10 +88,10 @@ export default function LeadershipShortcutBar({
               key={token}
               type="button"
               onClick={() => onToggleShortcut(token)}
-              className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                 active
                   ? 'bg-[var(--teal)] text-white border-[var(--teal)]'
-                  : 'bg-[var(--bg-card)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
+                  : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
               }`}
             >
               {active ? <Check size={12} /> : <Layers size={12} />}

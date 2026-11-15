@@ -58,9 +58,9 @@ export default function AiClubAgentModal({
       onToggleJoinClub(club.id)
       if (onNotify) {
         if (!club.joined) {
-          onNotify(`Joined ${club.name}! Added to your Overview & Calendar.`, 'success')
+          onNotify(`Joined ${club.name}! Added to your Overview & Calendar.`, { type: 'success' })
         } else {
-          onNotify(`Left ${club.name}.`, 'info')
+          onNotify(`Left ${club.name}.`, { type: 'info' })
         }
       }
     }
@@ -69,7 +69,11 @@ export default function AiClubAgentModal({
   function handleViewClub(club) {
     setIsOpen(false)
     if (onOpenClub) {
-      onOpenClub({ clubId: club.id, section: 'discover' })
+      onOpenClub({
+        clubId: club.id,
+        section: 'discover',
+        searchQuery: club.name || '',
+      })
     }
   }
 

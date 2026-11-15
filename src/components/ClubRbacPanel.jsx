@@ -12,13 +12,14 @@ import {
   ArrowRight,
   UserPlus,
 } from 'lucide-react'
-import { Card, BubbleTag, Avatar, cleanText } from './ui'
+import { Card, BubbleTag, Avatar, SectionHeader, cleanText } from './ui'
 import {
   getClubPeopleAndGroups,
   joinWorkspaceClub,
   claimClubRosterPosition,
   reviewClubRosterClaim,
   revokeClubRosterClaim,
+  assignClubMemberRole,
   createClubGroup,
   updateClubGroup,
   deleteClubGroup,
@@ -40,6 +41,8 @@ const GROUP_COLORS = ['blue', 'purple', 'teal', 'green', 'yellow', 'red']
 export default function ClubRbacPanel({
   clubs = [],
   selectedClubId: externalClubId = '',
+  initialSeatId = '',
+  initialRoleTitle = '',
   onSelectClub,
   user = null,
   isDemo = false,
@@ -69,10 +72,15 @@ export default function ClubRbacPanel({
 
   const [clubPeople, setClubPeople] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [selectedSeatId, setSelectedSeatId] = useState('')
-  const [customRoleTitle, setCustomRoleTitle] = useState('')
+  const [selectedSeatId, setSelectedSeatId] = useState(() => initialSeatId || '')
+  const [customRoleTitle, setCustomRoleTitle] = useState(() => initialRoleTitle || '')
   const [claimNotes, setClaimNotes] = useState('')
   const [busyAction, setBusyAction] = useState('')
+
+  useEffect(() => {
+    if (initialSeatId) setSelectedSeatId(initialSeatId)
+    if (initialRoleTitle) setCustomRoleTitle(initialRoleTitle)
+  }, [initialSeatId, initialRoleTitle])
 
   // Sub-Group creation & member management state
   const [showGroupForm, setShowGroupForm] = useState(false)
@@ -229,18 +237,16 @@ export default function ClubRbacPanel({
 
   async function handleStepDown() {
     if (!activeClub?.id) return
-    const myApproved = (resClaims => resClaims)(
-      myPendingClaim?.id || null
-    )
-    // Look up claim from overview or revoke via endpoint
     setBusyAction('revoke')
     const statusRes = await getClubPeopleAndGroups(activeClub.id)
-    const targetClaimId = myApproved || statusRes?.pendingClaims?.find(c => c.userId === user?.id)?.id
+    const targetClaimId =
+      clubPeople?.myActiveClaim?.id ||
+      myPendingClaim?.id ||
+      statusRes?.myActiveClaim?.id ||
+      statusRes?.pendingClaims?.find(c => c.userId === user?.id)?.id
     if (targetClaimId) {
       await revokeClubRosterClaim(activeClub.id, targetClaimId)
-    } else if (perm.claimedRosterId) {
-      // Step down via role demotion to regular member
-      const { assignClubMemberRole } = await import('../api/workspaceClient')
+    } else if (perm.claimedRosterId || perm.isBoard) {
       await assignClubMemberRole(activeClub.id, {
         userId: user?.id,
         tier: 'member',
@@ -317,14 +323,30 @@ export default function ClubRbacPanel({
   if (!activeClub) return null
 
   return (
-    <Card className="p-4 sm:p-5 space-y-4 border border-[var(--border)]">
+    <Card animate={false} className="p-4 sm:p-6 space-y-5 border border-[var(--border)]">
       {/* Header: Club Selector + Live Two-Tier RBAC Badge */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Shield size={18} className="text-[var(--blue)]" />
-          <span className="text-sm sm:text-base font-bold text-[var(--text)]">
-            Club Governance, Roster Claims &amp; Sub-Groups
-          </span>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 pb-4 border-b border-[var(--border)]">
+        <SectionHeader
+          icon={<Shield size={18} />}
+          color="purple"
+          title="Club Governance, Roster Claims & Sub-Groups"
+          subtitle="Manage verified officer seats, committee sub-groups, and targeted broadcasts"
+          badge={
+            <BubbleTag
+              label={
+                perm.isBoard
+                  ? `Board · ${perm.roleTitle || 'Officer'}`
+                  : perm.isMember
+                    ? 'Regular Member'
+                    : 'Not Joined'
+              }
+              color={perm.isBoard ? 'purple' : perm.isMember ? 'green' : 'blue'}
+              size="sm"
+            />
+          }
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="Select club for governance"
             value={activeClub.id}
@@ -332,7 +354,7 @@ export default function ClubRbacPanel({
               setInternalClubId(e.target.value)
               onSelectClub?.(e.target.value)
             }}
-            className="min-h-[34px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)]"
+            className="w-full sm:w-auto min-h-[40px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs font-semibold text-[var(--text)]"
           >
             {clubs.map(c => (
               <option key={c.id} value={c.id}>
@@ -340,37 +362,23 @@ export default function ClubRbacPanel({
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <BubbleTag
-            label={
-              perm.isBoard
-                ? `Board / Leadership · ${perm.roleTitle || 'Officer'}`
-                : perm.isMember
-                  ? `Regular Member`
-                  : 'Not Joined'
-            }
-            color={perm.isBoard ? 'purple' : perm.isMember ? 'green' : 'blue'}
-            size="sm"
-          />
 
           {perm.isBoard && (
             <button
               type="button"
               onClick={() => setShowAnnouncementModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--purple-light)] text-[var(--purple)] text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+              className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--purple-light)] text-[var(--purple-ink)] text-xs font-semibold border border-[var(--purple)]/25 cursor-pointer hover:opacity-90 transition-opacity"
             >
               <Megaphone size={13} />
               <span>Announce</span>
             </button>
           )}
 
-          {onOpenTasks && (
+          {onOpenTasks && (perm.isMember || perm.isBoard || activeClub?.joined) && (
             <button
               type="button"
               onClick={() => onOpenTasks(activeClub.id)}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+              className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90 transition-opacity"
             >
               <span>Task Board</span>
               <ArrowRight size={13} />
@@ -381,7 +389,7 @@ export default function ClubRbacPanel({
 
       {/* Section 1: Membership & Roster Position Claiming */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
+        <div className="content-tile p-4 rounded-2xl space-y-3.5">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Account &amp; Roster Position Claiming
@@ -391,28 +399,28 @@ export default function ClubRbacPanel({
                 type="button"
                 disabled={busyAction === 'join'}
                 onClick={handleJoinClub}
-                className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
-                <UserPlus size={12} />
+                <UserPlus size={13} />
                 <span>Join as Member</span>
               </button>
             )}
           </div>
 
           {!user || isDemo ? (
-            <p className="text-xs text-[var(--text-muted)]">
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
               Sign in with your account to join <strong>{cleanText(activeClub.name)}</strong>, claim an unclaimed officer seat, or join sub-groups.
             </p>
           ) : perm.isBoard ? (
-            <div className="space-y-2">
-              <div className="text-xs text-[var(--text)]">
+            <div className="space-y-2.5">
+              <div className="text-xs text-[var(--text)] leading-relaxed">
                 You hold the verified <strong>{perm.roleTitle}</strong> seat with elevated <strong>Board / Leadership</strong> permissions.
               </div>
               <button
                 type="button"
                 disabled={busyAction === 'revoke'}
                 onClick={handleStepDown}
-                className="px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--red)] cursor-pointer"
+                className="px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:border-[var(--red)]/40 cursor-pointer transition-colors"
               >
                 Release Claimed Position
               </button>
@@ -420,7 +428,7 @@ export default function ClubRbacPanel({
           ) : (
             <form onSubmit={handleClaimSubmit} className="space-y-2.5">
               {myPendingClaim && (
-                <div className="text-xs px-3 py-2 rounded-lg bg-[var(--yellow-light)] text-[var(--text)] font-medium">
+                <div className="text-xs px-3 py-2 rounded-xl bg-[var(--yellow-light)] border border-[var(--yellow)]/30 text-[var(--yellow-ink)] font-medium">
                   Pending Board verification for <strong>{myPendingClaim.requestedRole}</strong>.
                 </div>
               )}
@@ -428,7 +436,7 @@ export default function ClubRbacPanel({
                 <select
                   value={selectedSeatId}
                   onChange={e => setSelectedSeatId(e.target.value)}
-                  className="min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                 >
                   <option value="">Select roster seat…</option>
                   {rosterPositions.map(pos => (
@@ -442,21 +450,21 @@ export default function ClubRbacPanel({
                   value={customRoleTitle}
                   onChange={e => setCustomRoleTitle(e.target.value)}
                   placeholder="Or custom officer title…"
-                  className="min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2">
                 <input
                   type="text"
                   value={claimNotes}
                   onChange={e => setClaimNotes(e.target.value)}
                   placeholder="Optional verification note for Board…"
-                  className="flex-1 min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text)]"
+                  className="flex-1 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                 />
                 <button
                   type="submit"
                   disabled={busyAction === 'claim' || loading}
-                  className="px-3.5 min-h-[34px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 shrink-0"
+                  className="px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 shrink-0"
                 >
                   {busyAction === 'claim' ? 'Claiming…' : 'Claim Seat'}
                 </button>
@@ -469,9 +477,9 @@ export default function ClubRbacPanel({
             {rosterPositions.slice(0, 6).map(pos => (
               <span
                 key={pos.rosterId}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] border ${
                   pos.claimed
-                    ? 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-muted)]'
+                    ? 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)]'
                     : 'bg-[var(--green-light)] border-[var(--green)]/30 text-[var(--green-ink)] font-semibold'
                 }`}
               >
@@ -484,31 +492,31 @@ export default function ClubRbacPanel({
 
           {/* Pending Claim Review Queue (Strictly Board Only) */}
           {perm.isBoard && (clubPeople?.pendingClaims || []).length > 0 && (
-            <div className="pt-2 border-t border-[var(--border)] space-y-2">
-              <div className="text-[11px] font-bold uppercase text-[var(--purple)]">
+            <div className="pt-2.5 border-t border-[var(--border)] space-y-2">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--purple-ink)]">
                 Pending Claim Approvals ({clubPeople.pendingClaims.length})
               </div>
               {clubPeople.pendingClaims.map(cl => (
                 <div
                   key={cl.id}
-                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs"
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs"
                 >
                   <div className="min-w-0">
                     <span className="font-semibold text-[var(--text)]">{cl.claimerName}</span>
                     <span className="text-[var(--text-muted)]"> → {cl.requestedRole}</span>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleReviewClaim(cl.id, 'approve')}
-                      className="px-2 py-1 rounded bg-[var(--green)] text-white text-[11px] font-semibold border-none cursor-pointer"
+                      className="px-2.5 min-h-[32px] rounded-lg bg-[var(--green)] text-white text-[11px] font-semibold border-none cursor-pointer"
                     >
                       Approve
                     </button>
                     <button
                       type="button"
                       onClick={() => handleReviewClaim(cl.id, 'reject')}
-                      className="px-2 py-1 rounded bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer"
+                      className="px-2.5 min-h-[32px] rounded-lg bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer"
                     >
                       Reject
                     </button>
@@ -520,17 +528,17 @@ export default function ClubRbacPanel({
         </div>
 
         {/* Section 2: Club Sub-Groups ("Marketing", "Events", etc.) */}
-        <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
+        <div className="content-tile p-4 rounded-2xl space-y-3.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              <Layers size={13} className="text-[var(--teal)]" />
+              <Layers size={13} className="text-[var(--teal-ink)]" />
               <span>Club Sub-Groups ({clubPeople?.groups?.length || 0})</span>
             </div>
             {perm.isBoard && (
               <button
                 type="button"
                 onClick={() => setShowGroupForm(v => !v)}
-                className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg bg-[var(--teal)] text-white text-xs font-semibold border-none cursor-pointer"
+                className="inline-flex items-center gap-1 px-3 min-h-[36px] rounded-xl bg-[var(--teal)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
                 {showGroupForm ? <X size={12} /> : <Plus size={12} />}
                 <span>{showGroupForm ? 'Close' : 'New Sub-Group'}</span>
@@ -539,19 +547,20 @@ export default function ClubRbacPanel({
           </div>
 
           {perm.isBoard && showGroupForm && (
-            <form onSubmit={handleCreateGroup} className="p-3 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] space-y-2.5">
+            <form onSubmit={handleCreateGroup} className="p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] space-y-2.5">
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
                 <input
                   type="text"
                   value={groupName}
                   onChange={e => setGroupName(e.target.value)}
                   placeholder="Sub-group name (e.g., Marketing, Events)"
-                  className="min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
+                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                 />
                 <select
                   value={groupColor}
                   onChange={e => setGroupColor(e.target.value)}
-                  className="min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
+                  aria-label="Sub-group color"
+                  className="min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                 >
                   {GROUP_COLORS.map(c => (
                     <option key={c} value={c}>{c}</option>
@@ -563,10 +572,10 @@ export default function ClubRbacPanel({
                 value={groupDesc}
                 onChange={e => setGroupDesc(e.target.value)}
                 placeholder="Optional purpose / channel description…"
-                className="w-full min-h-[32px] px-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
+                className="w-full min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
               />
               {(clubPeople?.everyone || []).length > 0 && (
-                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                   {clubPeople.everyone.map(p => {
                     const checked = selectedGroupMemberKeys.includes(p.memberKey)
                     return (
@@ -578,10 +587,10 @@ export default function ClubRbacPanel({
                             checked ? prev.filter(k => k !== p.memberKey) : [...prev, p.memberKey]
                           )
                         }
-                        className={`px-2 py-1 rounded text-[11px] border cursor-pointer ${
+                        className={`px-2.5 min-h-[30px] rounded-lg text-[11px] font-medium border cursor-pointer transition-colors ${
                           checked
                             ? 'bg-[var(--teal)] text-white border-[var(--teal)]'
-                            : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)]'
+                            : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
                         }`}
                       >
                         {p.name}
@@ -593,7 +602,7 @@ export default function ClubRbacPanel({
               <button
                 type="submit"
                 disabled={busyAction === 'create_group'}
-                className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
+                className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
                 Create Sub-Group
               </button>
@@ -601,18 +610,18 @@ export default function ClubRbacPanel({
           )}
 
           {(clubPeople?.groups || []).length === 0 ? (
-            <p className="text-xs text-[var(--text-muted)]">
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
               No custom sub-groups yet. {perm.isBoard ? 'Create groups like "Marketing" or "Events" to target polls, announcements, and tasks.' : 'Board leaders can organize committees & teams here.'}
             </p>
           ) : (
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
               {clubPeople.groups.map(grp => (
                 <div
                   key={grp.id}
-                  className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] space-y-2"
+                  className="p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] space-y-2.5"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                       <BubbleTag label={grp.name} color={grp.color || 'teal'} size="sm" />
                       {grp.isMyGroup && <BubbleTag label="Your Group" color="green" size="sm" />}
                       <span className="text-[11px] text-[var(--text-muted)]">
@@ -624,18 +633,19 @@ export default function ClubRbacPanel({
                         type="button"
                         onClick={() => handleDeleteGroup(grp.id, grp.name)}
                         title="Delete sub-group"
-                        className="p-1 rounded bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red)] border-none cursor-pointer"
+                        aria-label={`Delete sub-group ${grp.name}`}
+                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={13} />
                       </button>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {(grp.members || []).map(m => (
                       <span
                         key={m.memberKey}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[11px] text-[var(--text)]"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[11px] text-[var(--text)]"
                       >
                         <Avatar initials={m.initials} size={16} />
                         <span>{m.name}</span>
@@ -643,9 +653,10 @@ export default function ClubRbacPanel({
                           <button
                             type="button"
                             onClick={() => handleRemoveMemberFromGroup(grp.id, m.memberKey)}
-                            className="p-0 bg-transparent border-none text-[var(--text-light)] hover:text-[var(--red)] cursor-pointer"
+                            aria-label={`Remove ${m.name} from ${grp.name}`}
+                            className="w-4 h-4 rounded-full bg-transparent border-none text-[var(--text-light)] hover:text-[var(--red-ink)] flex items-center justify-center cursor-pointer p-0"
                           >
-                            <X size={10} />
+                            <X size={11} />
                           </button>
                         )}
                       </span>
@@ -653,13 +664,14 @@ export default function ClubRbacPanel({
                   </div>
 
                   {perm.isBoard && (clubPeople?.everyone || []).length > 0 && (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <select
                         value={addingMemberByGroup[grp.id] || ''}
                         onChange={e =>
                           setAddingMemberByGroup(prev => ({ ...prev, [grp.id]: e.target.value }))
                         }
-                        className="flex-1 min-h-[28px] px-2 rounded bg-[var(--bg-surface)] border border-[var(--border)] text-[11px] text-[var(--text)]"
+                        aria-label={`Assign club member to ${grp.name}`}
+                        className="flex-1 min-h-[38px] px-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)]"
                       >
                         <option value="">Assign club member to {grp.name}…</option>
                         {clubPeople.everyone
@@ -673,7 +685,7 @@ export default function ClubRbacPanel({
                       <button
                         type="button"
                         onClick={() => handleAddMemberToGroup(grp.id)}
-                        className="px-2.5 min-h-[28px] rounded bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--teal)] text-[11px] font-semibold text-[var(--text)] cursor-pointer"
+                        className="px-3.5 min-h-[38px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--teal)] text-xs font-semibold text-[var(--text)] cursor-pointer shrink-0"
                       >
                         Add
                       </button>

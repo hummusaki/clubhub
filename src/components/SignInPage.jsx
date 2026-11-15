@@ -1455,7 +1455,7 @@ export default function SignInPage({
                     type="submit"
                     disabled={submitting}
                     className="w-full min-h-[46px] py-2.5 rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-sm font-semibold
-                      shadow-[0_4px_14px_rgba(82,141,244,0.32)] flex items-center justify-center gap-1.5
+                      shadow-[0_4px_14px_color-mix(in_srgb,var(--blue)_32%,transparent)] flex items-center justify-center gap-1.5
                       transition-all cursor-pointer border-none disabled:opacity-60"
                   >
                     {submitting ? (
@@ -1639,7 +1639,7 @@ export default function SignInPage({
                       type="submit"
                       disabled={submitting || googleLoading}
                       className="w-full min-h-[46px] py-2.5 rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-sm font-semibold
-                        shadow-[0_4px_14px_rgba(82,141,244,0.32)] flex items-center justify-center gap-1.5
+                        shadow-[0_4px_14px_color-mix(in_srgb,var(--blue)_32%,transparent)] flex items-center justify-center gap-1.5
                         transition-all cursor-pointer border-none disabled:opacity-60"
                     >
                       {submitting ? (

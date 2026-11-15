@@ -1,0 +1,23 @@
+# ── 1-Click Free Cloud API Deployment (Render Free Web Service + Turso Free Cloud SQLite) ──
+# Hosts the ClubHub private multi-user API in the cloud (zero local PC needed) backed by
+# Turso's free hosted SQLite database (https://turso.tech — 5 GB storage, 500M row reads/mo free).
+
+services:
+  - type: web
+    name: clubhub-private-api
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: npm run server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLUBHUB_SKIP_SEED
+        value: "0"
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false

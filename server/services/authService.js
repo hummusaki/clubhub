@@ -60,11 +60,13 @@ export function sanitizeUser(row) {
   if (!row) return null;
   return {
     id: row.id,
+    externalAuthId: row.externalAuthId || null,
     email: row.email,
     fullName: row.fullName,
     major: row.major || '',
     gradYear: row.gradYear || '',
     avatarBg: row.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+    themeMode: ['system', 'light', 'dark'].includes(row.themeMode) ? row.themeMode : 'system',
     authProvider: row.authProvider || 'email',
     verifiedEdu: Boolean(row.verifiedEdu),
     createdAt: row.createdAt,
@@ -314,6 +316,7 @@ export async function syncExternalAuthUser({
   let verifiedName = String(fullName || '').trim();
   let externalId = String(clerkUserId || '').trim();
 
+  let clerkBackendVerified = false;
   if (provider === 'supabase' && googleAccessToken) {
     const sbUser = await verifySupabaseAccessToken(googleAccessToken);
     if (!sbUser) {
@@ -339,22 +342,30 @@ export async function syncExternalAuthUser({
     externalId = info.sub || externalId;
   } else if (provider === 'clerk' && process.env.CLERK_SECRET_KEY && externalId) {
     // When CLERK_SECRET_KEY is configured on server, verify Clerk user ID directly via Clerk Backend API
-    const res = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(externalId)}`, {
-      headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
-    });
-    if (!res.ok) {
-      const err = new Error('Could not verify Clerk user identity.');
-      err.status = 401;
-      throw err;
+    let res = null;
+    try {
+      res = await fetch(`https://api.clerk.com/v1/users/${encodeURIComponent(externalId)}`, {
+        headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+      });
+    } catch {
+      res = null;
     }
-    const clerkUser = await res.json();
-    const primaryEmailObj = (clerkUser.email_addresses || []).find(
-      e => e.id === clerkUser.primary_email_address_id
-    ) || (clerkUser.email_addresses || [])[0];
-    verifiedEmail = normalizeEmail(primaryEmailObj?.email_address || verifiedEmail);
-    verifiedName =
-      [clerkUser.first_name, clerkUser.last_name].filter(Boolean).join(' ').trim() ||
-      verifiedName;
+    if (res) {
+      if (!res.ok) {
+        const err = new Error('Could not verify Clerk user identity.');
+        err.status = 401;
+        throw err;
+      }
+      const clerkUser = await res.json();
+      const primaryEmailObj =
+        (clerkUser.email_addresses || []).find(e => e.id === clerkUser.primary_email_address_id) ||
+        (clerkUser.email_addresses || [])[0];
+      verifiedEmail = normalizeEmail(primaryEmailObj?.email_address || verifiedEmail);
+      verifiedName =
+        [clerkUser.first_name, clerkUser.last_name].filter(Boolean).join(' ').trim() ||
+        verifiedName;
+      clerkBackendVerified = true;
+    }
   }
 
   if (!verifiedEmail || !verifiedEmail.includes('@')) {
@@ -371,7 +382,7 @@ export async function syncExternalAuthUser({
     const wasVerifiedExternally =
       (provider === 'supabase' && Boolean(googleAccessToken)) ||
       (provider === 'google' && Boolean(googleAccessToken)) ||
-      (provider === 'clerk' && Boolean(process.env.CLERK_SECRET_KEY && externalId));
+      (provider === 'clerk' && clerkBackendVerified);
 
     if (
       !wasVerifiedExternally &&

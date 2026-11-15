@@ -20,6 +20,7 @@ import { links as defaultLinks } from '../data/sampleData'
 import { Card, IconBadge, BubbleTag, ClubAvatar, cleanText } from './ui'
 import { PlatformIcon } from './icons'
 import { createLink } from '../api/client'
+import { filterAndRankBySearch } from '../utils/search'
 
 const RESOURCE_SECTIONS = [
   {
@@ -321,7 +322,7 @@ export default function LinksResources({
 
   // Apply Club scope + Search query first so category tab badges show accurate counts!
   const scopedLinks = useMemo(() => {
-    return allLinks.filter(link => {
+    const clubFiltered = allLinks.filter(link => {
       const isUserAdded = String(link.id || '').startsWith('link_')
       if (clubFilter === 'myclubs' && joinedClubIdSet.size > 0) {
         if (!isUserAdded && (!link.clubId || !joinedClubIdSet.has(String(link.clubId)))) {
@@ -332,19 +333,14 @@ export default function LinksResources({
           return false
         }
       }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        return (
-          (link.displayLabel || '').toLowerCase().includes(q) ||
-          (link.clubName || '').toLowerCase().includes(q) ||
-          (link.sourceDomain || '').toLowerCase().includes(q) ||
-          (link.sectionLabel || '').toLowerCase().includes(q) ||
-          (link.url || '').toLowerCase().includes(q)
-        )
-      }
       return true
     })
+
+    return filterAndRankBySearch(clubFiltered, searchQuery, link => ({
+      primary: [link.displayLabel, link.rawLabel, link.title],
+      secondary: [link.clubName, link.sourceDomain, link.sectionLabel, link.kind],
+      tertiary: [link.url],
+    }))
   }, [allLinks, clubFilter, joinedClubIdSet, searchQuery])
 
   const sectionCounts = useMemo(() => {
@@ -581,7 +577,7 @@ export default function LinksResources({
             title="Copy link"
             aria-label="Copy link"
             className={`${
-              isCompact ? 'w-7 h-7' : 'w-8 h-8'
+              isCompact ? 'w-8 h-8 sm:w-7 sm:h-7' : 'w-8.5 h-8.5 sm:w-8 sm:h-8'
             } rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
               isCopied
                 ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/30'
@@ -597,7 +593,7 @@ export default function LinksResources({
             title={link.isPinned ? 'Unpin resource' : 'Pin resource to top'}
             aria-label={link.isPinned ? 'Unpin resource' : 'Pin resource'}
             className={`${
-              isCompact ? 'w-7 h-7' : 'w-8 h-8'
+              isCompact ? 'w-8 h-8 sm:w-7 sm:h-7' : 'w-8.5 h-8.5 sm:w-8 sm:h-8'
             } rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
               link.isPinned
                 ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
@@ -617,7 +613,7 @@ export default function LinksResources({
   }
 
   return (
-    <Card className={isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={2}>
+    <Card className={isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={0}>
       {/* ── Top Organization & Filter Header ── */}
       <div
         className={`flex flex-col gap-3 ${
@@ -626,13 +622,13 @@ export default function LinksResources({
       >
         {/* Row 1: Grouping Mode + Club Filter + Add Resource */}
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {/* Group By Switcher */}
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+            <div className="segmented-track w-full xs:w-auto">
               <button
                 type="button"
                 onClick={() => setGroupMode('category')}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                   groupMode === 'category'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -644,7 +640,7 @@ export default function LinksResources({
               <button
                 type="button"
                 onClick={() => setGroupMode('club')}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                   groupMode === 'club'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -660,7 +656,7 @@ export default function LinksResources({
               value={clubFilter}
               onChange={e => setClubFilter(e.target.value)}
               aria-label="Filter resources by club"
-              className="min-h-[38px] max-w-[230px] px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+              className="w-full xs:w-auto min-h-[40px] sm:max-w-[240px] px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
             >
               <option value="all">All Campus Clubs ({allLinks.length})</option>
               {joinedClubIdSet.size > 0 && (
@@ -677,7 +673,7 @@ export default function LinksResources({
           <button
             type="button"
             onClick={() => setShowAdd(prev => !prev)}
-            className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity self-start sm:self-auto"
+            className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity self-start sm:self-auto"
           >
             {showAdd ? <X size={15} /> : <Plus size={15} />}
             <span>{showAdd ? 'Cancel' : 'Add Resource'}</span>
@@ -685,7 +681,7 @@ export default function LinksResources({
         </div>
 
         {/* Row 2: Resource Category Filter Pills With Live Counts */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="mobile-pill-rail pb-0.5 sm:pb-0">
           {[
             { id: 'All', label: 'All Resources', count: sectionCounts.All },
             ...(sectionCounts.Pinned > 0
@@ -703,7 +699,7 @@ export default function LinksResources({
                 key={tab.id}
                 type="button"
                 onClick={() => setFilterTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[31px] rounded-full text-xs cursor-pointer border transition-colors ${
+                className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs cursor-pointer border transition-colors ${
                   active
                     ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold'
                     : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] font-medium'
@@ -727,7 +723,7 @@ export default function LinksResources({
       {showAdd && (
         <form
           onSubmit={handleAddLink}
-          className="mb-5 p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-4 fade-in"
+          className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
         >
           <div className="text-sm font-bold text-[var(--text)]">Share Club Resource</div>
 
@@ -742,7 +738,7 @@ export default function LinksResources({
                 value={label}
                 onChange={e => setLabel(e.target.value)}
                 placeholder="e.g. Winter Zine Submission Form"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
             </div>
 
@@ -756,7 +752,7 @@ export default function LinksResources({
                 value={url}
                 onChange={e => setUrl(e.target.value)}
                 placeholder="https://docs.google.com/..."
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
             </div>
 
@@ -767,7 +763,7 @@ export default function LinksResources({
               <select
                 value={selectedClubId}
                 onChange={e => setSelectedClubId(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
                 {clubs.map(c => (
                   <option key={c.id} value={c.id}>
@@ -784,7 +780,7 @@ export default function LinksResources({
               <select
                 value={kind}
                 onChange={e => setKind(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
                 <option value="form">Form / Sign-Up</option>
                 <option value="document">Document / Slides / Sheet</option>
@@ -799,7 +795,7 @@ export default function LinksResources({
             <button
               type="button"
               onClick={() => setShowAdd(false)}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
+              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
             >
               Cancel
             </button>

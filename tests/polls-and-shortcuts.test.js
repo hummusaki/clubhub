@@ -292,4 +292,168 @@ describe('Phase 2 & 3: Real-User Availability Polls, Sub-Groups & Shortcut Dedup
     const vpOccurrences = expanded.filter(p => p.userId === vp.user.id);
     assert.equal(vpOccurrences.length, 1, 'VP must be deduplicated to a single entry');
   });
+
+  it('allows only the poll creator to archive, unarchive, or delete a poll', async () => {
+    const creator = await registerUser(ctx.baseUrl, {
+      email: 'creator_arch@example.edu',
+      fullName: 'Poll Creator',
+    });
+    const otherBoard = await registerUser(ctx.baseUrl, {
+      email: 'co_officer@example.edu',
+      fullName: 'Co Officer',
+    });
+    const responder = await registerUser(ctx.baseUrl, {
+      email: 'resp_arch@example.edu',
+      fullName: 'Poll Responder',
+    });
+
+    // Both creator and otherBoard are verified board members of `chess_club`
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/chess_club/claims', {
+      method: 'POST',
+      token: creator.token,
+      body: { rosterId: 'seat_pres', requestedRole: 'President' },
+    });
+    const coClaim = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/chess_club/claims', {
+      method: 'POST',
+      token: otherBoard.token,
+      body: { rosterId: 'seat_vp', requestedRole: 'Vice President' },
+    });
+    await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/chess_club/claims/${coClaim.data.claim.id}/review`,
+      { method: 'POST', token: creator.token, body: { decision: 'approve' } }
+    );
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/chess_club/join', {
+      method: 'POST',
+      token: responder.token,
+    });
+
+    const createRes = await apiRequest(ctx.baseUrl, '/api/scheduler/polls', {
+      method: 'POST',
+      token: creator.token,
+      body: {
+        title: 'Tournament Planning Poll',
+        hostClubId: 'chess_club',
+        dates: ['2026-11-16', '2026-11-17'],
+        visibility: 'club_members',
+      },
+    });
+    assert.equal(createRes.status, 201);
+    assert.equal(createRes.data.isCreator, true);
+    assert.equal(createRes.data.archived, false);
+    const pollId = createRes.data.id;
+
+    // Responder submits availability
+    const slotIso = '2026-11-16T19:00:00.000Z';
+    const respondRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/respond`,
+      {
+        method: 'POST',
+        token: responder.token,
+        body: { freeSlots: [slotIso] },
+      }
+    );
+    assert.equal(respondRes.status, 200);
+    assert.equal(respondRes.data.isCreator, false);
+
+    // Non-creator responder & non-creator co-officer both get 403 trying to archive or delete
+    for (const nonCreator of [responder, otherBoard]) {
+      const badArchive = await apiRequest(
+        ctx.baseUrl,
+        `/api/scheduler/polls/${pollId}/archive`,
+        {
+          method: 'PATCH',
+          token: nonCreator.token,
+          body: { archived: true },
+        }
+      );
+      assert.equal(badArchive.status, 403);
+
+      const badDelete = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+        method: 'DELETE',
+        token: nonCreator.token,
+      });
+      assert.equal(badDelete.status, 403);
+    }
+
+    // Creator archives the poll -> hidden from default active list & non-creators, preserved for creator with includeArchived=1
+    const archiveRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/archive`,
+      {
+        method: 'PATCH',
+        token: creator.token,
+        body: { archived: true },
+      }
+    );
+    assert.equal(archiveRes.status, 200);
+    assert.equal(archiveRes.data.ok, true);
+    assert.equal(archiveRes.data.poll.archived, true);
+    assert.ok(archiveRes.data.poll.archivedAt);
+    assert.equal(archiveRes.data.poll.responses.length, 1, 'Archived poll preserves responses');
+
+    const defaultList = await apiRequest(ctx.baseUrl, '/api/scheduler/polls', {
+      token: creator.token,
+    });
+    assert.equal(defaultList.data.some(p => p.id === pollId), false);
+
+    const nonCreatorArchivedList = await apiRequest(
+      ctx.baseUrl,
+      '/api/scheduler/polls?includeArchived=1',
+      { token: responder.token }
+    );
+    assert.equal(nonCreatorArchivedList.data.some(p => p.id === pollId), false);
+
+    const creatorArchivedList = await apiRequest(
+      ctx.baseUrl,
+      '/api/scheduler/polls?includeArchived=1',
+      { token: creator.token }
+    );
+    assert.equal(creatorArchivedList.data.some(p => p.id === pollId && p.archived === true), true);
+
+    // Archived poll rejects new responses (409) until unarchived
+    const blockedRespond = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/respond`,
+      {
+        method: 'POST',
+        token: responder.token,
+        body: { freeSlots: [slotIso] },
+      }
+    );
+    assert.equal(blockedRespond.status, 409);
+
+    // Creator unarchives the poll -> returns to active list & accepts updates again
+    const unarchiveRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/archive`,
+      {
+        method: 'PATCH',
+        token: creator.token,
+        body: { archived: false },
+      }
+    );
+    assert.equal(unarchiveRes.status, 200);
+    assert.equal(unarchiveRes.data.poll.archived, false);
+    assert.equal(unarchiveRes.data.poll.archivedAt, null);
+
+    const restoredList = await apiRequest(ctx.baseUrl, '/api/scheduler/polls', {
+      token: responder.token,
+    });
+    assert.equal(restoredList.data.some(p => p.id === pollId), true);
+
+    // Creator permanently deletes the poll -> poll & responses are deleted cleanly
+    const deleteRes = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+      method: 'DELETE',
+      token: creator.token,
+    });
+    assert.equal(deleteRes.status, 200);
+    assert.equal(deleteRes.data.deleted, true);
+
+    const getDeleted = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+      token: creator.token,
+    });
+    assert.equal(getDeleted.status, 404);
+  });
 });

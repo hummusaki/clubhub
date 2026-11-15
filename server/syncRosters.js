@@ -18,6 +18,7 @@ import {
   getStats,
 } from './database.js';
 import { syncRoster } from './services/roster.js';
+import { sanitizePublicSnapshot } from './services/publicSnapshotSanitizer.js';
 import { updateClubsCatalog } from '../collector/src/update-clubs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,7 +103,7 @@ async function main() {
   const stats = getStats();
   const sources = Object.values(getDictionary({ namespace: 'sources' }));
 
-  const snapshot = {
+  const snapshot = sanitizePublicSnapshot({
     exportedAt: new Date().toISOString(),
     rosterUpdatedAt: rosterRun.rosterUpdatedAt,
     stats: {
@@ -110,7 +111,7 @@ async function main() {
       sources: sources.length,
     },
     ...collectorData,
-  };
+  });
 
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(snapshot));

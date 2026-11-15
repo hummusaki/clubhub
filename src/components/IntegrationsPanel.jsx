@@ -13,14 +13,20 @@ import {
   Calendar,
   AlertCircle,
   Sparkles,
+  Search,
+  X,
 } from 'lucide-react'
-import { Card, BubbleTag, IconBadge, cleanText } from './ui'
+import { Card, BubbleTag, ToggleSwitch, SectionHeader, cleanText } from './ui'
+import { matchesSearchQuery } from '../utils/search'
 import { PlatformIcon } from './icons'
 import {
   getIntegrationsStatus,
   saveIntegrationConfig,
   saveIntegrationSubscription,
   verifyEmailIntegration,
+  getScoutedDiscordServers,
+  runDiscordServerScout,
+  followDiscordAnnouncementChannel,
   registerSource,
   deleteSource,
   syncAllSources,
@@ -39,6 +45,7 @@ export default function IntegrationsPanel({
   clubs = [],
   syncedEvents = [],
   isCompact = false,
+  delay = 0,
   onRefresh,
   onNotify,
 }) {
@@ -85,6 +92,11 @@ export default function IntegrationsPanel({
   const [fromEmailInput, setFromEmailInput] = useState('')
   const [resendKeyInput, setResendKeyInput] = useState('')
   const [copiedKey, setCopiedKey] = useState('')
+
+  // Club Discord Scout & Followability state
+  const [scoutData, setScoutData] = useState(null)
+  const [scoutFilter, setScoutFilter] = useState('all') // 'all' | 'followable' | 'synced' | 'other'
+  const [scoutQuery, setScoutQuery] = useState('')
 
   const notify = useCallback(
     (msg, type = 'success') => {
@@ -139,6 +151,11 @@ export default function IntegrationsPanel({
         if (e.resendApiKeyMasked && !resendKeyInput) setResendKeyInput(e.resendApiKeyMasked)
       } else {
         setBackendOnline(false)
+      }
+
+      const scout = await getScoutedDiscordServers()
+      if (scout && Array.isArray(scout.servers)) {
+        setScoutData(scout)
       }
       setStatusLoading(false)
     },
@@ -631,11 +648,153 @@ export default function IntegrationsPanel({
     notify('Disconnected source.', 'info')
   }
 
+  async function handleRunDiscordScout(forceCrawlAll = false) {
+    setBusyAction('scout_discord')
+    setFeedbackBanner(null)
+    if (!backendOnline) {
+      const staticScout = await getScoutedDiscordServers()
+      if (staticScout) setScoutData(staticScout)
+      setBusyAction('')
+      setFeedbackBanner({
+        tone: 'blue',
+        text: 'Showing pre-scouted snapshot (GitHub Action runs daily & on club catalog updates, or run `npm run scout:discord` locally).',
+      })
+      return
+    }
+
+    const res = await runDiscordServerScout({
+      crawlWebsites: true,
+      forceCrawlAll,
+      forceRefreshInvites: true,
+    })
+    setBusyAction('')
+    if (!res.ok) {
+      setFeedbackBanner({
+        tone: 'red',
+        text: res.error || 'Failed to scout club Discord servers.',
+      })
+      return
+    }
+    setScoutData(res)
+    if (onRefresh && (res.summary?.newlyDiscovered || 0) > 0) {
+      await onRefresh()
+    }
+    const s = res.summary || {}
+    setFeedbackBanner({
+      tone: 'green',
+      text: `Scouted ${s.totalInvitesChecked ?? 0} invites across ${s.totalClubsWithDiscord ?? 0} clubs (${s.followableServers ?? 0} followable #announcements, ${s.newlyDiscovered ?? 0} newly discovered)!`,
+    })
+    notify('Scouted club Discord servers!')
+  }
+
+  async function handleAutoFollowChannel(srv) {
+    const sourceChId =
+      srv?.botAnnouncementChannels?.[0]?.id ||
+      (srv?.landingChannel?.isAnnouncementChannel ? srv.landingChannel.id : '')
+    const targetChId = selectedBotChannelId || dStatus?.defaultChannelId || botChannels[0]?.id || ''
+    if (!sourceChId || !targetChId) {
+      setFeedbackBanner({
+        tone: 'yellow',
+        text: 'Select a destination Bot channel above first so ClubHub knows where to crosspost followed #announcements.',
+      })
+      return
+    }
+    setBusyAction(`follow_${srv.code}`)
+    setFeedbackBanner(null)
+    const res = await followDiscordAnnouncementChannel({
+      sourceChannelId: sourceChId,
+      targetChannelId: targetChId,
+    })
+    setBusyAction('')
+    if (!res.ok) {
+      setFeedbackBanner({
+        tone: 'red',
+        text: res.error || 'Could not auto-follow announcement channel.',
+      })
+      return
+    }
+    await loadStatus(true)
+    setFeedbackBanner({
+      tone: 'green',
+      text: `Followed ${srv.serverName || srv.clubName} #${srv.botAnnouncementChannels?.[0]?.name || srv.landingChannel?.name || 'announcements'} into ClubHub!`,
+    })
+    notify(`Followed ${srv.clubName} #announcements!`)
+  }
+
   const dStatus = statusData?.discord || null
   const eStatus = statusData?.email || null
   const botChannels = dStatus?.channels || []
   const discordSources = dStatus?.sources || []
   const emailSources = eStatus?.sources || []
+
+  // Client-side fallback if neither API nor static `discord-scout.json` returned servers yet
+  const rawScoutServers = (() => {
+    if (Array.isArray(scoutData?.servers) && scoutData.servers.length > 0) {
+      return scoutData.servers
+    }
+    const fallback = []
+    const inviteRe = /(?:discord\.gg|discord(?:app)?\.com\/invite)\/([A-Za-z0-9-]{2,36})/i
+    for (const c of clubs) {
+      const allUrls = [
+        c.discord,
+        ...(Array.isArray(c.links) ? c.links.map(l => l.url || l) : []),
+      ].filter(Boolean)
+      for (const u of allUrls) {
+        const m = String(u).match(inviteRe)
+        if (!m) continue
+        fallback.push({
+          clubId: c.id,
+          clubName: c.name || c.id,
+          instagram: c.instagram || c.id,
+          code: m[1],
+          url: `https://discord.gg/${m[1]}`,
+          status: c.discordFollowable ? 'valid' : 'unchecked',
+          serverName: c.discordServerName || null,
+          followable: Boolean(c.discordFollowable),
+          syncState: c.discordFollowable ? 'followable' : 'unverified',
+          syncedPosts: 0,
+        })
+        break
+      }
+    }
+    return fallback
+  })()
+
+  const scoutSummary = scoutData?.summary || {
+    totalClubsWithDiscord: rawScoutServers.filter(s => s.status !== 'expired').length,
+    followableServers: rawScoutServers.filter(s => s.followable).length,
+    syncedOrBotServers: rawScoutServers.filter(
+      s => s.syncState === 'bot_connected' || s.syncState === 'synced'
+    ).length,
+  }
+
+  const filteredScoutServers = rawScoutServers.filter(srv => {
+    if (scoutFilter === 'followable' && !srv.followable) return false
+    if (
+      scoutFilter === 'synced' &&
+      srv.syncState !== 'bot_connected' &&
+      srv.syncState !== 'synced'
+    ) {
+      return false
+    }
+    if (
+      scoutFilter === 'other' &&
+      (srv.followable || srv.syncState === 'bot_connected' || srv.syncState === 'synced')
+    ) {
+      return false
+    }
+    if (scoutQuery.trim()) {
+      if (
+        !matchesSearchQuery(scoutQuery, {
+          primary: [srv.clubName, srv.serverName],
+          secondary: [srv.instagram, srv.code],
+        })
+      ) {
+        return false
+      }
+    }
+    return true
+  })
 
   const hasLocalWebhook = isValidDiscordWebhookUrl(discordWebhookInput)
   const discordReady = Boolean(dStatus?.outboundReady || dStatus?.inboundReady || hasLocalWebhook)
@@ -650,83 +809,78 @@ export default function IntegrationsPanel({
   const discordWebhookEndpoint = `${originBase}/api/webhooks/discord`
   const emailWebhookEndpoint = `${originBase}/api/webhooks/email`
 
-  const cardPad = isCompact ? 'p-4 sm:p-4.5' : 'p-5 sm:p-6'
+  const cardPad = isCompact ? 'p-4 sm:p-5' : 'p-5 sm:p-6'
 
   return (
-    <Card className={`${cardPad} ${isCompact ? 'space-y-3.5' : 'space-y-4.5'}`} delay={4}>
+    <Card className={`${cardPad} ${isCompact ? 'space-y-4' : 'space-y-5'}`} delay={delay}>
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3 pb-3.5 border-b border-[var(--border)]">
-        <div className="flex items-start gap-3 min-w-0">
-          <IconBadge color={activeTab === 'discord' ? 'blue' : 'yellow'} size={38} radius={11}>
-            <PlatformIcon type={activeTab === 'discord' ? 'discord' : 'email'} size={19} />
-          </IconBadge>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-bold text-[var(--text)]">
-                Discord & Email Integrations
-              </h2>
-              <BubbleTag
-                label={
-                  dStatus?.bot
-                    ? `Discord Bot: ${dStatus.bot.tag}`
-                    : discordReady
-                      ? 'Discord Ready'
-                      : 'Discord Setup'
-                }
-                color={discordReady ? 'blue' : 'purple'}
-                size="sm"
-                dot={discordReady}
-              />
-              <BubbleTag
-                label={
-                  eStatus?.inboundReady && eStatus?.outboundReady
-                    ? 'IMAP + SMTP Live'
-                    : eStatus?.outboundReady
-                      ? `Email (${eStatus.activeTransport.toUpperCase()})`
-                      : emailReady
-                        ? 'Email Ready'
-                        : 'Email Setup'
-                }
-                color={eStatus?.configured ? 'green' : 'yellow'}
-                size="sm"
-                dot={Boolean(eStatus?.configured)}
-              />
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Sync club Discord announcements & email newsletters into ClubHub, and push schedule digests or poll invites
-            </p>
+      <SectionHeader
+        icon={<PlatformIcon type={activeTab === 'discord' ? 'discord' : 'email'} size={18} />}
+        color={activeTab === 'discord' ? 'blue' : 'yellow'}
+        title="Discord & Email Integrations"
+        subtitle="Sync club Discord announcements & email newsletters into ClubHub, and push schedule digests or poll invites"
+        badge={
+          <div className="flex flex-wrap items-center gap-1.5">
+            <BubbleTag
+              label={
+                dStatus?.bot
+                  ? `Bot: ${dStatus.bot.tag}`
+                  : discordReady
+                    ? 'Discord Ready'
+                    : 'Discord'
+              }
+              color={discordReady ? 'blue' : 'purple'}
+              size="sm"
+              dot={discordReady}
+            />
+            <BubbleTag
+              label={
+                eStatus?.inboundReady && eStatus?.outboundReady
+                  ? 'IMAP + SMTP'
+                  : eStatus?.outboundReady
+                    ? `Email (${eStatus.activeTransport.toUpperCase()})`
+                    : emailReady
+                      ? 'Email Ready'
+                      : 'Email'
+              }
+              color={eStatus?.configured ? 'green' : 'yellow'}
+              size="sm"
+              dot={Boolean(eStatus?.configured)}
+            />
           </div>
-        </div>
+        }
+        action={
+          <button
+            type="button"
+            onClick={() => loadStatus(true)}
+            disabled={statusLoading}
+            title="Refresh integration status"
+            className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors shrink-0"
+          >
+            <RefreshCw size={13} className={statusLoading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+        }
+        className={`${isCompact ? 'pb-3.5' : 'pb-4'} border-b border-[var(--border)]`}
+      />
 
-        <button
-          type="button"
-          onClick={() => loadStatus(true)}
-          disabled={statusLoading}
-          title="Refresh integration status"
-          className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-        >
-          <RefreshCw size={13} className={statusLoading ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
-      </div>
-
-      {/* ── Platform Switcher ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+      {/* ── Platform Switcher + Auto-Push Toggle ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="segmented-track self-start">
           <button
             type="button"
             onClick={() => {
               setActiveTab('discord')
               setFeedbackBanner(null)
             }}
-            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
               activeTab === 'discord'
-                ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-[var(--shadow-xs)]'
                 : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
             <PlatformIcon type="discord" size={15} />
-            <span>Discord Integration</span>
+            <span>Discord</span>
           </button>
 
           <button
@@ -735,33 +889,34 @@ export default function IntegrationsPanel({
               setActiveTab('email')
               setFeedbackBanner(null)
             }}
-            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+            className={`inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
               activeTab === 'email'
-                ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-[var(--shadow-xs)]'
                 : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
             <PlatformIcon type="email" size={15} />
-            <span>Email & Newsletters</span>
+            <span>Email &amp; Newsletters</span>
           </button>
         </div>
 
-        <label className="inline-flex items-center gap-2 text-xs text-[var(--text-muted)] cursor-pointer select-none">
-          <input
-            type="checkbox"
+        <div className="flex items-center justify-between sm:justify-end gap-2.5 px-3 py-2 rounded-xl content-tile">
+          <span className="text-xs font-medium text-[var(--text-muted)]">
+            Offer push when posting updates
+          </span>
+          <ToggleSwitch
+            size="sm"
             checked={autoPushAnnouncements}
-            onChange={e => {
-              const val = e.target.checked
+            onChange={val => {
               setAutoPushAnnouncements(val)
               saveLocalIntegrationPrefs(accountKey, { autoPushAnnouncements: val })
               if (backendOnline) {
                 saveIntegrationSubscription({ accountKey, autoPushAnnouncements: val })
               }
             }}
-            className="rounded accent-[var(--blue)]"
+            ariaLabel="Offer external push when posting club updates"
           />
-          <span>Offer external push when posting club updates</span>
-        </label>
+        </div>
       </div>
 
       {/* ── Feedback Banner ── */}
@@ -785,7 +940,7 @@ export default function IntegrationsPanel({
       {activeTab === 'discord' && (
         <div className="space-y-4">
           {/* Stats & Bot Invite Strip */}
-          <div className="p-3.5 rounded-xl content-tile flex flex-wrap items-center justify-between gap-3">
+          <div className="p-3.5 sm:p-4 rounded-xl content-tile flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
               <span>
                 <strong className="text-[var(--text)] font-mono-num">
@@ -820,7 +975,7 @@ export default function IntegrationsPanel({
                 href={dStatus.bot.inviteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold no-underline hover:opacity-90 shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold no-underline hover:opacity-90 shrink-0"
               >
                 <span>Invite Bot to Server</span>
                 <ExternalLink size={12} />
@@ -829,28 +984,28 @@ export default function IntegrationsPanel({
           </div>
 
           {/* 1A. Outbound Discord Alerts & Schedule Digest */}
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
+          <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
                 <div className="text-sm font-bold text-[var(--text)]">
-                  Outbound Discord Alerts & Digests
+                  Outbound Discord Alerts &amp; Digests
                 </div>
-                <p className="text-xs text-[var(--text-muted)]">
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
                   Post schedule digests, announcements, and availability polls via Bot channel or Incoming Webhook
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {botChannels.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Bot Destination Channel
                   </label>
                   <select
                     value={selectedBotChannelId}
                     onChange={e => setSelectedBotChannelId(e.target.value)}
-                    className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
                     {botChannels.map(ch => (
                       <option key={ch.id} value={ch.id}>
@@ -862,10 +1017,10 @@ export default function IntegrationsPanel({
               )}
 
               <div className={botChannels.length > 0 ? '' : 'sm:col-span-2'}>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                   Discord Incoming Webhook URL{' '}
                   <span className="font-normal text-[var(--text-light)]">
-                    (optional — also works without backend)
+                    (optional — works without backend)
                   </span>
                 </label>
                 <input
@@ -873,7 +1028,7 @@ export default function IntegrationsPanel({
                   value={discordWebhookInput}
                   onChange={e => setDiscordWebhookInput(e.target.value)}
                   placeholder="https://discord.com/api/webhooks/..."
-                  className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
             </div>
@@ -883,7 +1038,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSaveDiscordDestination}
                 disabled={busyAction === 'save_discord_dest'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
               >
                 <Check size={13} className="text-[var(--green)]" />
                 <span>Save Destination</span>
@@ -893,7 +1048,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSendDiscordTest}
                 disabled={busyAction === 'test_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
                 <Send size={13} />
                 <span>{busyAction === 'test_discord' ? 'Sending…' : 'Send Test Embed'}</span>
@@ -903,7 +1058,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSendDiscordDigest}
                 disabled={busyAction === 'digest_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
               >
                 <Calendar size={13} />
                 <span>
@@ -916,13 +1071,13 @@ export default function IntegrationsPanel({
           </div>
 
           {/* 1B. Inbound Club Discord Sync */}
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
+          <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="text-sm font-bold text-[var(--text)]">
-                  Inbound Club Server & #announcements Sync
+                  Inbound Club Server &amp; #announcements Sync
                 </div>
-                <p className="text-xs text-[var(--text-muted)]">
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
                   Click &ldquo;Follow&rdquo; on any club&apos;s #announcements channel into your aggregator server, forward messages, or map a channel below
                 </p>
               </div>
@@ -931,7 +1086,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSyncDiscordNow}
                 disabled={busyAction === 'sync_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
               >
                 <RefreshCw
                   size={13}
@@ -948,7 +1103,7 @@ export default function IntegrationsPanel({
               <select
                 value={discordSourceClubId}
                 onChange={e => setDiscordSourceClubId(e.target.value)}
-                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
                 <option value="all">Auto-detect Club (Aggregator Channel)</option>
                 {clubs.map(c => (
@@ -964,7 +1119,7 @@ export default function IntegrationsPanel({
                 onChange={e => setDiscordSourceIdentifier(e.target.value)}
                 placeholder="Channel ID or https://discord.com/channels/..."
                 list="clubhub-bot-channels"
-                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
               <datalist id="clubhub-bot-channels">
                 {botChannels.map(ch => (
@@ -977,7 +1132,7 @@ export default function IntegrationsPanel({
               <button
                 type="submit"
                 disabled={busyAction === 'add_discord_source'}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0 transition-colors"
               >
                 <Plus size={14} className="text-[var(--blue)]" />
                 <span>Connect Channel</span>
@@ -993,7 +1148,7 @@ export default function IntegrationsPanel({
                   {discordSources.slice(0, 12).map(src => (
                     <span
                       key={src.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text)]"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
                     >
                       <span className="font-semibold text-[var(--blue-ink)]">{src.clubId}</span>
                       <span className="text-[var(--text-muted)] font-mono-num truncate max-w-[160px]">
@@ -1014,22 +1169,22 @@ export default function IntegrationsPanel({
             )}
 
             {/* Collapsible Bot Token & Push Webhook Configuration */}
-            <div className="pt-2 border-t border-[var(--border-subtle)]">
+            <div className="pt-2.5 border-t border-[var(--border-subtle)]">
               <button
                 type="button"
                 onClick={() => setShowDiscordConfig(prev => !prev)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer text-left"
               >
-                <KeyRound size={13} />
-                <span>Bot Token, Aggregator Server & Push Webhook Settings</span>
-                {showDiscordConfig ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <KeyRound size={13} className="shrink-0" />
+                <span>Bot Token, Aggregator Server &amp; Push Webhook Settings</span>
+                {showDiscordConfig ? <ChevronUp size={13} className="shrink-0" /> : <ChevronDown size={13} className="shrink-0" />}
               </button>
 
               {showDiscordConfig && (
-                <form onSubmit={handleSaveDiscordServerConfig} className="mt-3 space-y-3 fade-in">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <form onSubmit={handleSaveDiscordServerConfig} className="mt-3.5 space-y-3.5 fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Discord Bot Token
                       </label>
                       <input
@@ -1037,12 +1192,12 @@ export default function IntegrationsPanel({
                         value={botTokenInput}
                         onChange={e => setBotTokenInput(e.target.value)}
                         placeholder="Bot token from Discord Developer Portal"
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Aggregator Server (Guild) ID
                       </label>
                       <input
@@ -1050,18 +1205,18 @@ export default function IntegrationsPanel({
                         value={aggGuildIdInput}
                         onChange={e => setAggGuildIdInput(e.target.value)}
                         placeholder="e.g. 1571365388758024392"
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Fallback Club for Unmatched Aggregator Posts
                       </label>
                       <select
                         value={defaultDiscordClubId}
                         onChange={e => setDefaultDiscordClubId(e.target.value)}
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       >
                         <option value="">Require club match (@handle, Follow, or [Club Name])</option>
                         {clubs.map(c => (
@@ -1073,15 +1228,15 @@ export default function IntegrationsPanel({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Inbound Discord Relay Endpoint
                       </label>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <input
                           type="text"
                           readOnly
                           value={discordWebhookEndpoint}
-                          className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-[11px] font-mono-num text-[var(--text-muted)] border border-[var(--border)] outline-none"
+                          className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-xs font-mono-num text-[var(--text-muted)] border border-[var(--border)] outline-none"
                         />
                         <button
                           type="button"
@@ -1092,22 +1247,23 @@ export default function IntegrationsPanel({
                               'Copied Discord inbound webhook URL!'
                             )
                           }
-                          className="px-2.5 min-h-[38px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+                          aria-label="Copy Discord webhook endpoint"
+                          className="px-3 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0 transition-colors"
                         >
-                          {copiedKey === 'discord_wh' ? <Check size={13} /> : <Copy size={13} />}
+                          {copiedKey === 'discord_wh' ? <Check size={14} className="text-[var(--green)]" /> : <Copy size={14} />}
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[11px] text-[var(--text-muted)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">
                       Tip: Enable <strong>Message Content Intent</strong> in Discord Developer Portal &rarr; Bot so plain-text posts are readable.
                     </span>
                     <button
                       type="submit"
                       disabled={busyAction === 'save_discord_cfg'}
-                      className="px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                      className="w-full sm:w-auto px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
                     >
                       {busyAction === 'save_discord_cfg' ? 'Saving…' : 'Save & Verify Bot'}
                     </button>
@@ -1115,6 +1271,257 @@ export default function IntegrationsPanel({
                 </form>
               )}
             </div>
+          </div>
+
+          {/* ── 1C. Scouted Club Discords & #announcements Followability ── */}
+          <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold text-[var(--text)]">
+                    Scouted Club Discords &amp; Followable #announcements
+                  </span>
+                  <BubbleTag
+                    label={`${scoutSummary.totalClubsWithDiscord ?? rawScoutServers.length} Discovered`}
+                    color="blue"
+                    size="sm"
+                  />
+                  {(scoutSummary.followableServers ?? 0) > 0 && (
+                    <BubbleTag
+                      label={`${scoutSummary.followableServers} Followable (NEWS)`}
+                      color="green"
+                      size="sm"
+                      dot
+                    />
+                  )}
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                  Auto-discovers club Discord invites from the UCSC directory, Linktrees, club websites, and bios, checks if megaphone{' '}
+                  <strong>#announcements</strong> channels are followable, and lets you follow them into your aggregator server
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleRunDiscordScout(false)}
+                disabled={busyAction === 'scout_discord'}
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors shrink-0"
+              >
+                <RefreshCw
+                  size={13}
+                  className={`text-[var(--blue)] ${busyAction === 'scout_discord' ? 'animate-spin' : ''}`}
+                />
+                <span>
+                  {busyAction === 'scout_discord' ? 'Scouting Clubs…' : 'Scout Club Discords'}
+                </span>
+              </button>
+            </div>
+
+            {/* Filter Pills + Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'all', label: `All (${rawScoutServers.length})` },
+                  {
+                    id: 'followable',
+                    label: `Followable #announcements (${scoutSummary.followableServers ?? 0})`,
+                  },
+                  {
+                    id: 'synced',
+                    label: `Synced / Bot (${scoutSummary.syncedOrBotServers ?? 0})`,
+                  },
+                  { id: 'other', label: 'Text-Only / Indexed' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setScoutFilter(tab.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border cursor-pointer transition-colors ${
+                      scoutFilter === tab.id
+                        ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full sm:w-60">
+                <Search
+                  size={13}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-light)] pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={scoutQuery}
+                  onChange={e => setScoutQuery(e.target.value)}
+                  placeholder="Filter clubs or invites…"
+                  className="w-full min-h-[36px] pl-8 pr-7 py-1.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                />
+                {scoutQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setScoutQuery('')}
+                    aria-label="Clear Discord server filter"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer flex items-center"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Server List */}
+            {filteredScoutServers.length === 0 ? (
+              <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] text-center">
+                No club Discord servers match this filter yet. Click{' '}
+                <strong>Scout Club Discords</strong> to crawl club websites and check invite followability.
+              </div>
+            ) : (
+              <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2">
+                {filteredScoutServers.map(srv => {
+                  const canAutoFollow =
+                    backendOnline &&
+                    Array.isArray(srv.botAnnouncementChannels) &&
+                    srv.botAnnouncementChannels.length > 0
+                  const statusMeta =
+                    srv.syncState === 'bot_connected'
+                      ? { label: 'Bot Connected', color: 'green' }
+                      : srv.syncState === 'synced'
+                        ? {
+                            label:
+                              srv.syncedPosts > 0 ? `Synced (${srv.syncedPosts})` : 'Mapped',
+                            color: 'teal',
+                          }
+                        : srv.syncState === 'followable'
+                          ? { label: 'Followable (NEWS)', color: 'blue' }
+                          : srv.syncState === 'standard'
+                            ? { label: 'Text Channels Only', color: 'yellow' }
+                            : srv.syncState === 'expired'
+                              ? { label: 'Invite Expired', color: 'red' }
+                              : { label: 'Invite Indexed', color: 'purple' }
+
+                  return (
+                    <div
+                      key={`${srv.clubId}-${srv.code}`}
+                      className="p-2.5 sm:p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {srv.iconUrl ? (
+                          <img
+                            src={srv.iconUrl}
+                            alt=""
+                            loading="lazy"
+                            className="w-8 h-8 rounded-lg object-cover shrink-0 border border-[var(--border-subtle)]"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+                            <PlatformIcon type="discord" size={15} />
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs sm:text-[13px] font-bold text-[var(--text)] truncate">
+                              {cleanText(srv.clubName)}
+                            </span>
+                            {srv.instagram && (
+                              <span className="text-[11px] font-mono-num text-[var(--text-muted)]">
+                                @{srv.instagram}
+                              </span>
+                            )}
+                            {srv.isNewlyDiscovered && (
+                              <BubbleTag label="New" color="green" size="sm" />
+                            )}
+                            <BubbleTag
+                              label={statusMeta.label}
+                              color={statusMeta.color}
+                              size="sm"
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-[var(--text-muted)] mt-0.5">
+                            {srv.serverName && (
+                              <span className="font-medium text-[var(--text)]">
+                                {cleanText(srv.serverName)}
+                              </span>
+                            )}
+                            {srv.memberCount != null && (
+                              <span className="font-mono-num">
+                                {srv.memberCount.toLocaleString()} members
+                                {srv.onlineCount != null
+                                  ? ` · ${srv.onlineCount.toLocaleString()} online`
+                                  : ''}
+                              </span>
+                            )}
+                            {srv.landingChannel?.name && (
+                              <span className="font-mono-num">
+                                #{srv.landingChannel.name}
+                                {srv.landingChannel.isAnnouncementChannel ? ' (📣)' : ''}
+                              </span>
+                            )}
+                            <span className="font-mono-num text-[var(--text-light)]">
+                              discord.gg/{srv.code}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                        {canAutoFollow && (
+                          <button
+                            type="button"
+                            onClick={() => handleAutoFollowChannel(srv)}
+                            disabled={busyAction === `follow_${srv.code}`}
+                            className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-[11.5px] font-semibold border-none cursor-pointer hover:opacity-90"
+                          >
+                            <span>
+                              {busyAction === `follow_${srv.code}`
+                                ? 'Following…'
+                                : 'Auto-Follow'}
+                            </span>
+                          </button>
+                        )}
+
+                        {srv.url && srv.status !== 'expired' && (
+                          <a
+                            href={srv.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] no-underline transition-colors"
+                          >
+                            <span>{srv.followable ? 'Open & Follow' : 'Open Server'}</span>
+                            <ExternalLink size={11} className="text-[var(--text-muted)]" />
+                          </a>
+                        )}
+
+                        {srv.url && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopyText(
+                                `inv_${srv.clubId}_${srv.code}`,
+                                srv.url,
+                                `Copied ${cleanText(srv.clubName)} Discord invite!`
+                              )
+                            }
+                            aria-label={`Copy ${cleanText(srv.clubName)} Discord invite`}
+                            className="p-1.5 min-h-[32px] min-w-[32px] rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer flex items-center justify-center transition-colors"
+                          >
+                            {copiedKey === `inv_${srv.clubId}_${srv.code}` ? (
+                              <Check size={12} className="text-[var(--green)]" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1125,7 +1532,7 @@ export default function IntegrationsPanel({
       {activeTab === 'email' && (
         <div className="space-y-4">
           {/* Stats Strip */}
-          <div className="p-3.5 rounded-xl content-tile flex flex-wrap items-center justify-between gap-3">
+          <div className="p-3.5 sm:p-4 rounded-xl content-tile flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-muted)]">
               <span>
                 <strong className="text-[var(--text)] font-mono-num">
@@ -1154,13 +1561,13 @@ export default function IntegrationsPanel({
           </div>
 
           {/* 2A. Outbound Email Schedule Digests & Alerts */}
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
+          <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
             <div>
               <div className="text-sm font-bold text-[var(--text)]">
-                Outbound Schedule Digests (.ics) & Poll Invites
+                Outbound Schedule Digests (.ics) &amp; Poll Invites
               </div>
-              <p className="text-xs text-[var(--text-muted)]">
-                Receive HTML schedule digests with a 1-click .ics calendar file attached, or send test & poll emails
+              <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                Receive HTML schedule digests with a 1-click .ics calendar file attached, or send test &amp; poll emails
               </p>
             </div>
 
@@ -1170,13 +1577,13 @@ export default function IntegrationsPanel({
                 value={recipientEmailInput}
                 onChange={e => setRecipientEmailInput(e.target.value)}
                 placeholder="your.email@ucsc.edu or @gmail.com"
-                className="flex-1 min-h-[40px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="flex-1 min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
               <button
                 type="button"
                 onClick={handleSaveEmailRecipient}
                 disabled={busyAction === 'save_email_dest'}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0 transition-colors"
               >
                 <Check size={13} className="text-[var(--green)]" />
                 <span>Save Email</span>
@@ -1188,7 +1595,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSendEmailTest}
                 disabled={busyAction === 'test_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
               >
                 <Send size={13} />
                 <span>{busyAction === 'test_email' ? 'Sending…' : 'Send Test Email'}</span>
@@ -1198,7 +1605,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSendEmailDigest}
                 disabled={busyAction === 'digest_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
               >
                 <Sparkles size={13} />
                 <span>
@@ -1211,15 +1618,15 @@ export default function IntegrationsPanel({
           </div>
 
           {/* 2B. Inbound Club Newsletter Sync (IMAP + Webhook) */}
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
+          <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="text-sm font-bold text-[var(--text)]">
-                  Inbound Club Mailing List & Newsletter Sync
+                  Inbound Club Mailing List &amp; Newsletter Sync
                 </div>
-                <p className="text-xs text-[var(--text-muted)]">
+                <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
                   Automatically matches all 137 UCSC club emails, forwarded newsletters, and{' '}
-                  <code className="text-[11px] px-1 py-0.5 rounded bg-[var(--bg-card)]">
+                  <code className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
                     +club_handle
                   </code>{' '}
                   tags without marking inbox mail as read
@@ -1230,7 +1637,7 @@ export default function IntegrationsPanel({
                 type="button"
                 onClick={handleSyncEmailNow}
                 disabled={busyAction === 'sync_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
               >
                 <RefreshCw size={13} className={busyAction === 'sync_email' ? 'animate-spin' : ''} />
                 <span>{busyAction === 'sync_email' ? 'Syncing…' : 'Sync Email Inbox Now'}</span>
@@ -1244,7 +1651,7 @@ export default function IntegrationsPanel({
               <select
                 value={emailSourceClubId}
                 onChange={e => setEmailSourceClubId(e.target.value)}
-                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
                 {clubs.map(c => (
                   <option key={c.id} value={c.id}>
@@ -1258,13 +1665,13 @@ export default function IntegrationsPanel({
                 value={emailSourceIdentifier}
                 onChange={e => setEmailSourceIdentifier(e.target.value)}
                 placeholder="Club list/sender address (e.g. newsletter@club.org)"
-                className="min-h-[40px] px-3 py-2 rounded-xl bg-[var(--bg-card)] text-xs sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               />
 
               <button
                 type="submit"
                 disabled={busyAction === 'add_email_source'}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0 transition-colors"
               >
                 <Plus size={14} className="text-[var(--blue)]" />
                 <span>Map Sender</span>
@@ -1280,7 +1687,7 @@ export default function IntegrationsPanel({
                   {emailSources.slice(0, 12).map(src => (
                     <span
                       key={src.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs text-[var(--text)]"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
                     >
                       <span className="font-semibold text-[var(--blue-ink)]">{src.clubId}</span>
                       <span className="text-[var(--text-muted)] truncate max-w-[180px]">
@@ -1301,28 +1708,28 @@ export default function IntegrationsPanel({
             )}
 
             {/* Collapsible IMAP + SMTP App Password / Resend API Configuration */}
-            <div className="pt-2 border-t border-[var(--border-subtle)]">
+            <div className="pt-2.5 border-t border-[var(--border-subtle)]">
               <button
                 type="button"
                 onClick={() => setShowEmailConfig(prev => !prev)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer text-left"
               >
-                <KeyRound size={13} />
-                <span>Configure Gmail / UCSC App Password (IMAP + SMTP), Resend API & Inbound Webhook</span>
-                {showEmailConfig ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <KeyRound size={13} className="shrink-0" />
+                <span>Configure Gmail / UCSC App Password (IMAP + SMTP), Resend API &amp; Inbound Webhook</span>
+                {showEmailConfig ? <ChevronUp size={13} className="shrink-0" /> : <ChevronDown size={13} className="shrink-0" />}
               </button>
 
               {showEmailConfig && (
-                <form onSubmit={handleSaveAndVerifyEmailConfig} className="mt-3 space-y-3 fade-in">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <form onSubmit={handleSaveAndVerifyEmailConfig} className="mt-3.5 space-y-3.5 fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Outbound Transport Mode
                       </label>
                       <select
                         value={emailProvider}
                         onChange={e => setEmailProvider(e.target.value)}
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       >
                         <option value="auto">Auto (Resend API or Gmail/SMTP)</option>
                         <option value="smtp">Gmail / UCSC / Standard SMTP + IMAP</option>
@@ -1331,7 +1738,7 @@ export default function IntegrationsPanel({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Gmail / UCSC / IMAP Email Address
                       </label>
                       <input
@@ -1339,12 +1746,12 @@ export default function IntegrationsPanel({
                         value={emailUserInput}
                         onChange={e => setEmailUserInput(e.target.value)}
                         placeholder="you@gmail.com or you@ucsc.edu"
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         16-Char Google App Password / Mail Password
                       </label>
                       <input
@@ -1352,12 +1759,12 @@ export default function IntegrationsPanel({
                         value={emailPasswordInput}
                         onChange={e => setEmailPasswordInput(e.target.value)}
                         placeholder="abcd efgh ijkl mnop"
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Resend API Key <span className="font-normal text-[var(--text-light)]">(optional alternative)</span>
                       </label>
                       <input
@@ -1365,13 +1772,13 @@ export default function IntegrationsPanel({
                         value={resendKeyInput}
                         onChange={e => setResendKeyInput(e.target.value)}
                         placeholder="re_..."
-                        className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                       />
                     </div>
 
-                    <div className="grid grid-cols-[1fr_84px] gap-2">
+                    <div className="grid grid-cols-[1fr_88px] gap-2">
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                           IMAP Host
                         </label>
                         <input
@@ -1379,25 +1786,25 @@ export default function IntegrationsPanel({
                           value={imapHostInput}
                           onChange={e => setImapHostInput(e.target.value)}
                           placeholder="imap.gmail.com"
-                          className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                          className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                           Port
                         </label>
                         <input
                           type="number"
                           value={imapPortInput}
                           onChange={e => setImapPortInput(e.target.value)}
-                          className="w-full min-h-[38px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                          className="w-full min-h-[42px] px-2.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-[1fr_84px] gap-2">
+                    <div className="grid grid-cols-[1fr_88px] gap-2">
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                           SMTP Host
                         </label>
                         <input
@@ -1405,32 +1812,32 @@ export default function IntegrationsPanel({
                           value={smtpHostInput}
                           onChange={e => setSmtpHostInput(e.target.value)}
                           placeholder="smtp.gmail.com"
-                          className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                          className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                        <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                           Port
                         </label>
                         <input
                           type="number"
                           value={smtpPortInput}
                           onChange={e => setSmtpPortInput(e.target.value)}
-                          className="w-full min-h-[38px] px-2.5 py-1.5 rounded-xl bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                          className="w-full min-h-[42px] px-2.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                         />
                       </div>
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+                      <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Inbound Email Webhook (Resend / SendGrid / Cloudflare / Apps Script)
                       </label>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <input
                           type="text"
                           readOnly
                           value={emailWebhookEndpoint}
-                          className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-[var(--bg-card)] text-[11px] font-mono-num text-[var(--text-muted)] border border-[var(--border)] outline-none"
+                          className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-xs font-mono-num text-[var(--text-muted)] border border-[var(--border)] outline-none"
                         />
                         <button
                           type="button"
@@ -1441,16 +1848,17 @@ export default function IntegrationsPanel({
                               'Copied Inbound Email Webhook URL!'
                             )
                           }
-                          className="px-2.5 min-h-[38px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+                          aria-label="Copy Email webhook endpoint"
+                          className="px-3 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0 transition-colors"
                         >
-                          {copiedKey === 'email_wh' ? <Check size={13} /> : <Copy size={13} />}
+                          {copiedKey === 'email_wh' ? <Check size={14} className="text-[var(--green)]" /> : <Copy size={14} />}
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[11px] text-[var(--text-muted)]">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">
                       Create a Google App Password at{' '}
                       <a
                         href="https://myaccount.google.com/apppasswords"
@@ -1463,19 +1871,19 @@ export default function IntegrationsPanel({
                       . Stored privately in local SQLite.
                     </span>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={handleVerifySocketsOnly}
                         disabled={busyAction === 'verify_sockets'}
-                        className="px-3 min-h-[36px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
+                        className="flex-1 sm:flex-initial px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
                       >
                         {busyAction === 'verify_sockets' ? 'Testing…' : 'Test IMAP/SMTP'}
                       </button>
                       <button
                         type="submit"
                         disabled={busyAction === 'save_email_cfg'}
-                        className="px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                        className="flex-1 sm:flex-initial px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
                       >
                         {busyAction === 'save_email_cfg' ? 'Verifying…' : 'Save & Verify'}
                       </button>

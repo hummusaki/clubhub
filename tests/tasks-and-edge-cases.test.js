@@ -236,6 +236,217 @@ describe('Phase 1, 4 & 5: Two-Tier Task Board, Announcements, Deletions & Cloud 
     assert.equal(leaderDelete.data.tasks.length, 3);
   });
 
+  it('provides per-server Personal To-Do sections & tasks isolated per user and per joined club server', async () => {
+    const pres = await registerUser(ctx.baseUrl, {
+      email: 'pres_todo@example.edu',
+      fullName: 'Solar President',
+    });
+    const alice = await registerUser(ctx.baseUrl, {
+      email: 'alice_todo@example.edu',
+      fullName: 'Alice Member',
+    });
+    const bob = await registerUser(ctx.baseUrl, {
+      email: 'bob_todo@example.edu',
+      fullName: 'Bob Member',
+    });
+    const outsider = await registerUser(ctx.baseUrl, {
+      email: 'outsider_todo@example.edu',
+      fullName: 'Non Member',
+    });
+
+    // President claims seat in solar_car; Alice joins solar_car + robotics_club; Bob joins solar_car
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/claims', {
+      method: 'POST',
+      token: pres.token,
+      body: { rosterId: 'seat_pres', requestedRole: 'President' },
+    });
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/join', {
+      method: 'POST',
+      token: alice.token,
+    });
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/robotics_club/join', {
+      method: 'POST',
+      token: alice.token,
+    });
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/join', {
+      method: 'POST',
+      token: bob.token,
+    });
+
+    // Non-members cannot view tasks OR create personal tasks/sections in unjoined servers
+    const outsiderGet = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: outsider.token,
+    });
+    assert.equal(outsiderGet.status, 403);
+    assert.equal(outsiderGet.data.code, 'NOT_CLUB_MEMBER');
+
+    const outsiderCreateTodo = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      method: 'POST',
+      token: outsider.token,
+      body: { title: 'Sneaky Todo', visibility: 'personal', isPersonal: true },
+    });
+    assert.equal(outsiderCreateTodo.status, 403);
+    assert.equal(outsiderCreateTodo.data.code, 'NOT_CLUB_MEMBER');
+
+    const outsiderCreateSec = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/solar_car/task-sections',
+      {
+        method: 'POST',
+        token: outsider.token,
+        body: { title: 'My Secret List', visibility: 'personal' },
+      }
+    );
+    assert.equal(outsiderCreateSec.status, 403);
+    assert.equal(outsiderCreateSec.data.code, 'NOT_CLUB_MEMBER');
+
+    // Alice (regular member) gets a built-in "My To-Do List" personal section on solar_car
+    const aliceInitialBoard = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: alice.token,
+    });
+    assert.equal(aliceInitialBoard.status, 200);
+    assert.equal(aliceInitialBoard.data.personalSections.length, 1);
+    assert.equal(aliceInitialBoard.data.personalSections[0].title, 'My To-Do List');
+    assert.equal(aliceInitialBoard.data.personalSections[0].visibility, 'personal');
+
+    // Alice creates a personal to-do on solar_car AND a separate personal to-do on robotics_club
+    const solarTodoRes = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      method: 'POST',
+      token: alice.token,
+      body: {
+        title: 'Finish CAD wheel fairing notes',
+        notes: 'Bring to Thursday sub-team sync',
+        priority: 'high',
+        dueDate: '2026-12-01',
+        visibility: 'personal',
+        isPersonal: true,
+      },
+    });
+    assert.equal(solarTodoRes.status, 201);
+    const solarTodoId = solarTodoRes.data.task.id;
+    assert.equal(solarTodoRes.data.task.visibility, 'personal');
+    assert.equal(solarTodoRes.data.personalTasks.length, 1);
+    assert.equal(
+      solarTodoRes.data.tasks.some(t => t.id === solarTodoId),
+      false,
+      'Personal tasks must not leak into shared club tasks array'
+    );
+
+    const roboticsTodoRes = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/robotics_club/tasks',
+      {
+        method: 'POST',
+        token: alice.token,
+        body: {
+          title: 'Order servo brackets',
+          visibility: 'personal',
+          isPersonal: true,
+        },
+      }
+    );
+    assert.equal(roboticsTodoRes.status, 201);
+
+    // Server isolation: solar_car personal list only has solar_car todo; robotics_club only has robotics_club todo
+    const aliceRoboticsBoard = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/robotics_club/tasks',
+      { token: alice.token }
+    );
+    assert.deepEqual(
+      aliceRoboticsBoard.data.personalTasks.map(t => t.title),
+      ['Order servo brackets']
+    );
+
+    // User privacy isolation: neither Bob (another member) nor President (Board) can see, edit, or delete Alice's personal todo!
+    const bobBoard = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: bob.token,
+    });
+    assert.equal(bobBoard.data.personalTasks.length, 0);
+
+    const presBoard = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: pres.token,
+    });
+    assert.equal(
+      presBoard.data.personalTasks.length,
+      0,
+      'Even Board President must not see another member’s private personal to-dos'
+    );
+
+    const presPatchAliceTodo = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${solarTodoId}`,
+      {
+        method: 'PATCH',
+        token: pres.token,
+        body: { title: 'Snooped by President' },
+      }
+    );
+    assert.equal(presPatchAliceTodo.status, 403);
+
+    const bobDeleteAliceTodo = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${solarTodoId}`,
+      { method: 'DELETE', token: bob.token }
+    );
+    assert.equal(bobDeleteAliceTodo.status, 403);
+
+    // Alice CAN create a custom personal section, move/edit her personal todo, check it off, and delete it
+    const customSecRes = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/solar_car/task-sections',
+      {
+        method: 'POST',
+        token: alice.token,
+        body: { title: 'Race Week Prep', color: 'purple', visibility: 'personal' },
+      }
+    );
+    assert.equal(customSecRes.status, 201);
+    const customSec = customSecRes.data.personalSections.find(s => s.title === 'Race Week Prep');
+    assert.ok(customSec, 'Custom personal section should appear in personalSections');
+
+    const aliceEditTodo = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${solarTodoId}`,
+      {
+        method: 'PATCH',
+        token: alice.token,
+        body: {
+          title: 'Finish CAD wheel fairing v2',
+          priority: 'critical',
+          sectionId: customSec.id,
+          toggleCompletedForSelf: true,
+        },
+      }
+    );
+    assert.equal(aliceEditTodo.status, 200);
+    assert.equal(aliceEditTodo.data.task.title, 'Finish CAD wheel fairing v2');
+    assert.equal(aliceEditTodo.data.task.priority, 'critical');
+    assert.equal(aliceEditTodo.data.task.status, 'done');
+    assert.equal(aliceEditTodo.data.task.sectionId, customSec.id);
+
+    const aliceDeleteTodo = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${solarTodoId}`,
+      { method: 'DELETE', token: alice.token }
+    );
+    assert.equal(aliceDeleteTodo.status, 200);
+    assert.equal(aliceDeleteTodo.data.personalTasks.length, 0);
+
+    // Leaving a club server immediately revokes access to that club's task board
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/robotics_club/leave', {
+      method: 'POST',
+      token: alice.token,
+    });
+    const afterLeaveBoard = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/robotics_club/tasks',
+      { token: alice.token }
+    );
+    assert.equal(afterLeaveBoard.status, 403);
+    assert.equal(afterLeaveBoard.data.code, 'NOT_CLUB_MEMBER');
+  });
+
   it('filters targeted announcements by role/sub-group and cleanly scrubs deleted groups & departed members', async () => {
     const pres = await registerUser(ctx.baseUrl, {
       email: 'pres_edge@example.edu',
@@ -390,5 +601,252 @@ describe('Phase 1, 4 & 5: Two-Tier Task Board, Announcements, Deletions & Cloud 
       const parsedSnap = JSON.parse(rawSnap);
       assert.ok(Array.isArray(parsedSnap.clubs), 'public/clubhub-data.json must contain a clubs array');
     }
+  });
+
+  it('supports clean officer seat release via myActiveClaim and immediate re-claim by incoming officer', async () => {
+    const outgoingPres = await registerUser(ctx.baseUrl, {
+      email: 'outgoing_pres@ucsc.edu',
+      fullName: 'Outgoing President',
+    });
+    const incomingPres = await registerUser(ctx.baseUrl, {
+      email: 'incoming_pres@ucsc.edu',
+      fullName: 'Incoming President',
+    });
+
+    const firstClaim = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/astro_club/claims', {
+      method: 'POST',
+      token: outgoingPres.token,
+      body: { rosterId: 'astro_seat_pres', requestedRole: 'President' },
+    });
+    assert.equal(firstClaim.data.ok, true);
+    assert.equal(firstClaim.data.claimStatus, 'approved');
+
+    // Outgoing president sees their `myActiveClaim.id`, while incoming member sees `myActiveClaim: null`
+    const outgoingPeople = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/astro_club/people', {
+      token: outgoingPres.token,
+    });
+    assert.ok(outgoingPeople.data.myActiveClaim?.id, 'Approved officer should receive myActiveClaim.id');
+
+    const incomingPeople = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/astro_club/people', {
+      token: incomingPres.token,
+    });
+    assert.equal(incomingPeople.data.myActiveClaim, null);
+
+    // While claimed, incoming officer is blocked from hijacking `astro_seat_pres` (409)
+    const hijackAttempt = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/astro_club/claims', {
+      method: 'POST',
+      token: incomingPres.token,
+      body: { rosterId: 'astro_seat_pres', requestedRole: 'President' },
+    });
+    assert.equal(hijackAttempt.status, 409);
+
+    // Outgoing president steps down via `revoke` using `myActiveClaim.id`
+    const revokeRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/astro_club/claims/${outgoingPeople.data.myActiveClaim.id}/revoke`,
+      { method: 'POST', token: outgoingPres.token }
+    );
+    assert.equal(revokeRes.status, 200);
+    assert.equal(revokeRes.data.clubPeople.permission.tier, 'member');
+    assert.equal(revokeRes.data.clubPeople.myActiveClaim, null);
+
+    // Incoming president can now immediately claim the freed `astro_seat_pres` seat!
+    const reclaimRes = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/astro_club/claims', {
+      method: 'POST',
+      token: incomingPres.token,
+      body: { rosterId: 'astro_seat_pres', requestedRole: 'President' },
+    });
+    assert.equal(reclaimRes.data.ok, true);
+    assert.equal(reclaimRes.data.claimStatus, 'approved');
+    assert.equal(reclaimRes.data.clubPeople.permission.isPresident, true);
+  });
+
+  it('enforces creator-only poll archive, unarchive, and delete lifecycle with 409 response/booking lock', async () => {
+    const creator = await registerUser(ctx.baseUrl, {
+      email: 'poll_host@ucsc.edu',
+      fullName: 'Poll Host',
+    });
+    const responder = await registerUser(ctx.baseUrl, {
+      email: 'poll_guest@ucsc.edu',
+      fullName: 'Poll Guest',
+    });
+
+    const createRes = await apiRequest(ctx.baseUrl, '/api/scheduler/polls', {
+      method: 'POST',
+      token: creator.token,
+      body: {
+        title: 'Fall Kickoff Sync',
+        dates: ['2026-11-20'],
+        dayStartHour: 9,
+        dayEndHour: 12,
+      },
+    });
+    assert.equal(createRes.status, 201);
+    const pollId = createRes.data.id;
+
+    // Non-creator cannot archive or delete the poll (403)
+    const nonCreatorArchive = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/archive`,
+      {
+        method: 'PATCH',
+        token: responder.token,
+        body: { archived: true },
+      }
+    );
+    assert.equal(nonCreatorArchive.status, 403);
+
+    const nonCreatorDelete = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+      method: 'DELETE',
+      token: responder.token,
+    });
+    assert.equal(nonCreatorDelete.status, 403);
+
+    // Creator archives the poll -> hidden from default list, visible to creator with includeArchived=1
+    const archiveRes = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}/archive`, {
+      method: 'PATCH',
+      token: creator.token,
+      body: { archived: true },
+    });
+    assert.equal(archiveRes.status, 200);
+    assert.equal(archiveRes.data.poll.archived, true);
+
+    const defaultList = await apiRequest(ctx.baseUrl, '/api/scheduler/polls', {
+      token: creator.token,
+    });
+    assert.equal(defaultList.data.some(p => p.id === pollId), false);
+
+    const creatorIncArchived = await apiRequest(
+      ctx.baseUrl,
+      '/api/scheduler/polls?includeArchived=1',
+      { token: creator.token }
+    );
+    assert.equal(creatorIncArchived.data.some(p => p.id === pollId), true);
+
+    const guestIncArchived = await apiRequest(
+      ctx.baseUrl,
+      '/api/scheduler/polls?includeArchived=1',
+      { token: responder.token }
+    );
+    assert.equal(
+      guestIncArchived.data.some(p => p.id === pollId),
+      false,
+      'Archived polls must only appear in includeArchived=1 for their creator'
+    );
+
+    // Archived poll rejects new responses and bookings with 409
+    const blockedRespond = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/respond`,
+      {
+        method: 'POST',
+        token: responder.token,
+        body: { availableSlots: ['2026-11-20T17:00:00.000Z'] },
+      }
+    );
+    assert.equal(blockedRespond.status, 409);
+
+    const blockedBook = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}/book`, {
+      method: 'POST',
+      token: creator.token,
+      body: { start: '2026-11-20T17:00:00.000Z' },
+    });
+    assert.equal(blockedBook.status, 409);
+
+    // Creator unarchives -> responses succeed again -> creator deletes poll
+    const unarchiveRes = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}/archive`, {
+      method: 'PATCH',
+      token: creator.token,
+      body: { archived: false },
+    });
+    assert.equal(unarchiveRes.status, 200);
+    assert.equal(unarchiveRes.data.poll.archived, false);
+
+    const allowedRespond = await apiRequest(
+      ctx.baseUrl,
+      `/api/scheduler/polls/${pollId}/respond`,
+      {
+        method: 'POST',
+        token: responder.token,
+        body: { availableSlots: ['2026-11-20T17:00:00.000Z'] },
+      }
+    );
+    assert.equal(allowedRespond.status, 200);
+    assert.equal(allowedRespond.data.responses.length, 1);
+
+    const deleteRes = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+      method: 'DELETE',
+      token: creator.token,
+    });
+    assert.equal(deleteRes.status, 200);
+    assert.equal(deleteRes.data.deleted, true);
+
+    const afterDeleteGet = await apiRequest(ctx.baseUrl, `/api/scheduler/polls/${pollId}`, {
+      token: creator.token,
+    });
+    assert.equal(afterDeleteGet.status, 404);
+  });
+
+  it('blocks user PII in public /api/dict and isolates themeMode & calendar sync profiles in private DB', async () => {
+    const student = await registerUser(ctx.baseUrl, {
+      email: 'privacy_student@ucsc.edu',
+      fullName: 'Privacy Student',
+    });
+
+    // Public /api/dict rejects any user_* or email-containing keys with 403
+    const putUserTheme = await apiRequest(
+      ctx.baseUrl,
+      '/api/dict/user_theme:privacy_student@ucsc.edu',
+      {
+        method: 'PUT',
+        body: { value: { themeMode: 'dark' }, namespace: 'user_prefs' },
+      }
+    );
+    assert.equal(putUserTheme.status, 403);
+    assert.equal(putUserTheme.data.code, 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT');
+
+    const postUserClubs = await apiRequest(ctx.baseUrl, '/api/dict', {
+      method: 'POST',
+      body: {
+        key: 'user_clubs:privacy_student@ucsc.edu',
+        value: { clubIds: ['solar_car'] },
+      },
+    });
+    assert.equal(postUserClubs.status, 403);
+
+    // Private profile endpoint persists themeMode cleanly inside privateDb
+    const patchProfile = await apiRequest(ctx.baseUrl, '/api/workspace/auth/profile', {
+      method: 'PATCH',
+      token: student.token,
+      body: { themeMode: 'dark' },
+    });
+    assert.equal(patchProfile.status, 200);
+    assert.equal(patchProfile.data.user.themeMode, 'dark');
+
+    const meRes = await apiRequest(ctx.baseUrl, '/api/workspace/auth/me', {
+      token: student.token,
+    });
+    assert.equal(meRes.data.user.themeMode, 'dark');
+
+    // Calendar sync profile writes to privateDb (hashing accountKey, stripping email from displayName)
+    const putCal = await apiRequest(ctx.baseUrl, '/api/calendar/profile/cal_tok_priv_1', {
+      method: 'PUT',
+      body: {
+        accountKey: 'email:privacy_student@ucsc.edu',
+        displayName: 'privacy_student@ucsc.edu',
+        joinedClubIds: ['solar_car'],
+      },
+    });
+    assert.equal(putCal.status, 200);
+    assert.equal(putCal.data.ok, true);
+
+    const getCal = await apiRequest(ctx.baseUrl, '/api/calendar/profile/cal_tok_priv_1');
+    assert.equal(getCal.status, 200);
+    assert.equal(getCal.data.exists, true);
+    assert.equal(
+      JSON.stringify(getCal.data).includes('privacy_student@ucsc.edu'),
+      false,
+      'Raw email address must never be stored in or returned from calendar sync profile'
+    );
   });
 });

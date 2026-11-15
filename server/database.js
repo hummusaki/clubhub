@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { categorizeClub } from '../collector/src/categorize.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, 'clubhub.db');
+const DB_PATH = process.env.CLUBHUB_DB_PATH
+  ? path.resolve(process.env.CLUBHUB_DB_PATH)
+  : path.join(__dirname, 'clubhub.db');
 const COLLECTOR_OUTPUT_PATH = path.resolve(__dirname, '../collector/output/clubhub-data.json');
 const PUBLIC_SNAPSHOT_PATH = path.resolve(__dirname, '../public/clubhub-data.json');
 const COLLECTOR_SAMPLE_PATH = path.resolve(__dirname, '../collector/fixtures/sample-output.json');
@@ -203,7 +205,7 @@ function initSchema(db) {
       postId      TEXT
     );
 
-    -- 6. DICTIONARY STORE (key-value lookup & metadata)
+    -- 6. DICTIONARY STORE (public club key-value lookup & metadata only; zero user PII)
     CREATE TABLE IF NOT EXISTS dictionary_store (
       key         TEXT PRIMARY KEY,
       namespace   TEXT NOT NULL DEFAULT 'general',
@@ -213,15 +215,7 @@ function initSchema(db) {
       updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- 7. CALENDAR SYNC PROFILES (private live subscription state for Google & Apple Calendar feeds)
-    CREATE TABLE IF NOT EXISTS calendar_sync_profiles (
-      token       TEXT PRIMARY KEY,
-      accountKey  TEXT,
-      payload     TEXT NOT NULL,
-      updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- 8. INTEGRATION CONFIGS (private credentials & user alert subscriptions; never exported publicly)
+    -- 7. INTEGRATION CONFIGS (club webhook configs; never exported publicly)
     CREATE TABLE IF NOT EXISTS integration_configs (
       id          TEXT PRIMARY KEY,
       scope       TEXT NOT NULL DEFAULT 'global',
@@ -285,6 +279,14 @@ function initSchema(db) {
   ]) {
     if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
   }
+
+  // Purge any legacy user-scoped tables or dictionary keys so public clubhub.db stays 100% PII-free.
+  db.exec(`
+    DROP TABLE IF EXISTS calendar_sync_profiles;
+    DROP TABLE IF EXISTS scheduler_responses;
+    DROP TABLE IF EXISTS scheduler_polls;
+    DELETE FROM dictionary_store WHERE key LIKE 'user_%' OR key LIKE 'user:%' OR key LIKE '%@%' OR namespace LIKE 'user%';
+  `);
 }
 
 // ── Sync a club's current relational state into dictionary_store ────
@@ -847,39 +849,6 @@ export function getDictionary({ namespace, clubId, source, prefix, q } = {}) {
     out[row.key] = safeParseJSON(row.value);
   }
   return out;
-}
-
-// ── Live Calendar Sync Profile Helpers (for /api/calendar/feed/:token.ics) ──
-export function saveCalendarSyncProfile(token, payload = {}, accountKey = null) {
-  const db = getDb();
-  const cleanToken = String(token || '').replace(/\.ics$/i, '').trim();
-  if (!cleanToken) return null;
-  const jsonPayload = JSON.stringify(payload ?? {});
-  db.stmt(`
-    INSERT INTO calendar_sync_profiles (token, accountKey, payload, updatedAt)
-    VALUES (?, ?, ?, datetime('now'))
-    ON CONFLICT(token) DO UPDATE SET
-      accountKey = COALESCE(excluded.accountKey, calendar_sync_profiles.accountKey),
-      payload    = excluded.payload,
-      updatedAt  = datetime('now')
-  `).run(cleanToken, accountKey || null, jsonPayload);
-  return { token: cleanToken, accountKey: accountKey || null, payload };
-}
-
-export function getCalendarSyncProfile(token) {
-  const db = getDb();
-  const cleanToken = String(token || '').replace(/\.ics$/i, '').trim();
-  if (!cleanToken) return null;
-  const row = db
-    .stmt('SELECT token, accountKey, payload, updatedAt FROM calendar_sync_profiles WHERE token = ?')
-    .get(cleanToken);
-  if (!row) return null;
-  return {
-    token: row.token,
-    accountKey: row.accountKey,
-    updatedAt: row.updatedAt,
-    payload: safeParseJSON(row.payload) || {},
-  };
 }
 
 // ── Private Integration Config & Subscription Helpers ───────────────

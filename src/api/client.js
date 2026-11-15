@@ -2,6 +2,9 @@
 // Clean frontend client for the SQLite database, Collector API & Multi-Source Sync.
 // Automatically operates in zero-error static mode on GitHub Pages when no backend API is configured.
 
+import { isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { handleDirectPollAction } from './supabaseDirectTasksAndPolls.js';
+
 const EXPLICIT_API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
 const SESSION_TOKEN_STORAGE_KEY = 'clubhub_session_token_v1';
 
@@ -85,34 +88,39 @@ async function resolveActiveApiBase() {
   }
   if (apiProbePromise) return apiProbePromise;
 
-  const candidateBase = isLocalhostHost()
+  const candidateBases = isLocalhostHost()
     ? window.location.port === '3001'
-      ? `${window.location.origin}/api`
-      : 'http://localhost:3001/api'
-    : `${window.location.origin}/api`;
+      ? [`${window.location.origin}/api`]
+      : [`${window.location.origin}/api`, 'http://localhost:3001/api']
+    : [`${window.location.origin}/api`];
 
   apiProbePromise = (async () => {
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), 1500) : null;
     try {
-      const res = await fetch(`${candidateBase}/health`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        ...(controller ? { signal: controller.signal } : {}),
-      });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data && data.status === 'ok') {
-          resolvedApiBase = candidateBase;
-          apiAvailabilityState = 'enabled';
-          return resolvedApiBase;
+      for (const candidateBase of candidateBases) {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), 1500) : null;
+        try {
+          const res = await fetch(`${candidateBase}/health`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            ...(controller ? { signal: controller.signal } : {}),
+          });
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.includes('application/json')) {
+            const data = await res.json();
+            if (data && data.status === 'ok') {
+              resolvedApiBase = candidateBase;
+              apiAvailabilityState = 'enabled';
+              return resolvedApiBase;
+            }
+          }
+        } catch {
+          // Try next candidate or fall back silently to static snapshot / direct Supabase mode
+        } finally {
+          if (timer) clearTimeout(timer);
         }
       }
-    } catch {
-      // Backend server not running or static host — fall back silently to static snapshot mode
     } finally {
-      if (timer) clearTimeout(timer);
       apiProbePromise = null;
     }
 
@@ -168,7 +176,7 @@ export async function fetchActionJSON(path, options = {}) {
         error: body?.error || `Request failed (HTTP ${res.status})`,
       };
     }
-    return { ok: true, offline: false, ...body };
+    return { ok: true, offline: false, data: body, ...body };
   } catch (err) {
     if (!EXPLICIT_API_BASE && isLocalhostHost()) {
       apiAvailabilityState = 'disabled';
@@ -362,8 +370,24 @@ export const createRosterEntry = data => fetchJSON('/roster', { method: 'POST', 
 export const getStats = () => fetchJSON('/stats');
 
 // ── 5. Collaborative When2Meet + Google Calendar Scheduler (/api/scheduler) ──
-export const getSchedulerPolls = () => fetchJSON('/scheduler/polls');
-export const getSchedulerPoll = id => fetchJSON(`/scheduler/polls/${encodeURIComponent(id)}`);
+export const getSchedulerPolls = async (params = {}) => {
+  const path = withQuery('/scheduler/polls', params);
+  const res = await fetchJSON(path);
+  if (Array.isArray(res)) return res;
+  if (isSupabaseConfigured()) {
+    return handleDirectPollAction(path, { method: 'GET' });
+  }
+  return res;
+};
+export const getSchedulerPoll = async id => {
+  const path = `/scheduler/polls/${encodeURIComponent(id)}`;
+  const res = await fetchJSON(path);
+  if (res && res.id) return res;
+  if (isSupabaseConfigured()) {
+    return handleDirectPollAction(path, { method: 'GET' });
+  }
+  return res;
+};
 export const createSchedulerPoll = data =>
   fetchJSON('/scheduler/polls', { method: 'POST', body: JSON.stringify(data) });
 export const saveSchedulerResponse = (pollId, data) =>
@@ -373,16 +397,36 @@ export const saveSchedulerResponse = (pollId, data) =>
   });
 export const parseSchedulerText = data =>
   fetchJSON('/scheduler/parse-text', { method: 'POST', body: JSON.stringify(data) });
-export const bookSchedulerSlot = (pollId, data) =>
-  fetchJSON(`/scheduler/polls/${encodeURIComponent(pollId)}/book`, {
+export const bookSchedulerSlot = async (pollId, data) => {
+  const path = `/scheduler/polls/${encodeURIComponent(pollId)}/book`;
+  const res = await fetchJSON(path, {
     method: 'POST',
     body: JSON.stringify(data),
   });
-export const unbookSchedulerSlot = (pollId, data) =>
-  fetchJSON(`/scheduler/polls/${encodeURIComponent(pollId)}/unbook`, {
+  if (res) return res;
+  if (isSupabaseConfigured()) {
+    return handleDirectPollAction(path, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  return null;
+};
+export const unbookSchedulerSlot = async (pollId, data) => {
+  const path = `/scheduler/polls/${encodeURIComponent(pollId)}/unbook`;
+  const res = await fetchJSON(path, {
     method: 'POST',
     body: JSON.stringify(data),
   });
+  if (res) return res;
+  if (isSupabaseConfigured()) {
+    return handleDirectPollAction(path, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  return null;
+};
 
 // ── 6. Live Calendar Sync Feed (/api/calendar & Vite Dev Fallback) ──
 function toWebcalUrl(httpUrl) {

@@ -109,9 +109,20 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
 
   const approvedClaimByRosterId = new Map();
   const pendingClaims = [];
+  let myActiveClaim = null;
   for (const cl of claimRows) {
     if (cl.status === 'approved') {
       approvedClaimByRosterId.set(cl.rosterId, cl);
+      if (requesterUser?.id && cl.userId === requesterUser.id) {
+        myActiveClaim = {
+          id: cl.id,
+          clubId: cl.clubId,
+          rosterId: cl.rosterId,
+          requestedRole: cl.requestedRole,
+          verificationMethod: cl.verificationMethod,
+          createdAt: cl.createdAt,
+        };
+      }
     } else if (cl.status === 'pending') {
       pendingClaims.push({
         id: cl.id,
@@ -296,6 +307,7 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
     everyone: everyoneList,
     publicRoster: enrichedPublicRoster,
     groups,
+    myActiveClaim,
     pendingClaims: perm.isBoard
       ? pendingClaims
       : pendingClaims.filter(c => c.userId === requesterUser?.id),
@@ -365,6 +377,23 @@ export function expandShortcutTargets(clubData, shortcutTargets = [], explicitPe
 }
 
 /**
+ * Returns the built-in personal to-do section metadata for a specific user & club/server.
+ */
+function makeDefaultPersonalSection(clubId, userId) {
+  return {
+    id: `sec_personal_${clubId}_${userId}`,
+    clubId,
+    title: 'My To-Do List',
+    color: 'green',
+    visibility: 'personal',
+    position: -1,
+    createdByUserId: userId,
+    isPersonal: true,
+    isDefaultPersonal: true,
+  };
+}
+
+/**
  * Ensures default Monday.com sections exist for a club when first opened.
  */
 async function ensureDefaultTaskSections(clubId, actorUserId = 'system') {
@@ -372,7 +401,7 @@ async function ensureDefaultTaskSections(clubId, actorUserId = 'system') {
     `SELECT * FROM club_task_sections WHERE clubId = ? ORDER BY position ASC, createdAt ASC`,
     [clubId]
   );
-  if (existing.length > 0) return existing;
+  if (existing.some(s => s.visibility !== 'personal')) return existing;
 
   const nowIso = new Date().toISOString();
   const defaults = [
@@ -507,7 +536,11 @@ router.get('/auth/me', requireAuth, async (req, res) => {
 });
 
 router.patch('/auth/profile', requireAuth, async (req, res) => {
-  const { fullName, major, gradYear, avatarBg } = req.body || {};
+  const { fullName, major, gradYear, avatarBg, themeMode } = req.body || {};
+  const cleanThemeMode =
+    typeof themeMode === 'string' && ['system', 'light', 'dark'].includes(themeMode.trim())
+      ? themeMode.trim()
+      : null;
   const nowIso = new Date().toISOString();
   await privExecute(
     `UPDATE users
@@ -515,6 +548,7 @@ router.patch('/auth/profile', requireAuth, async (req, res) => {
             major = COALESCE(?, major),
             gradYear = COALESCE(?, gradYear),
             avatarBg = COALESCE(?, avatarBg),
+            themeMode = COALESCE(?, themeMode),
             updatedAt = ?
       WHERE id = ?`,
     [
@@ -522,6 +556,7 @@ router.patch('/auth/profile', requireAuth, async (req, res) => {
       typeof major === 'string' ? major.trim() : null,
       typeof gradYear === 'string' ? gradYear.trim() : null,
       typeof avatarBg === 'string' && avatarBg.trim() ? avatarBg.trim() : null,
+      cleanThemeMode,
       nowIso,
       req.user.id,
     ]
@@ -533,6 +568,7 @@ router.patch('/auth/profile', requireAuth, async (req, res) => {
     major: updated.major,
     gradYear: updated.gradYear,
     avatarBg: updated.avatarBg,
+    themeMode: updated.themeMode,
   });
   res.json({ ok: true, ...overview });
 });
@@ -562,7 +598,7 @@ router.post('/clubs/:clubId/leave', requireAuth, async (req, res) => {
   const nowIso = new Date().toISOString();
 
   const tasks = await privQueryAll(
-    `SELECT id, assigneesJson FROM club_tasks WHERE clubId = ?`,
+    `SELECT id, assigneesJson FROM club_tasks WHERE clubId = ? AND visibility != 'personal'`,
     [clubId]
   );
   const taskScrubStmts = [];
@@ -1134,7 +1170,7 @@ router.post('/clubs/:clubId/roles/assign', requireAuth, async (req, res) => {
           ]
         : [
             {
-              sql: `UPDATE roster_claims SET status = 'revoked', updatedAt = ? WHERE clubId = ? AND userId = ? AND status = 'approved'`,
+              sql: `UPDATE roster_claims SET status = 'revoked', updatedAt = ? WHERE clubId = ? AND userId = ? AND status IN ('approved', 'pending')`,
               params: [nowIso, clubId, targetUser.id],
             },
           ]),
@@ -1381,7 +1417,7 @@ router.delete('/clubs/:clubId/groups/:groupId', requireAuth, async (req, res) =>
   res.json({ ok: true, clubPeople: updatedPeople });
 });
 
-// ── 5. Monday.com-Style Two-Tier Club Tasks & Higher-Perm Board View ──
+// ── 5. Monday.com-Style Two-Tier Club Tasks, Per-Server Personal To-Do & Higher-Perm Board View ──
 
 async function buildClubTasksBoardPayload(clubId, user, perm) {
   const allSections = await ensureDefaultTaskSections(clubId, user?.id || 'system');
@@ -1398,14 +1434,18 @@ async function buildClubTasksBoardPayload(clubId, user, perm) {
   const activeClubUserIds = new Set(activeMemberships.map(m => m.userId));
   const userEmailLower = normalizeEmail(user?.email || '');
 
+  // Shared club sections (never includes private `visibility = 'personal'` sections)
+  const sharedClubSections = allSections.filter(s => s.visibility !== 'personal');
+
   // Strict server-side RBAC filter: strip `visibility = 'board'` sections & tasks unless `perm.isBoard`,
   // and scope regular members to general club tasks + tasks assigned to them or their sub-groups!
   const visibleSections = perm.isBoard
-    ? allSections
-    : allSections.filter(s => s.visibility !== 'board');
+    ? sharedClubSections
+    : sharedClubSections.filter(s => s.visibility !== 'board');
 
   const visibleSectionIds = new Set(visibleSections.map(s => s.id));
   const formattedTasks = rawTasks
+    .filter(row => row.visibility !== 'personal')
     .map(row => {
       const t = formatTaskRow(row);
       const cleanGroupIds = (t.groupIds || []).filter(gid => validGroupIds.has(gid));
@@ -1434,11 +1474,43 @@ async function buildClubTasksBoardPayload(clubId, user, perm) {
       return isDirectlyAssigned || isGroupAssigned;
     });
 
+  // Per-server personal to-do sections & tasks: strictly isolated to `user.id` (private even from Board)
+  const defaultPersonalSection = user?.id ? makeDefaultPersonalSection(clubId, user.id) : null;
+  const customPersonalSections = user?.id
+    ? allSections
+        .filter(s => s.visibility === 'personal' && s.createdByUserId === user.id)
+        .map(s => ({ ...s, isPersonal: true, isDefaultPersonal: false }))
+    : [];
+  const personalSections = defaultPersonalSection
+    ? [defaultPersonalSection, ...customPersonalSections]
+    : [];
+  const validPersonalSectionIds = new Set(personalSections.map(s => s.id));
+
+  const personalTasks = user?.id
+    ? rawTasks
+        .filter(row => row.visibility === 'personal' && row.createdByUserId === user.id)
+        .map(row => {
+          const t = formatTaskRow(row);
+          const resolvedSectionId = validPersonalSectionIds.has(t.sectionId)
+            ? t.sectionId
+            : defaultPersonalSection.id;
+          return {
+            ...t,
+            sectionId: resolvedSectionId,
+            visibility: 'personal',
+            audience: 'personal',
+            isPersonal: true,
+          };
+        })
+    : [];
+
   return {
     clubId,
     permission: perm,
     sections: visibleSections,
     tasks: formattedTasks,
+    personalSections,
+    personalTasks,
   };
 }
 
@@ -1464,21 +1536,32 @@ router.get('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
 router.post('/clubs/:clubId/task-sections', requireAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const perm = await getClubPermission(req.user, clubId);
-  if (!perm.isBoard) {
+  const { title, color = 'blue', visibility = 'members' } = req.body || {};
+  const isPersonalSection = visibility === 'personal';
+
+  if (isPersonalSection) {
+    if (!perm.isMember && !perm.isBoard) {
+      return res.status(403).json({
+        error: 'Join this club before adding personal task sections.',
+        code: 'NOT_CLUB_MEMBER',
+      });
+    }
+  } else if (!perm.isBoard) {
     return res.status(403).json({
       error: 'Only claimed board members can create task sections.',
     });
   }
 
-  const { title, color = 'blue', visibility = 'members' } = req.body || {};
   const cleanTitle = String(title || '').trim().slice(0, 80);
   if (!cleanTitle) return res.status(400).json({ error: 'Section title is required.' });
 
-  const safeColor = VALID_COLORS.has(color) ? color : 'blue';
-  const safeVis = visibility === 'board' ? 'board' : 'members';
+  const safeColor = VALID_COLORS.has(color) ? color : isPersonalSection ? 'green' : 'blue';
+  const safeVis = isPersonalSection ? 'personal' : visibility === 'board' ? 'board' : 'members';
   const existing = await ensureDefaultTaskSections(clubId, req.user.id);
   const nextPos = existing.length;
-  const sectionId = `sec_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const sectionId = isPersonalSection
+    ? `sec_personal_custom_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`
+    : `sec_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
   const nowIso = new Date().toISOString();
 
   await privExecute(
@@ -1495,13 +1578,46 @@ router.post('/clubs/:clubId/task-sections', requireAuth, async (req, res) => {
 router.delete('/clubs/:clubId/task-sections/:sectionId', requireAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isMember && !perm.isBoard) {
+    return res.status(403).json({
+      error: 'Club membership required.',
+      code: 'NOT_CLUB_MEMBER',
+    });
+  }
+
+  const sectionId = req.params.sectionId;
+  const existingSection = await privQueryGet(
+    `SELECT * FROM club_task_sections WHERE clubId = ? AND id = ?`,
+    [clubId, sectionId]
+  );
+
+  if (existingSection && existingSection.visibility === 'personal') {
+    if (existingSection.createdByUserId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only delete your own personal task sections.' });
+    }
+    await privBatch([
+      {
+        sql: `DELETE FROM club_tasks WHERE clubId = ? AND sectionId = ? AND createdByUserId = ? AND visibility = 'personal'`,
+        params: [clubId, sectionId, req.user.id],
+      },
+      {
+        sql: `DELETE FROM club_task_sections WHERE clubId = ? AND id = ? AND createdByUserId = ?`,
+        params: [clubId, sectionId, req.user.id],
+      },
+    ]);
+    const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+    return res.json({ ok: true, ...payload });
+  }
+
   if (!perm.isBoard) {
     return res.status(403).json({ error: 'Only claimed board members can delete task sections.' });
   }
 
-  const sectionId = req.params.sectionId;
   await privBatch([
-    { sql: `DELETE FROM club_tasks WHERE clubId = ? AND sectionId = ?`, params: [clubId, sectionId] },
+    {
+      sql: `DELETE FROM club_tasks WHERE clubId = ? AND sectionId = ? AND visibility != 'personal'`,
+      params: [clubId, sectionId],
+    },
     { sql: `DELETE FROM club_task_sections WHERE clubId = ? AND id = ?`, params: [clubId, sectionId] },
   ]);
 
@@ -1512,11 +1628,6 @@ router.delete('/clubs/:clubId/task-sections/:sectionId', requireAuth, async (req
 router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const perm = await getClubPermission(req.user, clubId);
-  if (!perm.isBoard) {
-    return res.status(403).json({
-      error: 'Only claimed board members of this club can create and assign tasks.',
-    });
-  }
 
   const {
     title,
@@ -1530,12 +1641,98 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
     assignees = [],
     groupIds = [],
     shortcutTargets = [],
+    isPersonal = false,
   } = req.body || {};
+
+  const wantsPersonalTask =
+    Boolean(isPersonal) ||
+    rawVisibility === 'personal' ||
+    rawAudience === 'personal' ||
+    String(rawSectionId || '').startsWith('sec_personal_');
+
+  if (wantsPersonalTask) {
+    if (!perm.isMember && !perm.isBoard) {
+      return res.status(403).json({
+        error: 'Join this club to add personal to-do tasks.',
+        code: 'NOT_CLUB_MEMBER',
+      });
+    }
+
+    const cleanTitle = String(title || '').trim().slice(0, 160);
+    if (!cleanTitle) return res.status(400).json({ error: 'Task title is required.' });
+
+    const allSections = await ensureDefaultTaskSections(clubId, req.user.id);
+    const defaultPersonalSec = makeDefaultPersonalSection(clubId, req.user.id);
+    const ownedPersonalSectionIds = new Set([
+      defaultPersonalSec.id,
+      ...allSections
+        .filter(s => s.visibility === 'personal' && s.createdByUserId === req.user.id)
+        .map(s => s.id),
+    ]);
+    const targetPersonalSecId = ownedPersonalSectionIds.has(String(rawSectionId || ''))
+      ? String(rawSectionId)
+      : defaultPersonalSec.id;
+
+    const status = VALID_TASK_STATUSES.has(rawStatus) ? rawStatus : 'not_started';
+    const priority = VALID_TASK_PRIORITIES.has(rawPriority) ? rawPriority : 'medium';
+    const taskId = `ptsk_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const nowIso = new Date().toISOString();
+    const selfAssignee = [
+      {
+        memberKey: `uid:${req.user.id}`,
+        userId: req.user.id,
+        name: req.user.fullName,
+        initials: toInitials(req.user.fullName),
+        email: req.user.email || '',
+        roleTitle: perm.roleTitle || 'Member',
+        tier: perm.tier || 'member',
+      },
+    ];
+    const initialCompletedBy =
+      status === 'done'
+        ? [{ userId: req.user.id, name: req.user.fullName, completedAt: nowIso }]
+        : [];
+
+    await privExecute(
+      `INSERT INTO club_tasks (
+         id, clubId, sectionId, title, notes, visibility, audience,
+         status, priority, dueDate, assigneesJson, groupIdsJson, completedByJson,
+         position, createdByUserId, createdByName, createdAt, updatedAt
+       ) VALUES (?, ?, ?, ?, ?, 'personal', 'personal', ?, ?, ?, ?, '[]', ?, 0, ?, ?, ?, ?)`,
+      [
+        taskId,
+        clubId,
+        targetPersonalSecId,
+        cleanTitle,
+        String(notes || '').trim().slice(0, 800),
+        status,
+        priority,
+        String(dueDate || '').trim().slice(0, 32),
+        JSON.stringify(selfAssignee),
+        JSON.stringify(initialCompletedBy),
+        req.user.id,
+        req.user.fullName,
+        nowIso,
+        nowIso,
+      ]
+    );
+
+    const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+    const createdPersonal = payload.personalTasks.find(t => t.id === taskId) || null;
+    return res.status(201).json({ ok: true, task: createdPersonal, ...payload });
+  }
+
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members of this club can create and assign tasks.',
+    });
+  }
 
   const cleanTitle = String(title || '').trim().slice(0, 160);
   if (!cleanTitle) return res.status(400).json({ error: 'Task title is required.' });
 
   const sections = await ensureDefaultTaskSections(clubId, req.user.id);
+  const sharedSections = sections.filter(s => s.visibility !== 'personal');
   const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
 
   let visibility = rawVisibility === 'board' ? 'board' : 'members';
@@ -1576,17 +1773,17 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
   }
 
   // Pick section matching visibility if none provided
-  let targetSection = sections.find(s => s.id === rawSectionId);
+  let targetSection = sharedSections.find(s => s.id === rawSectionId);
   if (!targetSection) {
     if (visibility === 'board') {
-      targetSection = sections.find(s => s.visibility === 'board') || sections[0];
+      targetSection = sharedSections.find(s => s.visibility === 'board') || sharedSections[0];
     } else if (audience === 'targeted') {
       targetSection =
-        sections.find(s => s.id.endsWith('_sprint')) ||
-        sections.find(s => s.visibility === 'members') ||
-        sections[0];
+        sharedSections.find(s => s.id.endsWith('_sprint')) ||
+        sharedSections.find(s => s.visibility === 'members') ||
+        sharedSections[0];
     } else {
-      targetSection = sections.find(s => s.visibility === 'members') || sections[0];
+      targetSection = sharedSections.find(s => s.visibility === 'members') || sharedSections[0];
     }
   }
   if (targetSection?.visibility === 'board') {
@@ -1634,7 +1831,10 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const perm = await getClubPermission(req.user, clubId);
   if (!perm.isMember && !perm.isBoard) {
-    return res.status(403).json({ error: 'Club membership required.' });
+    return res.status(403).json({
+      error: 'Club membership required.',
+      code: 'NOT_CLUB_MEMBER',
+    });
   }
 
   const rawRow = await privQueryGet(
@@ -1644,12 +1844,91 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
   if (!rawRow) return res.status(404).json({ error: 'Task not found.' });
 
   const task = formatTaskRow(rawRow);
+  const nowIso = new Date().toISOString();
+  const body = req.body || {};
+
+  // Private Personal To-Do Task Path: strictly accessible ONLY by `task.createdByUserId` (even Board cannot touch another user's personal todo)
+  if (task.visibility === 'personal') {
+    if (task.createdByUserId !== req.user.id) {
+      return res.status(403).json({
+        error: 'Personal tasks are private and can only be modified by their creator.',
+      });
+    }
+
+    const nextTitle =
+      typeof body.title === 'string' && body.title.trim()
+        ? body.title.trim().slice(0, 160)
+        : task.title;
+    const nextNotes =
+      typeof body.notes === 'string' ? body.notes.trim().slice(0, 800) : task.notes;
+    const nextPriority =
+      body.priority && VALID_TASK_PRIORITIES.has(body.priority) ? body.priority : task.priority;
+    const nextDueDate =
+      typeof body.dueDate === 'string' ? body.dueDate.trim().slice(0, 32) : task.dueDate;
+
+    let nextStatus = task.status;
+    let nextCompletedBy = [...task.completedBy];
+
+    if (body.toggleCompletedForSelf) {
+      const willBeDone = task.status !== 'done';
+      nextStatus = willBeDone ? 'done' : 'not_started';
+      nextCompletedBy = willBeDone
+        ? [{ userId: req.user.id, name: req.user.fullName, completedAt: nowIso }]
+        : [];
+    } else if (body.status !== undefined) {
+      if (!VALID_TASK_STATUSES.has(body.status)) {
+        return res.status(400).json({ error: 'Invalid status value.' });
+      }
+      nextStatus = body.status;
+      nextCompletedBy =
+        nextStatus === 'done'
+          ? [{ userId: req.user.id, name: req.user.fullName, completedAt: nowIso }]
+          : [];
+    }
+
+    let nextSectionId = task.sectionId;
+    if (typeof body.sectionId === 'string' && body.sectionId) {
+      const allSections = await ensureDefaultTaskSections(clubId, req.user.id);
+      const defaultPersonalSec = makeDefaultPersonalSection(clubId, req.user.id);
+      const ownedPersonalSectionIds = new Set([
+        defaultPersonalSec.id,
+        ...allSections
+          .filter(s => s.visibility === 'personal' && s.createdByUserId === req.user.id)
+          .map(s => s.id),
+      ]);
+      if (ownedPersonalSectionIds.has(body.sectionId)) {
+        nextSectionId = body.sectionId;
+      }
+    }
+
+    await privExecute(
+      `UPDATE club_tasks
+          SET sectionId = ?, title = ?, notes = ?, visibility = 'personal', audience = 'personal',
+              status = ?, priority = ?, dueDate = ?, completedByJson = ?, updatedAt = ?
+        WHERE id = ? AND clubId = ? AND createdByUserId = ?`,
+      [
+        nextSectionId,
+        nextTitle,
+        nextNotes,
+        nextStatus,
+        nextPriority,
+        nextDueDate,
+        JSON.stringify(nextCompletedBy),
+        nowIso,
+        task.id,
+        clubId,
+        req.user.id,
+      ]
+    );
+
+    const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+    const updatedPersonal = payload.personalTasks.find(t => t.id === task.id) || null;
+    return res.json({ ok: true, task: updatedPersonal, ...payload });
+  }
+
   if (!perm.isBoard && (task.visibility === 'board' || task.audience === 'board')) {
     return res.status(403).json({ error: 'Board leadership permissions required for board tasks.' });
   }
-
-  const nowIso = new Date().toISOString();
-  const body = req.body || {};
 
   // Regular Member RBAC path: strictly scoped to own completion on general tasks OR status on tasks assigned to them / their groups
   if (!perm.isBoard) {
@@ -1740,7 +2019,7 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
     return res.json({ ok: true, task: updatedTask, ...payload });
   }
 
-  // Board Leader full edit path
+  // Board Leader full edit path (for shared club tasks)
   const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
   const nextTitle =
     typeof body.title === 'string' && body.title.trim()
@@ -1835,11 +2114,37 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
 router.delete('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isMember && !perm.isBoard) {
+    return res.status(403).json({
+      error: 'Club membership required.',
+      code: 'NOT_CLUB_MEMBER',
+    });
+  }
+
+  const rawRow = await privQueryGet(
+    `SELECT * FROM club_tasks WHERE id = ? AND clubId = ?`,
+    [req.params.taskId, clubId]
+  );
+
+  if (rawRow && rawRow.visibility === 'personal') {
+    if (rawRow.createdByUserId !== req.user.id) {
+      return res.status(403).json({
+        error: 'Personal tasks are private and can only be deleted by their creator.',
+      });
+    }
+    await privExecute(
+      `DELETE FROM club_tasks WHERE id = ? AND clubId = ? AND createdByUserId = ?`,
+      [req.params.taskId, clubId, req.user.id]
+    );
+    const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+    return res.json({ ok: true, ...payload });
+  }
+
   if (!perm.isBoard) {
     return res.status(403).json({ error: 'Only claimed board members can delete tasks.' });
   }
 
-  await privExecute(`DELETE FROM club_tasks WHERE id = ? AND clubId = ?`, [
+  await privExecute(`DELETE FROM club_tasks WHERE id = ? AND clubId = ? AND visibility != 'personal'`, [
     req.params.taskId,
     clubId,
   ]);

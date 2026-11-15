@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import { ExternalLink, ArrowRight } from 'lucide-react'
 import { announcements as defaultAnnouncements } from '../data/sampleData'
 import { Card, BubbleTag, IconBadge, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
+import { filterAndRankBySearch } from '../utils/search'
 
 export default function Announcements({
   items,
@@ -12,27 +14,27 @@ export default function Announcements({
   const base = items && items.length > 0 ? items : defaultAnnouncements
   const channels = userSettings?.channels || {}
 
-  const announcements = base.filter(item => {
-    const src = String(item.source || '').toLowerCase()
-    if (src.includes('instagram') && channels.instagram === false) return false
-    if (src.includes('discord') && channels.discord === false) return false
-    if (src.includes('email') && channels.email === false) return false
-
-    if (!searchQuery.trim()) return true
-    const q = searchQuery.toLowerCase()
-    return (
-      (item.title || '').toLowerCase().includes(q) ||
-      (item.description || '').toLowerCase().includes(q) ||
-      (item.club || '').toLowerCase().includes(q)
-    )
-  })
+  const announcements = useMemo(() => {
+    const channelFiltered = base.filter(item => {
+      const src = String(item.source || '').toLowerCase()
+      if (src.includes('instagram') && channels.instagram === false) return false
+      if (src.includes('discord') && channels.discord === false) return false
+      if (src.includes('email') && channels.email === false) return false
+      return true
+    })
+    return filterAndRankBySearch(channelFiltered, searchQuery, item => ({
+      primary: [item.title],
+      secondary: [item.club, item.type, item.source],
+      tertiary: [item.description],
+    }))
+  }, [base, channels, searchQuery])
 
   const isCompact = Boolean(userSettings?.compactCards)
 
   return (
     <Card
       className={`${isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
-      delay={3}
+      delay={2}
     >
       <div>
         <div className={`flex items-center justify-between gap-2 ${isCompact ? 'mb-3' : 'mb-4'}`}>

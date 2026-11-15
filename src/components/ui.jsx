@@ -192,16 +192,25 @@ export function Avatar({ initials, bg, size = 36, className = '' }) {
 }
 
 // ── Card wrapper ──
-export function Card({ children, className = '', style = {}, delay = 0, onClick }) {
+export function Card({
+  children,
+  className = '',
+  style = {},
+  delay = 0,
+  animate = true,
+  onClick,
+}) {
   const interactiveClasses = onClick
     ? 'cursor-pointer hover:shadow-[var(--shadow-md)] transition-[box-shadow,border-color,background-color] duration-200'
     : ''
+  const animStyle =
+    animate && delay > 0 ? { animationDelay: `${Math.min(delay, 5) * 0.03}s` } : undefined
   return (
     <div
       onClick={onClick}
       className={`bg-[var(--bg-card)] border border-[var(--border)] rounded-[var(--radius)]
-        shadow-[var(--shadow)] fade-in ${interactiveClasses} ${className}`}
-      style={{ animationDelay: `${delay * 0.04}s`, ...style }}
+        shadow-[var(--shadow)] ${animate ? 'fade-in' : ''} ${interactiveClasses} ${className}`}
+      style={animStyle ? { ...animStyle, ...style } : style}
     >
       {children}
     </div>
@@ -230,13 +239,14 @@ export function SearchBox({
   value,
   onChange,
   inputRef,
+  shortcutHint = null,
 }) {
   const isControlled = value !== undefined
   return (
     <div
       className="flex items-center gap-2.5 px-3.5 min-h-[42px] rounded-xl bg-[var(--bg-card)]
-        border border-[var(--border)] transition-all duration-200 max-w-full min-w-0
-        focus-within:border-[var(--blue)]"
+        border border-[var(--border)] hover:border-[var(--border-strong)] transition-all duration-200 max-w-full min-w-0
+        focus-within:border-[var(--blue)] focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--blue)_16%,transparent)]"
       style={{ width }}
     >
       <svg
@@ -271,10 +281,19 @@ export function SearchBox({
         placeholder={placeholder}
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
-        className="border-none outline-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0
+        onKeyDown={e => {
+          if (e.key === 'Escape') {
+            if (isControlled && value && onChange) {
+              onChange('')
+            } else {
+              e.currentTarget.blur()
+            }
+          }
+        }}
+        className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0
           placeholder:text-[var(--text-light)]"
       />
-      {isControlled && value && (
+      {isControlled && value ? (
         <button
           type="button"
           onClick={() => onChange && onChange('')}
@@ -283,7 +302,11 @@ export function SearchBox({
         >
           <X size={14} />
         </button>
-      )}
+      ) : shortcutHint ? (
+        <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--border)] text-[10.5px] font-semibold font-mono-num text-[var(--text-light)] select-none shrink-0 pointer-events-none">
+          {shortcutHint}
+        </kbd>
+      ) : null}
     </div>
   )
 }

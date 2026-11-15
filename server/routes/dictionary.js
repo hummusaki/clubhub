@@ -176,24 +176,53 @@ router.get('/hub/:clubId', (req, res) => {
   res.json(club);
 });
 
-// ── 6. Key-Value Dictionary Store (/api/dict) ───────────────────────
+// ── 6. Key-Value Dictionary Store (/api/dict — Strictly Public Club Metadata Only) ──
+function isPrivateUserDictKey(key) {
+  const clean = String(key || '').trim();
+  return /^user[_:]|@/i.test(clean);
+}
+
 router.get('/dict', (req, res) => {
   const namespace = firstStr(req.query.namespace) || undefined;
+  if (namespace && /^user/i.test(namespace)) {
+    return res.json({});
+  }
   const clubId = firstStr(req.query.clubId) || firstStr(req.query.club_id) || undefined;
   const source = firstStr(req.query.source) || undefined;
   const prefix = firstStr(req.query.prefix) || undefined;
   const q = firstStr(req.query.q) || undefined;
-  res.json(getDictionary({ namespace, clubId, source, prefix, q }));
+  const rawDict = getDictionary({ namespace, clubId, source, prefix, q });
+  const safeDict = {};
+  for (const [k, v] of Object.entries(rawDict || {})) {
+    if (!isPrivateUserDictKey(k) && !/^user/i.test(v?.namespace || '')) {
+      safeDict[k] = v;
+    }
+  }
+  res.json(safeDict);
 });
 
 router.get('/dict/:key', (req, res) => {
+  if (isPrivateUserDictKey(req.params.key)) {
+    return res.status(403).json({
+      error: 'User-scoped keys and email identifiers are forbidden in the public dictionary store.',
+      code: 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT',
+    });
+  }
   const entry = getDictEntry(req.params.key);
-  if (!entry) return res.status(404).json({ error: `Key "${req.params.key}" not found` });
+  if (!entry || /^user/i.test(entry.namespace || '')) {
+    return res.status(404).json({ error: `Key "${req.params.key}" not found` });
+  }
   res.json(entry);
 });
 
 router.put('/dict/:key', (req, res) => {
   const { value, namespace, clubId, club_id, source } = req.body || {};
+  if (isPrivateUserDictKey(req.params.key) || /^user/i.test(namespace || '')) {
+    return res.status(403).json({
+      error: 'Private user data cannot be stored in the public dictionary store. Use /api/workspace/* instead.',
+      code: 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT',
+    });
+  }
   const storedValue = value !== undefined ? value : req.body;
   res.json(
     setDictEntry(req.params.key, storedValue, {
@@ -206,14 +235,32 @@ router.put('/dict/:key', (req, res) => {
 
 router.post('/dict', (req, res) => {
   const { key, value, entries, namespace = 'custom', clubId, club_id, source = 'manual' } = req.body || {};
+  if (/^user/i.test(namespace || '')) {
+    return res.status(403).json({
+      error: 'Private user namespaces cannot be stored in the public dictionary store.',
+      code: 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT',
+    });
+  }
   const cid = normalizeClubId(clubId || club_id) || null;
 
   if (entries && typeof entries === 'object') {
+    if (Object.keys(entries).some(k => isPrivateUserDictKey(k))) {
+      return res.status(403).json({
+        error: 'Private user keys or emails cannot be stored in the public dictionary store.',
+        code: 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT',
+      });
+    }
     const results = setDictEntries(entries, { namespace, clubId: cid, source });
     return res.status(201).json({ updated: Object.keys(results).length, dictionary: results });
   }
   if (!key) {
     return res.status(400).json({ error: 'Provide either "key" + "value" or "entries" object' });
+  }
+  if (isPrivateUserDictKey(key)) {
+    return res.status(403).json({
+      error: 'Private user keys or emails cannot be stored in the public dictionary store.',
+      code: 'USER_PII_FORBIDDEN_IN_PUBLIC_DICT',
+    });
   }
   res.status(201).json(setDictEntry(key, value, { namespace, clubId: cid, source }));
 });

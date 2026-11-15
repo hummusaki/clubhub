@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --no-warnings --test tests/*.test.js",
+    "test": "node --no-warnings --test tests/*.test.js tests/*.test.mjs",
     "preview": "vite preview",
-    "server": "node --no-warnings server/index.js",
+    "server": "node --watch --no-warnings server/index.js",
     "sync:static": "node --no-warnings server/exportStatic.js",
     "sync:rosters": "node --no-warnings server/syncRosters.js",
     "scout:discord": "node --no-warnings server/scoutDiscordServers.js",

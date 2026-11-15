@@ -27,6 +27,7 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
     major          TEXT NOT NULL DEFAULT '',
     gradYear       TEXT NOT NULL DEFAULT '',
     avatarBg       TEXT NOT NULL DEFAULT '',
+    themeMode      TEXT NOT NULL DEFAULT 'system',
     passwordHash   TEXT,
     passwordSalt   TEXT,
     authProvider   TEXT NOT NULL DEFAULT 'email',
@@ -178,6 +179,8 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
     visibility              TEXT NOT NULL DEFAULT 'public_link',
     invitedParticipantsJson TEXT NOT NULL DEFAULT '[]',
     bookedEventsJson        TEXT NOT NULL DEFAULT '[]',
+    archived                INTEGER NOT NULL DEFAULT 0,
+    archivedAt              TEXT,
     createdByUserId         TEXT,
     createdByName           TEXT NOT NULL DEFAULT '',
     createdAt               TEXT NOT NULL
@@ -219,6 +222,13 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
     createdAt          TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_priv_ann_club ON club_announcements_private(clubId, visibility)`,
+
+  `CREATE TABLE IF NOT EXISTS calendar_sync_profiles (
+    token       TEXT PRIMARY KEY,
+    accountHash TEXT,
+    payload     TEXT NOT NULL DEFAULT '{}',
+    updatedAt   TEXT NOT NULL
+  )`,
 ];
 
 function getTursoConfig() {
@@ -372,11 +382,60 @@ export async function ensurePrivateSchema() {
         turso,
         PRIVATE_SCHEMA_STATEMENTS.map(sql => ({ sql, params: [] }))
       );
+      const [tableInfo, userTableInfo] = await runTursoPipeline(turso, [
+        { sql: 'PRAGMA table_info(club_polls)', params: [] },
+        { sql: 'PRAGMA table_info(users)', params: [] },
+      ]);
+      const colNames = new Set((tableInfo?.rows || []).map(r => r.name));
+      const userColNames = new Set((userTableInfo?.rows || []).map(r => r.name));
+      const migrations = [];
+      if (!colNames.has('archived')) {
+        migrations.push({
+          sql: 'ALTER TABLE club_polls ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+          params: [],
+        });
+      }
+      if (!colNames.has('archivedAt')) {
+        migrations.push({
+          sql: 'ALTER TABLE club_polls ADD COLUMN archivedAt TEXT',
+          params: [],
+        });
+      }
+      if (!userColNames.has('themeMode')) {
+        migrations.push({
+          sql: "ALTER TABLE users ADD COLUMN themeMode TEXT NOT NULL DEFAULT 'system'",
+          params: [],
+        });
+      }
+      if (migrations.length > 0) {
+        await runTursoPipeline(turso, migrations);
+      }
       return;
     }
     const db = getLocalPrivateDb();
     for (const sql of PRIVATE_SCHEMA_STATEMENTS) {
       db.exec(sql);
+    }
+    const pollCols = new Set(
+      db
+        .prepare('PRAGMA table_info(club_polls)')
+        .all()
+        .map(c => c.name)
+    );
+    if (!pollCols.has('archived')) {
+      db.exec('ALTER TABLE club_polls ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!pollCols.has('archivedAt')) {
+      db.exec('ALTER TABLE club_polls ADD COLUMN archivedAt TEXT');
+    }
+    const userCols = new Set(
+      db
+        .prepare('PRAGMA table_info(users)')
+        .all()
+        .map(c => c.name)
+    );
+    if (!userCols.has('themeMode')) {
+      db.exec("ALTER TABLE users ADD COLUMN themeMode TEXT NOT NULL DEFAULT 'system'");
     }
     if (!activeDbPathOverride && isServerSupabaseConfigured()) {
       await hydrateInMemoryDbFromSupabase(db);

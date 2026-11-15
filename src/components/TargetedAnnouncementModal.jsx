@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Megaphone, X, Send } from 'lucide-react'
-import { BubbleTag } from './ui'
+import { BubbleTag, SectionHeader, cleanText } from './ui'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import { createClubAnnouncement } from '../api/workspaceClient'
 
@@ -22,6 +22,14 @@ export default function TargetedAnnouncementModal({
   const [permalink, setPermalink] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const handleKey = e => {
+      if (e.key === 'Escape' && onClose) onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   function handleToggleShortcut(token) {
     setSelectedShortcuts(prev => {
@@ -80,26 +88,37 @@ export default function TargetedAnnouncementModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-      <div className="w-full max-w-lg rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-lg)] p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Megaphone size={18} className="text-[var(--blue)]" />
-            <h3 className="text-base font-bold text-[var(--text)]">
-              New Targeted Announcement · {clubName}
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close modal"
-            className="p-1.5 rounded-lg bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-[var(--text-muted)]"
-          >
-            <X size={16} />
-          </button>
+    <div
+      className="fixed inset-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`New Targeted Announcement for ${cleanText(clubName)}`}
+        className="modal-panel w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-y-auto fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="pb-3.5 border-b border-[var(--border)]">
+          <SectionHeader
+            icon={<Megaphone size={18} />}
+            color="purple"
+            title="New Targeted Announcement"
+            subtitle={`${cleanText(clubName)} · Broadcast to everyone, Board leadership, or sub-groups`}
+            action={
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close modal"
+                className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X size={16} />
+              </button>
+            }
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <LeadershipShortcutBar
             clubPeople={clubPeople}
             selectedShortcuts={selectedShortcuts}
@@ -129,15 +148,15 @@ export default function TargetedAnnouncementModal({
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Category
               </label>
               <select
                 value={type}
                 onChange={e => setType(e.target.value)}
-                className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-medium text-[var(--text)]"
+                className="w-full min-h-[42px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm font-medium text-[var(--text)]"
               >
                 {ANNOUNCEMENT_TYPES.map(t => (
                   <option key={t} value={t}>
@@ -147,13 +166,13 @@ export default function TargetedAnnouncementModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Visibility Tier
               </label>
               <select
                 value={visibility}
                 onChange={e => setVisibility(e.target.value)}
-                className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-medium text-[var(--text)]"
+                className="w-full min-h-[42px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm font-medium text-[var(--text)]"
               >
                 <option value="members">All Club Members</option>
                 <option value="group">Targeted Sub-Groups Only</option>
@@ -164,7 +183,7 @@ export default function TargetedAnnouncementModal({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Headline
             </label>
             <input
@@ -172,12 +191,12 @@ export default function TargetedAnnouncementModal({
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g., Marketing sprint kickoff moved to Room 152"
-              className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text)]"
+              className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Details
             </label>
             <textarea
@@ -185,12 +204,12 @@ export default function TargetedAnnouncementModal({
               value={body}
               onChange={e => setBody(e.target.value)}
               placeholder="Share agenda notes, action items, or links..."
-              className="w-full p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text)] resize-y"
+              className="w-full p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)] resize-y"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">
+            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Optional Link
             </label>
             <input
@@ -198,30 +217,30 @@ export default function TargetedAnnouncementModal({
               value={permalink}
               onChange={e => setPermalink(e.target.value)}
               placeholder="https://..."
-              className="w-full min-h-[36px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text)]"
+              className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-sm text-[var(--text)]"
             />
           </div>
 
           {error && (
-            <div className="text-xs font-semibold text-[var(--red-ink)] bg-[var(--red-light)] px-3 py-2 rounded-lg">
+            <div className="text-xs font-semibold text-[var(--red-ink)] bg-[var(--red-light)] border border-[var(--red)]/30 px-3 py-2.5 rounded-xl">
               {error}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="flex flex-col-reverse xs:flex-row items-stretch xs:items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] cursor-pointer"
+              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-sm font-semibold text-[var(--text)] cursor-pointer transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 px-4.5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-sm font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              <Send size={13} />
+              <Send size={14} />
               <span>{busy ? 'Publishing…' : 'Publish Announcement'}</span>
             </button>
           </div>

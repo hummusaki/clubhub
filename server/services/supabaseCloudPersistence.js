@@ -23,6 +23,7 @@ const PERSISTED_TABLES = [
   'club_polls',
   'club_poll_responses',
   'club_announcements_private',
+  'calendar_sync_profiles',
 ];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -261,10 +262,18 @@ export async function syncSnapshotToSupabase(sqliteDb) {
       visibility: ['public_link', 'club_members', 'board_only'].includes(p.visibility)
         ? p.visibility
         : 'public_link',
+      archived: Boolean(p.archived),
+      archived_at: p.archivedAt || null,
       created_by: userUuidByLocalId.get(p.createdByUserId),
     }));
   if (pollRows.length > 0) {
-    await admin.from('polls').upsert(pollRows, { onConflict: 'id' });
+    const { error: pollUpsertErr } = await admin
+      .from('polls')
+      .upsert(pollRows, { onConflict: 'id' });
+    if (pollUpsertErr && /archived/i.test(pollUpsertErr.message || '')) {
+      const legacyPollRows = pollRows.map(({ archived: _a, archived_at: _at, ...rest }) => rest);
+      await admin.from('polls').upsert(legacyPollRows, { onConflict: 'id' });
+    }
   }
 
   const pollIdsSet = new Set(pollRows.map(p => p.id));
@@ -308,7 +317,11 @@ export async function syncSnapshotToSupabase(sqliteDb) {
     (snapshot.club_task_sections || []).map(s => [s.id, { title: s.title, color: s.color }])
   );
   const taskRows = (snapshot.club_tasks || []).map(t => {
-    const sec = sectionTitleById.get(t.sectionId) || { title: 'General Club Tasks', color: 'blue' };
+    const fallbackSec =
+      t.visibility === 'personal'
+        ? { title: 'My To-Do List', color: 'green' }
+        : { title: 'General Club Tasks', color: 'blue' };
+    const sec = sectionTitleById.get(t.sectionId) || fallbackSec;
     const assignedUuids = parseJson(t.assigneesJson, [])
       .map(a => userUuidByLocalId.get(a.userId))
       .filter(Boolean);
@@ -322,8 +335,15 @@ export async function syncSnapshotToSupabase(sqliteDb) {
       section_color: sec.color || 'blue',
       title: t.title,
       notes: t.notes || '',
-      visibility: t.visibility === 'board' ? 'board' : 'members',
-      audience: ['general', 'targeted', 'board'].includes(t.audience) ? t.audience : 'general',
+      visibility:
+        t.visibility === 'personal'
+          ? 'personal'
+          : t.visibility === 'board'
+            ? 'board'
+            : 'members',
+      audience: ['general', 'targeted', 'board', 'personal'].includes(t.audience)
+        ? t.audience
+        : 'general',
       status: t.status || 'not_started',
       priority: t.priority || 'medium',
       due_date: /^\d{4}-\d{2}-\d{2}$/.test(t.dueDate || '') ? t.dueDate : null,
@@ -336,5 +356,16 @@ export async function syncSnapshotToSupabase(sqliteDb) {
   });
   if (taskRows.length > 0) {
     await admin.from('tasks').upsert(taskRows, { onConflict: 'id' });
+  }
+}
+
+export async function deletePollFromSupabase(pollId) {
+  if (!isServerSupabaseConfigured() || !pollId) return;
+  const admin = getSupabaseAdminClient();
+  if (!admin) return;
+  try {
+    await admin.from('polls').delete().eq('id', toDeterministicUuid(pollId));
+  } catch {
+    // Ignore best-effort relational cleanup errors
   }
 }

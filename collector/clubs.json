@@ -78,14 +78,22 @@
     "instagram": "ucscredcross",
     "category": "service & advocacy",
     "email": "ucscredcross@gmail.com",
-    "description": "We are here to assist the school and the American Red Cross in instituting, encouraging, unifying, and executing projects and services in cooperation with the Santa Cruz Region Chapter."
+    "description": "We are here to assist the school and the American Red Cross in instituting, encouraging, unifying, and executing projects and services in cooperation with the Santa Cruz Region Chapter.",
+    "discord": "https://discord.gg/fXkgtKzvcm",
+    "discordGuildId": "701555560818016330",
+    "discordServerName": "UCSC ARCA",
+    "discordFollowable": false
   },
   {
     "name": "Asian American Christian Fellowship (AACF)",
     "instagram": "aacfucsc",
     "category": "cultural",
     "email": "aacf.ucsc@aacf.org",
-    "description": "We are a Christian fellowship at UC Santa Cruz dedicated to reaching our campus with the life-changing message of Jesus Christ. Our ministry includes Large Group Gatherings with messages from guest pastors, Small Group Discussions, Discipleship, Worship, Prayer."
+    "description": "We are a Christian fellowship at UC Santa Cruz dedicated to reaching our campus with the life-changing message of Jesus Christ. Our ministry includes Large Group Gatherings with messages from guest pastors, Small Group Discussions, Discipleship, Worship, Prayer.",
+    "discord": "https://discord.gg/un5qPdAZJj",
+    "discordGuildId": "692117895479689293",
+    "discordServerName": "UCSC AACF",
+    "discordFollowable": false
   },
   {
     "name": "Asian Pacific Islander Student Alliance (APISA)",
@@ -99,7 +107,11 @@
     "instagram": "ucsc_apaa",
     "category": "pre-professional",
     "email": "ucsc.apaa@gmail.com",
-    "description": "Committed to educating pre-PA students about their future health profession by organizing activities and providing mentorship support."
+    "description": "Committed to educating pre-PA students about their future health profession by organizing activities and providing mentorship support.",
+    "discord": "https://discord.gg/mz72Fdgn9f",
+    "discordGuildId": "765778907210448896",
+    "discordServerName": "Aspiring Physician Assistant Association",
+    "discordFollowable": false
   },
   {
     "name": "Association for Computing Machinery – Women at UCSC (ACM-W)",
@@ -113,14 +125,22 @@
     "instagram": "bsacruz",
     "category": "cultural",
     "email": "bsasantacruz@gmail.com",
-    "description": "A club to celebrate and share the culture of Bangladesh."
+    "description": "A club to celebrate and share the culture of Bangladesh.",
+    "discord": "https://discord.gg/NykjPspf3T",
+    "discordGuildId": "1151284779988308088",
+    "discordServerName": "UCSC Bangladeshi Student Association",
+    "discordFollowable": true
   },
   {
     "name": "Bayanihan",
     "instagram": "bayanihan.santacruz",
     "category": "cultural",
     "email": "bayanihan.ucsc@gmail.com",
-    "description": "Bayanihan is the Filipino Student Association on campus, housing 12 different aspects: Activities, Alay, A Step Forward, Digital & Social Media, Haluan Hip Hop Dance Troupe, Isang Himig, Itayo, Kuya-Ate Mentorship Program, Kasama Ballroom Dance Troupe, People Power, and Pipinx Historical Diaglogue"
+    "description": "Bayanihan is the Filipino Student Association on campus, housing 12 different aspects: Activities, Alay, A Step Forward, Digital & Social Media, Haluan Hip Hop Dance Troupe, Isang Himig, Itayo, Kuya-Ate Mentorship Program, Kasama Ballroom Dance Troupe, People Power, and Pipinx Historical Diaglogue",
+    "discord": "https://discord.gg/cCgYSzb",
+    "discordGuildId": "688612860032581676",
+    "discordServerName": "Bayanihan @ UCSC",
+    "discordFollowable": true
   },
   {
     "name": "Bhakti Yoga Club (FKA BEATS)",
@@ -134,7 +154,11 @@
     "instagram": "ucscbioethics",
     "category": "pre-professional",
     "email": "bioethics-team-group@ucsc.edu",
-    "description": "UCSC Bioethics is the premier club at UCSC that bridges STEM and humanities, building ethical frameworks, debating cutting-edge science, and competing nationally. We lead students in exploring bioethical pathways through multiple interdisciplinary facets."
+    "description": "UCSC Bioethics is the premier club at UCSC that bridges STEM and humanities, building ethical frameworks, debating cutting-edge science, and competing nationally. We lead students in exploring bioethical pathways through multiple interdisciplinary facets.",
+    "discord": "https://discord.gg/7AnuwW3hbY",
+    "discordGuildId": "1431012917326647399",
+    "discordServerName": "UCSC Bioethics Club",
+    "discordFollowable": false
   },
   {
     "name": "Black Student Union (BSU)",
@@ -148,7 +172,11 @@
     "instagram": "ucscbea",
     "category": "pre-professional",
     "email": "ucscbea@ucsc.edu",
-    "description": "Business Economics Academia (BEA) is UCSC’s oldest inclusive club for networking, study groups, social and career-focused workshops, and industry speakers, plus a welcoming community open to all majors!"
+    "description": "Business Economics Academia (BEA) is UCSC’s oldest inclusive club for networking, study groups, social and career-focused workshops, and industry speakers, plus a welcoming community open to all majors!",
+    "discord": "https://discord.gg/7ettP5XDhG",
+    "discordGuildId": "1309026182364135445",
+    "discordServerName": "BEA | Business Economics Academia | UCSC",
+    "discordFollowable": false
   },
   {
     "name": "Central Americans For Empowerment (CAFE)",
@@ -162,7 +190,11 @@
     "instagram": "ucscchessclub",
     "category": "gaming",
     "email": "ucsc.chess@gmail.com",
-    "description": "Chess. We also play variants like bughouse, and occasionally hold casual tournaments."
+    "description": "Chess. We also play variants like bughouse, and occasionally hold casual tournaments.",
+    "discord": "https://discord.gg/hgU4WFje6Y",
+    "discordGuildId": "892081729358143529",
+    "discordServerName": "UCSC Chess",
+    "discordFollowable": false
   },
   {
     "name": "Chicanx and Latine Educandose (ChALE)",
@@ -176,14 +208,22 @@
     "instagram": "csa_ucsc",
     "category": "cultural",
     "email": "csaofucsc@gmail.com",
-    "description": "The Chinese Student Association is a student organization and resource devoted to promoting unity and empowerment among UCSC students through education and recognition of Asian and Asian American culture, emphasizing Chinese and Chinese Americans."
+    "description": "The Chinese Student Association is a student organization and resource devoted to promoting unity and empowerment among UCSC students through education and recognition of Asian and Asian American culture, emphasizing Chinese and Chinese Americans.",
+    "discord": "https://discord.gg/qtp8XFXgHa",
+    "discordGuildId": "692971099847262208",
+    "discordServerName": "CSA of UCSC",
+    "discordFollowable": true
   },
   {
     "name": "Chinese Students and Scholars Association",
     "instagram": "ucsc_cssa",
     "category": "cultural",
     "email": "ucsccssa666@gmail.com",
-    "description": "CSSA is a student-run organization that brings together Chinese students and scholars at UC Santa Cruz, helps new students adjust to campus life, and shares Chinese culture with the wider UCSC community."
+    "description": "CSSA is a student-run organization that brings together Chinese students and scholars at UC Santa Cruz, helps new students adjust to campus life, and shares Chinese culture with the wider UCSC community.",
+    "discord": "https://discord.gg/6qnmHUWJQ3",
+    "discordGuildId": "1166539478446383134",
+    "discordServerName": "UCSC_CSSA赛博小屋",
+    "discordFollowable": true
   },
   {
     "name": "Chinquapin Literary Magazine",
@@ -211,7 +251,11 @@
     "instagram": "ucsccki",
     "category": "service & advocacy",
     "email": "pres.ucsc.cki@gmail.com",
-    "description": "Circle K International(CKI) is one of the world’s largest student-led collegiate service organizations. We offer volunteering, leadership development, & fellowship opportunities to meet new friends and positively impact our community."
+    "description": "Circle K International(CKI) is one of the world’s largest student-led collegiate service organizations. We offer volunteering, leadership development, & fellowship opportunities to meet new friends and positively impact our community.",
+    "discord": "https://discord.gg/Hk5pME3w64",
+    "discordGuildId": "989018453568540722",
+    "discordServerName": "UCSC Circle K",
+    "discordFollowable": false
   },
   {
     "name": "City on a Hill Press",
@@ -239,7 +283,11 @@
     "instagram": "ucsccollegedems",
     "category": "service & advocacy",
     "email": "blueslugs@gmail.com",
-    "description": "We are a student organization that aims to educate students about the United States’ political system and the Democratic Party Platform, register voters on campus and in the community, participate in on and off-campus events and community service activities."
+    "description": "We are a student organization that aims to educate students about the United States’ political system and the Democratic Party Platform, register voters on campus and in the community, participate in on and off-campus events and community service activities.",
+    "discord": "https://discord.gg/dkrCWnd3Ve",
+    "discordGuildId": "1432956354179371071",
+    "discordServerName": "CYD Bay Area Region Server",
+    "discordFollowable": true
   },
   {
     "name": "College Panhellenic Council",
@@ -260,7 +308,11 @@
     "instagram": "cusn.ucsc",
     "category": "cultural",
     "email": "cusnretentionucsc@gmail.com",
-    "description": "CUSN is a peer program dedicated, but not exclusive to the Asian-American/ Pacific Islander (AA/PI) community at UC Santa Cruz."
+    "description": "CUSN is a peer program dedicated, but not exclusive to the Asian-American/ Pacific Islander (AA/PI) community at UC Santa Cruz.",
+    "discord": "https://discord.gg/DQDTj9fsJj",
+    "discordGuildId": "1327334964571803768",
+    "discordServerName": "UCSC Community Unified Student Network (CUSN)",
+    "discordFollowable": true
   },
   {
     "name": "Dance Club",
@@ -315,7 +367,11 @@
     "instagram": "eyecandyfilmjournal",
     "category": "media & arts",
     "email": "eyecandyfilmjournal@gmail.com",
-    "description": "EyeCandy Film Journal is an annually released student-run publication that is devoted to highlighting students passions of film, television, and visual media."
+    "description": "EyeCandy Film Journal is an annually released student-run publication that is devoted to highlighting students passions of film, television, and visual media.",
+    "discord": "https://discord.gg/76JU6nF5kg",
+    "discordGuildId": "1435718480036102276",
+    "discordServerName": "EyeCandy Film Journal",
+    "discordFollowable": true
   },
   {
     "name": "Film Production Coalition (FPC)",
@@ -343,7 +399,11 @@
     "instagram": "gdacollab",
     "category": "tech & science",
     "email": "gdacollab@ucsc.edu",
-    "description": "A student-run game development club at UCSC dedicated to all things game-development! We teach several multidisciplinary workshops, host game jams, community events, career fairs, fieldtrips, and run a large studio simulation to develop one large game each year."
+    "description": "A student-run game development club at UCSC dedicated to all things game-development! We teach several multidisciplinary workshops, host game jams, community events, career fairs, fieldtrips, and run a large studio simulation to develop one large game each year.",
+    "discord": "https://discord.gg/e7BxuZh6Yp",
+    "discordGuildId": "299292000467943426",
+    "discordServerName": "Game Design & Art Collaboration",
+    "discordFollowable": true
   },
   {
     "name": "Gamma Phi Beta (GPhi)",
@@ -357,14 +417,22 @@
     "instagram": "ucscgps",
     "category": "service & advocacy",
     "email": "ucscgps@gmail.com",
-    "description": "Global Strategy Politics (GPS) Club gives weekly geopolitical updates on the world and discusses them. Additionally we discuss ideas on government and reforming system so that we may better the systems we live in. Our organization is open to all who are interested!"
+    "description": "Global Strategy Politics (GPS) Club gives weekly geopolitical updates on the world and discusses them. Additionally we discuss ideas on government and reforming system so that we may better the systems we live in. Our organization is open to all who are interested!",
+    "discord": "https://discord.gg/y9zvr6scwa",
+    "discordGuildId": "1551817158000910416",
+    "discordServerName": "UCSC Global Politics Strategy GPS",
+    "discordFollowable": true
   },
   {
     "name": "Google Developer Group on Campus UCSC",
     "instagram": "gdgc_ucsc",
     "category": "tech & science",
     "email": "ucsc.dsc@gmail.edu",
-    "description": "Google Developer Group on Campus at UC Santa Cruz's goal is to bridge the gap between theory and practice in computer science in a supportive and inclusive environment. We provide industry relevant technical workshops, resource panels, and project experience."
+    "description": "Google Developer Group on Campus at UC Santa Cruz's goal is to bridge the gap between theory and practice in computer science in a supportive and inclusive environment. We provide industry relevant technical workshops, resource panels, and project experience.",
+    "discord": "https://discord.gg/6Ac3rPt",
+    "discordGuildId": "765439019122163733",
+    "discordServerName": "Google DGC at UCSC!",
+    "discordFollowable": false
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
@@ -392,7 +460,11 @@
     "instagram": "haudeucsc",
     "category": "cultural",
     "email": "jcarbaj4@ucsc.edu",
-    "description": "The purpose of this organization shall be to provide undergraduate, graduate, and professional resources and leadership opportunities for predominantly Chicana/Latina college students and alumni by participating in and organizing community service, collegial"
+    "description": "The purpose of this organization shall be to provide undergraduate, graduate, and professional resources and leadership opportunities for predominantly Chicana/Latina college students and alumni by participating in and organizing community service, collegial",
+    "discord": "https://discord.gg/BEWpsg8SZu",
+    "discordGuildId": "1168649575419093022",
+    "discordServerName": "Hermanas Unidas de UCSC",
+    "discordFollowable": false
   },
   {
     "name": "Hermanes De UCSC",
@@ -420,7 +492,11 @@
     "instagram": "ucsciba",
     "category": "pre-professional",
     "email": "niangeor@ucsc.edu",
-    "description": "UCSC Investment Banking Academy is a high finance club for students interested in pursuing a career in a finance-related field."
+    "description": "UCSC Investment Banking Academy is a high finance club for students interested in pursuing a career in a finance-related field.",
+    "discord": "https://discord.gg/MEc9UX99S4",
+    "discordGuildId": "1445915582825369631",
+    "discordServerName": "🌳 Linktree Community",
+    "discordFollowable": true
   },
   {
     "name": "Isang Himing (IH)",
@@ -434,7 +510,11 @@
     "instagram": "ucsc_jsa",
     "category": "cultural",
     "email": "jsaucsc@gmail.com",
-    "description": "The Japanese Student Association is a student organization that creates cultural awareness, appreciation and community engagement through traditional events and celebrations."
+    "description": "The Japanese Student Association is a student organization that creates cultural awareness, appreciation and community engagement through traditional events and celebrations.",
+    "discord": "https://discord.gg/2vhb7T2PPd",
+    "discordGuildId": "688954214579437677",
+    "discordServerName": "UCSC JSA",
+    "discordFollowable": true
   },
   {
     "name": "Jewish Student Union",
@@ -581,7 +661,11 @@
     "instagram": "ucscnewman",
     "category": "faith",
     "email": "ucscnewmancenter@gmail.com",
-    "description": "The official Catholic student group at UCSC. We host weekly mass on Sundays evenings at our clubhouse as well as events and trips for our members."
+    "description": "The official Catholic student group at UCSC. We host weekly mass on Sundays evenings at our clubhouse as well as events and trips for our members.",
+    "discord": "https://discord.gg/TnUMU6v6Jb",
+    "discordGuildId": "1403379910365679717",
+    "discordServerName": "Newman Catholic Club UCSC & Cabrillo",
+    "discordFollowable": true
   },
   {
     "name": "Nigerian Student Association",
@@ -630,7 +714,11 @@
     "instagram": "poprekaucsc",
     "category": "performing arts",
     "email": "poprekadance@gmail.com",
-    "description": "We are a K-pop dance and social club! Open to all and non-audition based, we hold workshops every two weeks with social events in between. We have performance opportunities every quarter!"
+    "description": "We are a K-pop dance and social club! Open to all and non-audition based, we hold workshops every two weeks with social events in between. We have performance opportunities every quarter!",
+    "discord": "https://discord.gg/4EFxynYAnj",
+    "discordGuildId": "902609240588439583",
+    "discordServerName": "POPreKa",
+    "discordFollowable": false
   },
   {
     "name": "Pre-Dental Society",
@@ -672,7 +760,11 @@
     "instagram": "pupcycleducsc",
     "category": "service & advocacy",
     "email": "pupcycleducsc@gmail.com",
-    "description": "Pupcycled at UCSC focuses on up cycling unused clothing into dog toys to minimize clothing waste and protect the environment. As a club, we host events where volunteers craft handmade dog toys from secondhand clothes to donate to local shelters in Santa Cruz"
+    "description": "Pupcycled at UCSC focuses on up cycling unused clothing into dog toys to minimize clothing waste and protect the environment. As a club, we host events where volunteers craft handmade dog toys from secondhand clothes to donate to local shelters in Santa Cruz",
+    "discord": "https://discord.gg/WhTF6SDpNf",
+    "discordGuildId": "1331704116769984654",
+    "discordServerName": "Pupcycled at UCSC",
+    "discordFollowable": false
   },
   {
     "name": "Quantum Computing",
@@ -707,7 +799,11 @@
     "instagram": "shutterslugofficial",
     "category": "media & arts",
     "email": "eviju@ucsc.edu",
-    "description": "We teach members the fundamentals of photography and help them express creativity using cameras. We promote networking amongst photographers, learning of new skills, and creative growth as a community."
+    "description": "We teach members the fundamentals of photography and help them express creativity using cameras. We promote networking amongst photographers, learning of new skills, and creative growth as a community.",
+    "discord": "https://discord.gg/dVEeUG4J9A",
+    "discordGuildId": "761266183315259420",
+    "discordServerName": "Shutterslug Photography",
+    "discordFollowable": true
   },
   {
     "name": "Sigma Lambda Beta",
@@ -758,7 +854,11 @@
     "instagram": "ucsc_ssa",
     "category": "cultural",
     "email": "sikhstudents@gmail.com",
-    "description": "Club made to get the Sikh Community together at UCSC."
+    "description": "Club made to get the Sikh Community together at UCSC.",
+    "discord": "https://discord.gg/3HE62qJQV7",
+    "discordGuildId": "964795465763815444",
+    "discordServerName": "UCSC Sikh Slugs",
+    "discordFollowable": false
   },
   {
     "name": "Slavic Student Association",
@@ -772,7 +872,11 @@
     "instagram": "sluganimeucsc",
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
-    "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!"
+    "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
+    "discord": "https://discord.gg/allstar",
+    "discordGuildId": "710745950380884009",
+    "discordServerName": "All Star",
+    "discordFollowable": true
   },
   {
     "name": "Slug Book Club",
@@ -786,21 +890,33 @@
     "instagram": "ucsc.sfig",
     "category": "pre-professional",
     "email": "slugsfundig@gmail.com",
-    "description": "We are an educational-student-run club that focuses on investing and finance. We present interactive material on investment philosophy, strategy, and news during our weekly meetings. We also host and facilitate research groups and guest speakers."
+    "description": "We are an educational-student-run club that focuses on investing and finance. We present interactive material on investment philosophy, strategy, and news during our weekly meetings. We also host and facilitate research groups and guest speakers.",
+    "discord": "https://discord.gg/zcm5rgkrRS",
+    "discordGuildId": "629463398039683082",
+    "discordServerName": "Slug Fund Investment Group",
+    "discordFollowable": true
   },
   {
     "name": "Slug Gaming",
     "instagram": "sluggamingucsc",
     "category": "gaming",
     "email": "ucscesportsclub@gmail.com",
-    "description": "Largest Gaming Club and Esports Org on Campus! Community Game nights, weekly computer labs, and other events hosted every quarter! Represents UCSC as a Collegiate force on the national stage in all the major titles!"
+    "description": "Largest Gaming Club and Esports Org on Campus! Community Game nights, weekly computer labs, and other events hosted every quarter! Represents UCSC as a Collegiate force on the national stage in all the major titles!",
+    "discord": "https://discord.gg/GKQdtHf32t",
+    "discordGuildId": "97748273074302976",
+    "discordServerName": "Slug Gaming",
+    "discordFollowable": true
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
     "instagram": "ucscsrge",
     "category": "gaming",
     "email": "srgeucsc@gmail.com",
-    "description": "Club for enthusiasts of rhythm games and the culture surrounding it."
+    "description": "Club for enthusiasts of rhythm games and the culture surrounding it.",
+    "discord": "https://discord.gg/uj9XEkg",
+    "discordGuildId": "428792565135966208",
+    "discordServerName": "Slug Rhythm Game Enthusiasts",
+    "discordFollowable": true
   },
   {
     "name": "Slug' n Boots",
@@ -821,14 +937,22 @@
     "instagram": "slugspeakatucsc",
     "category": "performing arts",
     "email": "slugspeakatucsc@gmail.com",
-    "description": "A group of students exploring the art of Voice Work through student projects and an abridged series. Open to all levels of experience!"
+    "description": "A group of students exploring the art of Voice Work through student projects and an abridged series. Open to all levels of experience!",
+    "discord": "https://discord.gg/rSJYcTpt9j",
+    "discordGuildId": "1272670303138615326",
+    "discordServerName": "SlugSpeak",
+    "discordFollowable": false
   },
   {
     "name": "Society of Asian Scientists and Engineers (SASE)",
     "instagram": "ucscsase",
     "category": "tech & science",
     "email": "sase.ucsc@gmail.com",
-    "description": "SASE is a community for asian scientists and engineers to work on professional development through workshops and networking opportunities."
+    "description": "SASE is a community for asian scientists and engineers to work on professional development through workshops and networking opportunities.",
+    "discord": "https://discord.gg/DVTcfdJpCS",
+    "discordGuildId": "689561240766513209",
+    "discordServerName": "SASE UCSC Chapter",
+    "discordFollowable": false
   },
   {
     "name": "Society of Physics Students",
@@ -891,7 +1015,11 @@
     "instagram": "ucsc_tsa",
     "category": "cultural",
     "email": "ucsctsa@gmail.com",
-    "description": "The Taiwanese Student Association (TSA) is an organization run by students that seeks to share and promote Taiwanese culture to our campus community. Dedicated to creating a space for both Taiwanese and non-Taiwanese students to learn more about Taiwan."
+    "description": "The Taiwanese Student Association (TSA) is an organization run by students that seeks to share and promote Taiwanese culture to our campus community. Dedicated to creating a space for both Taiwanese and non-Taiwanese students to learn more about Taiwan.",
+    "discord": "https://discord.gg/vrNxcDKAUh",
+    "discordGuildId": "1024532931173163118",
+    "discordServerName": "UCSC TSA",
+    "discordFollowable": true
   },
   {
     "name": "Taza Tal",
@@ -919,7 +1047,11 @@
     "instagram": "tsu.ucsc",
     "category": "service & advocacy",
     "email": "tsu.ucsc@gmail.com",
-    "description": "A club dedicated to the advocacy and well being of Trans students at UCSC"
+    "description": "A club dedicated to the advocacy and well being of Trans students at UCSC",
+    "discord": "https://discord.gg/2s6m5gA5Ne",
+    "discordGuildId": "1306818825328787476",
+    "discordServerName": "Trans Student Union",
+    "discordFollowable": true
   },
   {
     "name": "UMOJA",
@@ -933,7 +1065,11 @@
     "instagram": "ucsc.neuroclub",
     "category": "tech & science",
     "email": "ucscneuroscienceclub@gmail.com",
-    "description": "An educational club motivated to foster an environment of like-minded individuals interested in the field of neuroscience, healthcare, and research. We continue to serve as an established community capable of supporting and inspiring students."
+    "description": "An educational club motivated to foster an environment of like-minded individuals interested in the field of neuroscience, healthcare, and research. We continue to serve as an established community capable of supporting and inspiring students.",
+    "discord": "https://discord.gg/GFV5bn69gd",
+    "discordGuildId": "1166886826078912602",
+    "discordServerName": "UCSC Undergraduate Neuroscience Club",
+    "discordFollowable": false
   },
   {
     "name": "Universities Allied for Essential Medicines at UCSC (UAEM at UCSC)",
@@ -947,7 +1083,11 @@
     "instagram": "ucscvsa",
     "category": "cultural",
     "email": "vsa.ucsc@gmail.com",
-    "description": "Founded in 1999, the Vietnamese Student Association at UCSC is a student-led, non-profit organization dedicated to promoting cultural awareness and diversity. VSA aims to develop an appreciation for our own identities, value the diversity of our campus, & find similarities."
+    "description": "Founded in 1999, the Vietnamese Student Association at UCSC is a student-led, non-profit organization dedicated to promoting cultural awareness and diversity. VSA aims to develop an appreciation for our own identities, value the diversity of our campus, & find similarities.",
+    "discord": "https://discord.gg/ucscvsa",
+    "discordGuildId": "740648963329490997",
+    "discordServerName": "UCSC VSA",
+    "discordFollowable": false
   },
   {
     "name": "Women's Wellness Club",
@@ -968,6 +1108,10 @@
     "instagram": "wsb_ucsc",
     "category": "pre-professional",
     "email": "wbucsc@gmail.com",
-    "description": "WSB Financial Literacy Club brings Wall Street to Main Street by making personal finance practical and accessible through workshops on saving, budgeting, credit, investing, financial planning, and opportunities to learn about financial services licensing."
+    "description": "WSB Financial Literacy Club brings Wall Street to Main Street by making personal finance practical and accessible through workshops on saving, budgeting, credit, investing, financial planning, and opportunities to learn about financial services licensing.",
+    "discord": "https://discord.gg/mYCFbmMqzA",
+    "discordGuildId": "1421593699053338664",
+    "discordServerName": "WSB UCSC",
+    "discordFollowable": false
   }
 ]

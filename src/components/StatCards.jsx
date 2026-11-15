@@ -32,7 +32,7 @@ export default function StatCards({
           key={stat.label}
           onClick={stat.navTarget && onNav ? () => onNav(stat.navTarget) : undefined}
           style={{
-            animationDelay: `${(i + 1) * 0.04}s`,
+            ...(i > 0 ? { animationDelay: `${i * 0.03}s` } : {}),
             borderTopWidth: '3px',
             borderTopColor: `var(--${stat.color})`,
           }}
