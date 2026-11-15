@@ -19,6 +19,7 @@ import linksRouter from './routes/links.js';
 import postsRouter from './routes/posts.js';
 import sourcesRouter from './routes/sources.js';
 import dictionaryRouter from './routes/dictionary.js';
+import schedulerRouter from './routes/scheduler.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -43,6 +44,7 @@ app.use('/api/announcements', announcementsRouter);
 app.use('/api/links',         linksRouter);
 app.use('/api/posts',         postsRouter);
 app.use('/api/sources',       sourcesRouter);
+app.use('/api/scheduler',     schedulerRouter);
 
 // ── Stats endpoint ──
 app.get('/api/stats', (req, res) => {

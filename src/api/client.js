@@ -77,3 +77,22 @@ export const getPosts = (params = {}) => fetchJSON(withQuery('/posts', params));
 export const createPost = data => fetchJSON('/posts', { method: 'POST', body: JSON.stringify(data) });
 
 export const getStats = () => fetchJSON('/stats');
+
+// ── 5. Collaborative When2Meet + Google Calendar Scheduler (/api/scheduler) ──
+export const getSchedulerPolls = () => fetchJSON('/scheduler/polls');
+export const getSchedulerPoll = id => fetchJSON(`/scheduler/polls/${encodeURIComponent(id)}`);
+export const createSchedulerPoll = data =>
+  fetchJSON('/scheduler/polls', { method: 'POST', body: JSON.stringify(data) });
+export const saveSchedulerResponse = (pollId, data) =>
+  fetchJSON(`/scheduler/polls/${encodeURIComponent(pollId)}/respond`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const parseSchedulerText = data =>
+  fetchJSON('/scheduler/parse-text', { method: 'POST', body: JSON.stringify(data) });
+export const bookSchedulerSlot = (pollId, data) =>
+  fetchJSON(`/scheduler/polls/${encodeURIComponent(pollId)}/book`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+

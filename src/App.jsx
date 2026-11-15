@@ -11,6 +11,7 @@ import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
 import SourceFeedHub from './components/SourceFeedHub'
+import CollabScheduler from './components/CollabScheduler'
 import SignInPage from './components/SignInPage'
 import { cleanText } from './components/ui'
 import { clubs as initialClubs } from './data/sampleData'
@@ -65,6 +66,7 @@ function MainDashboard({
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
   const [liveClubs, setLiveClubs] = useState(null)
   const [liveSchedule, setLiveSchedule] = useState(null)
+  const [rawEvents, setRawEvents] = useState([])
   const [liveLinks, setLiveLinks] = useState(null)
   const [liveStats, setLiveStats] = useState(null)
 
@@ -128,6 +130,7 @@ function MainDashboard({
     }
 
     if (evts && evts.length > 0) {
+      setRawEvents(evts)
       const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
       setLiveSchedule(
         evts.slice(0, 6).map((e, i) => {
@@ -289,10 +292,19 @@ function MainDashboard({
 
         {/* Schedule + Announcements */}
         {(showAll || activeNav === 'calendar') && (
-          <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
-            <TodaySchedule items={liveSchedule} searchQuery={searchQuery} />
-            <Announcements items={liveAnnouncements} />
-          </div>
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
+              <TodaySchedule items={liveSchedule} searchQuery={searchQuery} />
+              <Announcements items={liveAnnouncements} />
+            </div>
+
+            <CollabScheduler
+              user={user}
+              clubs={effectiveClubs}
+              events={rawEvents}
+              onEventBooked={loadBackendData}
+            />
+          </>
         )}
 
         {/* My Clubs / Discover */}
