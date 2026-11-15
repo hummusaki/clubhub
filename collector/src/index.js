@@ -61,8 +61,12 @@ async function* demoSource() {
   const now = Date.now()
   const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   for (const c of fixture.clubs) {
+    if (c.unavailable) {
+      yield { club: c, error: `@${c.instagram}: Invalid user id (account not found, private, or not a Business/Creator account)` }
+      continue
+    }
     yield {
-      club: { name: c.name, instagram: c.instagram, category: c.category },
+      club: { name: c.name, instagram: c.instagram, category: c.category, email: c.email },
       profile: c.profile,
       posts: c.posts.map(p => {
         const postedAt = new Date(now - p.hoursAgo * 3600e3)
@@ -75,6 +79,22 @@ async function* demoSource() {
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
+
+// Instagram page + email links, so every club can be reached even when its posts can't be read.
+function contactLinks(club, handle) {
+  const links = [{ url: `https://www.instagram.com/${handle}/`, label: 'Instagram page', kind: 'instagram', postId: null }]
+  for (const email of [club.email, ...(club.extraEmails || [])].filter(Boolean)) {
+    links.push({ url: `mailto:${email}`, label: `Email ${email}`, kind: 'email', postId: null })
+  }
+  return links
+}
+
+// Plain-language reason shown on the club page when a club couldn't be synced.
+function syncNote(message) {
+  if (/Business\/Creator|not found|private/i.test(message)) return "This club's Instagram is personal or private, so posts can't be pulled automatically. Visit their page or email them."
+  if (/rate limited/i.test(message)) return 'Instagram was busy; this club will sync on the next run.'
+  return "Couldn't sync this club's Instagram right now. Visit their page or email them."
+}
 
 // Posts already read by Claude are cached, so re-runs only pay for new posts.
 const CACHE_FILE = path.join(ROOT, 'output', 'claude-cache.json')
@@ -114,6 +134,25 @@ export async function collect({ demo = false, only } = {}) {
     if (item.error) {
       console.warn(`✗ ${item.error}`)
       out.errors.push({ club: club.instagram, message: item.error })
+      // Keep the club anyway, with its Instagram page and email so people can reach it manually.
+      const clubId = club.instagram.toLowerCase()
+      out.clubs.push({
+        id: clubId,
+        name: club.name || clubId,
+        alsoKnownAs: club.alsoKnownAs || [],
+        instagram: clubId,
+        instagramUrl: `https://www.instagram.com/${clubId}/`,
+        category: club.category || null,
+        email: club.email || null,
+        bio: null,
+        website: null,
+        profilePictureUrl: null,
+        followers: null,
+        lastPostAt: null,
+        syncStatus: 'unavailable',
+        syncNote: syncNote(item.error),
+      })
+      for (const l of contactLinks(club, clubId)) out.links.push({ id: `${clubId}:${l.url}`, clubId, clubName: club.name || clubId, ...l })
       continue
     }
     const { profile, posts } = item
@@ -134,9 +173,13 @@ export async function collect({ demo = false, only } = {}) {
       profilePictureUrl: profile.profilePictureUrl,
       followers: profile.followers,
       lastPostAt: posts[0]?.postedAt || null,
+      email: club.email || null,
+      syncStatus: 'synced',
+      syncNote: null,
     })
 
     const clubLinks = new Map()
+    for (const l of contactLinks(club, clubId)) clubLinks.set(l.url.toLowerCase(), l)
     if (profile.website) clubLinks.set(profile.website.toLowerCase(), { url: profile.website, label: 'Link in bio', kind: 'website', postId: null })
 
     for (const post of posts) {
@@ -175,8 +218,9 @@ async function save(data) {
   const file = path.join(dir, 'clubhub-data.json')
   fs.writeFileSync(file, JSON.stringify(data, null, 2))
   if (cache) fs.writeFileSync(CACHE_FILE, JSON.stringify(cache))
-  if (data.errors.length) console.log(`\n${data.errors.length} clubs skipped (usually personal or private accounts). See "errors" in the output.`)
-  console.log(`\nSaved ${data.clubs.length} clubs, ${data.events.length} events, ${data.announcements.length} announcements, ${data.links.length} links -> ${path.relative(process.cwd(), file)}`)
+  if (data.errors.length) console.log(`\n${data.errors.length} clubs couldn't be synced (usually personal or private accounts). They're still included with their Instagram link and email (syncStatus: "unavailable").`)
+  const synced = data.clubs.filter(c => c.syncStatus === 'synced').length
+  console.log(`\nSaved ${data.clubs.length} clubs (${synced} synced, ${data.clubs.length - synced} contact-only), ${data.events.length} events, ${data.announcements.length} announcements, ${data.links.length} links -> ${path.relative(process.cwd(), file)}`)
 
   const hook = process.env.DB_WEBHOOK_URL
   if (hook) {

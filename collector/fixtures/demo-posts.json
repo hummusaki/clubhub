@@ -38,7 +38,8 @@
           "imageUrl": null,
           "caption": "Officer applications are OPEN for winter quarter! 🐌\nApply by {{date+9}} at the link in bio. Join our Discord for updates: discord.gg/demoCSclub"
         }
-      ]
+      ],
+      "email": "csclub.demo@example.com"
     },
     {
       "name": "Debate Society",
@@ -69,7 +70,8 @@
           "imageUrl": null,
           "caption": "Fall Showcase Tournament 🏆 this Saturday from 10am to 3pm at Stevenson Event Center. Free food! Register: https://forms.gle/demoDebateTourney"
         }
-      ]
+      ],
+      "email": "debate.demo@example.com"
     },
     {
       "name": "Art Collective",
@@ -100,7 +102,16 @@
           "imageUrl": null,
           "caption": "Huge thank you to everyone who came out to our gallery night!! 💜 Photos up on our site"
         }
-      ]
+      ],
+      "email": "art.demo@example.com"
+    },
+    {
+      "name": "Film Society",
+      "instagram": "demo_ucsc_filmsociety",
+      "category": "media & arts",
+      "email": "film.demo@example.com",
+      "unavailable": true,
+      "_note": "Simulates a personal/private account that Instagram won't share."
     }
   ]
 }

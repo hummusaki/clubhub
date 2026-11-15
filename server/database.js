@@ -106,6 +106,9 @@ function initSchema(db) {
       profilePictureUrl TEXT,
       followers         INTEGER DEFAULT 0,
       lastPostAt        TEXT,
+      email             TEXT,
+      syncStatus        TEXT DEFAULT 'synced',   -- 'synced' | 'unavailable' (personal/private Instagram)
+      syncNote          TEXT,                    -- plain-language reason shown when unavailable
       updatedAt         TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -189,6 +192,12 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_dict_clubId          ON dictionary_store(clubId);
     CREATE INDEX IF NOT EXISTS idx_dict_namespace       ON dictionary_store(namespace);
   `);
+
+  // Add newer club columns to databases created before they existed.
+  const clubCols = new Set(db.prepare('PRAGMA table_info(clubs)').all().map(c => c.name));
+  for (const [col, def] of [['email', 'TEXT'], ['syncStatus', "TEXT DEFAULT 'synced'"], ['syncNote', 'TEXT']]) {
+    if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
+  }
 }
 
 // ── Sync a club's current relational state into dictionary_store ────
@@ -230,8 +239,9 @@ export function upsertCollectorData(data = {}) {
   const upsertClubStmt = db.stmt(`
     INSERT INTO clubs (
       id, name, alsoKnownAs, instagram, instagramUrl, category,
-      bio, website, profilePictureUrl, followers, lastPostAt, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      bio, website, profilePictureUrl, followers, lastPostAt,
+      email, syncStatus, syncNote, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       name              = excluded.name,
       alsoKnownAs       = excluded.alsoKnownAs,
@@ -243,6 +253,9 @@ export function upsertCollectorData(data = {}) {
       profilePictureUrl = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
       followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
       lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
+      email             = COALESCE(excluded.email, clubs.email),
+      syncStatus        = COALESCE(excluded.syncStatus, clubs.syncStatus),
+      syncNote          = excluded.syncNote,
       updatedAt         = datetime('now')
   `);
 
@@ -339,7 +352,10 @@ export function upsertCollectorData(data = {}) {
         c.website || null,
         c.profilePictureUrl || null,
         Number(c.followers) || 0,
-        c.lastPostAt || null
+        c.lastPostAt || null,
+        c.email || null,
+        c.syncStatus || 'synced',
+        c.syncNote || null
       );
       affectedClubs.add(cid);
       counts.clubs++;

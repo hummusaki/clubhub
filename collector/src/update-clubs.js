@@ -71,8 +71,9 @@ export function parseDirectory(html) {
     const name = decode(nameMatch[1])
     if (!name || /browse by|search|categor/i.test(name)) continue
     const handle = instagramHandle(section)
+    const email = (section.match(/mailto:([^"'?\s>]+)/i)?.[1] || decode(section).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || null)?.toLowerCase() || null
     const suspended = inactive.has(short(name))
-    clubs.push({ name, instagram: handle, suspended })
+    clubs.push({ name, instagram: handle, email, suspended })
   }
   return clubs
 }
@@ -98,10 +99,11 @@ async function main() {
       // Two orgs sharing one account (e.g. ESLP + Student Environmental Center).
       const first = seen.get(c.instagram)
       first.alsoKnownAs = [...(first.alsoKnownAs || []), c.name]
+      if (c.email && c.email !== first.email) first.extraEmails = [...(first.extraEmails || []), c.email]
       continue
     }
     const prev = byHandle.get(c.instagram)
-    const club = { name: c.name, instagram: c.instagram, category: prev?.category || guessCategory(c.name) }
+    const club = { name: c.name, instagram: c.instagram, category: prev?.category || guessCategory(c.name), email: c.email || prev?.email || null }
     seen.set(c.instagram, club)
     out.push(club)
   }
