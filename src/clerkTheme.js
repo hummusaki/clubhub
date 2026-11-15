@@ -11,6 +11,7 @@ export function getClerkAppearance(isDark = false) {
       socialButtonsVariant: 'blockButton',
       logoPlacement: 'none',
       showOptionalFields: false,
+      unsafe_disableDevelopmentModeWarnings: true,
     },
     variables: {
       colorPrimary: isDark ? '#60A5FA' : '#3B82F6',
@@ -130,6 +131,9 @@ export function getClerkAppearance(isDark = false) {
 export function getUserButtonAppearance(isDark = false) {
   return {
     baseTheme: isDark ? clerkDarkTheme : undefined,
+    layout: {
+      unsafe_disableDevelopmentModeWarnings: true,
+    },
     variables: {
       colorPrimary: isDark ? '#60A5FA' : '#3B82F6',
       colorText: isDark ? '#EEF2F8' : '#0F172A',

@@ -1,9 +1,8 @@
-import { Moon, Sun, LogIn, LogOut } from 'lucide-react'
-import { UserButton } from '@clerk/react'
+import { useState, useEffect, useRef } from 'react'
+import { Moon, Sun, LogIn, LogOut, Settings, ChevronUp } from 'lucide-react'
 import { navItems } from '../data/sampleData'
 import { Avatar, ClubHubLogo } from './ui'
 import { NavIcon } from './icons'
-import { getUserButtonAppearance } from '../clerkTheme'
 
 export default function Sidebar({
   activeNav,
@@ -15,8 +14,26 @@ export default function Sidebar({
   isDemo = false,
   onExitDemo,
   onSignOut,
-  hasClerkKey = false,
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function handleOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+    function handleKey(e) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [])
   const displayName =
     userSettings?.displayName?.trim() ||
     user?.fullName ||
@@ -129,101 +146,64 @@ export default function Sidebar({
               </button>
             </div>
 
-            {hasClerkKey && user ? (
-              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <UserButton appearance={getUserButtonAppearance(dark)} />
-                  <button
-                    type="button"
-                    onClick={() => onNav('settings')}
-                    className="min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
-                  >
-                    <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                      {displayName}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      {subline}
-                    </div>
-                  </button>
-                </div>
-                {onSignOut && (
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    title="Sign out"
-                    aria-label="Sign out"
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:bg-[var(--red-light)] cursor-pointer bg-transparent border-none shrink-0 transition-colors"
-                  >
-                    <LogOut size={15} />
-                  </button>
+            {(user || isDemo) && (
+              <div className="relative" ref={menuRef}>
+                {menuOpen && (
+                  <div className="absolute bottom-full left-0 right-0 mb-2 rounded-[var(--radius-sm)] bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-lg)] p-1.5 z-50 fade-in">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onNav('settings')
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 min-h-[36px] rounded-lg text-xs font-semibold text-[var(--text)] bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-left transition-colors"
+                    >
+                      <Settings size={14} className="text-[var(--text-muted)]" />
+                      <span>Profile & Settings</span>
+                    </button>
+
+                    {(onSignOut || (isDemo && onExitDemo)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          if (isDemo && onExitDemo) onExitDemo()
+                          else if (onSignOut) onSignOut()
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 min-h-[36px] rounded-lg text-xs font-semibold text-[var(--red-ink)] bg-transparent hover:bg-[var(--red-light)] border-none cursor-pointer text-left transition-colors"
+                      >
+                        {isDemo ? <LogIn size={14} /> : <LogOut size={14} />}
+                        <span>{isDemo ? 'Sign In / Exit Demo' : 'Log Out'}</span>
+                      </button>
+                    )}
+                  </div>
                 )}
-              </div>
-            ) : user ? (
-              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
+
                 <button
                   type="button"
-                  onClick={() => onNav('settings')}
-                  className="flex items-center gap-2.5 min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
+                  onClick={() => setMenuOpen(o => !o)}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-left transition-colors"
                 >
-                  {user.picture ? (
-                    <img
-                      src={user.picture}
-                      alt={displayName}
-                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-[var(--border)]"
-                    />
-                  ) : (
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <Avatar initials={initials} bg={avatarGradient} size={32} />
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                      {displayName}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      {subline}
-                    </div>
-                  </div>
-                </button>
-                {onSignOut && (
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    title="Sign out"
-                    aria-label="Sign out"
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:bg-[var(--red-light)] cursor-pointer bg-transparent border-none shrink-0 transition-colors"
-                  >
-                    <LogOut size={15} />
-                  </button>
-                )}
-              </div>
-            ) : isDemo ? (
-              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
-                <button
-                  type="button"
-                  onClick={() => onNav('settings')}
-                  className="flex items-center gap-2.5 min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
-                >
-                  <Avatar initials={initials} bg={avatarGradient} size={32} />
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                      {displayName}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      {subline}
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                        {displayName}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)] truncate">
+                        {subline}
+                      </div>
                     </div>
                   </div>
+                  <ChevronUp
+                    size={15}
+                    className={`text-[var(--text-muted)] shrink-0 transition-transform ${
+                      menuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
                 </button>
-                {onExitDemo && (
-                  <button
-                    type="button"
-                    onClick={onExitDemo}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--blue-light)] text-[11px] font-semibold text-[var(--blue-ink)] cursor-pointer border-none shrink-0 hover:opacity-90"
-                  >
-                    <LogIn size={12} />
-                    <span>Sign In</span>
-                  </button>
-                )}
               </div>
-            ) : null}
+            )}
           </div>
         </nav>
       </aside>

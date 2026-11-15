@@ -9,6 +9,8 @@ import {
   Check,
   ArrowRight,
   Calendar as CalendarIcon,
+  ExternalLink,
+  History,
   X,
 } from 'lucide-react'
 import { todaySchedule as defaultSchedule } from '../data/sampleData'
@@ -51,6 +53,13 @@ function formatEventBadgeTime(item, use24h = false) {
   if (!item.startIso) return item.time
   const dt = new Date(item.startIso)
   if (Number.isNaN(dt.getTime())) return item.time
+  if (item.allDay) {
+    return `${dt.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    })} · All Day`
+  }
   return dt.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -61,11 +70,10 @@ function formatEventBadgeTime(item, use24h = false) {
   })
 }
 
-const DEFAULT_FOCUS_DATE = '2026-11-15'
-
 export default function CalendarView({
   items,
   clubs = [],
+  initialView = null,
   userSettings = {},
   searchQuery = '',
   compact = false,
@@ -80,13 +88,25 @@ export default function CalendarView({
   const weekStartsOn = userSettings?.weekStartsOn === 'monday' ? 'monday' : 'sunday'
   const isCompactDensity = Boolean(userSettings?.compactCards)
 
+  const nowRef = useMemo(() => new Date(), [])
+  const todayYmd = useMemo(() => toLocalYmd(nowRef), [nowRef])
+
+  const joinedClubIdSet = useMemo(
+    () => new Set(clubs.filter(c => Boolean(c.joined)).map(c => String(c.id))),
+    [clubs]
+  )
+
   const [viewMode, setViewMode] = useState(
-    () => userSettings?.defaultCalendarView || 'agenda'
-  ) // 'agenda' | 'week' | 'month'
-  const [agendaFilter, setAgendaFilter] = useState('all') // 'all' | 'going'
-  const [weekAnchor, setWeekAnchor] = useState(DEFAULT_FOCUS_DATE)
-  const [monthState, setMonthState] = useState({ year: 2026, month: 10 }) // 10 = Nov
-  const [selectedDate, setSelectedDate] = useState('2026-11-17')
+    () => initialView || userSettings?.defaultCalendarView || 'month'
+  ) // 'month' | 'week' | 'agenda'
+  const [clubScope, setClubScope] = useState('myclubs') // 'myclubs' | 'all'
+  const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all' | 'going'
+  const [weekAnchor, setWeekAnchor] = useState(todayYmd)
+  const [monthState, setMonthState] = useState(() => ({
+    year: nowRef.getFullYear(),
+    month: nowRef.getMonth(),
+  }))
+  const [selectedDate, setSelectedDate] = useState(todayYmd)
 
   const weekStart = useMemo(
     () => getWeekStartOfDate(weekAnchor, weekStartsOn),
@@ -97,13 +117,14 @@ export default function CalendarView({
   const [showAddForm, setShowAddForm] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
   const [eventClubId, setEventClubId] = useState(clubs[0]?.id || 'demo_ucsc_csclub')
-  const [eventDate, setEventDate] = useState('2026-11-17')
+  const [eventDate, setEventDate] = useState(todayYmd)
   const [eventTime, setEventTime] = useState('17:00')
   const [eventLocation, setEventLocation] = useState('')
 
   const baseEvents = items && items.length > 0 ? items : defaultSchedule
 
   const enrichedEvents = useMemo(() => {
+    const nowMs = nowRef.getTime()
     return baseEvents.map(ev => {
       const isGoing =
         rsvpMap[ev.id] !== undefined ? Boolean(rsvpMap[ev.id]) : Boolean(ev.rsvp)
@@ -117,18 +138,30 @@ export default function CalendarView({
               ? -1
               : 0
       const dateKey = ev.startIso ? toLocalYmd(ev.startIso) : ''
+      const startMs = ev.startIso ? new Date(ev.startIso).getTime() : nowMs
+      const isPast = ev.allDay ? Boolean(dateKey && dateKey < todayYmd) : startMs < nowMs
       return {
         ...ev,
         isGoing,
+        isPast,
+        startMs,
         attendeeCount: Math.max(0, baseCount + delta),
         dateKey,
       }
     })
-  }, [baseEvents, rsvpMap])
+  }, [baseEvents, rsvpMap, nowRef, todayYmd])
 
-  const filtered = useMemo(() => {
+  // Events after applying Club Scope + Search (used across Month, Week, and Agenda counts)
+  const scopedEvents = useMemo(() => {
     return enrichedEvents.filter(ev => {
-      if (agendaFilter === 'going' && viewMode === 'agenda' && !compact && !ev.isGoing) {
+      if (
+        !compact &&
+        joinedClubIdSet.size > 0 &&
+        clubScope === 'myclubs' &&
+        !ev.isCustom &&
+        !ev.isBookedCollab &&
+        (!ev.clubId || !joinedClubIdSet.has(String(ev.clubId)))
+      ) {
         return false
       }
       if (!searchQuery.trim()) return true
@@ -139,17 +172,49 @@ export default function CalendarView({
         (ev.location || '').toLowerCase().includes(q)
       )
     })
-  }, [enrichedEvents, agendaFilter, viewMode, compact, searchQuery])
+  }, [enrichedEvents, joinedClubIdSet, clubScope, compact, searchQuery])
+
+  const agendaCounts = useMemo(() => {
+    let upcoming = 0
+    let past = 0
+    let going = 0
+    for (const ev of scopedEvents) {
+      if (ev.isPast) past += 1
+      else upcoming += 1
+      if (ev.isGoing) going += 1
+    }
+    return { upcoming, past, all: scopedEvents.length, going }
+  }, [scopedEvents])
+
+  const filtered = useMemo(() => {
+    if (compact || viewMode !== 'agenda') {
+      return scopedEvents
+    }
+    if (agendaFilter === 'upcoming') {
+      return scopedEvents
+        .filter(ev => !ev.isPast)
+        .sort((a, b) => a.startMs - b.startMs)
+    }
+    if (agendaFilter === 'past') {
+      return scopedEvents
+        .filter(ev => ev.isPast)
+        .sort((a, b) => b.startMs - a.startMs)
+    }
+    if (agendaFilter === 'going') {
+      return scopedEvents.filter(ev => ev.isGoing)
+    }
+    return scopedEvents
+  }, [scopedEvents, agendaFilter, viewMode, compact])
 
   const eventsByDate = useMemo(() => {
     const map = {}
-    for (const ev of filtered) {
+    for (const ev of scopedEvents) {
       if (!ev.dateKey) continue
       if (!map[ev.dateKey]) map[ev.dateKey] = []
       map[ev.dateKey].push(ev)
     }
     return map
-  }, [filtered])
+  }, [scopedEvents])
 
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDaysYmd(weekStart, i)),
@@ -211,10 +276,36 @@ export default function CalendarView({
   }
 
   function handleToday() {
-    setWeekAnchor(DEFAULT_FOCUS_DATE)
-    setMonthState({ year: 2026, month: 10 })
-    setSelectedDate('2026-11-17')
+    setWeekAnchor(todayYmd)
+    setMonthState({ year: nowRef.getFullYear(), month: nowRef.getMonth() })
+    setSelectedDate(todayYmd)
   }
+
+  function handleMonthPickerChange(e) {
+    const val = e.target.value // YYYY-MM
+    if (!val || !val.includes('-')) return
+    const [yy, mm] = val.split('-').map(Number)
+    if (!yy || !mm) return
+    setMonthState({ year: yy, month: mm - 1 })
+    const nextSel = `${yy}-${String(mm).padStart(2, '0')}-01`
+    setSelectedDate(nextSel)
+    setWeekAnchor(nextSel)
+  }
+
+  const monthInputValue = `${monthState.year}-${String(monthState.month + 1).padStart(2, '0')}`
+
+  const viewedMonthStats = useMemo(() => {
+    const prefix = `${monthState.year}-${String(monthState.month + 1).padStart(2, '0')}-`
+    let pastCount = 0
+    let upcomingCount = 0
+    for (const ev of scopedEvents) {
+      if (ev.dateKey && ev.dateKey.startsWith(prefix)) {
+        if (ev.isPast) pastCount += 1
+        else upcomingCount += 1
+      }
+    }
+    return { total: pastCount + upcomingCount, pastCount, upcomingCount }
+  }, [scopedEvents, monthState])
 
   const periodLabel = useMemo(() => {
     if (viewMode === 'month') {
@@ -271,13 +362,13 @@ export default function CalendarView({
     const canRemove = Boolean(item.isBookedCollab || item.isCustom) && Boolean(onDeleteEvent)
 
     return (
-      <div key={item.id} className="flex items-stretch gap-3">
+      <div key={item.id} className={`flex items-stretch ${isCompactDensity ? 'gap-2.5' : 'gap-3'}`}>
         <div className="hidden xs:flex flex-col items-center pt-1">
-          <IconBadge color={c} size={34} radius={10}>
-            <ScheduleEventIcon club={clubName} event={title} size={16} />
+          <IconBadge color={c} size={isCompactDensity ? 28 : 34} radius={isCompactDensity ? 8 : 10}>
+            <ScheduleEventIcon club={clubName} event={title} size={isCompactDensity ? 14 : 16} />
           </IconBadge>
           {!isLast && (
-            <div className="w-[1.5px] flex-1 my-1.5 rounded-full bg-[var(--border)]" />
+            <div className="w-[1.5px] flex-1 my-1 rounded-full bg-[var(--border)]" />
           )}
         </div>
 
@@ -286,34 +377,59 @@ export default function CalendarView({
             isCompactDensity ? 'p-2.5' : 'p-3.5'
           } bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1.5">
             <div className="min-w-0">
               {clubName && (
                 <div className="text-[11px] font-semibold text-[var(--blue-ink)] mb-0.5 truncate">
                   {clubName}
                 </div>
               )}
-              <div className="font-semibold text-sm text-[var(--text)] leading-snug">
+              <div
+                className={`font-semibold ${
+                  isCompactDensity ? 'text-[13px]' : 'text-sm'
+                } text-[var(--text)] leading-snug`}
+              >
                 {title}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              {!compact && item.isPast && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[10.5px] font-semibold text-[var(--text-muted)]">
+                  <History size={11} />
+                  <span>Past</span>
+                </span>
+              )}
               <BubbleTag label={formatEventBadgeTime(item, use24h)} color={c} size="sm" />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-[var(--border-subtle)]">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 ${
+              isCompactDensity ? 'mt-1.5 pt-1.5' : 'mt-2.5 pt-2.5'
+            } border-t border-[var(--border-subtle)]`}
+          >
             <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)] min-w-0">
               <span className="inline-flex items-center gap-1 min-w-0">
-                <MapPin size={13} className="text-[var(--text-light)] shrink-0" />
-                <span className="truncate">{cleanText(item.location || 'TBD')}</span>
+                <MapPin size={12} className="text-[var(--text-light)] shrink-0" />
+                <span className="truncate">{cleanText(item.location || 'Campus / See post')}</span>
               </span>
               {item.duration && (
                 <span className="inline-flex items-center gap-1 shrink-0">
-                  <Clock size={13} className="text-[var(--text-light)] shrink-0" />
+                  <Clock size={12} className="text-[var(--text-light)] shrink-0" />
                   <span>{cleanText(item.duration)}</span>
                 </span>
+              )}
+              {!compact && item.permalink && (
+                <a
+                  href={item.permalink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline no-underline shrink-0"
+                >
+                  <span>Post</span>
+                  <ExternalLink size={11} />
+                </a>
               )}
             </div>
 
@@ -322,7 +438,9 @@ export default function CalendarView({
                 <button
                   type="button"
                   onClick={() => onToggleRsvp(item.id, !item.isGoing)}
-                  className={`inline-flex items-center gap-1 px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
+                  className={`inline-flex items-center gap-1 ${
+                    isCompactDensity ? 'px-2.5 min-h-[26px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
+                  } rounded-full font-semibold cursor-pointer border transition-colors ${
                     item.isGoing
                       ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent'
                       : 'bg-[var(--bg-card)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
@@ -338,7 +456,9 @@ export default function CalendarView({
                   type="button"
                   onClick={() => onDeleteEvent(item.id)}
                   title="Remove event from calendar"
-                  className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-full bg-[var(--red-light)] text-[var(--red-ink)] text-xs font-semibold border-none cursor-pointer hover:opacity-85 transition-opacity"
+                  className={`inline-flex items-center gap-1 ${
+                    isCompactDensity ? 'px-2 min-h-[26px] text-[11px]' : 'px-2.5 min-h-[32px] text-xs'
+                  } rounded-full bg-[var(--red-light)] text-[var(--red-ink)] font-semibold border-none cursor-pointer hover:opacity-85 transition-opacity`}
                 >
                   <Trash2 size={12} />
                   <span>Remove</span>
@@ -353,11 +473,14 @@ export default function CalendarView({
 
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
-    const preview = filtered.slice(0, 4)
+    const preview = filtered.slice(0, isCompactDensity ? 6 : 4)
     return (
-      <Card className="p-4 sm:p-[22px] flex flex-col justify-between" delay={2}>
+      <Card
+        className={`${isCompactDensity ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
+        delay={2}
+      >
         <div>
-          <div className="flex items-center justify-between gap-2 mb-4">
+          <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-[var(--text)]">Upcoming Schedule</h2>
               <BubbleTag label={`${filtered.length}`} color="blue" size="sm" />
@@ -376,7 +499,7 @@ export default function CalendarView({
           </div>
 
           {preview.length > 0 ? (
-            <div className="flex flex-col gap-3">
+            <div className={`flex flex-col ${isCompactDensity ? 'gap-2' : 'gap-3'}`}>
               {preview.map((item, idx) => renderEventRow(item, idx === preview.length - 1))}
             </div>
           ) : (
@@ -404,9 +527,9 @@ export default function CalendarView({
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border)]">
             {[
-              { id: 'agenda', label: 'Agenda' },
+              { id: 'month', label: 'Full Calendar' },
               { id: 'week', label: 'Week' },
-              { id: 'month', label: 'Month' },
+              { id: 'agenda', label: 'Agenda' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -423,11 +546,35 @@ export default function CalendarView({
             ))}
           </div>
 
+          {joinedClubIdSet.size > 0 && (
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+              {[
+                { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
+                { id: 'all', label: 'All Campus' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setClubScope(opt.id)}
+                  className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                    clubScope === opt.id
+                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {viewMode === 'agenda' && (
             <div className="flex flex-wrap items-center gap-1.5">
               {[
-                { id: 'all', label: `All (${ enrichedEvents.length })` },
-                { id: 'going', label: `Going (${ enrichedEvents.filter(e => e.isGoing).length })` },
+                { id: 'upcoming', label: `Upcoming (${agendaCounts.upcoming})` },
+                { id: 'past', label: `Past Events (${agendaCounts.past})` },
+                { id: 'all', label: `All (${agendaCounts.all})` },
+                { id: 'going', label: `Going (${agendaCounts.going})` },
               ].map(f => (
                 <button
                   key={f.id}
@@ -556,10 +703,10 @@ export default function CalendarView({
         </form>
       )}
 
-      {/* Period Navigation Bar (ONLY shown in Week & Month views where arrows actually navigate dates) */}
+      {/* Period Navigation Bar (Shown in Full Calendar Month & Week views — navigate past & future dates) */}
       {viewMode !== 'agenda' && (
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handlePrev}
@@ -571,9 +718,9 @@ export default function CalendarView({
             <button
               type="button"
               onClick={handleToday}
-              className="px-3 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] text-xs font-semibold cursor-pointer hover:border-[var(--blue)]"
+              className="px-3.5 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] text-xs font-semibold cursor-pointer hover:border-[var(--blue)]"
             >
-              This Week
+              Today
             </button>
             <button
               type="button"
@@ -583,10 +730,27 @@ export default function CalendarView({
             >
               <ChevronRight size={16} />
             </button>
+
+            {viewMode === 'month' && (
+              <input
+                type="month"
+                value={monthInputValue}
+                onChange={handleMonthPickerChange}
+                aria-label="Jump to month"
+                className="h-9 px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+              />
+            )}
           </div>
 
-          <div className="text-sm sm:text-base font-bold text-[var(--text)]">
-            {periodLabel}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="text-sm sm:text-base font-bold text-[var(--text)]">
+              {periodLabel}
+            </div>
+            {viewMode === 'month' && (
+              <span className="text-xs text-[var(--text-muted)]">
+                {viewedMonthStats.total} {viewedMonthStats.total === 1 ? 'event' : 'events'} ({viewedMonthStats.pastCount} past · {viewedMonthStats.upcomingCount} upcoming)
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -748,7 +912,7 @@ export default function CalendarView({
         </div>
       )}
 
-      {/* ── VIEW 3: MONTH VIEW (Clean picker + selected day details) ── */}
+      {/* ── VIEW 3: FULL CALENDAR MONTH VIEW (Past & Upcoming Events + Day Breakdown) ── */}
       {viewMode === 'month' && (
         <div className="space-y-4">
           <div>
@@ -768,47 +932,79 @@ export default function CalendarView({
               {monthCells.map(cell => {
                 const dayEvs = eventsByDate[cell.dateStr] || []
                 const isSelected = selectedDate === cell.dateStr
+                const isToday = cell.dateStr === todayYmd
+                const isPastDay = cell.dateStr < todayYmd
 
                 return (
                   <button
                     key={cell.dateStr}
                     type="button"
                     onClick={() => setSelectedDate(cell.dateStr)}
-                    className={`min-h-[46px] sm:min-h-[86px] p-1.5 sm:p-2 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all min-w-0 ${
+                    className={`min-h-[48px] sm:min-h-[108px] p-1.5 sm:p-2 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all min-w-0 ${
                       isSelected
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)]'
-                        : cell.inMonth
-                          ? 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--border-strong)]'
-                          : 'bg-[var(--bg-surface)]/50 opacity-45 border-[var(--border-subtle)]'
+                        ? 'bg-[var(--blue-light)] border-[var(--blue)] ring-1 ring-[var(--blue)]/30'
+                        : isToday
+                          ? 'bg-[var(--bg-surface)] border-[var(--blue)]/65'
+                          : cell.inMonth
+                            ? isPastDay
+                              ? 'bg-[var(--bg-surface)]/75 border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
+                              : 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--border-strong)]'
+                            : 'bg-[var(--bg-surface)]/35 opacity-45 border-[var(--border-subtle)]'
                     }`}
                   >
-                    <div className="flex items-center justify-between w-full">
-                      <span
-                        className={`text-xs font-bold font-mono-num ${
-                          isSelected ? 'text-[var(--blue-ink)]' : 'text-[var(--text)]'
-                        }`}
-                      >
-                        {cell.dayNum}
-                      </span>
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-xs font-bold font-mono-num ${
+                            isSelected || isToday
+                              ? 'text-[var(--blue-ink)]'
+                              : isPastDay
+                                ? 'text-[var(--text-muted)]'
+                                : 'text-[var(--text)]'
+                          }`}
+                        >
+                          {cell.dayNum}
+                        </span>
+                        {isToday && (
+                          <span className="hidden md:inline-block px-1.5 py-0.2 rounded-full bg-[var(--blue)] text-white text-[9px] font-bold">
+                            Today
+                          </span>
+                        )}
+                      </div>
+
                       {/* Mobile dot indicator */}
                       {dayEvs.length > 0 && (
-                        <span className="sm:hidden w-2 h-2 rounded-full bg-[var(--blue)] shrink-0" />
+                        <span
+                          className={`sm:hidden w-2 h-2 rounded-full shrink-0 ${
+                            isPastDay ? 'bg-[var(--text-light)]' : 'bg-[var(--blue)]'
+                          }`}
+                        />
+                      )}
+                      {dayEvs.length > 0 && (
+                        <span className="hidden sm:inline-block text-[10px] font-mono-num font-semibold text-[var(--text-muted)]">
+                          {dayEvs.length}
+                        </span>
                       )}
                     </div>
 
-                    {/* Desktop event pills */}
-                    <div className="hidden sm:flex flex-col gap-1 w-full mt-1 min-w-0">
-                      {dayEvs.slice(0, 2).map(ev => (
+                    {/* Desktop event pills (Past & Upcoming) */}
+                    <div className="hidden sm:flex flex-col gap-1 w-full mt-1.5 min-w-0">
+                      {dayEvs.slice(0, 3).map(ev => (
                         <div
                           key={ev.id}
-                          className="px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[10px] font-semibold text-[var(--text)] truncate"
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold truncate border ${
+                            ev.isPast
+                              ? 'bg-[var(--bg-card)]/70 border-[var(--border-subtle)] text-[var(--text-muted)]'
+                              : 'bg-[var(--bg-card)] border-[var(--blue)]/25 text-[var(--text)]'
+                          }`}
+                          title={`${cleanText(ev.club)}: ${cleanText(ev.event)}`}
                         >
-                          {cleanText(ev.event)}
+                          {cleanText(ev.club ? `${ev.club} · ${ev.event}` : ev.event)}
                         </div>
                       ))}
-                      {dayEvs.length > 2 && (
-                        <span className="text-[10px] text-[var(--text-muted)] pl-0.5">
-                          +{dayEvs.length - 2} more
+                      {dayEvs.length > 3 && (
+                        <span className="text-[10px] font-medium text-[var(--blue-ink)] pl-0.5">
+                          +{dayEvs.length - 3} more
                         </span>
                       )}
                     </div>
@@ -818,12 +1014,35 @@ export default function CalendarView({
             </div>
           </div>
 
-          {/* Selected Day Event Details (works seamlessly on both mobile & desktop) */}
+          {/* Selected Day Event Details (works for any Past, Today, or Future day) */}
           <div className="pt-4 border-t border-[var(--border)]">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
-                {selectedDateLabel}
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-[var(--text)]">
+                  {selectedDateLabel}
+                </span>
+                <BubbleTag
+                  label={
+                    selectedDate === todayYmd
+                      ? 'Today'
+                      : selectedDate < todayYmd
+                        ? 'Past Date'
+                        : 'Upcoming'
+                  }
+                  color={
+                    selectedDate === todayYmd
+                      ? 'green'
+                      : selectedDate < todayYmd
+                        ? 'purple'
+                        : 'blue'
+                  }
+                  size="sm"
+                />
+                <span className="text-xs text-[var(--text-muted)]">
+                  · {selectedDayEvents.length} {selectedDayEvents.length === 1 ? 'event' : 'events'}
+                </span>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -833,7 +1052,7 @@ export default function CalendarView({
                 className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
               >
                 <Plus size={13} />
-                <span>Add event</span>
+                <span>Add event on this date</span>
               </button>
             </div>
 
@@ -844,8 +1063,8 @@ export default function CalendarView({
                 )}
               </div>
             ) : (
-              <div className="text-xs text-[var(--text-muted)] py-3">
-                No events scheduled for {selectedDateLabel}.
+              <div className="text-xs text-[var(--text-muted)] py-4 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                No events recorded for {selectedDateLabel}. Select another date on the calendar or switch to All Campus to explore past and upcoming club events.
               </div>
             )}
           </div>

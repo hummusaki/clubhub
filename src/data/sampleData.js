@@ -18,7 +18,7 @@ export const clubs = [
     schedule: 'Tuesdays 6 PM · Baskin 152',
     avatarBg: 'linear-gradient(135deg, var(--blue), #4B7BE5)',
     active: true,
-    joined: true,
+    joined: false,
   },
   {
     id: 'demo_ucsc_debate',
@@ -37,7 +37,7 @@ export const clubs = [
     schedule: 'Thursdays 4:30 PM · Humanities 110',
     avatarBg: 'linear-gradient(135deg, var(--red), #D46B6B)',
     active: true,
-    joined: true,
+    joined: false,
   },
   {
     id: 'demo_ucsc_artcollective',
@@ -56,7 +56,7 @@ export const clubs = [
     schedule: 'Sundays 1 PM · Porter 3B',
     avatarBg: 'linear-gradient(135deg, var(--purple), #8565C4)',
     active: true,
-    joined: true,
+    joined: false,
   },
   {
     id: 'ucsc_econ_society',
@@ -75,7 +75,7 @@ export const clubs = [
     schedule: 'Wednesdays 5 PM · SocSci 201',
     avatarBg: 'linear-gradient(135deg, var(--green), #4CA868)',
     active: true,
-    joined: true,
+    joined: false,
   },
   {
     id: 'ucsc_acappella',
@@ -94,7 +94,7 @@ export const clubs = [
     schedule: 'Mon / Wed 6 PM · Recital B',
     avatarBg: 'linear-gradient(135deg, var(--yellow), #E09F2D)',
     active: true,
-    joined: true,
+    joined: false,
   },
   {
     id: 'ucsc_robotics',
@@ -496,7 +496,7 @@ export const memberActivity = [
 ]
 
 export const stats = [
-  { label: 'My Clubs',        value: 5,  color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
+  { label: 'My Clubs',        value: 0,  color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
   { label: 'Upcoming Events', value: 6,  color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
   { label: 'Group Polls',     value: 1,  color: 'green',  icon: 'Clock',    navTarget: 'availability' },
   { label: 'Shared Links',    value: 5,  color: 'purple', icon: 'Link',     navTarget: 'links' },

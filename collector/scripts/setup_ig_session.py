@@ -162,6 +162,8 @@ def main() -> int:
 
         username = verified_user
         session_file = root / f".ig-session-{username}"
+        # Store unquoted sessionid in pickle so Instaloader's mobile `Bearer IGT:2:` token works cleanly
+        winning_cookies["sessionid"] = unquoted_sid
         L.load_session(username, winning_cookies)
         L.save_session_to_file(filename=str(session_file))
         print(f"✅ Verified browser session for @{username} (ds_user_id={ds_user_id or 'ok'})!")

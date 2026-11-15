@@ -35,7 +35,16 @@ const AFTER_SIGN_OUT_URL =
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     {PUBLISHABLE_KEY ? (
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl={AFTER_SIGN_OUT_URL}>
+      <ClerkProvider
+        publishableKey={PUBLISHABLE_KEY}
+        afterSignOutUrl={AFTER_SIGN_OUT_URL}
+        unsafe_disableDevelopmentModeConsoleWarning={true}
+        appearance={{
+          layout: {
+            unsafe_disableDevelopmentModeWarnings: true,
+          },
+        }}
+      >
         <App hasClerkKey={true} />
       </ClerkProvider>
     ) : (

@@ -176,6 +176,20 @@ html.reduce-motion .fade-in {
   scroll-behavior: auto !important;
 }
 
+/* ── Compact Card Density Global Tokens ── */
+html.compact-cards {
+  --radius: 14px;
+  --radius-sm: 10px;
+}
+
+/* ── Suppress Clerk Development Mode UI Banners on GitHub Pages ── */
+.cl-devModeWarning,
+.cl-impersonationFab,
+[class*="cl-internal-"][class*="devMode"],
+[data-localization-key*="devMode"] {
+  display: none !important;
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

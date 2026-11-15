@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { Clock, ArrowRight, LogOut } from 'lucide-react'
+import { Clock, ArrowRight } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
@@ -11,7 +11,8 @@ import ClubsHub from './components/ClubsHub'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
+import { Card, IconBadge, Avatar, ToastViewport, cleanText } from './components/ui'
+import { categorizeClub, getClubCategoryMeta } from './utils/clubCategories'
 import {
   clubs as initialClubs,
   todaySchedule as fallbackSchedule,
@@ -37,6 +38,40 @@ const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_dark_v1'
 const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
 const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
 const USER_SETTINGS_STORAGE_KEY = 'clubhub_user_settings_v1'
+const JOINED_CLUBS_STORAGE_KEY = 'clubhub_joined_clubs_v1'
+
+function getJoinedClubsMap() {
+  try {
+    return JSON.parse(localStorage.getItem(JOINED_CLUBS_STORAGE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function hasStoredJoinedClubs(accountKey) {
+  if (!accountKey) return false
+  const map = getJoinedClubsMap()
+  return Array.isArray(map[accountKey])
+}
+
+function getStoredJoinedClubIds(accountKey) {
+  if (!accountKey) return []
+  const map = getJoinedClubsMap()
+  return Array.isArray(map[accountKey]) ? map[accountKey].map(String) : []
+}
+
+function saveStoredJoinedClubIds(keys, clubIds) {
+  try {
+    const map = getJoinedClubsMap()
+    const cleanIds = Array.from(new Set((clubIds || []).map(String)))
+    keys.filter(Boolean).forEach(k => {
+      map[k] = cleanIds
+    })
+    localStorage.setItem(JOINED_CLUBS_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 const DEFAULT_USER_SETTINGS = {
   displayName: '',
@@ -47,7 +82,7 @@ const DEFAULT_USER_SETTINGS = {
   reduceMotion: false,
   timeFormat: '12h',
   weekStartsOn: 'monday',
-  defaultCalendarView: 'agenda',
+  defaultCalendarView: 'month',
   availabilityHours: '9-19',
   urgentOnlyBadge: false,
   channels: {
@@ -160,15 +195,6 @@ const KIND_CATEGORY_MAP = {
   website: 'Resources',
 }
 
-const CLUB_AVATAR_GRADIENTS = [
-  'linear-gradient(135deg, var(--blue), #4B7BE5)',
-  'linear-gradient(135deg, var(--red), #D46B6B)',
-  'linear-gradient(135deg, var(--purple), #8565C4)',
-  'linear-gradient(135deg, var(--green), #4CA868)',
-  'linear-gradient(135deg, var(--teal), #3E9B92)',
-  'linear-gradient(135deg, var(--yellow), #E09F2D)',
-]
-
 // Static fallback dictionary for GitHub Pages when backend port 3001 is not running
 const STATIC_HUB_FALLBACK = {
   demo_ucsc_csclub: {
@@ -256,12 +282,51 @@ const STATIC_HUB_FALLBACK = {
   },
 }
 
+function toLocalYmdApp(dateInput) {
+  const dt = dateInput instanceof Date ? dateInput : new Date(dateInput)
+  if (Number.isNaN(dt.getTime())) return ''
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const d = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function isEventUpcoming(ev, now = new Date()) {
+  const iso = ev.startIso ?? ev.start
+  if (!iso) return true
+  const startDt = new Date(iso)
+  if (Number.isNaN(startDt.getTime())) return false
+  if (ev.allDay) {
+    return toLocalYmdApp(startDt) >= toLocalYmdApp(now)
+  }
+  return startDt.getTime() >= now.getTime()
+}
+
+function cleanScrapedLocation(raw) {
+  if (!raw || typeof raw !== 'string') return 'Campus / See post'
+  const stripped = cleanText(raw)
+    .replace(/^(?:location|where|place|room)\s*:\s*/i, '')
+    .trim()
+  if (
+    stripped.length < 3 ||
+    /^(?:opers|be\s|to\s|and\s|our\s|we\s|have\s|having\s|join\s)/i.test(stripped)
+  ) {
+    return 'Campus / See post'
+  }
+  return stripped
+}
+
 function formatScheduleItem(e, index = 0) {
   const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
   const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
   const startDate = new Date(e.start)
-  const timeLabel = e.allDay
-    ? `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (All Day)`
+  const isAllDay = Boolean(e.allDay)
+  const timeLabel = isAllDay
+    ? `${startDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })} · All Day`
     : startDate.toLocaleString('en-US', {
         weekday: 'short',
         month: 'short',
@@ -272,10 +337,11 @@ function formatScheduleItem(e, index = 0) {
 
   return {
     id: e.id,
+    clubId: e.clubId || null,
     club: cleanText(e.clubName || e.clubId || 'Campus Club'),
     event: cleanText(e.title),
     time: timeLabel,
-    location: cleanText(e.location || 'TBD'),
+    location: cleanScrapedLocation(e.location),
     duration: isBookedCollab
       ? 'Scheduled from Availability Poll'
       : e.recurring
@@ -284,6 +350,8 @@ function formatScheduleItem(e, index = 0) {
     color: isBookedCollab ? 'green' : palette[index % palette.length],
     isBookedCollab,
     isCustom: Boolean(e.isCustom),
+    allDay: isAllDay,
+    permalink: e.permalink || null,
     startIso: e.start,
     endIso: e.end,
   }
@@ -319,9 +387,26 @@ function MainDashboard({
   onSignOut,
   hasClerkKey = false,
 }) {
+  const accountEmail = (
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.email ||
+    ''
+  ).toLowerCase()
+  const accountKey = useMemo(() => {
+    if (isDemo) return 'demo'
+    if (hasClerkKey && user?.id) return `clerk:${user.id}`
+    if (accountEmail) return `email:${accountEmail}`
+    return 'guest'
+  }, [isDemo, hasClerkKey, user?.id, accountEmail])
+
   const [activeNav, setActiveNav] = useState('overview')
+  const [clubsInitialSection, setClubsInitialSection] = useState(null)
+  const [calendarInitialView, setCalendarInitialView] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [clubsData, setClubsData] = useState(initialClubs)
+  const [clubsData] = useState(initialClubs)
+  const [joinedClubIds, setJoinedClubIds] = useState(() =>
+    getStoredJoinedClubIds(accountKey)
+  )
   const [linksCount] = useState(fallbackLinks.length)
   const [rsvpMap, setRsvpMap] = useState(getStoredRsvps)
   const [resetGeneration, setResetGeneration] = useState(0)
@@ -362,10 +447,41 @@ function MainDashboard({
     }
   }, [])
 
+  // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined)
+  useEffect(() => {
+    const emailKey = accountEmail ? `email:${accountEmail}` : null
+    if (hasStoredJoinedClubs(accountKey)) {
+      setJoinedClubIds(getStoredJoinedClubIds(accountKey))
+      return
+    }
+    if (emailKey && hasStoredJoinedClubs(emailKey)) {
+      const stored = getStoredJoinedClubIds(emailKey)
+      setJoinedClubIds(stored)
+      saveStoredJoinedClubIds([accountKey, emailKey], stored)
+      return
+    }
+    if (hasClerkKey && Array.isArray(user?.unsafeMetadata?.joinedClubIds)) {
+      const metaIds = user.unsafeMetadata.joinedClubIds.map(String)
+      setJoinedClubIds(metaIds)
+      saveStoredJoinedClubIds([accountKey, emailKey], metaIds)
+      return
+    }
+    setJoinedClubIds([])
+    if (accountEmail) {
+      getDictKey(`user_clubs:${accountEmail}`).then(entry => {
+        if (Array.isArray(entry?.value?.clubIds)) {
+          const remoteIds = entry.value.clubIds.map(String)
+          setJoinedClubIds(remoteIds)
+          saveStoredJoinedClubIds([accountKey, emailKey], remoteIds)
+        }
+      })
+    }
+  }, [accountKey, accountEmail, hasClerkKey, user?.unsafeMetadata?.joinedClubIds])
+
   const loadBackendData = useCallback(async () => {
     let [hub, anns, evts, lnks, dbStats] = await Promise.all([
       getClubHub(),
-      getAnnouncements({ limit: 8 }),
+      getAnnouncements({ limit: 40 }),
       getEvents(),
       getLinks(),
       getStats(),
@@ -375,56 +491,65 @@ function MainDashboard({
       const snap = await getStaticSnapshot()
       if (snap) {
         hub = snap.hub || null
-        anns = Array.isArray(snap.announcements) ? snap.announcements.slice(0, 8) : null
+        anns = Array.isArray(snap.announcements) ? snap.announcements.slice(0, 40) : null
         evts = Array.isArray(snap.events) ? snap.events : null
         lnks = Array.isArray(snap.links) ? snap.links : null
         dbStats = snap.stats || null
       }
     }
 
+    const nowRef = new Date()
+    const calendarMinCutoffMs = new Date('2025-01-01T00:00:00Z').getTime()
+
     if (hub && Object.keys(hub).length > 0) {
       setHubDict(hub)
-      const mappedClubs = Object.values(hub).map((c, idx) => {
-        const nextEvent = (c.events || [])[0]
-        const scheduleStr = nextEvent
-          ? `${new Date(nextEvent.start).toLocaleDateString('en-US', {
+      const mappedClubs = Object.values(hub).map(c => {
+        const clubEvents = Array.isArray(c.events) ? c.events : []
+        const upcomingEvt =
+          clubEvents
+            .filter(ev => isEventUpcoming(ev, nowRef))
+            .sort((a, b) => new Date(a.start) - new Date(b.start))[0] || null
+
+        const scheduleStr = upcomingEvt
+          ? `${new Date(upcomingEvt.start).toLocaleDateString('en-US', {
               weekday: 'short',
               month: 'short',
               day: 'numeric',
-            })}${nextEvent.location ? ' · ' + nextEvent.location : ''}`
-          : `@${c.instagram}`
+            })}${upcomingEvt.location ? ' · ' + cleanScrapedLocation(upcomingEvt.location) : ''}`
+          : c.instagram
+            ? `@${c.instagram}`
+            : 'See club updates'
 
-        const nameLower = `${c.name || ''} ${c.id || ''}`.toLowerCase()
-        const gradient = nameLower.includes('debate')
-          ? CLUB_AVATAR_GRADIENTS[1]
-          : nameLower.includes('art')
-            ? CLUB_AVATAR_GRADIENTS[2]
-            : nameLower.includes('cs') || nameLower.includes('computer')
-              ? CLUB_AVATAR_GRADIENTS[0]
-              : CLUB_AVATAR_GRADIENTS[idx % CLUB_AVATAR_GRADIENTS.length]
+        const catId = categorizeClub(c)
+        const catMeta = getClubCategoryMeta(catId)
+        const rawDesc = c.bio || (c.posts || [])[0]?.summary || ''
 
         return {
           id: c.id,
           name: cleanText(c.name),
           abbr: (c.name || 'CL')
             .split(' ')
+            .filter(Boolean)
             .map(w => w[0])
             .join('')
             .slice(0, 2)
             .toUpperCase(),
           members: c.followers || 0,
-          category: c.category || 'academic',
-          description: (c.posts || [])[0]?.summary
-            ? cleanText((c.posts || [])[0].summary)
-            : '',
+          category: catId,
+          categoryLabel: catMeta.label,
+          description: rawDesc ? cleanText(rawDesc) : '',
+          profilePictureUrl: c.profilePictureUrl || null,
+          instagram: c.instagram || null,
+          email: c.email || null,
+          website: c.website || null,
           tags: [
             ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
-            ...(c.category ? [{ label: c.category, color: 'purple' }] : []),
+            { label: catMeta.shortLabel, color: catMeta.color },
           ],
           schedule: cleanText(scheduleStr),
-          avatarBg: gradient,
+          avatarBg: catMeta.gradient,
           active: true,
-          joined: true,
+          joined: false,
         }
       })
 
@@ -434,27 +559,33 @@ function MainDashboard({
         )
         const extraDiscoverClubs = initialClubs
           .filter(ic => !mappedNames.has((ic.name || '').toLowerCase().trim()))
-          .map(ic => ({ ...ic, joined: false }))
+          .map(ic => {
+            const catId = categorizeClub(ic)
+            const catMeta = getClubCategoryMeta(catId)
+            return {
+              ...ic,
+              category: catId,
+              categoryLabel: catMeta.label,
+              avatarBg: ic.avatarBg || catMeta.gradient,
+              joined: false,
+            }
+          })
 
-        setLiveClubs(prev => {
-          const prevJoinedMap = new Map((prev || []).map(p => [p.id, p.joined]))
-          return [...mappedClubs, ...extraDiscoverClubs].map(club =>
-            prevJoinedMap.has(club.id)
-              ? { ...club, joined: prevJoinedMap.get(club.id) }
-              : club
-          )
-        })
+        setLiveClubs([...mappedClubs, ...extraDiscoverClubs])
       }
     }
 
     if (evts && evts.length > 0) {
       setRawEvents(evts)
-      const sortedEvts = [...evts].sort((a, b) => {
-        const aBooked = String(a.id || '').startsWith('collab_evt_') ? 1 : 0
-        const bBooked = String(b.id || '').startsWith('collab_evt_') ? 1 : 0
-        if (aBooked !== bBooked) return bBooked - aBooked
-        return new Date(a.start).getTime() - new Date(b.start).getTime()
+      // Keep ALL valid past + upcoming events (2025+) for the Full Calendar view
+      const validEvts = evts.filter(e => {
+        if (String(e.id || '').startsWith('collab_evt_') || e.isCustom) return true
+        const ts = new Date(e.start).getTime()
+        return !Number.isNaN(ts) && ts >= calendarMinCutoffMs
       })
+      const sortedEvts = [...validEvts].sort(
+        (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+      )
       setLiveSchedule(sortedEvts.map((e, i) => formatScheduleItem(e, i)))
     }
 
@@ -466,6 +597,7 @@ function MainDashboard({
           const isStory = src === 'instagram_story'
           return {
             id: a.id,
+            clubId: a.clubId || null,
             source: src,
             permalink: a.permalink || null,
             type: a.important
@@ -489,6 +621,11 @@ function MainDashboard({
       setLiveLinks(
         lnks.map(l => ({
           id: l.id,
+          clubId: l.clubId || null,
+          clubName: l.clubName ? cleanText(l.clubName) : '',
+          rawLabel: l.label ? cleanText(l.label) : '',
+          kind: l.kind || 'website',
+          postId: l.postId || null,
           title: cleanText(`${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`),
           subtitle: l.url,
           url: l.url,
@@ -501,7 +638,7 @@ function MainDashboard({
 
     if (dbStats) {
       setLiveStats([
-        { label: 'Active Clubs',    value: dbStats.clubs ?? 0,  color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
+        { label: 'My Clubs',        value: 0,                   color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
         { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
         { label: 'Group Polls',     value: 1,                   color: 'green',  icon: 'Clock',    navTarget: 'availability' },
         { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
@@ -513,15 +650,46 @@ function MainDashboard({
     loadBackendData()
   }, [loadBackendData])
 
-  function handleNavigate(nextNav) {
+  function handleNavigate(nextNav, options = {}) {
+    if (nextNav === 'clubs') {
+      setClubsInitialSection(options.section || null)
+    } else {
+      setClubsInitialSection(null)
+    }
+    if (nextNav === 'calendar') {
+      setCalendarInitialView(options.view || null)
+    } else {
+      setCalendarInitialView(null)
+    }
     setActiveNav(nextNav)
     if (nextNav === 'availability' || nextNav === 'settings') {
       setSearchQuery('')
     }
   }
 
-  const effectiveClubs = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
-  const joinedCount = effectiveClubs.filter(c => c.joined !== false).length
+  const joinedClubSet = useMemo(
+    () => new Set(joinedClubIds.map(String)),
+    [joinedClubIds]
+  )
+
+  const effectiveClubs = useMemo(() => {
+    const base = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
+    return base.map(c => {
+      const catId = categorizeClub(c)
+      const catMeta = getClubCategoryMeta(catId)
+      const isJoined = joinedClubSet.has(String(c.id))
+      return {
+        ...c,
+        category: catId,
+        categoryLabel: c.categoryLabel || catMeta.label,
+        avatarBg: c.avatarBg || catMeta.gradient,
+        joined: isJoined,
+        members: (c.members || 0) + (isJoined ? 1 : 0),
+      }
+    })
+  }, [liveClubs, clubsData, joinedClubSet])
+
+  const joinedCount = joinedClubSet.size
 
   const effectiveSchedule = useMemo(() => {
     const base = liveSchedule && liveSchedule.length > 0 ? liveSchedule : fallbackSchedule
@@ -537,6 +705,38 @@ function MainDashboard({
     return merged
   }, [liveSchedule, localAddedEvents, removedEventIds])
 
+  // Strictly upcoming events (starting today / from current time onward — never 14 days ago!)
+  const upcomingSchedule = useMemo(() => {
+    const now = new Date()
+    return effectiveSchedule
+      .filter(ev => isEventUpcoming(ev, now))
+      .sort((a, b) => {
+        const aBooked = a.isBookedCollab ? 1 : 0
+        const bBooked = b.isBookedCollab ? 1 : 0
+        if (aBooked !== bBooked) return bBooked - aBooked
+        return new Date(a.startIso || 0).getTime() - new Date(b.startIso || 0).getTime()
+      })
+  }, [effectiveSchedule])
+
+  const personalizedSchedule = useMemo(() => {
+    if (joinedClubSet.size === 0) return upcomingSchedule
+    const matched = upcomingSchedule.filter(
+      ev =>
+        ev.isCustom ||
+        ev.isBookedCollab ||
+        (ev.clubId && joinedClubSet.has(String(ev.clubId)))
+    )
+    return matched.length > 0 ? matched : upcomingSchedule
+  }, [upcomingSchedule, joinedClubSet])
+
+  const personalizedAnnouncements = useMemo(() => {
+    if (!liveAnnouncements || joinedClubSet.size === 0) return liveAnnouncements
+    const matched = liveAnnouncements.filter(
+      a => a.clubId && joinedClubSet.has(String(a.clubId))
+    )
+    return matched.length > 0 ? matched.slice(0, 8) : liveAnnouncements.slice(0, 8)
+  }, [liveAnnouncements, joinedClubSet])
+
   const combinedRawEvents = useMemo(
     () =>
       [...localAddedEvents, ...rawEvents].filter(ev => !removedEventIds.has(ev.id)),
@@ -544,34 +744,35 @@ function MainDashboard({
   )
 
   function toggleJoinClub(clubId) {
-    if (liveClubs && liveClubs.length > 0) {
-      setLiveClubs(prev =>
-        prev.map(c =>
-          c.id === clubId
-            ? {
-                ...c,
-                joined: c.joined === false ? true : false,
-                members:
-                  c.joined === false
-                    ? (c.members || 0) + 1
-                    : Math.max(0, (c.members || 1) - 1),
-              }
-            : c
-        )
-      )
-    } else {
-      setClubsData(prev =>
-        prev.map(c =>
-          c.id === clubId
-            ? {
-                ...c,
-                joined: !c.joined,
-                members: c.joined ? c.members - 1 : c.members + 1,
-              }
-            : c
-        )
-      )
-    }
+    const targetId = String(clubId)
+    setJoinedClubIds(prev => {
+      const exists = prev.some(id => String(id) === targetId)
+      const next = exists
+        ? prev.filter(id => String(id) !== targetId)
+        : [...prev, targetId]
+
+      const emailKey = accountEmail ? `email:${accountEmail}` : null
+      saveStoredJoinedClubIds([accountKey, emailKey], next)
+
+      if (hasClerkKey && user?.update) {
+        user
+          .update({
+            unsafeMetadata: {
+              ...(user.unsafeMetadata || {}),
+              joinedClubIds: next,
+            },
+          })
+          .catch(() => {})
+      }
+      if (accountEmail) {
+        setDictKey(
+          `user_clubs:${accountEmail}`,
+          { clubIds: next, updatedAt: new Date().toISOString() },
+          { namespace: 'user_prefs', source: 'joined_clubs' }
+        ).catch(() => {})
+      }
+      return next
+    })
   }
 
   function handleToggleRsvp(eventId, isGoing) {
@@ -621,24 +822,32 @@ function MainDashboard({
     setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
   }
 
-  const totalLinksCount =
-    (liveLinks ? liveLinks.length : linksCount) + localAddedLinks.length
+  const baseLinksCount = useMemo(() => {
+    if (!liveLinks) return linksCount
+    if (joinedClubSet.size === 0) return liveLinks.length
+    const matchedCount = liveLinks.filter(
+      l => l.clubId && joinedClubSet.has(String(l.clubId))
+    ).length
+    return matchedCount > 0 ? matchedCount : liveLinks.length
+  }, [liveLinks, linksCount, joinedClubSet])
+
+  const totalLinksCount = baseLinksCount + localAddedLinks.length
 
   const effectiveStats = useMemo(() => {
     if (!liveStats) return null
     return liveStats.map(s => {
-      if (s.label === 'Active Clubs') {
-        return { ...s, value: joinedCount }
+      if (s.label === 'My Clubs' || s.label === 'Active Clubs') {
+        return { ...s, label: 'My Clubs', value: joinedCount }
       }
       if (s.label === 'Upcoming Events') {
-        return { ...s, value: effectiveSchedule.length }
+        return { ...s, value: personalizedSchedule.length }
       }
       if (s.label === 'Shared Links') {
         return { ...s, value: totalLinksCount }
       }
       return s
     })
-  }, [liveStats, joinedCount, effectiveSchedule.length, totalLinksCount])
+  }, [liveStats, joinedCount, personalizedSchedule.length, totalLinksCount])
 
   function handleAddLocalLink(linkObj) {
     setLocalAddedLinks(prev => [linkObj, ...prev])
@@ -655,13 +864,16 @@ function MainDashboard({
   }
 
   function handleResetLocalData() {
+    const emailKey = accountEmail ? `email:${accountEmail}` : null
     try {
       localStorage.removeItem(RSVP_STORAGE_KEY)
       localStorage.removeItem('clubhub_availability_user_slots_v2')
       localStorage.removeItem('clubhub_custom_roster_v1')
+      saveStoredJoinedClubIds([accountKey, emailKey], [])
     } catch {
       // Ignore storage errors
     }
+    setJoinedClubIds([])
     setRsvpMap({})
     setLocalAddedEvents([])
     setRemovedEventIds(new Set())
@@ -669,8 +881,31 @@ function MainDashboard({
     setPinnedLinkOverrides({})
     setLocalClubPosts([])
     setResetGeneration(g => g + 1)
-    showToast('Reset local demo changes to clean defaults.', { type: 'info' })
+    showToast('Reset local customizations to clean defaults.', { type: 'info' })
   }
+
+  const isCompactDensity = Boolean(userSettings?.compactCards)
+
+  const userDisplayName =
+    userSettings?.displayName?.trim() ||
+    user?.fullName ||
+    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    user?.email?.split('@')[0] ||
+    (isDemo ? 'Demo Guest' : 'Student')
+
+  const userInitials =
+    userDisplayName
+      .split(' ')
+      .filter(Boolean)
+      .map(w => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'ST'
+
+  const userAvatarGradient =
+    userSettings?.avatarBg ||
+    user?.avatarBg ||
+    'linear-gradient(135deg, var(--blue), var(--purple))'
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
@@ -688,12 +923,15 @@ function MainDashboard({
         isDemo={isDemo}
         onExitDemo={onExitDemo}
         onSignOut={onSignOut}
-        hasClerkKey={hasClerkKey}
       />
 
       {/* Main Content Area (Offset by Fixed Sidebar on Desktop) */}
       <main className="w-full min-w-0 lg:pl-[252px]">
-        <div className="px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-28 sm:py-7 lg:pb-20">
+        <div
+          className={`px-3.5 sm:px-6 lg:px-8 ${
+            isCompactDensity ? 'pt-3 pb-24 sm:py-5 lg:pb-16' : 'pt-3.5 pb-28 sm:py-7 lg:pb-20'
+          }`}
+        >
           <Header
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -705,38 +943,45 @@ function MainDashboard({
             userSettings={userSettings}
             isDemo={isDemo}
             onExitDemo={onExitDemo}
-            onSignOut={onSignOut}
-            hasClerkKey={hasClerkKey}
-            announcements={liveAnnouncements}
-            upcomingCount={effectiveSchedule.length}
+            announcements={personalizedAnnouncements}
+            upcomingCount={personalizedSchedule.length}
           />
 
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
-            <div className="space-y-5 sm:space-y-6">
+            <div className={isCompactDensity ? 'space-y-3.5' : 'space-y-5 sm:space-y-6'}>
               <StatCards
                 items={effectiveStats}
                 joinedCount={joinedCount}
-                eventsCount={effectiveSchedule.length}
+                eventsCount={personalizedSchedule.length}
                 linksCount={totalLinksCount}
-                onNav={handleNavigate}
+                userSettings={userSettings}
+                onNav={target =>
+                  target === 'clubs' && joinedCount === 0
+                    ? handleNavigate('clubs', { section: 'discover' })
+                    : handleNavigate(target)
+                }
               />
 
-              <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5">
+              <div
+                className={`grid grid-cols-1 xl:grid-cols-[5fr_3fr] ${
+                  isCompactDensity ? 'gap-3 sm:gap-3.5' : 'gap-4 sm:gap-5'
+                }`}
+              >
                 <CalendarView
                   compact={true}
-                  items={effectiveSchedule}
+                  items={personalizedSchedule}
                   clubs={effectiveClubs}
                   userSettings={userSettings}
                   searchQuery={searchQuery}
                   rsvpMap={rsvpMap}
                   onToggleRsvp={handleToggleRsvp}
                   onDeleteEvent={handleDeleteCalendarEvent}
-                  onOpenCalendar={() => handleNavigate('calendar')}
+                  onOpenCalendar={() => handleNavigate('calendar', { view: 'month' })}
                   onNotify={showToast}
                 />
                 <Announcements
-                  items={liveAnnouncements}
+                  items={personalizedAnnouncements}
                   userSettings={userSettings}
                   searchQuery={searchQuery}
                   onNav={handleNavigate}
@@ -747,11 +992,13 @@ function MainDashboard({
               <Card
                 delay={4}
                 onClick={() => handleNavigate('availability')}
-                className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:border-[var(--blue)]/40"
+                className={`${
+                  isCompactDensity ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'
+                } flex flex-col sm:flex-row sm:items-center justify-between hover:border-[var(--blue)]/40`}
               >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <IconBadge color="green" size={42} radius={13}>
-                    <Clock size={21} />
+                <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3.5'} min-w-0`}>
+                  <IconBadge color="green" size={isCompactDensity ? 34 : 42} radius={isCompactDensity ? 10 : 13}>
+                    <Clock size={isCompactDensity ? 17 : 21} />
                   </IconBadge>
                   <div className="min-w-0">
                     <div className="text-sm sm:text-base font-bold text-[var(--text)]">
@@ -763,7 +1010,11 @@ function MainDashboard({
                   </div>
                 </div>
 
-                <span className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto">
+                <span
+                  className={`inline-flex items-center gap-1.5 ${
+                    isCompactDensity ? 'px-3 min-h-[32px]' : 'px-4 min-h-[38px]'
+                  } rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto`}
+                >
                   <span>Open Availability</span>
                   <ArrowRight size={14} />
                 </span>
@@ -771,12 +1022,12 @@ function MainDashboard({
 
               <ClubsHub
                 compact={true}
-                items={liveClubs}
+                items={effectiveClubs}
                 clubsData={clubsData}
                 userSettings={userSettings}
                 onToggleJoin={toggleJoinClub}
                 searchQuery={searchQuery}
-                onOpenClubs={() => handleNavigate('clubs')}
+                onOpenClubs={opts => handleNavigate('clubs', opts)}
                 onNotify={showToast}
               />
             </div>
@@ -785,9 +1036,10 @@ function MainDashboard({
           {/* ── 2. CALENDAR ── */}
           {activeNav === 'calendar' && (
             <CalendarView
-              key={`cal_${userSettings?.defaultCalendarView}_${resetGeneration}`}
+              key={`cal_${calendarInitialView || userSettings?.defaultCalendarView}_${resetGeneration}`}
               items={effectiveSchedule}
               clubs={effectiveClubs}
+              initialView={calendarInitialView}
               userSettings={userSettings}
               searchQuery={searchQuery}
               rsvpMap={rsvpMap}
@@ -816,10 +1068,11 @@ function MainDashboard({
           {/* ── 4. CLUBS & COMMUNITY ── */}
           {activeNav === 'clubs' && (
             <ClubsHub
-              key={`clubs_${resetGeneration}`}
-              items={liveClubs}
+              key={`clubs_${resetGeneration}_${clubsInitialSection || 'auto'}`}
+              items={effectiveClubs}
               clubsData={clubsData}
               hubDict={hubDict}
+              initialSection={clubsInitialSection}
               userSettings={userSettings}
               onToggleJoin={toggleJoinClub}
               searchQuery={searchQuery}
@@ -835,6 +1088,7 @@ function MainDashboard({
             <LinksResources
               items={liveLinks}
               clubs={effectiveClubs}
+              userSettings={userSettings}
               searchQuery={searchQuery}
               onRefresh={loadBackendData}
               localAdded={localAddedLinks}
@@ -865,20 +1119,47 @@ function MainDashboard({
         </div>
       </main>
 
-      {/* ── Fixed Bottom-Right Logout Button ── */}
+      {/* ── Fixed Bottom-Right User Card (Live-Synced With Profile & Identity) ── */}
       {(onSignOut || (isDemo && onExitDemo)) && (
-        <button
-          type="button"
-          onClick={isDemo ? onExitDemo : onSignOut}
-          title={isDemo ? 'Exit demo and return to sign in' : 'Sign out of ClubHub'}
-          className="fixed bottom-[74px] lg:bottom-5 right-4 lg:right-6 z-40 inline-flex items-center gap-2
-            px-4 h-10 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
-            hover:border-[var(--red)]/55 text-xs font-semibold text-[var(--text-muted)]
-            hover:text-[var(--red-ink)] shadow-[var(--shadow-md)] cursor-pointer transition-all"
+        <div
+          className="fixed bottom-[74px] lg:bottom-5 right-3.5 lg:right-6 z-40 inline-flex items-center
+            p-1.5 rounded-full bg-[var(--bg-card)]/95 backdrop-blur-md border border-[var(--border)]
+            shadow-[var(--shadow-md)] select-none"
         >
-          <LogOut size={14} />
-          <span>{isDemo ? 'Exit Demo' : 'Log Out'}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => handleNavigate('settings')}
+            title="Profile & Identity settings"
+            className="inline-flex items-center gap-2 pl-1 pr-2.5 h-8 rounded-full bg-transparent
+              hover:bg-[var(--bg-surface)] border-none cursor-pointer transition-colors"
+          >
+            <Avatar initials={userInitials} bg={userAvatarGradient} size={28} />
+            <div className="text-left leading-tight hidden xs:block max-w-[128px]">
+              <div className="text-xs font-semibold text-[var(--text)] truncate">
+                {userDisplayName}
+              </div>
+              {userSettings?.major?.trim() && (
+                <div className="text-[10px] text-[var(--text-muted)] truncate">
+                  {userSettings.major.trim()}
+                </div>
+              )}
+            </div>
+          </button>
+
+          <div className="w-px h-4 bg-[var(--border)] mx-0.5" />
+
+          <button
+            type="button"
+            onClick={isDemo ? onExitDemo : onSignOut}
+            title={isDemo ? 'Exit preview and sign in' : 'Sign out of ClubHub'}
+            className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-transparent
+              hover:bg-[var(--red-light)] text-xs font-semibold text-[var(--text-muted)]
+              hover:text-[var(--red-ink)] border-none cursor-pointer transition-colors"
+          >
+            <LogOut size={13.5} />
+            <span>{isDemo ? 'Exit' : 'Log Out'}</span>
+          </button>
+        </div>
       )}
     </div>
   )
@@ -1389,6 +1670,10 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
     document.documentElement.classList.toggle('reduce-motion', Boolean(userSettings.reduceMotion))
   }, [userSettings.reduceMotion])
 
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('compact-cards', Boolean(userSettings.compactCards))
+  }, [userSettings.compactCards])
+
   // Enable smooth CSS theme transitions only AFTER initial frame has painted
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
@@ -1419,6 +1704,24 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
       saveStoredUserSettings(next)
       return next
     })
+    if (patch.avatarBg || typeof patch.displayName === 'string') {
+      setLocalUser(prev => {
+        if (!prev) return prev
+        const updated = {
+          ...prev,
+          ...(patch.avatarBg ? { avatarBg: patch.avatarBg } : {}),
+          ...(typeof patch.displayName === 'string' && patch.displayName.trim()
+            ? { fullName: patch.displayName.trim() }
+            : {}),
+        }
+        try {
+          localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(updated))
+        } catch {
+          // Ignore storage errors
+        }
+        return updated
+      })
+    }
   }, [])
 
   const updateLocalUserTheme = useCallback(nextDark => {

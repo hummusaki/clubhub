@@ -9,6 +9,9 @@ const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
 const inviteCache = new Map()
+const bioUnpackCache = new Map()
+let discordInviteCooldownUntil = 0
+let linktreeCooldownUntil = 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 function classifyUrlKind(url = '') {
@@ -29,6 +32,15 @@ export async function unpackBioWebsite(websiteUrl) {
   // Skip Instagram/TikTok/YouTube links that won't hold Linktree-style directory buttons
   if (/(?:instagram\.com|tiktok\.com|youtube\.com|spotify\.com)/i.test(websiteUrl)) return []
 
+  const cacheKey = websiteUrl.trim().toLowerCase()
+  if (bioUnpackCache.has(cacheKey)) return bioUnpackCache.get(cacheKey)
+
+  const isLinktreeLike = /(?:linktr\.ee|beacons\.ai|bento\.me|carrd\.co)/i.test(websiteUrl)
+  if (isLinktreeLike) {
+    if (Date.now() < linktreeCooldownUntil) return []
+    await sleep(250)
+  }
+
   try {
     const res = await fetch(websiteUrl, {
       headers: {
@@ -38,7 +50,14 @@ export async function unpackBioWebsite(websiteUrl) {
       redirect: 'follow',
       signal: AbortSignal.timeout(8000),
     })
-    if (!res.ok) return []
+    if (res.status === 429) {
+      if (isLinktreeLike) linktreeCooldownUntil = Date.now() + 60_000
+      return []
+    }
+    if (!res.ok) {
+      bioUnpackCache.set(cacheKey, [])
+      return []
+    }
     const html = await res.text()
     const found = new Map()
 
@@ -88,7 +107,9 @@ export async function unpackBioWebsite(websiteUrl) {
       }
     }
 
-    return [...found.values()]
+    const unpacked = [...found.values()]
+    bioUnpackCache.set(cacheKey, unpacked)
+    return unpacked
   } catch {
     return []
   }
@@ -238,32 +259,46 @@ export async function fetchDiscordInviteMetadata(inviteUrl = '') {
   if (!m) return null
   const code = m[1]
   if (inviteCache.has(code.toLowerCase())) return inviteCache.get(code.toLowerCase())
+  if (Date.now() < discordInviteCooldownUntil) return null
 
   try {
-    await sleep(200)
-    const res = await fetch(
-      `https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=true&with_expiration=true`,
-      {
-        headers: { 'user-agent': 'ClubHub (https://github.com/clubhub, 1.0)' },
-        signal: AbortSignal.timeout(8000),
+    await sleep(350)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const res = await fetch(
+        `https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=true&with_expiration=true`,
+        {
+          headers: { 'user-agent': 'ClubHub (https://github.com/clubhub, 1.0)' },
+          signal: AbortSignal.timeout(8000),
+        }
+      )
+      if (res.status === 429) {
+        const retryBody = await res.json().catch(() => ({}))
+        const retrySec = Number(retryBody.retry_after) || Number(res.headers.get('retry-after')) || 10
+        if (attempt === 1 && retrySec <= 5) {
+          await sleep(Math.ceil(retrySec * 1000) + 250)
+          continue
+        }
+        discordInviteCooldownUntil = Date.now() + Math.max(retrySec * 1000, 60_000)
+        return null
       }
-    )
-    if (!res.ok) {
-      inviteCache.set(code.toLowerCase(), null)
-      return null
+      if (!res.ok) {
+        inviteCache.set(code.toLowerCase(), null)
+        return null
+      }
+      const data = await res.json()
+      const info = {
+        code,
+        url: `https://discord.gg/${code}`,
+        guildId: data.guild?.id || null,
+        serverName: data.guild?.name || null,
+        description: data.guild?.description || null,
+        memberCount: data.approximate_member_count ?? null,
+        onlineCount: data.approximate_presence_count ?? null,
+      }
+      inviteCache.set(code.toLowerCase(), info)
+      return info
     }
-    const data = await res.json()
-    const info = {
-      code,
-      url: `https://discord.gg/${code}`,
-      guildId: data.guild?.id || null,
-      serverName: data.guild?.name || null,
-      description: data.guild?.description || null,
-      memberCount: data.approximate_member_count ?? null,
-      onlineCount: data.approximate_presence_count ?? null,
-    }
-    inviteCache.set(code.toLowerCase(), info)
-    return info
+    return null
   } catch {
     return null
   }

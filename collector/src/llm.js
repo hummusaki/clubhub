@@ -24,8 +24,10 @@ Return ONLY a JSON object, no prose, with this shape:
 Rules: resolve relative dates ("this Friday", "tomorrow") against the post date. Use info from the image too.
 Only include events actually announced in the post. If nothing is scheduled, use an empty events array.`
 
+let claudeCooldownUntil = 0
+
 export function llmEnabled() {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return Boolean(process.env.ANTHROPIC_API_KEY) && Date.now() >= claudeCooldownUntil
 }
 
 export async function extractWithClaude(post, profile) {
@@ -41,20 +43,33 @@ Caption:
 ${post.caption || '(no caption)'}`,
   })
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5',
-      max_tokens: 1500,
-      system: SYSTEM,
-      messages: [{ role: 'user', content }],
-    }),
-  })
+  let res
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5',
+        max_tokens: 1500,
+        system: SYSTEM,
+        messages: [{ role: 'user', content }],
+      }),
+      signal: AbortSignal.timeout(25000),
+    })
+    if ((res.status === 429 || res.status === 529) && attempt === 1) {
+      const retrySec = Math.min(Number(res.headers.get('retry-after')) || 3, 8)
+      await new Promise(r => setTimeout(r, retrySec * 1000))
+      continue
+    }
+    break
+  }
+  if (res.status === 429 || res.status === 529) {
+    claudeCooldownUntil = Date.now() + 120_000
+  }
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const data = await res.json()
   const text = data.content?.find(c => c.type === 'text')?.text || ''

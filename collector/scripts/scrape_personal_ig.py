@@ -22,6 +22,7 @@ import re
 import sys
 import tempfile
 import time
+import urllib.parse
 
 import requests
 
@@ -49,6 +50,17 @@ def strip_html(raw: str) -> str:
     return html_lib.unescape(text).strip()
 
 
+EMBED_HEADERS = {
+    "User-Agent": BROWSER_UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://getinvolved.ucsc.edu/",
+    "Sec-Fetch-Dest": "iframe",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+}
+
+
 def fetch_via_web_profile_info(sess: requests.Session, handle: str, limit: int, fetch_stories: bool = False) -> dict | None:
     url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}"
     headers = {
@@ -70,7 +82,10 @@ def fetch_via_web_profile_info(sess: requests.Session, handle: str, limit: int, 
         return None
 
     payload = resp.json()
-    user = (payload.get("data") or {}).get("user")
+    data_obj = payload.get("data")
+    if isinstance(data_obj, dict) and "user" in data_obj and data_obj["user"] is None:
+        raise LookupError(f"@{handle}: account not found")
+    user = (data_obj or {}).get("user") if isinstance(data_obj, dict) else None
     if not user:
         return None
 
@@ -163,7 +178,7 @@ def fetch_via_web_profile_info(sess: requests.Session, handle: str, limit: int, 
 
 def fetch_post_caption_from_embed(sess: requests.Session, shortcode: str) -> dict | None:
     url = f"https://www.instagram.com/p/{shortcode}/embed/captioned/"
-    resp = sess.get(url, headers={"User-Agent": BROWSER_UA, "Accept-Language": "en-US,en;q=0.9"}, timeout=10)
+    resp = sess.get(url, headers=EMBED_HEADERS, timeout=10)
     if not resp.ok:
         return None
     html = resp.text
@@ -200,12 +215,23 @@ def fetch_post_caption_from_embed(sess: requests.Session, shortcode: str) -> dic
 
 def fetch_via_public_embed(sess: requests.Session, handle: str, limit: int) -> dict | None:
     url = f"https://www.instagram.com/{handle}/embed/"
-    resp = sess.get(url, headers={"User-Agent": BROWSER_UA, "Accept-Language": "en-US,en;q=0.9"}, timeout=12)
+    resp = sess.get(url, headers=EMBED_HEADERS, timeout=12, allow_redirects=True)
     if resp.status_code == 404:
         raise LookupError(f"@{handle}: account not found")
     if not resp.ok:
         return None
+    if "/accounts/login" in (resp.url or ""):
+        return None
     html = resp.text
+
+    if (
+        "Profile isn&#039;t available" in html
+        or "Profile isn't available" in html
+        or "Sorry, this page isn&#039;t available" in html
+        or "Sorry, this page isn't available" in html
+        or "The link may be broken, or the profile may have been removed" in html
+    ):
+        raise LookupError(f"@{handle}: account not found")
 
     if "This Account is Private" in html or '"is_private":true' in html:
         raise PermissionError(f"@{handle}: account is private")
@@ -279,11 +305,26 @@ def fetch_via_public_embed(sess: requests.Session, handle: str, limit: int) -> d
             if sc not in shortcodes:
                 shortcodes.append(sc)
 
-    if not shortcodes:
-        return None
-
     name_match = re.search(r'<span[^>]+class="[^"]*Title[^"]*"[^>]*>([\s\S]*?)</span>', html, re.I)
     full_name = strip_html(name_match.group(1)) if name_match else handle
+
+    if not shortcodes:
+        # Valid 0-post public profile embed (renders profile header without login wall)
+        if name_match and "login" not in html[:1500].lower():
+            return {
+                "handle": handle,
+                "profile": {
+                    "username": handle,
+                    "name": full_name or handle,
+                    "biography": "",
+                    "website": None,
+                    "profilePictureUrl": None,
+                    "followers": None,
+                    "mediaCount": 0,
+                },
+                "posts": [],
+            }
+        return None
 
     posts_out = []
     for sc in shortcodes[: min(limit, 6)]:
@@ -315,6 +356,166 @@ def fetch_via_public_embed(sess: requests.Session, handle: str, limit: int) -> d
     }
 
 
+def _extract_item_image(item: dict) -> str | None:
+    if item.get("display_uri"):
+        return item["display_uri"]
+    if item.get("display_url"):
+        return item["display_url"]
+    candidates = ((item.get("image_versions2") or {}).get("candidates")) or []
+    if candidates and candidates[0].get("url"):
+        return candidates[0]["url"]
+    carousel = item.get("carousel_media") or []
+    if carousel:
+        c_cand = ((carousel[0].get("image_versions2") or {}).get("candidates")) or []
+        if c_cand and c_cand[0].get("url"):
+            return c_cand[0]["url"]
+    return item.get("thumbnail_src") or None
+
+
+def fetch_via_page_and_mobile(
+    L,
+    handle: str,
+    limit: int,
+    logged_in: bool = False,
+    fetch_stories: bool = False,
+) -> dict | None:
+    """
+    Primary personal-account scraper:
+      1. Loads embedded `xig_user_by_username` + `polaris_ordered_timeline_connection` from
+         Instagram's HTML document navigation (`get_page_data`) — zero `/graphql/query` calls!
+      2. When logged in, enriches via mobile `Bearer IGT:2:` (`api/v1/feed/user/{pk}/`) for
+         exact post timestamps/carousels and `api/v1/feed/reels_media/` for active 24h Stories.
+    """
+    import instaloader
+
+    try:
+        page = L.context.get_page_data(f"{handle.lower()}/")
+    except instaloader.exceptions.QueryReturnedNotFoundException:
+        raise LookupError(f"@{handle}: account not found")
+    except Exception:
+        return None
+
+    user: dict = {}
+    for block in page:
+        xig = block.get("xig_user_by_username")
+        if isinstance(xig, dict):
+            for k, v in xig.items():
+                if v is not None:
+                    user[k] = v
+
+    pk = user.get("pk")
+    if not pk:
+        return None
+
+    if user.get("is_private") and not user.get("followed_by_viewer"):
+        raise PermissionError(f"@{handle}: account is private")
+
+    bio_links = user.get("bio_links") or []
+    extra_links = [b.get("url") for b in bio_links if isinstance(b, dict) and b.get("url")]
+    website = user.get("external_url") or (extra_links[0] if extra_links else None)
+    username = user.get("username") or handle
+
+    posts_out = []
+
+    # Enrich posts via mobile API (`Bearer IGT:2:`) when logged in for exact timestamps & carousels
+    if logged_in:
+        try:
+            feed = L.context.get_iphone_json(f"api/v1/feed/user/{pk}/", {"count": str(limit)})
+            for item in (feed.get("items") or [])[:limit]:
+                code = item.get("code")
+                if not code:
+                    continue
+                cap_obj = item.get("caption")
+                caption = cap_obj.get("text", "") if isinstance(cap_obj, dict) else ""
+                taken_at = item.get("taken_at")
+                mtype_num = item.get("media_type")
+                media_type = "VIDEO" if mtype_num == 2 else ("CAROUSEL_ALBUM" if mtype_num == 8 else "IMAGE")
+                posts_out.append({
+                    "id": f"ig_{code}",
+                    "caption": caption or "",
+                    "postedAt": ts_to_iso(taken_at) if taken_at else datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "permalink": f"https://www.instagram.com/p/{code}/",
+                    "mediaType": media_type,
+                    "imageUrl": _extract_item_image(item),
+                    "isStory": False,
+                })
+        except Exception as m_exc:
+            log(f"  [scraper] Mobile feed note for @{handle}: {m_exc}")
+
+    # Fallback to timeline posts already embedded in the HTML page (works even logged-out!)
+    if not posts_out:
+        tl = user.get("polaris_ordered_timeline_connection") or user.get("edge_owner_to_timeline_media") or {}
+        for edge in (tl.get("edges") or [])[:limit]:
+            node = edge.get("node") if isinstance(edge, dict) and "node" in edge else edge
+            if not isinstance(node, dict):
+                continue
+            code = node.get("code") or node.get("shortcode")
+            if not code:
+                continue
+            cap_obj = node.get("caption")
+            if isinstance(cap_obj, dict):
+                caption = cap_obj.get("text", "")
+            else:
+                cap_edges = ((node.get("edge_media_to_caption") or {}).get("edges")) or []
+                caption = (cap_edges[0].get("node") or {}).get("text", "") if cap_edges else ""
+            taken_at = node.get("taken_at") or node.get("taken_at_timestamp")
+            mtype_num = node.get("media_type")
+            media_type = "VIDEO" if (mtype_num == 2 or node.get("is_video")) else ("CAROUSEL_ALBUM" if mtype_num == 8 else "IMAGE")
+            posts_out.append({
+                "id": f"ig_{code}",
+                "caption": caption or "",
+                "postedAt": ts_to_iso(taken_at) if taken_at else datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+                "permalink": f"https://www.instagram.com/p/{code}/",
+                "mediaType": media_type,
+                "imageUrl": _extract_item_image(node),
+                "isStory": False,
+            })
+
+    # Active 24h Stories — only query reels_media when `latest_reel_media` indicates an active story!
+    if fetch_stories and logged_in and user.get("latest_reel_media"):
+        try:
+            stories = L.context.get_iphone_json("api/v1/feed/reels_media/", {"reel_ids": str(pk)})
+            for reel in (stories.get("reels_media") or []):
+                for item in (reel.get("items") or []):
+                    item_pk = item.get("pk") or item.get("id")
+                    if not item_pk:
+                        continue
+                    taken_at = item.get("taken_at")
+                    cap_obj = item.get("caption")
+                    story_caption = cap_obj.get("text", "") if isinstance(cap_obj, dict) else ""
+                    is_vid = item.get("media_type") == 2
+                    posts_out.append({
+                        "id": f"ig_story_{item_pk}",
+                        "caption": story_caption,
+                        "postedAt": ts_to_iso(taken_at) if taken_at else datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+                        "permalink": f"https://www.instagram.com/stories/{username}/{item_pk}/",
+                        "mediaType": "STORY_VIDEO" if is_vid else "STORY_IMAGE",
+                        "imageUrl": _extract_item_image(item),
+                        "isStory": True,
+                    })
+        except Exception as s_exc:
+            log(f"  [scraper] Stories note for @{handle}: {s_exc}")
+
+    followers = user.get("follower_count")
+    if followers is None:
+        followers = (user.get("edge_followed_by") or {}).get("count")
+
+    return {
+        "handle": handle,
+        "profile": {
+            "username": username,
+            "name": user.get("full_name") or username,
+            "biography": user.get("biography") or "",
+            "website": website or None,
+            "extraBioLinks": extra_links,
+            "profilePictureUrl": user.get("profile_pic_url_hd") or user.get("profile_pic_url") or None,
+            "followers": followers,
+            "mediaCount": (user.get("edge_owner_to_timeline_media") or {}).get("count") or len(posts_out),
+        },
+        "posts": posts_out,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Scrape public Instagram club profiles (personal & business)")
     parser.add_argument("handles", nargs="*", help="Instagram handles to fetch")
@@ -340,25 +541,29 @@ def main() -> int:
         print(json.dumps({"results": [], "errors": []}))
         return 0
 
-    # Optional authenticated Instaloader session (only used if logged in!)
+    # Initialize Instaloader context (used for anonymous embedded page extraction AND optional mobile API)
     L = None
     logged_in = False
     temp_session_path = None
 
-    if args.session_user:
+    try:
+        import instaloader
+        L = instaloader.Instaloader(
+            download_pictures=False,
+            download_videos=False,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            compress_json=False,
+            quiet=True,
+            max_connection_attempts=1,
+        )
+    except Exception:
+        L = None
+
+    if args.session_user and L is not None:
         try:
-            import instaloader
-            L = instaloader.Instaloader(
-                download_pictures=False,
-                download_videos=False,
-                download_video_thumbnails=False,
-                download_geotags=False,
-                download_comments=False,
-                save_metadata=False,
-                compress_json=False,
-                quiet=True,
-                max_connection_attempts=1,
-            )
             session_b64 = os.environ.get("IG_SCRAPER_SESSION_B64", "").strip()
             if session_b64:
                 raw_bytes = base64.b64decode(session_b64)
@@ -370,92 +575,73 @@ def main() -> int:
                 L.load_session_from_file(args.session_user, filename=args.session_file)
             else:
                 L.load_session_from_file(args.session_user)
+
+            # Ensure sessionid is unquoted so Instaloader's `Bearer IGT:2:` mobile token works cleanly
+            cdict = L.context._session.cookies.get_dict()
+            if cdict.get("sessionid") and "%" in cdict["sessionid"]:
+                cdict["sessionid"] = urllib.parse.unquote(cdict["sessionid"])
+                L.load_session(args.session_user, cdict)
+
             logged_in = True
             log(f"  [scraper] Loaded authenticated session for @{args.session_user}")
         except Exception as exc:
             log(f"  [scraper] Could not load authenticated session ({exc}); using public web/embed scraper.")
 
     http_sess = requests.Session()
+    # Clean cookie-free session for public /embed/ iframe fallback so challenged session cookies never block Layer 3
+    embed_sess = requests.Session()
     if logged_in and L is not None:
-        # Hydrate http_sess with the saved authenticated cookies so single-request web_profile_info
-        # and active 24h reels_media work without hitting retired /graphql/query hashes!
         saved_cookies = L.context._session.cookies.get_dict()
         for ck, cv in saved_cookies.items():
             if cv:
                 http_sess.cookies.set(ck, cv, domain=".instagram.com", path="/")
         if saved_cookies.get("csrftoken"):
             http_sess.headers.update({"X-CSRFToken": saved_cookies["csrftoken"]})
-    else:
-        # Seed anonymous ig_did / csrftoken cookies once for web_profile_info
-        try:
-            http_sess.get("https://www.instagram.com/", headers={"User-Agent": BROWSER_UA}, timeout=8)
-            csrf = http_sess.cookies.get("csrftoken")
-            if csrf:
-                http_sess.headers.update({"X-CSRFToken": csrf})
-        except Exception:
-            pass
     results = []
     errors = []
     consecutive_blocks = 0
+    page_layer_blocks = 0
+    web_layer_blocks = 0
 
     try:
         for idx, handle in enumerate(handles):
             if idx > 0 and args.delay > 0:
-                time.sleep(args.delay * random.uniform(0.8, 1.25))
+                time.sleep(args.delay * random.uniform(0.85, 1.3))
 
             log(f"  [scraper] ({idx + 1}/{len(handles)}) Fetching @{handle}...")
             club_data = None
 
             try:
-                # Layer 1: Single-request web_profile_info JSON (uses authenticated cookies when logged in!)
-                club_data = fetch_via_web_profile_info(
-                    http_sess,
-                    handle,
-                    args.limit,
-                    fetch_stories=bool(args.stories and logged_in),
-                )
+                # Layer 1: Embedded page data + mobile Bearer IGT:2: feed & 24h Stories (zero /graphql/query!)
+                if L is not None and page_layer_blocks < 2:
+                    club_data = fetch_via_page_and_mobile(
+                        L,
+                        handle,
+                        args.limit,
+                        logged_in=logged_in,
+                        fetch_stories=bool(args.stories and logged_in),
+                    )
+                    if club_data is None:
+                        page_layer_blocks += 1
+                    else:
+                        page_layer_blocks = 0
 
-                # Layer 2: Authenticated Instaloader Profile fallback (if Layer 1 returned None)
-                if club_data is None and logged_in and L is not None:
-                    try:
-                        import instaloader
-                        profile = instaloader.Profile.from_username(L.context, handle)
-                        if profile.is_private and not profile.followed_by_viewer:
-                            raise PermissionError(f"@{handle}: account is private")
-                        posts_out = []
-                        for c_idx, post in enumerate(profile.get_posts()):
-                            if c_idx >= args.limit:
-                                break
-                            posts_out.append({
-                                "id": f"ig_{post.shortcode}",
-                                "caption": post.caption or "",
-                                "postedAt": post.date_utc.replace(tzinfo=datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-                                "permalink": f"https://www.instagram.com/p/{post.shortcode}/",
-                                "mediaType": "VIDEO" if post.is_video else "IMAGE",
-                                "imageUrl": post.url or None,
-                                "isStory": False,
-                            })
-                        club_data = {
-                            "handle": handle,
-                            "profile": {
-                                "username": profile.username,
-                                "name": profile.full_name or profile.username,
-                                "biography": profile.biography or "",
-                                "website": profile.external_url or None,
-                                "profilePictureUrl": profile.profile_pic_url or None,
-                                "followers": profile.followers,
-                                "mediaCount": profile.mediacount,
-                            },
-                            "posts": posts_out,
-                        }
-                    except (LookupError, PermissionError):
-                        raise
-                    except Exception as l2_exc:
-                        log(f"  [scraper] Instaloader fallback note for @{handle}: {l2_exc}")
+                # Layer 2: web_profile_info JSON fallback
+                if club_data is None and web_layer_blocks < 2:
+                    club_data = fetch_via_web_profile_info(
+                        http_sess,
+                        handle,
+                        args.limit,
+                        fetch_stories=bool(args.stories and logged_in),
+                    )
+                    if club_data is None:
+                        web_layer_blocks += 1
+                    else:
+                        web_layer_blocks = 0
 
-                # Layer 3: Public Instagram iframe /embed/ fallback (resilient on cloud/CI IPs!)
+                # Layer 3: Public Instagram iframe /embed/ fallback (cookie-free cross-site iframe request)
                 if club_data is None:
-                    club_data = fetch_via_public_embed(http_sess, handle, args.limit)
+                    club_data = fetch_via_public_embed(embed_sess, handle, args.limit)
 
                 if club_data is not None:
                     consecutive_blocks = 0
@@ -465,19 +651,21 @@ def main() -> int:
                     errors.append({
                         "club": handle,
                         "message": f"@{handle}: temporarily rate-limited by Instagram",
+                        "rateLimited": True,
                     })
-                    if consecutive_blocks >= 3:
+                    if consecutive_blocks >= 2:
                         log("  [scraper] Rate limit reached on this IP; stopping batch early and keeping collected profiles.")
                         break
 
             except (LookupError, PermissionError) as known_exc:
                 consecutive_blocks = 0
-                errors.append({"club": handle, "message": str(known_exc)})
+                errors.append({"club": handle, "message": str(known_exc), "rateLimited": False})
             except Exception as exc:
                 consecutive_blocks += 1
-                errors.append({"club": handle, "message": f"@{handle}: {exc}"})
-                if consecutive_blocks >= 3:
-                    log("  [scraper] Stopping batch early after repeated connection errors.")
+                is_rl = bool(re.search(r"429|rate.?limit|wait a few minutes|too many requests", str(exc), re.I))
+                errors.append({"club": handle, "message": f"@{handle}: {exc}", "rateLimited": is_rl})
+                if consecutive_blocks >= 2:
+                    log("  [scraper] Stopping batch early after repeated connection/rate-limit errors.")
                     break
     finally:
         if temp_session_path and os.path.exists(temp_session_path):

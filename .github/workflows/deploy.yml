@@ -42,15 +42,20 @@ jobs:
 
       - name: Sync Instagram (Business + Personal fallback), Linktrees & Discord
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_AGGREGATOR_GUILD_ID: ${{ secrets.DISCORD_AGGREGATOR_GUILD_ID }}
           DISCORD_CHANNEL_MAP: ${{ secrets.DISCORD_CHANNEL_MAP }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_GRAPH_MAX_CLUBS: "55"
+          IG_GRAPH_DELAY_MS: "800"
+          INCREMENTAL_POSTS_PER_CLUB: "6"
+          IG_FRESH_TTL_MIN: "55"
           IG_PERSONAL_FALLBACK: "true"
           IG_SCRAPER_STORIES: "true"
-          IG_SCRAPER_MAX_CLUBS: "12"
-          IG_SCRAPER_DELAY_SEC: "5"
+          IG_SCRAPER_MAX_CLUBS: "8"
+          IG_SCRAPER_DELAY_SEC: "7"
           IG_SCRAPER_SESSION_USER: ${{ secrets.IG_SCRAPER_SESSION_USER }}
           IG_SCRAPER_SESSION_B64: ${{ secrets.IG_SCRAPER_SESSION_B64 }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -71,6 +76,7 @@ jobs:
       - name: Build production bundle
         env:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CLERK_UNSAFE_DISABLE_DEVELOPMENT_MODE_CONSOLE_WARNING: "true"
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: npm run build
 

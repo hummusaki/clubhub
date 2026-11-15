@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Bell, CheckCheck, Moon, Sun, LogOut, LogIn, Settings } from 'lucide-react'
-import { UserButton } from '@clerk/react'
-import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, cleanText } from './ui'
+import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, Avatar, cleanText } from './ui'
 import { AnnouncementTypeIcon } from './icons'
 import { announcements as initialAnnouncements } from '../data/sampleData'
-import { getUserButtonAppearance } from '../clerkTheme'
 
 export default function Header({
   searchQuery = '',
@@ -17,12 +15,11 @@ export default function Header({
   userSettings = {},
   isDemo = false,
   onExitDemo,
-  onSignOut,
-  hasClerkKey = false,
   announcements = null,
   upcomingCount = 0,
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [readIds, setReadIds] = useState({})
   const notifRef = useRef(null)
 
@@ -52,11 +49,15 @@ export default function Header({
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (e.key === 'Escape') setNotifOpen(false)
+      if (e.key === 'Escape') {
+        setNotifOpen(false)
+        setUserMenuOpen(false)
+      }
     }
     function handleClickOutside(e) {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotifOpen(false)
+        setUserMenuOpen(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -72,6 +73,31 @@ export default function Header({
     for (const item of items) next[item.id] = true
     setReadIds(next)
   }
+
+  const displayName =
+    userSettings?.displayName?.trim() ||
+    user?.fullName ||
+    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    user?.email?.split('@')[0] ||
+    (isDemo ? 'Demo Guest' : 'Student')
+
+  const displayEmail =
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.email ||
+    (isDemo ? 'Preview Mode' : 'Verified Member')
+
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'ST'
+
+  const avatarGradient =
+    userSettings?.avatarBg ||
+    user?.avatarBg ||
+    'linear-gradient(135deg, var(--blue), var(--purple))'
 
   const customFirst = userSettings?.displayName?.trim()
     ? userSettings.displayName.trim().split(' ')[0]
@@ -106,9 +132,10 @@ export default function Header({
   }
 
   const showSearch = activeNav !== 'availability' && activeNav !== 'settings'
+  const isCompact = Boolean(userSettings?.compactCards)
 
   return (
-    <header className="relative z-30 mb-5 sm:mb-6" ref={notifRef}>
+    <header className={`relative z-30 ${isCompact ? 'mb-3.5 sm:mb-4' : 'mb-5 sm:mb-6'}`} ref={notifRef}>
       {/* ── Mobile / Tablet Top Bar (< lg) ── */}
       <div className="flex lg:hidden items-center justify-between gap-2 pb-3 mb-3.5 border-b border-[var(--border)]">
         <button
@@ -123,31 +150,6 @@ export default function Header({
         </button>
 
         <div className="flex items-center gap-1.5">
-          {isDemo && onExitDemo ? (
-            <button
-              type="button"
-              onClick={onExitDemo}
-              className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full bg-[var(--blue-light)] border border-[var(--blue)]/25 text-xs font-semibold text-[var(--blue-ink)] cursor-pointer"
-            >
-              <LogIn size={13} />
-              <span>Sign In</span>
-            </button>
-          ) : hasClerkKey && user ? (
-            <div className="flex items-center mr-0.5">
-              <UserButton appearance={getUserButtonAppearance(dark)} />
-            </div>
-          ) : user && onSignOut ? (
-            <button
-              type="button"
-              onClick={onSignOut}
-              title={`Signed in as ${user.email || user.fullName} — Sign out`}
-              aria-label="Sign out"
-              className="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--red-ink)] cursor-pointer transition-colors"
-            >
-              <LogOut size={15} />
-            </button>
-          ) : null}
-
           <button
             type="button"
             onClick={onToggleDark}
@@ -160,20 +162,10 @@ export default function Header({
 
           <button
             type="button"
-            onClick={() => onNav && onNav('settings')}
-            aria-label="Settings"
-            className={`w-9 h-9 rounded-full border flex items-center justify-center cursor-pointer transition-colors ${
-              activeNav === 'settings'
-                ? 'bg-[var(--blue-light)] border-[var(--blue)]/40 text-[var(--blue-ink)]'
-                : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-muted)]'
-            }`}
-          >
-            <Settings size={16} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setNotifOpen(o => !o)}
+            onClick={() => {
+              setUserMenuOpen(false)
+              setNotifOpen(o => !o)
+            }}
             aria-label="Notifications"
             className="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
               flex items-center justify-center cursor-pointer relative"
@@ -189,6 +181,22 @@ export default function Header({
               </span>
             )}
           </button>
+
+          {(user || isDemo) && (
+            <button
+              type="button"
+              onClick={() => {
+                setNotifOpen(false)
+                setUserMenuOpen(o => !o)
+              }}
+              title={`${displayName} — Account menu`}
+              aria-label="Account menu"
+              className="flex items-center gap-1 pl-0.5 pr-1.5 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)] cursor-pointer"
+            >
+              <Avatar initials={initials} bg={avatarGradient} size={28} />
+              <ChevronDown size={13} className="text-[var(--text-muted)]" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -215,10 +223,13 @@ export default function Header({
             </div>
           )}
 
-          <div className="hidden lg:block relative">
+          <div className="hidden lg:flex items-center gap-2.5 relative">
             <button
               type="button"
-              onClick={() => setNotifOpen(o => !o)}
+              onClick={() => {
+                setUserMenuOpen(false)
+                setNotifOpen(o => !o)
+              }}
               aria-label="Notifications"
               className="w-[42px] h-[42px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)]
                 flex items-center justify-center cursor-pointer hover:border-[var(--blue)]
@@ -235,9 +246,71 @@ export default function Header({
                 </span>
               )}
             </button>
+
+            {(user || isDemo) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifOpen(false)
+                  setUserMenuOpen(o => !o)
+                }}
+                title={`${displayName} — Account menu`}
+                aria-label="Account menu"
+                className="flex items-center gap-2 pl-2 pr-2.5 h-[42px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
+              >
+                <Avatar initials={initials} bg={avatarGradient} size={28} />
+                <ChevronDown size={14} className="text-[var(--text-muted)]" />
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* ── User Account Dropdown (Profile, Settings & Log Out) ── */}
+      {userMenuOpen && (user || isDemo) && (
+        <div
+          className="fixed lg:absolute right-3 top-[58px] lg:right-0 lg:top-full lg:mt-2
+            w-[235px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
+            shadow-[var(--shadow-lg)] p-2 z-[95] fade-in"
+        >
+          <div className="px-3 py-2.5 border-b border-[var(--border)] mb-1 flex items-center gap-2.5">
+            <Avatar initials={initials} bg={avatarGradient} size={32} />
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-[var(--text)] truncate">{displayName}</div>
+              <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                {displayEmail}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setUserMenuOpen(false)
+              if (onNav) onNav('settings')
+            }}
+            className="w-full flex items-center gap-2.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold text-[var(--text)] bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-left transition-colors"
+          >
+            <Settings size={15} className="text-[var(--text-muted)]" />
+            <span>Profile & Settings</span>
+          </button>
+
+          {(onSignOut || (isDemo && onExitDemo)) && (
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false)
+                if (isDemo && onExitDemo) onExitDemo()
+                else if (onSignOut) onSignOut()
+              }}
+              className="w-full flex items-center gap-2.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold text-[var(--red-ink)] bg-transparent hover:bg-[var(--red-light)] border-none cursor-pointer text-left transition-colors"
+            >
+              {isDemo ? <LogIn size={15} /> : <LogOut size={15} />}
+              <span>{isDemo ? 'Sign In / Exit Demo' : 'Log Out'}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Notification Popover (Anchored directly beneath Bell — No transform trap) ── */}
       {notifOpen && (

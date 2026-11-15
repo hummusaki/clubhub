@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { categorizeClub } from '../collector/src/categorize.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, 'clubhub.db');
@@ -137,6 +138,7 @@ function initSchema(db) {
       profilePictureUrl TEXT,
       followers         INTEGER DEFAULT 0,
       lastPostAt        TEXT,
+      lastSyncedAt      TEXT,
       email             TEXT,
       syncStatus        TEXT DEFAULT 'synced',   -- 'synced' | 'unavailable' (personal/private Instagram)
       syncNote          TEXT,                    -- plain-language reason shown when unavailable
@@ -226,7 +228,12 @@ function initSchema(db) {
 
   // Add newer club columns to databases created before they existed.
   const clubCols = new Set(db.prepare('PRAGMA table_info(clubs)').all().map(c => c.name));
-  for (const [col, def] of [['email', 'TEXT'], ['syncStatus', "TEXT DEFAULT 'synced'"], ['syncNote', 'TEXT']]) {
+  for (const [col, def] of [
+    ['email', 'TEXT'],
+    ['syncStatus', "TEXT DEFAULT 'synced'"],
+    ['syncNote', 'TEXT'],
+    ['lastSyncedAt', 'TEXT'],
+  ]) {
     if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
   }
 }
@@ -263,27 +270,34 @@ export function upsertCollectorData(data = {}) {
   } = data;
 
   const ensureClubStmt = db.stmt(`
-    INSERT OR IGNORE INTO clubs (id, name, instagram, instagramUrl, updatedAt)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT OR IGNORE INTO clubs (id, name, instagram, instagramUrl, category, updatedAt)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
   `);
 
   const upsertClubStmt = db.stmt(`
     INSERT INTO clubs (
       id, name, alsoKnownAs, instagram, instagramUrl, category,
-      bio, website, profilePictureUrl, followers, lastPostAt,
+      bio, website, profilePictureUrl, followers, lastPostAt, lastSyncedAt,
       email, syncStatus, syncNote, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       name              = excluded.name,
       alsoKnownAs       = excluded.alsoKnownAs,
       instagram         = excluded.instagram,
       instagramUrl      = excluded.instagramUrl,
-      category          = COALESCE(excluded.category, clubs.category),
+      category          = CASE
+                            WHEN clubs.category IS NOT NULL
+                             AND clubs.category NOT IN ('other', 'community', '')
+                             AND (excluded.category IS NULL OR excluded.category IN ('other', 'community', ''))
+                            THEN clubs.category
+                            ELSE COALESCE(excluded.category, clubs.category)
+                          END,
       bio               = COALESCE(excluded.bio, clubs.bio),
       website           = COALESCE(excluded.website, clubs.website),
       profilePictureUrl = COALESCE(excluded.profilePictureUrl, clubs.profilePictureUrl),
       followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
       lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
+      lastSyncedAt      = COALESCE(excluded.lastSyncedAt, clubs.lastSyncedAt),
       email             = COALESCE(excluded.email, clubs.email),
       syncStatus        = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN 'synced' ELSE COALESCE(excluded.syncStatus, clubs.syncStatus) END,
       syncNote          = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN clubs.syncNote ELSE excluded.syncNote END,
@@ -361,7 +375,8 @@ export function upsertCollectorData(data = {}) {
   const ensureClub = (rawId, fallbackName) => {
     const cid = normalizeClubId(rawId);
     if (!cid) return null;
-    ensureClubStmt.run(cid, fallbackName || cid, cid, `https://www.instagram.com/${cid}/`);
+    const autoCat = categorizeClub({ id: cid, name: fallbackName || cid, instagram: cid });
+    ensureClubStmt.run(cid, fallbackName || cid, cid, `https://www.instagram.com/${cid}/`, autoCat);
     affectedClubs.add(cid);
     return cid;
   };
@@ -372,18 +387,25 @@ export function upsertCollectorData(data = {}) {
     for (const c of clubs) {
       const cid = normalizeClubId(c.id || c.instagram);
       if (!cid) continue;
+      const resolvedCategory = categorizeClub({
+        ...c,
+        id: cid,
+        name: c.name || cid,
+        instagram: normalizeClubId(c.instagram) || cid,
+      });
       upsertClubStmt.run(
         cid,
         c.name || cid,
         JSON.stringify(Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : []),
         normalizeClubId(c.instagram) || cid,
         c.instagramUrl || `https://www.instagram.com/${cid}/`,
-        c.category || null,
+        resolvedCategory,
         c.bio || null,
         c.website || null,
         c.profilePictureUrl || null,
         Number(c.followers) || 0,
         c.lastPostAt || null,
+        c.lastSyncedAt || null,
         c.email || null,
         c.syncStatus || 'synced',
         c.syncNote || null

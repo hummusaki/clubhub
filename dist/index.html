@@ -24,11 +24,15 @@
         try {
           var isDark = null;
           var reduceMotion = false;
+          var compactCards = false;
 
           var rawSettings = localStorage.getItem('clubhub_user_settings_v1');
           var settings = rawSettings ? JSON.parse(rawSettings) : null;
           if (settings && settings.reduceMotion) {
             reduceMotion = true;
+          }
+          if (settings && settings.compactCards) {
+            compactCards = true;
           }
 
           var rawUser = localStorage.getItem('clubhub_auth_user');
@@ -75,6 +79,9 @@
           if (reduceMotion) {
             root.classList.add('reduce-motion');
           }
+          if (compactCards) {
+            root.classList.add('compact-cards');
+          }
         } catch (e) {
           // Ignore storage read errors
         }
@@ -85,8 +92,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>ClubHub — Campus Workspace</title>
-    <script type="module" crossorigin src="./assets/index-WL94-FeQ.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CinMla_u.css">
+    <script type="module" crossorigin src="./assets/index-8_MNdx2X.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-8j9_Wpqh.css">
   </head>
   <body>
     <div id="root"></div>

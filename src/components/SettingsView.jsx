@@ -158,23 +158,27 @@ export default function SettingsView({
     }
   }
 
+  const isCompact = Boolean(userSettings?.compactCards)
+  const cardPad = isCompact ? 'p-4 sm:p-4.5' : 'p-5 sm:p-6'
+  const rowPad = isCompact ? 'p-2.5' : 'p-3.5'
+
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className={`max-w-4xl ${isCompact ? 'space-y-3.5' : 'space-y-5'}`}>
       {/* ── 1. Profile & Campus Identity ── */}
-      <Card className="p-5 sm:p-6" delay={1}>
-        <div className="flex items-center gap-2.5 pb-4 mb-5 border-b border-[var(--border)]">
+      <Card className={cardPad} delay={1}>
+        <div className={`flex items-center gap-2.5 ${isCompact ? 'pb-3 mb-3.5' : 'pb-4 mb-5'} border-b border-[var(--border)]`}>
           <User size={18} className="text-[var(--blue)]" />
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">Profile & Identity</h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Used in your dashboard greeting, sidebar card, and availability polls
+              Used in your dashboard greeting, user cards, and availability polls
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSaveProfile} className="space-y-4">
+        <form onSubmit={handleSaveProfile} className={isCompact ? 'space-y-3' : 'space-y-4'}>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-2">
-            <Avatar initials={initials} bg={avatarBg} size={56} />
+            <Avatar initials={initials} bg={avatarBg} size={isCompact ? 48 : 56} />
             <div className="space-y-1.5">
               <div className="text-xs font-semibold text-[var(--text-muted)]">
                 Avatar Color
@@ -186,7 +190,10 @@ export default function SettingsView({
                     <button
                       key={g.id}
                       type="button"
-                      onClick={() => setAvatarBg(g.css)}
+                      onClick={() => {
+                        setAvatarBg(g.css)
+                        onUpdateSettings({ avatarBg: g.css })
+                      }}
                       title={g.label}
                       aria-label={`Select ${g.label} avatar gradient`}
                       className={`w-8 h-8 rounded-full cursor-pointer border-2 flex items-center justify-center transition-transform ${
@@ -247,8 +254,8 @@ export default function SettingsView({
       </Card>
 
       {/* ── 2. Appearance & Display ── */}
-      <Card className="p-5 sm:p-6 space-y-5" delay={2}>
-        <div className="flex items-center gap-2.5 pb-4 border-b border-[var(--border)]">
+      <Card className={`${cardPad} ${isCompact ? 'space-y-3.5' : 'space-y-5'}`} delay={2}>
+        <div className={`flex items-center gap-2.5 ${isCompact ? 'pb-3' : 'pb-4'} border-b border-[var(--border)]`}>
           <Sparkles size={18} className="text-[var(--purple)]" />
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">Appearance & Display</h2>
@@ -260,10 +267,10 @@ export default function SettingsView({
 
         {/* Theme Mode Cards */}
         <div>
-          <label className="block text-xs font-semibold text-[var(--text-muted)] mb-2.5">
+          <label className="block text-xs font-semibold text-[var(--text-muted)] mb-2">
             Color Theme
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 sm:grid-cols-3 ${isCompact ? 'gap-2' : 'gap-3'}`}>
             {[
               { id: 'light',  label: 'Light',  desc: 'Crisp porcelain', icon: Sun },
               { id: 'dark',   label: 'Dark',   desc: 'Midnight slate',  icon: Moon },
@@ -276,7 +283,7 @@ export default function SettingsView({
                   key={opt.id}
                   type="button"
                   onClick={() => onSetThemeMode(opt.id)}
-                  className={`p-3.5 rounded-xl border text-left flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                  className={`${rowPad} rounded-xl border text-left flex items-center justify-between gap-3 cursor-pointer transition-all ${
                     isSelected
                       ? 'bg-[var(--blue-light)] border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--border-strong)]'
@@ -300,12 +307,12 @@ export default function SettingsView({
         </div>
 
         {/* Toggle Rows: Compact Cards & Reduce Motion */}
-        <div className="space-y-3 pt-1">
-          <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+        <div className={`${isCompact ? 'space-y-2' : 'space-y-3'} pt-1`}>
+          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
             <div>
               <div className="text-sm font-semibold text-[var(--text)]">Compact Card Density</div>
               <div className="text-xs text-[var(--text-muted)]">
-                Fit more events and clubs on screen with tighter spacing
+                Fit more events, resources, and clubs on screen with tighter spacing
               </div>
             </div>
             <button
@@ -329,7 +336,7 @@ export default function SettingsView({
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
             <div>
               <div className="text-sm font-semibold text-[var(--text)]">Reduce Motion</div>
               <div className="text-xs text-[var(--text-muted)]">
@@ -360,7 +367,7 @@ export default function SettingsView({
       </Card>
 
       {/* ── 3. Calendar & Availability Preferences ── */}
-      <Card className="p-5 sm:p-6 space-y-4" delay={3}>
+      <Card className={`${cardPad} ${isCompact ? 'space-y-3' : 'space-y-4'}`} delay={3}>
         <div className="flex items-center gap-2.5 pb-4 border-b border-[var(--border)]">
           <Calendar size={18} className="text-[var(--green)]" />
           <div>
@@ -407,13 +414,13 @@ export default function SettingsView({
               Default Calendar View
             </label>
             <select
-              value={userSettings?.defaultCalendarView || 'agenda'}
+              value={userSettings?.defaultCalendarView || 'month'}
               onChange={e => onUpdateSettings({ defaultCalendarView: e.target.value })}
               className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
             >
-              <option value="agenda">Agenda List</option>
+              <option value="month">Full Calendar (Month Grid)</option>
               <option value="week">Week Board</option>
-              <option value="month">Month Grid</option>
+              <option value="agenda">Agenda List</option>
             </select>
           </div>
 
@@ -435,8 +442,8 @@ export default function SettingsView({
       </Card>
 
       {/* ── 4. Notifications & Feed Channels ── */}
-      <Card className="p-5 sm:p-6 space-y-3.5" delay={4}>
-        <div className="flex items-center gap-2.5 pb-3.5 border-b border-[var(--border)]">
+      <Card className={`${cardPad} ${isCompact ? 'space-y-2.5' : 'space-y-3.5'}`} delay={4}>
+        <div className={`flex items-center gap-2.5 ${isCompact ? 'pb-2.5' : 'pb-3.5'} border-b border-[var(--border)]`}>
           <Bell size={18} className="text-[var(--yellow)]" />
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">
@@ -469,7 +476,7 @@ export default function SettingsView({
           return (
             <div
               key={ch.key}
-              className="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]"
+              className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}
             >
               <div>
                 <div className="text-sm font-semibold text-[var(--text)]">{ch.title}</div>
@@ -496,7 +503,7 @@ export default function SettingsView({
           )
         })}
 
-        <div className="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+        <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
           <div>
             <div className="text-sm font-semibold text-[var(--text)]">
               Urgent-Only Notification Badge
@@ -528,8 +535,8 @@ export default function SettingsView({
       </Card>
 
       {/* ── 5. Schedule Export, Data Reset & Account Session ── */}
-      <Card className="p-5 sm:p-6 space-y-4" delay={5}>
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[var(--border)]">
+      <Card className={`${cardPad} ${isCompact ? 'space-y-3' : 'space-y-4'}`} delay={5}>
+        <div className={`flex flex-wrap items-center justify-between gap-3 ${isCompact ? 'pb-3' : 'pb-4'} border-b border-[var(--border)]`}>
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">Data & Session</h2>
             <p className="text-xs text-[var(--text-muted)]">
@@ -539,7 +546,7 @@ export default function SettingsView({
           <BubbleTag
             label={
               isDemo
-                ? 'Demo Preview'
+                ? 'Guest Preview'
                 : hasClerkKey
                   ? 'Google / Clerk SSO'
                   : 'Campus Account'
@@ -566,7 +573,7 @@ export default function SettingsView({
               className="inline-flex items-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs sm:text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
             >
               <RotateCcw size={15} />
-              <span>Reset Local Demo Changes</span>
+              <span>Reset Local Customizations</span>
             </button>
           )}
 

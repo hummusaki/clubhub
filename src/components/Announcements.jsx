@@ -27,10 +27,15 @@ export default function Announcements({
     )
   })
 
+  const isCompact = Boolean(userSettings?.compactCards)
+
   return (
-    <Card className="p-4 sm:p-[22px] flex flex-col justify-between" delay={3}>
+    <Card
+      className={`${isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
+      delay={3}
+    >
       <div>
-        <div className="flex items-center justify-between gap-2 mb-4">
+        <div className={`flex items-center justify-between gap-2 ${isCompact ? 'mb-3' : 'mb-4'}`}>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-[var(--text)]">Announcements</h2>
             <BubbleTag label={`${announcements.length}`} color="red" size="sm" />
@@ -49,8 +54,8 @@ export default function Announcements({
         </div>
 
         {announcements.length > 0 ? (
-          <div className="flex flex-col gap-3.5">
-            {announcements.slice(0, 5).map((item, i, arr) => {
+          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3.5'}`}>
+            {announcements.slice(0, isCompact ? 7 : 5).map((item, i, arr) => {
               const color = item.color || 'blue'
               const isDiscord = item.source === 'discord'
               const isStory = item.source === 'instagram_story'
@@ -58,22 +63,29 @@ export default function Announcements({
               return (
                 <div
                   key={item.id}
-                  className={`flex items-start gap-3 ${
-                    i < arr.length - 1 ? 'pb-3.5 border-b border-[var(--border)]' : ''
+                  className={`flex items-start ${isCompact ? 'gap-2.5' : 'gap-3'} ${
+                    i < arr.length - 1
+                      ? `${isCompact ? 'pb-2.5' : 'pb-3.5'} border-b border-[var(--border)]`
+                      : ''
                   }`}
                 >
-                  <IconBadge color={color} size={34} radius={10} className="mt-0.5">
+                  <IconBadge
+                    color={color}
+                    size={isCompact ? 28 : 34}
+                    radius={isCompact ? 8 : 10}
+                    className="mt-0.5"
+                  >
                     {isDiscord ? (
-                      <PlatformIcon type="discord" size={17} />
+                      <PlatformIcon type="discord" size={isCompact ? 14 : 17} />
                     ) : isStory ? (
-                      <PlatformIcon type="instagram" size={17} />
+                      <PlatformIcon type="instagram" size={isCompact ? 14 : 17} />
                     ) : (
-                      <AnnouncementTypeIcon type={item.type} size={17} />
+                      <AnnouncementTypeIcon type={item.type} size={isCompact ? 14 : 17} />
                     )}
                   </IconBadge>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                       <BubbleTag label={item.type} color={color} size="sm" />
                       <span className="text-[11px] text-[var(--text-light)]">{item.time}</span>
                     </div>
@@ -83,7 +95,9 @@ export default function Announcements({
                         href={item.permalink}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--text)] hover:text-[var(--blue)] no-underline"
+                        className={`inline-flex items-center gap-1 ${
+                          isCompact ? 'text-[13px]' : 'text-sm'
+                        } font-semibold text-[var(--text)] hover:text-[var(--blue)] no-underline`}
                       >
                         <span>{cleanText(item.title)}</span>
                         <ExternalLink size={12} className="shrink-0 opacity-60" />
@@ -92,17 +106,27 @@ export default function Announcements({
                       <button
                         type="button"
                         onClick={() => onNav(item.navTarget)}
-                        className="text-left text-sm font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none p-0 cursor-pointer"
+                        className={`text-left ${
+                          isCompact ? 'text-[13px]' : 'text-sm'
+                        } font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none p-0 cursor-pointer`}
                       >
                         {cleanText(item.title)}
                       </button>
                     ) : (
-                      <p className="text-sm font-semibold text-[var(--text)]">
+                      <p
+                        className={`${
+                          isCompact ? 'text-[13px]' : 'text-sm'
+                        } font-semibold text-[var(--text)]`}
+                      >
                         {cleanText(item.title)}
                       </p>
                     )}
 
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-snug">
+                    <p
+                      className={`text-xs text-[var(--text-muted)] mt-0.5 leading-snug ${
+                        isCompact ? 'line-clamp-1' : ''
+                      }`}
+                    >
                       {cleanText(item.description)}
                     </p>
                   </div>

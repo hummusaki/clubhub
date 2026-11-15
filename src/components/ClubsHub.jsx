@@ -21,7 +21,11 @@ import { Card, ClubAvatar, Avatar, BubbleTag, IconBadge, cleanText } from './ui'
 import { PlatformIcon } from './icons'
 import { ingestFromSource } from '../api/client'
 
-const CATEGORY_FILTERS = ['All', 'Academic', 'Arts', 'Social']
+function formatCategoryLabel(raw) {
+  const s = String(raw || 'other').trim()
+  if (!s) return 'Other'
+  return s.replace(/\b\w/g, ch => ch.toUpperCase())
+}
 
 const SOURCE_FILTERS = [
   { id: 'all',       label: 'All Channels', color: 'blue' },
@@ -66,6 +70,7 @@ export default function ClubsHub({
   items,
   clubsData,
   hubDict = {},
+  initialSection = null,
   userSettings = {},
   onToggleJoin,
   searchQuery = '',
@@ -76,9 +81,22 @@ export default function ClubsHub({
   onAddLocalPost,
   onNotify,
 }) {
-  const [section, setSection] = useState('myclubs') // 'myclubs' | 'discover' | 'updates' | 'directory'
+  const allClubs = useMemo(() => {
+    if (items && items.length > 0) return items
+    return clubsData && clubsData.length > 0 ? clubsData : defaultClubs
+  }, [items, clubsData])
+
+  const joinedClubs = useMemo(
+    () => allClubs.filter(c => Boolean(c.joined)),
+    [allClubs]
+  )
+
+  const [section, setSection] = useState(
+    () => initialSection || (joinedClubs.length === 0 ? 'discover' : 'myclubs')
+  ) // 'myclubs' | 'discover' | 'updates' | 'directory'
   const [category, setCategory] = useState('All')
   const [selectedSource, setSelectedSource] = useState('all')
+  const [feedScope, setFeedScope] = useState('myclubs') // 'myclubs' | 'all'
 
   // Directory filters & state
   const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
@@ -107,22 +125,27 @@ export default function ClubsHub({
   const localPosts = externalLocalPosts ?? internalLocalPosts
   const isCompactDensity = Boolean(userSettings?.compactCards)
 
-  const allClubs = useMemo(() => {
-    if (items && items.length > 0) return items
-    return clubsData && clubsData.length > 0 ? clubsData : defaultClubs
-  }, [items, clubsData])
-
-  const joinedClubs = useMemo(
-    () => allClubs.filter(c => c.joined !== false),
-    [allClubs]
-  )
+  const categoryFilters = useMemo(() => {
+    const pool = section === 'discover' ? allClubs : joinedClubs
+    const counts = new Map()
+    for (const c of pool) {
+      const key = String(c.category || 'other').toLowerCase().trim()
+      if (!key) continue
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    const sorted = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7)
+      .map(([key]) => ({ value: key, label: formatCategoryLabel(key) }))
+    return [{ value: 'All', label: 'All' }, ...sorted]
+  }, [allClubs, joinedClubs, section])
 
   const filteredClubs = useMemo(() => {
     const pool = section === 'discover' ? allClubs : joinedClubs
     return pool.filter(c => {
       if (
         category !== 'All' &&
-        (c.category || '').toLowerCase() !== category.toLowerCase()
+        String(c.category || 'other').toLowerCase().trim() !== category.toLowerCase()
       ) {
         return false
       }
@@ -138,6 +161,11 @@ export default function ClubsHub({
     })
   }, [allClubs, joinedClubs, section, category, searchQuery])
 
+  const joinedIdSet = useMemo(
+    () => new Set(joinedClubs.map(c => String(c.id))),
+    [joinedClubs]
+  )
+
   const feedPosts = useMemo(() => {
     const channels = userSettings?.channels || {}
     const combined = [...localPosts]
@@ -152,6 +180,15 @@ export default function ClubsHub({
     }
 
     return combined.filter(post => {
+      if (
+        joinedIdSet.size > 0 &&
+        feedScope === 'myclubs' &&
+        post.clubId &&
+        !joinedIdSet.has(String(post.clubId))
+      ) {
+        return false
+      }
+
       const src = String(post.source || '').toLowerCase()
       if (selectedSource === 'all') {
         if (src.includes('instagram') && channels.instagram === false) return false
@@ -171,7 +208,7 @@ export default function ClubsHub({
       }
       return true
     })
-  }, [hubDict, localPosts, selectedSource, searchQuery, userSettings?.channels])
+  }, [hubDict, localPosts, joinedIdSet, feedScope, selectedSource, searchQuery, userSettings?.channels])
 
   const allOfficers = useMemo(
     () => [...customRoster.officers, ...initialOfficers],
@@ -359,7 +396,7 @@ export default function ClubsHub({
   }
 
   function renderClubCard(club) {
-    const isJoined = club.joined !== false
+    const isJoined = Boolean(club.joined)
     return (
       <div
         key={club.id}
@@ -449,6 +486,7 @@ export default function ClubsHub({
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
     const previewClubs = joinedClubs.slice(0, 3)
+    const suggestedClubs = allClubs.slice(0, 3)
     return (
       <Card className="p-4 sm:p-[22px]" delay={4}>
         <div className="flex items-center justify-between gap-2 mb-4">
@@ -460,10 +498,18 @@ export default function ClubsHub({
           {onOpenClubs && (
             <button
               type="button"
-              onClick={onOpenClubs}
+              onClick={() =>
+                onOpenClubs(
+                  joinedClubs.length === 0 ? { section: 'discover' } : { section: 'myclubs' }
+                )
+              }
               className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
             >
-              <span>Browse All Clubs</span>
+              <span>
+                {joinedClubs.length === 0
+                  ? `Discover All ${allClubs.length} Clubs`
+                  : 'Manage My Clubs'}
+              </span>
               <ArrowRight size={13} />
             </button>
           )}
@@ -474,8 +520,27 @@ export default function ClubsHub({
             {previewClubs.map(c => renderClubCard(c))}
           </div>
         ) : (
-          <div className="py-6 text-center text-sm text-[var(--text-muted)]">
-            You haven&apos;t joined any clubs yet.
+          <div className="space-y-3.5">
+            <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs text-[var(--text-muted)]">
+                You haven&apos;t joined any clubs yet. Join a club below or browse all campus clubs to personalize your dashboard.
+              </span>
+              {onOpenClubs && (
+                <button
+                  type="button"
+                  onClick={() => onOpenClubs({ section: 'discover' })}
+                  className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer shrink-0 self-start sm:self-auto hover:opacity-90"
+                >
+                  Browse Campus Clubs
+                </button>
+              )}
+            </div>
+
+            {suggestedClubs.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {suggestedClubs.map(c => renderClubCard(c))}
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -501,7 +566,10 @@ export default function ClubsHub({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setSection(tab.id)}
+                onClick={() => {
+                  setSection(tab.id)
+                  setCategory('All')
+                }}
                 className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
                   isActive
                     ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
@@ -515,20 +583,20 @@ export default function ClubsHub({
         </div>
 
         {/* Contextual Toolbar Action */}
-        {(section === 'myclubs' || section === 'discover') && (
+        {(section === 'myclubs' || section === 'discover') && categoryFilters.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {CATEGORY_FILTERS.map(cat => (
+            {categoryFilters.map(cat => (
               <button
-                key={cat}
+                key={cat.value}
                 type="button"
-                onClick={() => setCategory(cat)}
+                onClick={() => setCategory(cat.value)}
                 className={`px-3 min-h-[32px] rounded-full text-xs font-medium cursor-pointer border transition-colors ${
-                  category === cat
+                  category === cat.value
                     ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30 font-semibold'
                     : 'bg-transparent text-[var(--text-muted)] border-transparent hover:bg-[var(--bg-surface)]'
                 }`}
               >
-                {cat}
+                {cat.label}
               </button>
             ))}
           </div>
@@ -592,25 +660,49 @@ export default function ClubsHub({
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
       {section === 'updates' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {SOURCE_FILTERS.map(src => {
-              const isActive = selectedSource === src.id
-              return (
-                <button
-                  key={src.id}
-                  type="button"
-                  onClick={() => setSelectedSource(src.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
-                    isActive
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <PlatformIcon type={src.id} size={14} />
-                  <span>{src.label}</span>
-                </button>
-              )
-            })}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {SOURCE_FILTERS.map(src => {
+                const isActive = selectedSource === src.id
+                return (
+                  <button
+                    key={src.id}
+                    type="button"
+                    onClick={() => setSelectedSource(src.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
+                      isActive
+                        ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    <PlatformIcon type={src.id} size={14} />
+                    <span>{src.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {joinedClubs.length > 0 && (
+              <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                {[
+                  { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
+                  { id: 'all',     label: 'All Campus' },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setFeedScope(opt.id)}
+                    className={`px-3 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      feedScope === opt.id
+                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {showPostForm && (

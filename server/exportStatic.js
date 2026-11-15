@@ -30,27 +30,48 @@ async function main() {
 
   // 1. Pre-load existing public/clubhub-data.json so previously scraped personal-account
   //    clubs & posts are preserved across incremental 2-hour GitHub Actions runs.
-  if (!exportOnly && fs.existsSync(OUTPUT_FILE)) {
+  let prevSyncedCount = 0;
+  if (fs.existsSync(OUTPUT_FILE)) {
     try {
       const prev = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
       if (prev && Array.isArray(prev.clubs)) {
-        upsertCollectorData(prev);
+        prevSyncedCount = prev.clubs.filter(c => c?.syncStatus === 'synced').length;
+        const cleanedErrors = (prev.errors || []).filter(
+          e => !/rate[- ]?limit|deferred|request limit reached/i.test(e?.message || '')
+        );
+        if (!exportOnly || (getStats().clubs || 0) === 0) {
+          upsertCollectorData({ ...prev, errors: cleanedErrors });
+        }
       }
     } catch (err) {
       console.warn('⚠️ Could not pre-load previous public/clubhub-data.json:', err.message);
     }
   }
 
+  // On `git push` CI deploys, `public/clubhub-data.json` is already committed in the repo (often just
+  // synced locally minutes earlier). Avoid burning Meta's hourly Graph API quota on every push;
+  // scheduled 2-hour cron runs and manual `workflow_dispatch` runs perform live rotated Instagram syncs.
+  const isCiPush =
+    process.env.GITHUB_ACTIONS === 'true' &&
+    process.env.GITHUB_EVENT_NAME === 'push' &&
+    process.env.IG_SYNC_ON_PUSH !== 'true';
+
   // 2. Sync live Instagram (Business Discovery + optional Instaloader personal fallback + Linktree/GCal/Discord-Invite crawl)
   if (!exportOnly && process.env.IG_USER_ID && process.env.IG_ACCESS_TOKEN) {
-    try {
-      console.log('📸 Syncing live Instagram Business Discovery + personal fallback...');
-      await instagramService.syncInstagram({
-        demo: false,
-        fallbackPersonal: process.env.IG_PERSONAL_FALLBACK === 'true',
-      });
-    } catch (err) {
-      console.warn('⚠️ Live Instagram sync skipped:', err.message);
+    if (isCiPush && prevSyncedCount > 0) {
+      console.log(
+        `ℹ️ Push deploy detected with ${prevSyncedCount} synced clubs in public/clubhub-data.json — skipping redundant Instagram re-scrape to preserve API rate limits.`
+      );
+    } else {
+      try {
+        console.log('📸 Syncing live Instagram Business Discovery + personal fallback...');
+        await instagramService.syncInstagram({
+          demo: false,
+          fallbackPersonal: process.env.IG_PERSONAL_FALLBACK === 'true',
+        });
+      } catch (err) {
+        console.warn('⚠️ Live Instagram sync skipped:', err.message);
+      }
     }
   }
 
@@ -74,6 +95,9 @@ async function main() {
   }
 
   const collectorData = getAllCollectorData();
+  collectorData.errors = (collectorData.errors || []).filter(
+    e => !/rate[- ]?limit|deferred|request limit reached/i.test(e?.message || '')
+  );
   const hub = buildClubHubDictionary();
   const dict = getDictionary();
   const stats = getStats();

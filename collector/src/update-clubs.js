@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { categorizeClub } from './categorize.js'
 
 const DIRECTORY_URL = 'https://getinvolved.ucsc.edu/student-organizations/join/'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -37,21 +38,10 @@ function instagramHandle(html) {
   return m[1].replace(/\.$/, '').toLowerCase()
 }
 
-export function guessCategory(name) {
-  const n = name.toLowerCase()
-  const rules = [
-    ['greek', /\b(alpha|beta|gamma|delta|epsilon|zeta|theta|kappa|lambda|sigma|omicron|omega|phi|psi|chi|tau|panhellenic|inter-greek|sorority|fraternity)\b/],
-    ['pre-professional', /\b(pre-|medic|medical|dental|physician|optometry|veterinary|law|legal|mock trial|business|investment|banking|economics|fund|health|nursing)/],
-    ['tech & science', /\b(computing|computer|developer|engineer|engineering|science|scientists|physics|quantum|neuro|cognitive|robot|data|game design|coding|hack)/],
-    ['performing arts', /\b(a cappella|dance|troupe|mariachi|folklorico|ballroom|comedy|music|choir|band|raas|hip hop|improv|on the spot|theater|theatre)/],
-    ['media & arts', /\b(magazine|journal|press|film|literary|television|photo|shutter|art|anime|manga|book)/],
-    ['cultural', /\b(student association|students association|cultural|latin|latine|latinx|chican|black|asian|african|indigenous|native|filipin|bayanihan|vietnamese|korean|japanese|chinese|taiwanese|indian|bangladeshi|khmer|sikh|slavic|nigerian|south american|central american|oaxaque|umoja|kahaani|pagkakaisa|isang himig|haluan|mecha)/],
-    ['faith', /\b(christian|catholic|newman|jewish|muslim|bhakti|fellowship|faith|church|hillel)/],
-    ['gaming', /\b(gaming|games|chess|tabletop|fighting game|quiz bowl|yu-gi-oh|rhythm game)/],
-    ['service & advocacy', /\b(red cross|circle k|smile|medlife|overdose|planned parenthood|outreach|sustainab|environment|volunteer|democrats|politics|mun\b|slugmun|advocacy|essential medicines|pupcycled|wellness|transgender|union)/],
-  ]
-  for (const [cat, re] of rules) if (re.test(n)) return cat
-  return 'other'
+export function guessCategory(nameOrClub) {
+  return categorizeClub(
+    typeof nameOrClub === 'string' ? { name: nameOrClub } : nameOrClub
+  )
 }
 
 function extractSectionUrls(html) {
@@ -127,7 +117,12 @@ async function main() {
     const club = {
       name: c.name,
       instagram: c.instagram,
-      category: prev?.category || guessCategory(c.name),
+      category: categorizeClub({
+        name: c.name,
+        instagram: c.instagram,
+        email: c.email || prev?.email,
+        category: prev?.category,
+      }),
       email: c.email || prev?.email || null,
       ...(c.discord || prev?.discord ? { discord: c.discord || prev?.discord } : {}),
       ...(c.website || prev?.website ? { website: c.website || prev?.website } : {}),

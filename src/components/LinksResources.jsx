@@ -48,6 +48,12 @@ export default function LinksResources({
   const [internalLocalAdded, setInternalLocalAdded] = useState([])
   const [internalPinnedOverrides, setInternalPinnedOverrides] = useState({})
   const [filterTab, setFilterTab] = useState('All')
+  const [clubScope, setClubScope] = useState('myclubs') // 'myclubs' | 'all'
+
+  const joinedClubIdSet = useMemo(
+    () => new Set(clubs.filter(c => Boolean(c.joined)).map(c => String(c.id))),
+    [clubs]
+  )
 
   const localAdded = externalLocalAdded ?? internalLocalAdded
   const pinnedOverrides = externalPinnedOverrides ?? internalPinnedOverrides
@@ -78,6 +84,14 @@ export default function LinksResources({
 
   const filteredLinks = useMemo(() => {
     return allLinks.filter(link => {
+      if (
+        joinedClubIdSet.size > 0 &&
+        clubScope === 'myclubs' &&
+        !String(link.id || '').startsWith('link_') &&
+        (!link.clubId || !joinedClubIdSet.has(String(link.clubId)))
+      ) {
+        return false
+      }
       if (filterTab === 'Pinned' && !link.isPinned) return false
       if (
         filterTab !== 'All' &&
@@ -175,14 +189,38 @@ export default function LinksResources({
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAdd(prev => !prev)}
-          className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity self-start sm:self-auto"
-        >
-          {showAdd ? <X size={15} /> : <Plus size={15} />}
-          <span>{showAdd ? 'Cancel' : 'Add Resource'}</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {joinedClubIdSet.size > 0 && (
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+              {[
+                { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
+                { id: 'all', label: 'All Campus' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setClubScope(opt.id)}
+                  className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                    clubScope === opt.id
+                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowAdd(prev => !prev)}
+            className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity"
+          >
+            {showAdd ? <X size={15} /> : <Plus size={15} />}
+            <span>{showAdd ? 'Cancel' : 'Add Resource'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Add Resource Form (Spacious 44px fields, friendly Club dropdown, valid URL) */}
