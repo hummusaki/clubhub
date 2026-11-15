@@ -140,7 +140,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Discover UCSC clubs via Instagram mobile search")
     parser.add_argument("--session-user", type=str, default=os.environ.get("IG_SCRAPER_SESSION_USER", ""))
     parser.add_argument("--session-file", type=str, default=os.environ.get("IG_SCRAPER_SESSION_FILE", ""))
-    parser.add_argument("--delay", type=float, default=0.55, help="Delay between search queries (sec)")
+    parser.add_argument("--delay", type=float, default=0.45, help="Delay between search queries (sec)")
+    parser.add_argument("--max-seconds", type=float, default=165.0, help="Graceful time budget before returning results")
     parser.add_argument("--query", action="append", dest="queries", help="Custom query (repeatable)")
     args = parser.parse_args()
 
@@ -152,11 +153,15 @@ def main() -> int:
 
     by_username: dict[str, dict] = {}
     consecutive_errors = 0
+    started_at = time.monotonic()
 
     try:
         for idx, query in enumerate(queries):
+            if time.monotonic() - started_at >= args.max_seconds:
+                log(f"  [ig-discover] Reached {args.max_seconds:.0f}s budget after {idx}/{len(queries)} queries; returning {len(by_username)} accounts.")
+                break
             if idx > 0 and args.delay > 0:
-                time.sleep(args.delay * random.uniform(0.85, 1.25))
+                time.sleep(args.delay * random.uniform(0.85, 1.2))
             try:
                 data = L.context.get_iphone_json("api/v1/users/search/", {"q": query, "count": "50"})
                 consecutive_errors = 0

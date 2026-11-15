@@ -714,7 +714,7 @@ export function discoverMentionsFromSnapshot(snapshot, existingHandles = new Set
 
 function runInstagramSearchDiscovery({
   pythonBin = process.env.PYTHON_BIN || (fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3'),
-  timeoutMs = 90_000,
+  timeoutMs = 240_000,
 } = {}) {
   if (!fs.existsSync(DISCOVER_IG_SCRIPT)) {
     return Promise.resolve({ clubs: [], authenticated: false })

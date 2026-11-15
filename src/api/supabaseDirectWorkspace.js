@@ -249,7 +249,9 @@ export async function resolveUserProfileWithClient({
       )
     ) {
       const rlsErr = new Error(
-        'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or re-run supabase/schema.sql in Supabase SQL Editor) so Clerk accounts can create polls.'
+        isClerkSupabaseJwtRejected()
+          ? 'Supabase rejected your Clerk token (PGRST301). Connect Clerk in Supabase Dashboard -> Authentication -> Third-Party Auth (and enable the Supabase integration in Clerk Dashboard) so Clerk accounts work without disabling email confirmation.'
+          : 'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or enable Clerk under Authentication -> Third-Party Auth) so Clerk accounts can create polls.'
       )
       rlsErr.status = 403
       rlsErr.code = 'SUPABASE_AUTH_SETUP_REQUIRED'

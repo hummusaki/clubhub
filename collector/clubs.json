@@ -4,28 +4,40 @@
     "instagram": "8thrankchess.ucsc",
     "category": "gaming",
     "email": "8thrankucsc@gmail.com",
-    "description": "8th Rank Society: UC Santa Cruz Women’s Chess Club is a student-led community that supports women and allies of all levels within chess."
+    "description": "8th Rank Society: UC Santa Cruz Women’s Chess Club is a student-led community that supports women and allies of all levels within chess.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "A Counter Space",
     "instagram": "acs_ucsc",
     "category": "tech & science",
     "email": "ucsc.women.in.physics@gmail.com",
-    "description": "An organization dedicated to supporting gender minorities in physics. We strive to support and build community in our members."
+    "description": "An organization dedicated to supporting gender minorities in physics. We strive to support and build community in our members.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Acquire A Cappella",
     "instagram": "acquireacappella",
     "category": "performing arts",
     "email": "acquireucs@gmail.com",
-    "description": "Established in 2007, Acquire A Cappella is the punniest A cappella group on the UC Santa Cruz campus! We’re a tight-knit musical family united by harmonies, humor, and a shared love of performance."
+    "description": "Established in 2007, Acquire A Cappella is the punniest A cappella group on the UC Santa Cruz campus! We’re a tight-knit musical family united by harmonies, humor, and a shared love of performance.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Alay",
     "instagram": "alay.ucsc",
     "category": "media & arts",
     "email": "alay.ucsc@gmail.com",
-    "description": "Alay is the self-expression aspect housed under Bayanihan and Student Media Organization. We foster a community welcome to students of all backgrounds to create art and explore their identities, culiminatin a puprint anthology of community artworks every year."
+    "description": "Alay is the self-expression aspect housed under Bayanihan and Student Media Organization. We foster a community welcome to students of all backgrounds to create art and explore their identities, culiminatin a puprint anthology of community artworks every year.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Alpha Epsilon Pi (AEPi)",
@@ -34,21 +46,30 @@
     "email": "tmai6@ucsc.edu",
     "description": "Alpha Epsilon Pi (AEPi) is the world’s Jewish college fraternity, operating chapters on more than 150 college campuses in four countries. We are a social fraternity that aims to uplift and develop young men into future leaders through brotherhood, philanthropy, and community service.",
     "orgStatus": "probation",
-    "orgStatusNote": "Alpha Epsilon Pi is currently on probation through Spring 2027."
+    "orgStatusNote": "Alpha Epsilon Pi is currently on probation through Spring 2027.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "alpha Kappa Delta Phi (aKDPhi)",
     "instagram": "ucsc_akdphi",
     "category": "greek",
     "email": "akdphideltapresident@gmail.com",
-    "description": "alpha Kappa Delta Phi is an international Asian-interest sorority with 60+ chapters. We have dedicated ourselves to upholding and exemplifying our pillars of scholarship, leadership, service, asian awareness, and sisterhood"
+    "description": "alpha Kappa Delta Phi is an international Asian-interest sorority with 60+ chapters. We have dedicated ourselves to upholding and exemplifying our pillars of scholarship, leadership, service, asian awareness, and sisterhood",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Alpha Kappa Psi",
     "instagram": "ucscakpsi",
     "category": "greek",
     "email": "ucsc.akpsi@gmail.com",
-    "description": "The oldest and largest professional business fraternity in the world, open to all majors."
+    "description": "The oldest and largest professional business fraternity in the world, open to all majors.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Alpha Phi Omega",
@@ -57,21 +78,30 @@
     "email": "agn.apo.vpm@gmail.com",
     "description": "This organization is a group of community service, leadership and friendship where members provide most nonprofits and other organizations with support and help in societally contributing efforts.",
     "orgStatus": "probation",
-    "orgStatusNote": "Alpha Phi Omega is currently on probation through Spring 2028."
+    "orgStatusNote": "Alpha Phi Omega is currently on probation through Spring 2028.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Alpha Psi",
     "instagram": "ucscalphapsi",
     "category": "greek",
     "email": "alphapsi1988@gmail.com",
-    "description": "We are a sorority/fraternity"
+    "description": "We are a sorority/fraternity",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "American Medical Student Association (AMSA)",
     "instagram": "amsaucsc",
     "category": "pre-professional",
     "email": "amsa.ucsc@gmail.com",
-    "description": "Professional club for pre-med and pre-health students at UCSC"
+    "description": "Professional club for pre-med and pre-health students at UCSC",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "American Red Cross Association at UCSC (ARCA)",
@@ -85,7 +115,10 @@
     "discordFollowable": false,
     "discordMemberCount": 214,
     "discordOnlineCount": 11,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/701555560818016330/b40db26eb6bf88d661b0cfa260ba197f.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/701555560818016330/b40db26eb6bf88d661b0cfa260ba197f.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Asian American Christian Fellowship (AACF)",
@@ -99,14 +132,20 @@
     "discordFollowable": false,
     "discordMemberCount": 241,
     "discordOnlineCount": 25,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/692117895479689293/839cdc89f6a3259dd93fbaa7cf161bc1.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/692117895479689293/839cdc89f6a3259dd93fbaa7cf161bc1.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Asian Pacific Islander Student Alliance (APISA)",
     "instagram": "apisa.slugs",
     "category": "cultural",
     "email": "apisa.slugs@gmail.com",
-    "description": "The Asian Pacific Islander Student Alliance (APISA) emphasizes unity and empowerment through celebrating the diverse cultures and customs of the AA/PI (Asian/Pacific Islander) communities in higher education and beyond."
+    "description": "The Asian Pacific Islander Student Alliance (APISA) emphasizes unity and empowerment through celebrating the diverse cultures and customs of the AA/PI (Asian/Pacific Islander) communities in higher education and beyond.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Aspiring Physician Assistant's Association",
@@ -120,14 +159,65 @@
     "discordFollowable": false,
     "discordMemberCount": 216,
     "discordOnlineCount": 5,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/765778907210448896/bf2f76d04a1f17c631cee5372e194f82.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765778907210448896/bf2f76d04a1f17c631cee5372e194f82.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Association for Computing Machinery – Women at UCSC (ACM-W)",
     "instagram": "acmw.ucsc",
     "category": "tech & science",
     "email": "acmw.ucsc@gmail.com",
-    "description": "ACM-W is a community for women and non-binary individuals interested/passionate about computing to learn new skills and network with like-minded people."
+    "description": "ACM-W is a community for women and non-binary individuals interested/passionate about computing to learn new skills and network with like-minded people.",
+    "sources": [
+      "someca",
+      "baskin_engineering"
+    ],
+    "alsoKnownAs": [
+      "Association for Computing Machinery – Women (ACM-W)"
+    ],
+    "website": "https://acmwclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-acm-w-fce04d21386b57c8.jpg"
+  },
+  {
+    "name": "Association for Computing Machinery (ACM)",
+    "instagram": "ucscacm",
+    "category": "tech & science",
+    "email": null,
+    "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
+    "discord": "https://discord.com/invite/zxexESCz8N",
+    "website": "https://ucscacm.vercel.app/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-acm-3a0a55b0935b4b65.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "id": "noig_autoslug",
+    "noInstagram": true,
+    "name": "Autoslug",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Autoslug — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://autoslug.xyz/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-autoslug-35b5c3f42d56454c.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "name": "Banana Bots",
+    "instagram": "bananabotsc",
+    "category": "tech & science",
+    "email": "bananbot@ucsc.edu",
+    "description": "Banana Bots — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://bananabotsclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2026/01/2022_UCSC_research_day1-060-1024x683.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Bangladeshi Student Association",
@@ -141,7 +231,10 @@
     "discordFollowable": true,
     "discordMemberCount": 50,
     "discordOnlineCount": 2,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1151284779988308088/6f942ba7d9e1a3ab6f76797afc971533.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1151284779988308088/6f942ba7d9e1a3ab6f76797afc971533.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Bayanihan",
@@ -155,14 +248,20 @@
     "discordFollowable": true,
     "discordMemberCount": 332,
     "discordOnlineCount": 25,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/688612860032581676/0c37ed11a796d92903329717a161b5f3.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/688612860032581676/0c37ed11a796d92903329717a161b5f3.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Bhakti Yoga Club (FKA BEATS)",
     "instagram": "bhaktiyogaucsc",
     "category": "faith",
     "email": "bhaktiucsc@gmail.com",
-    "description": "A community that shares and deepens the understanding of spirituality through the timeless wisdom found in the literature."
+    "description": "A community that shares and deepens the understanding of spirituality through the timeless wisdom found in the literature.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Bioethics Club",
@@ -176,14 +275,34 @@
     "discordFollowable": false,
     "discordMemberCount": 47,
     "discordOnlineCount": 7,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1431012917326647399/c76da9037111d913fee7548c5c6b8006.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1431012917326647399/c76da9037111d913fee7548c5c6b8006.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_bioinformatics_club",
+    "noInstagram": true,
+    "name": "Bioinformatics Club",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Bioinformatics Club — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://ucscbioinformatics.wixsite.com/bioinformaticsclub",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-bioinformatics-c1c7178c0f079dad.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Black Student Union (BSU)",
     "instagram": "ucscbsu",
     "category": "cultural",
     "email": "bsu.slugs@gmail.com",
-    "description": "The Black Student Union (BSU) serves as a unifying body for all Black organizations on campus, as well as the Black student body. The BSU also welcomes all individuals who are committed to advancing, supporting, and meaningfully engaging with issues affecting the Black community."
+    "description": "The Black Student Union (BSU) serves as a unifying body for all Black organizations on campus, as well as the Black student body. The BSU also welcomes all individuals who are committed to advancing, supporting, and meaningfully engaging with issues affecting the Black community.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Business Economics Academia (BEA)",
@@ -197,14 +316,32 @@
     "discordFollowable": false,
     "discordMemberCount": 337,
     "discordOnlineCount": 17,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1309026182364135445/f0ea217ef1e6d4cbd7ab75bdcf05b02b.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1309026182364135445/f0ea217ef1e6d4cbd7ab75bdcf05b02b.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Camp Kesem at UCSC",
+    "instagram": "kesem_ucsc",
+    "category": "service & advocacy",
+    "email": "ucsc@campkesem.org",
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/campkesem.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/61/61IP0HjigA9N9BltsznN9vcd5JuSKCHNb5uYhijk.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
   },
   {
     "name": "Central Americans For Empowerment (CAFE)",
     "instagram": "cafeucsc",
     "category": "cultural",
     "email": "cafeucsc3@gmail.com",
-    "description": "C.A.F.E. (Central Americans For Empowerment) empowers Central American students and all UCSC students by connecting them with the resources they need to navigate Santa Cruz, campus life, and beyond. We create a welcoming, culturally grounded community space."
+    "description": "C.A.F.E. (Central Americans For Empowerment) empowers Central American students and all UCSC students by connecting them with the resources they need to navigate Santa Cruz, campus life, and beyond. We create a welcoming, culturally grounded community space.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Chess Club",
@@ -218,14 +355,20 @@
     "discordFollowable": false,
     "discordMemberCount": 563,
     "discordOnlineCount": 36,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/892081729358143529/522dc591949f49a8c88c8d0638118de8.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/892081729358143529/522dc591949f49a8c88c8d0638118de8.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Chicanx and Latine Educandose (ChALE)",
     "instagram": "e2.chale",
     "category": "cultural",
     "email": "e2.chale@gmail.com",
-    "description": "ChALE is a needs-based retention program that is designed to respond to the students' social, academic, and cultural needs with the goal of keeping them retained on campus working towards their path to graduation."
+    "description": "ChALE is a needs-based retention program that is designed to respond to the students' social, academic, and cultural needs with the goal of keeping them retained on campus working towards their path to graduation.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Chinese Student Association",
@@ -239,7 +382,10 @@
     "discordFollowable": true,
     "discordMemberCount": 945,
     "discordOnlineCount": 111,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/692971099847262208/fb775fbaabf803760a2954376f94422e.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/692971099847262208/fb775fbaabf803760a2954376f94422e.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Chinese Students and Scholars Association",
@@ -253,28 +399,40 @@
     "discordFollowable": true,
     "discordMemberCount": 86,
     "discordOnlineCount": 10,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1166539478446383134/da394376eb69d2a75667755cff9dda05.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1166539478446383134/da394376eb69d2a75667755cff9dda05.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Chinquapin Literary Magazine",
     "instagram": "chinquapinucsc",
     "category": "media & arts",
     "email": "chinquapin@gmail.com",
-    "description": "Chinquapin Literary Magazine began in 1978 and has been creating yearly anthologies of student art and writing ever since. For the past 48 years, we have been run by students of UCSC. Chinquapin is a space for students to learn about the ins and outs of publishing, and to highlight student work."
+    "description": "Chinquapin Literary Magazine began in 1978 and has been creating yearly anthologies of student art and writing ever since. For the past 48 years, we have been run by students of UCSC. Chinquapin is a space for students to learn about the ins and outs of publishing, and to highlight student work.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Christian Medical and Dental Association (CMDA)",
     "instagram": "cmda_ucsc",
     "category": "pre-professional",
     "email": "cmdaucsc@gmail.com",
-    "description": "CMDA educates, encourages, and equips Christian healthcare professionals to glorify God."
+    "description": "CMDA educates, encourages, and equips Christian healthcare professionals to glorify God.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Christians on Campus at UCSC (COC)",
     "instagram": "ucscchristians",
     "category": "faith",
     "email": "ucscchristiansoncampus@gmail.com",
-    "description": "A weekly bible study to get into the word of God and encourage one another!"
+    "description": "A weekly bible study to get into the word of God and encourage one another!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Circle K International (CKI)",
@@ -288,28 +446,40 @@
     "discordFollowable": false,
     "discordMemberCount": 274,
     "discordOnlineCount": 14,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/989018453568540722/b849d51421fedd20a877ef68216fe1db.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/989018453568540722/b849d51421fedd20a877ef68216fe1db.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "City on a Hill Press",
     "instagram": "chpnow",
     "category": "media & arts",
     "email": "editors@cityonahillpress.com",
-    "description": "City on a Hill Press is produced by and for UCSC students. Our primary goal is to report and analyze issues affecting the student population and the Santa Cruz community."
+    "description": "City on a Hill Press is produced by and for UCSC students. Our primary goal is to report and analyze issues affecting the student population and the Santa Cruz community.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Cloud 9 A Cappella",
     "instagram": "cloud9acappella",
     "category": "performing arts",
     "email": "cloud9ucsc@gmail.com",
-    "description": "Cloud 9 is UC Santa Cruz's original and longest-running a cappella group. Established in 2001, Cloud 9 has been a proud contributor to the world of collegiate a cappella for quite some time. It is our number one goal to make music that connects everyone!"
+    "description": "Cloud 9 is UC Santa Cruz's original and longest-running a cappella group. Established in 2001, Cloud 9 has been a proud contributor to the world of collegiate a cappella for quite some time. It is our number one goal to make music that connects everyone!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Cognitive Science Student Association (CSSA)",
     "instagram": "cssa.ucsc",
     "category": "tech & science",
     "email": "ucsc.cogsci@gmail.com",
-    "description": "The Cognitive Science Student Association (CSSA) at UC Santa Cruz connects students interested in the mind, brain, and behavior! Through social events, academic support, and professional development, we build a welcoming community for students to grow!"
+    "description": "The Cognitive Science Student Association (CSSA) at UC Santa Cruz connects students interested in the mind, brain, and behavior! Through social events, academic support, and professional development, we build a welcoming community for students to grow!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "College Democrats",
@@ -323,21 +493,41 @@
     "discordFollowable": true,
     "discordMemberCount": 151,
     "discordOnlineCount": 8,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1432956354179371071/face28b0eae3703f26fcee2f02766104.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1432956354179371071/face28b0eae3703f26fcee2f02766104.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "College Nine Student Senate",
+    "instagram": "ucsc9_jrl",
+    "category": "service & advocacy",
+    "email": "c9senate@ucsc.edu",
+    "description": "All affiliates are welcome, and voting rights are earned by attending three meetings. Senate funds College Nine events and supports international and social justice themes.",
+    "website": "https://collegenine.ucsc.edu/cocurricular/senate.html",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "College Panhellenic Council",
     "instagram": "ucscpanhellenic",
     "category": "greek",
     "email": "collegepanhellenic@gmail.com",
-    "description": "Council composed of members from each of the three Panhellenic sororities on campus that oversee each organization"
+    "description": "Council composed of members from each of the three Panhellenic sororities on campus that oversee each organization",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Comedy Joust",
     "instagram": "comedyjoust",
     "category": "performing arts",
     "email": "comedyjoust.ucsc@gmail.com",
-    "description": "We are a short form improv comedy student organization that attends college improv events, puts on improv shows, and practices improv skills and principles."
+    "description": "We are a short form improv comedy student organization that attends college improv events, puts on improv shows, and practices improv skills and principles.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Community Unified Student Network (CUSN)",
@@ -351,14 +541,68 @@
     "discordFollowable": true,
     "discordMemberCount": 35,
     "discordOnlineCount": 0,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1327334964571803768/1b2ba0228f4d19ea1ec4209052a3ebf9.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1327334964571803768/1b2ba0228f4d19ea1ec4209052a3ebf9.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Cowell Student Senate",
+    "instagram": "cowell.ucsc",
+    "category": "service & advocacy",
+    "email": "csenate@ucsc.edu",
+    "description": "All Cowell affiliates can attend; voting membership begins after four meetings and an original eight-line poem.",
+    "website": "https://cowell.ucsc.edu/activities/senate/index.html",
+    "sources": [
+      "college_government"
+    ]
+  },
+  {
+    "id": "noig_creative_tech_design",
+    "noInstagram": true,
+    "name": "Creative Tech Design",
+    "instagram": "",
+    "category": "media & arts",
+    "email": null,
+    "description": "Creative Tech Design — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://creativetechdesign.soe.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-creative-tech-e38620c2ac28997d.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "id": "noig_crown_college_student_senate",
+    "noInstagram": true,
+    "name": "Crown College Student Senate",
+    "instagram": "",
+    "category": "service & advocacy",
+    "email": "crownsen@ucsc.edu",
+    "description": "Open to all Crown affiliates—students gain membership and voting status after attending three consecutive meetings.",
+    "website": "https://crown.ucsc.edu/student-life/css/",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "Dance Club",
     "instagram": "ucscdanceclub",
     "category": "performing arts",
     "email": "ucscdanceclub@gmail.com",
-    "description": "A club where we provide weekly dance workshops in different styles, which are open to all UCSC students"
+    "description": "A club where we provide weekly dance workshops in different styles, which are open to all UCSC students",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Delta Sigma Pi",
+    "instagram": "ucscdsp",
+    "category": "greek",
+    "email": "pichipres@gmail.com",
+    "description": "Pre-Professional Co-ed fraternity focusing on comunity service, brotherhood, and professional development.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Education for Sustainable Living Program (ESLP)",
@@ -368,9 +612,12 @@
     "extraEmails": [
       "sec2001@ucsc.edu"
     ],
-    "description": "The Education for Sustainable Living Program (ESLP) is a student-led organization committed to empowering students to take action in the climate crisis. Our program creates collaborative learning environments through UCSC-accredited courses for students.",
     "alsoKnownAs": [
       "Student Environmental Center (SEC)"
+    ],
+    "description": "The Education for Sustainable Living Program (ESLP) is a student-led organization committed to empowering students to take action in the climate crisis. Our program creates collaborative learning environments through UCSC-accredited courses for students.",
+    "sources": [
+      "someca"
     ]
   },
   {
@@ -378,21 +625,30 @@
     "instagram": "emslugs_ucsc",
     "category": "pre-professional",
     "email": "emergencymedicalslugs@gmail.com",
-    "description": "EMSlugs is a student-run organization focused on emergency medicine, basic life support skills, and provides clinical volunteer opportunities at no cost for any undergraduate seeking experience."
+    "description": "EMSlugs is a student-run organization focused on emergency medicine, basic life support skills, and provides clinical volunteer opportunities at no cost for any undergraduate seeking experience.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "End Overdose at UC Santa Cruz",
     "instagram": "endoverdose.ucsc",
     "category": "service & advocacy",
     "email": "ucsc@endoverdose.net",
-    "description": "End Overdose at UCSC works to educate our community with the knowledge and tools needed to recognize and respond to opioid overdoses. We provide free naloxone and fentanyl test strips, helping ensure that everyone has access to the resources to save a life."
+    "description": "End Overdose at UCSC works to educate our community with the knowledge and tools needed to recognize and respond to opioid overdoses. We provide free naloxone and fentanyl test strips, helping ensure that everyone has access to the resources to save a life.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Estudiantes Oaxaqueños de Ahora (EODA)",
     "instagram": "eodaucsc",
     "category": "cultural",
     "email": "eodaucsc1@gmail.com",
-    "description": "Our aim is to build an encouraging and supportive community for Oaxacan students and allies that promotes unity, cultural awareness, and academic success. We welcome students of all backgrounds, especially Indigenous Latine students who are interested in education."
+    "description": "Our aim is to build an encouraging and supportive community for Oaxacan students and allies that promotes unity, cultural awareness, and academic success. We welcome students of all backgrounds, especially Indigenous Latine students who are interested in education.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "EyeCandy Film Journal",
@@ -406,28 +662,52 @@
     "discordFollowable": true,
     "discordMemberCount": 26,
     "discordOnlineCount": 2,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1435718480036102276/b8abb2e1d3a4b64858f9aae0f0255bd2.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1435718480036102276/b8abb2e1d3a4b64858f9aae0f0255bd2.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Film Production Coalition (FPC)",
     "instagram": "filmproductioncoalition",
     "category": "media & arts",
     "email": "fpc.ucsc@gmail.com",
-    "description": "An organization dedicated to collaboratively making short films every quarter in small production groups, in a variety of genres. We don’t require any experience and are committed to teaching members all aspects of film production from start to finish."
+    "description": "An organization dedicated to collaboratively making short films every quarter in small production groups, in a variety of genres. We don’t require any experience and are committed to teaching members all aspects of film production from start to finish.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Fishrap Live!",
     "instagram": "fishraplive",
     "category": "media & arts",
     "email": "fishraplive@gmail.com",
-    "description": "We are UCSC’s first and only satire newspaper! We publish satire articles, funny opinion pieces and creative comic! We papers publish bi-quarterly!"
+    "description": "We are UCSC’s first and only satire newspaper! We publish satire articles, funny opinion pieces and creative comic! We papers publish bi-quarterly!",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Formula Slug",
+    "instagram": "formula_slug",
+    "category": "tech & science",
+    "email": "formulaslug@gmail.com",
+    "description": "Formula Slug&#x27;s Website - About Us",
+    "website": "https://formulaslug.com/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/07/IMG_2861-1024x682.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Friends of Medicine",
     "instagram": "ucsc_fom",
     "category": "pre-professional",
     "email": "ucscfriendsofmedicine@gmail.com",
-    "description": "Friends of Medicine is a prehealth club dedicated to creating a supportive and informational community. The club aims to educate members on prehealth careers, as well as support patients and healthcare workers alike."
+    "description": "Friends of Medicine is a prehealth club dedicated to creating a supportive and informational community. The club aims to educate members on prehealth careers, as well as support patients and healthcare workers alike.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Game Design & Art Collaborations",
@@ -441,14 +721,42 @@
     "discordFollowable": true,
     "discordMemberCount": 2510,
     "discordOnlineCount": 511,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/299292000467943426/bbfa97dc4eb943f239a5b869040bf4df.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/299292000467943426/bbfa97dc4eb943f239a5b869040bf4df.png?size=128",
+    "sources": [
+      "someca",
+      "baskin_engineering"
+    ],
+    "alsoKnownAs": [
+      "Game Design & Arts Collaboration"
+    ],
+    "extraEmails": [
+      "gdaclub@ucsc.edu"
+    ],
+    "website": "https://gdacollab.com/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-gaming-c6401bba4894e30b.jpg"
   },
   {
     "name": "Gamma Phi Beta (GPhi)",
     "instagram": "ucscgammaphibeta",
     "category": "greek",
     "email": "eopres@gmail.com",
-    "description": "The UCSC Chapter of Gamma Phi Beta builds confident women of character. Our mission is to inspire the highest type of womanhood, guided by our symbols, the crescent moon and pinkcarnation, and our core values of Love, Labor, Learning, and Loyalty."
+    "description": "The UCSC Chapter of Gamma Phi Beta builds confident women of character. Our mission is to inspire the highest type of womanhood, guided by our symbols, the crescent moon and pinkcarnation, and our core values of Love, Labor, Learning, and Loyalty.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Girls Who Code",
+    "instagram": "gwcucsc",
+    "category": "tech & science",
+    "email": null,
+    "description": "Girls Who Code — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.com/invite/ZhfPbNssF6",
+    "website": "https://gwcclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-girls-who-code-f56c3e85d4d2ae10.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Glocal Strategy Politics",
@@ -462,7 +770,10 @@
     "discordFollowable": true,
     "discordMemberCount": 40,
     "discordOnlineCount": 5,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1551817158000910416/ac4db632427ade13b6b2c3010992d5e6.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1551817158000910416/ac4db632427ade13b6b2c3010992d5e6.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Google Developer Group on Campus UCSC",
@@ -476,28 +787,53 @@
     "discordFollowable": false,
     "discordMemberCount": 1680,
     "discordOnlineCount": 177,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Google Developer Student Club at UCSC",
+    "instagram": "dscucsc",
+    "category": "tech & science",
+    "email": null,
+    "description": "Check out Google Developer Groups GDG on Campus University of California Santa Cruz - Santa Cruz, United States events, learn more or contact this organizer.",
+    "discord": "http://discord.gg/6Ac3rPt",
+    "website": "https://gdg.community.dev/gdg-on-campus-university-of-california-santa-cruz-santa-cruz-united-states/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-google-devs-b38f741f3defd89d.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
     "instagram": "losmejicas",
     "category": "performing arts",
     "email": "losmejicas@gmail.com",
-    "description": "Grupo Folklórico Los Mejicas is a student-led cultural group. Our goal is to educate folks about Mexico's history through a variety of folklore dance repertoires. We celebrate our culture through dance, providing a positive space that fosters student retention."
+    "description": "Grupo Folklórico Los Mejicas is a student-led cultural group. Our goal is to educate folks about Mexico's history through a variety of folklore dance repertoires. We celebrate our culture through dance, providing a positive space that fosters student retention.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Haluan Hip Hop Dance Troupe",
     "instagram": "haluanhiphop",
     "category": "performing arts",
     "email": "haluanhiphop.ucsc@gmail.com",
-    "description": "Haluan, translating to “of mixed nature” in Tagalog, is an audition based hip hop dance team housed under Bayanihan. We perform and host on campus events while simultaneously working to build a community where UCSC students can grow!"
+    "description": "Haluan, translating to “of mixed nature” in Tagalog, is an audition based hip hop dance team housed under Bayanihan. We perform and host on campus events while simultaneously working to build a community where UCSC students can grow!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Han Chinese Traditional Clothing",
     "instagram": "hanchinesetraditionalclothing",
     "category": "cultural",
     "email": "cdeng18@ucsc.edu",
-    "description": "Han Chinese Traditional Clothing aims to promote the beauty of traditional Hanfu culture. Our organization strives to create a welcoming community where members can learn and experience Hanfu together."
+    "description": "Han Chinese Traditional Clothing aims to promote the beauty of traditional Hanfu culture. Our organization strives to create a welcoming community where members can learn and experience Hanfu together.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Hermanas Unidas (HaU)",
@@ -511,28 +847,52 @@
     "discordFollowable": false,
     "discordMemberCount": 204,
     "discordOnlineCount": 5,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1168649575419093022/a4c2d4105ed104f2d2e7726847fda533.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1168649575419093022/a4c2d4105ed104f2d2e7726847fda533.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Hermanes De UCSC",
     "instagram": "hermanesdeucsc",
     "category": "cultural",
     "email": "hu.ucsc@gmail.com",
-    "description": "Hermanes De UCSC is a Latine but not latine exclusive organization based on 3 pillars believed to retain, empower and educate our members in an often unwelcoming space at UCSC. 1)Academic Excellence, 2)Community Engagement, and 3)Social networking"
+    "description": "Hermanes De UCSC is a Latine but not latine exclusive organization based on 3 pillars believed to retain, empower and educate our members in an often unwelcoming space at UCSC. 1)Academic Excellence, 2)Community Engagement, and 3)Social networking",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "iGEM",
+    "instagram": "igemucsc",
+    "category": "tech & science",
+    "email": null,
+    "description": "iGEM — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://engineering.ucsc.edu/igem",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-igem-68e1e39593c8283f.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Indian Student Association (ISA)",
     "instagram": "ucsc_isa",
     "category": "cultural",
     "email": "ucsc.isa@gmail.com",
-    "description": "The UCSC Indian Student Association (ISA) is a student-led organization that celebrates Indian culture and brings together students through social, cultural, and community-building events. ISA provides a welcoming space for students to connect, celebrate traditions, and feel a sense of belonging."
+    "description": "The UCSC Indian Student Association (ISA) is a student-led organization that celebrates Indian culture and brings together students through social, cultural, and community-building events. ISA provides a welcoming space for students to connect, celebrate traditions, and feel a sense of belonging.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Inter-Greek Council (IGC)",
     "instagram": "ucscigc",
     "category": "greek",
     "email": "igc@ucsc.edu",
-    "description": "A governing council that is typically comprised of five elected official officers and at least one representative from each of our Greek letter Organizations."
+    "description": "A governing council that is typically comprised of five elected official officers and at least one representative from each of our Greek letter Organizations.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Investment Banking Academy",
@@ -544,14 +904,20 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordOnlineCount": 0
+    "discordOnlineCount": 0,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Isang Himing (IH)",
     "instagram": "isanghimig",
     "category": "cultural",
     "email": "isanghimig.ucsc@gmail.com",
-    "description": "Isang Himig (\"one melody\") is a non-competitive, acapella group housed under Bayanihan, the Filipino student association on campus. We welcome students of all ethnic backgrounds and musical levels while celebrating Filipino culture."
+    "description": "Isang Himig (\"one melody\") is a non-competitive, acapella group housed under Bayanihan, the Filipino student association on campus. We welcome students of all ethnic backgrounds and musical levels while celebrating Filipino culture.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Japanese Student Association (JSA)",
@@ -563,87 +929,136 @@
     "discordGuildId": "688954214579437677",
     "discordServerName": "UCSC JSA",
     "discordFollowable": true,
-    "discordOnlineCount": 64,
     "discordMemberCount": 574,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/688954214579437677/9883572bf9a97d9171c6f2346e07ce45.png?size=128"
+    "discordOnlineCount": 64,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/688954214579437677/9883572bf9a97d9171c6f2346e07ce45.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Jewish Student Union",
     "instagram": "jsu_ucsc",
     "category": "faith",
     "email": "dbenisra@ucsc.edu",
-    "description": "A safe and welcoming space for Jewish students at UCSC to connect and celebrate Jewish culture and traditions."
+    "description": "A safe and welcoming space for Jewish students at UCSC to connect and celebrate Jewish culture and traditions.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_john_r_lewis_college_student_senate",
+    "noInstagram": true,
+    "name": "John R. Lewis College Student Senate",
+    "instagram": "",
+    "category": "service & advocacy",
+    "email": "c10senate@ucsc.edu",
+    "description": "John R. Lewis students are welcome to attend and join senate discussions.",
+    "website": "https://sites.google.com/ucsc.edu/collegetensenate",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "JStreetUCSC",
     "instagram": "jstreetucsc",
     "category": "service & advocacy",
     "email": "jstreetu.slugs@gmail.com",
-    "description": "JStreetU is a community organization and political advocacy group which aims to bring nuance to our campus conversation on Israel and Palestine and works to change american foreign policy to encourage a just peace."
+    "description": "JStreetU is a community organization and political advocacy group which aims to bring nuance to our campus conversation on Israel and Palestine and works to change american foreign policy to encourage a just peace.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kahaani",
     "instagram": "ucsckahaani",
     "category": "cultural",
     "email": "ucsckahaani@gmail.com",
-    "description": "A Bollywood fusion dance team dedicated to celebrating and expressing South Asian culture and traditions through dance, storytelling, and creative performance."
+    "description": "A Bollywood fusion dance team dedicated to celebrating and expressing South Asian culture and traditions through dance, storytelling, and creative performance.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kappa Alpha Theta (KAT)",
     "instagram": "ucsctheta",
     "category": "greek",
     "email": "ucscthetapresident@gmail.com",
-    "description": "Theta is a sisterhood built upon support, love, and authenticity. Thetas are passionate, driven, and strong, and they stand up for what they believe in. Kappa Alpha Theta is an organization that provides opportunities for members to develop into leaders who uplift"
+    "description": "Theta is a sisterhood built upon support, love, and authenticity. Thetas are passionate, driven, and strong, and they stand up for what they believe in. Kappa Alpha Theta is an organization that provides opportunities for members to develop into leaders who uplift",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kappa Gamma Delta (KGD)",
     "instagram": "ucsckgd",
     "category": "greek",
     "email": "ucsckgdpresident@gmail.com",
-    "description": "A professional sorority dedicated to supporting women interested in pursing careers in healthcare."
+    "description": "A professional sorority dedicated to supporting women interested in pursing careers in healthcare.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kappa Kappa Gamma (KKG)",
     "instagram": "ucsckkg",
     "category": "greek",
     "email": "kkgpresetamu@gmail.com",
-    "description": "Kappa Kappa Gamma is a women’s fraternity founded in 1870 that fosters a strong sense of sisterhood, academic excellence, and personal growth. Eta Mu chapter at UCSC is built on the values of leadership, scholarship, and service, providing members with lifelong friends"
+    "description": "Kappa Kappa Gamma is a women’s fraternity founded in 1870 that fosters a strong sense of sisterhood, academic excellence, and personal growth. Eta Mu chapter at UCSC is built on the values of leadership, scholarship, and service, providing members with lifelong friends",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kappa Zeta",
     "instagram": "kappazetaucsc",
     "category": "greek",
     "email": "kzpresident.ucsc@gmail.com",
-    "description": "Kappa Zeta was founded in October 2003 at the University of California, Santa Cruz, with vision of creating an inclusive, community service-focused sorority centered on individuality, academics, and meaningful connection through sisterhood."
+    "description": "Kappa Zeta was founded in October 2003 at the University of California, Santa Cruz, with vision of creating an inclusive, community service-focused sorority centered on individuality, academics, and meaningful connection through sisterhood.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Kasama Ballroom Dance Troupe",
     "instagram": "kasama.ucsc",
     "category": "performing arts",
     "email": "kasamaucsc@gmail.com",
-    "description": "The Kasama Ballroom Dance Troupe was founded in 2017 as a performing aspect housed under Bayanihan at the University of California, Santa Cruz. Kasama in Tagalog roughly translates to “together”, we — as a team — promote the idea of family, community, culture."
+    "description": "The Kasama Ballroom Dance Troupe was founded in 2017 as a performing aspect housed under Bayanihan at the University of California, Santa Cruz. Kasama in Tagalog roughly translates to “together”, we — as a team — promote the idea of family, community, culture.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Khmer Student Association",
     "instagram": "ksa_ucsc",
     "category": "cultural",
     "email": "khmer.ucsc@gmail.com",
-    "description": "The Khmer Student Association aims to foster an empathetic, conscious, and welcoming community for members and Khmer students. We aim to promote academic success, cultural, awareness, and social engagement."
+    "description": "The Khmer Student Association aims to foster an empathetic, conscious, and welcoming community for members and Khmer students. We aim to promote academic success, cultural, awareness, and social engagement.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Korean American Student Association (KASA)",
     "instagram": "ucsc.kasa",
     "category": "cultural",
     "email": "ucsckasa@gmail.com",
-    "description": "KASA is a student run social and cultural organization that values equality and diversity here at UCSC. They focus on promoting and celebrating Korean culture to students of all backgrounds and provide opportunities to form relationships through their events."
+    "description": "KASA is a student run social and cultural organization that values equality and diversity here at UCSC. They focus on promoting and celebrating Korean culture to students of all backgrounds and provide opportunities to form relationships through their events.",
+    "sources": [
+      "someca"
+    ]
   },
   {
-    "name": "kresge parliament",
+    "name": "Kresge Parliament",
     "instagram": "kresge_parliament",
     "category": "service & advocacy",
-    "email": null,
+    "email": "kc_parl@ucsc.edu",
+    "description": "Kresge Parliament is open to all Kresge students; voting rights are earned after attending two consecutive meetings.",
+    "website": "https://kresge.ucsc.edu/student-opportunities/student-government/",
     "sources": [
-      "mention_discovery"
+      "mention_discovery",
+      "college_government"
     ]
   },
   {
@@ -651,70 +1066,127 @@
     "instagram": "kamp.ucsc",
     "category": "cultural",
     "email": "kamp.ucsc@gmail.com",
-    "description": "KAMP is a student-initiated and student-led retention program that targets, but is not exclusive to, the Pilipinx community."
+    "description": "KAMP is a student-initiated and student-led retention program that targets, but is not exclusive to, the Pilipinx community.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "La Sociedad of Latine Pre-Law students (LaSo)",
     "instagram": "ucsclaso",
     "category": "pre-professional",
     "email": "ucsclpla@gmail.com",
-    "description": "LaSo is dedicated to facilitating growth, community-building, and professional/academic development for all our members. In service of these broad goals, LaSo designs programming intended to provide opportunities to meet Latine practitioners, activists, members."
+    "description": "LaSo is dedicated to facilitating growth, community-building, and professional/academic development for all our members. In service of these broad goals, LaSo designs programming intended to provide opportunities to meet Latine practitioners, activists, members.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Leviathan",
     "instagram": "leviathanjewishjournal",
     "category": "media & arts",
     "email": "leviathanvoice@gmail.com",
-    "description": "Leviathan Jewish Journal is a medium through which Jewish students and their allies may freely express their voices."
+    "description": "Leviathan Jewish Journal is a medium through which Jewish students and their allies may freely express their voices.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Mariachi Eterno",
     "instagram": "mariachieterno",
     "category": "performing arts",
     "email": "mariachieternosc@gmail.com",
-    "description": "Mariachi Eterno is focused on the performance and practice of traditional Mexican music in a collaborative and friendly space."
+    "description": "Mariachi Eterno is focused on the performance and practice of traditional Mexican music in a collaborative and friendly space.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Matchbox Magazine",
     "instagram": "matchboxmagazine",
     "category": "media & arts",
     "email": "lluu2@ucsc.edu",
-    "description": "We are a student-run magazine that publishes art, literature, music, and more. Our mission is to platform undergraduate underrepresented student voices across the UC system, particularly artists with a diversity of intersectional identities, experiences, and radical vision"
+    "description": "We are a student-run magazine that publishes art, literature, music, and more. Our mission is to platform undergraduate underrepresented student voices across the UC system, particularly artists with a diversity of intersectional identities, experiences, and radical vision",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "MECha de UCSC",
     "instagram": "mechadeucsc",
     "category": "cultural",
     "email": "ourstorian19@gmail.com",
-    "description": "MEChA de UCSC is a Latiné organization where we uplift and embrace our cultura and historia by emphasizing higher education and advocating around issues in our communities."
+    "description": "MEChA de UCSC is a Latiné organization where we uplift and embrace our cultura and historia by emphasizing higher education and advocating around issues in our communities.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "MEDLIFE",
     "instagram": "medlifeucsc",
     "category": "service & advocacy",
     "email": "medlifeucsc@gmail.com",
-    "description": "Medlife is a medical mission organization where volunteers travel to Latin America and Africa to provide free mobile clinics for communities that don't have equal acess to healthcare."
+    "description": "Medlife is a medical mission organization where volunteers travel to Latin America and Africa to provide free mobile clinics for communities that don't have equal acess to healthcare.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Merrill Student Government",
+    "instagram": "ucscmerrillcollege",
+    "category": "service & advocacy",
+    "email": "msgcore-group@ucsc.edu",
+    "description": "Merrill Student Government (MSG) : Merrill students can gain voting status by attending three meetings. MSG funds a wide variety of student events and supports community-building initiatives.",
+    "website": "https://merrill.ucsc.edu/student-opportunities/student-leadership/",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "Mock Trial at UCSC",
     "instagram": "mocktrialatucsc",
     "category": "pre-professional",
     "email": "mocktrialsantacruz@gmail.com",
-    "description": "The Mock Trial program at UCSC is designed to help prepare students for law school and beyond by working on a varity of skills including writing and public speaking."
+    "description": "The Mock Trial program at UCSC is designed to help prepare students for law school and beyond by working on a varity of skills including writing and public speaking.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Muslim Student Association (MSA)",
     "instagram": "ucsc.msa",
     "category": "cultural",
     "email": "ucsc.msa@gmail.com",
-    "description": "The UCSC MSA is a welcoming space where Muslims and allies come together to build and help out the community, grow in faith, and share culture."
+    "description": "The UCSC MSA is a welcoming space where Muslims and allies come together to build and help out the community, grow in faith, and share culture.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "National Society of Black Engineers (NSBE)",
     "instagram": "nsbe.ucsc",
     "category": "tech & science",
     "email": "nsbe@ucsc.edu",
-    "description": "National Society of Black Engineers is a Professional and Technical development club for ABC identifying individuals. It is also a space to network, excel academically, succeed professionally, and positively impact their communities."
+    "description": "National Society of Black Engineers is a Professional and Technical development club for ABC identifying individuals. It is also a space to network, excel academically, succeed professionally, and positively impact their communities.",
+    "sources": [
+      "someca",
+      "baskin_engineering"
+    ],
+    "website": "https://nsbe.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-nsbe-019f1650b4561fa9.jpg"
+  },
+  {
+    "name": "NeurotechSC",
+    "instagram": "neurotechsc",
+    "category": "tech & science",
+    "email": null,
+    "description": "NeurotechSC — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.com/invite/xq8q8wrAEc",
+    "website": "https://neurotech.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/230420UCSC_day2_UCOP_tagged102.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Newman Catholic Club",
@@ -728,49 +1200,81 @@
     "discordFollowable": true,
     "discordMemberCount": 37,
     "discordOnlineCount": 6,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1403379910365679717/aa0af8246493fb886d9c56ca213bae0f.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1403379910365679717/aa0af8246493fb886d9c56ca213bae0f.png?size=128",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Nigerian Student Association",
     "instagram": "nsa.ucsc",
     "category": "cultural",
     "email": "ucscnigerianstudentassociation@gmail.com",
-    "description": "The purpose of this organization shall be to create an inclusive, educational, and culturally enriching space for all UCSC students who are interested in learning about, celebrating, or connecting with Nigerian cultures, histories, and communities."
+    "description": "The purpose of this organization shall be to create an inclusive, educational, and culturally enriching space for all UCSC students who are interested in learning about, celebrating, or connecting with Nigerian cultures, histories, and communities.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Oakes College Senate",
+    "instagram": "oakes_senate",
+    "category": "service & advocacy",
+    "email": "oakessen@ucsc.edu",
+    "description": "Oakes Student Senate : Oakes affiliates can earn voting rights after attending three meetings. Senate organizes events like The Big One and allocates funding to campus groups.",
+    "website": "https://oakes.ucsc.edu/student-opportunities/student-leadership/",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "On The Spot (OTS)",
     "instagram": "onthespot_ucsc",
     "category": "performing arts",
     "email": "onthespot10@gmail.com",
-    "description": "On The Spot is a comedy sketch group producing scripted sketches, livestreams, segment media, and social media content. We provide a fun, collaborative space for students of all experience levels to write sketches, work with equipment, and entertain."
+    "description": "On The Spot is a comedy sketch group producing scripted sketches, livestreams, segment media, and social media content. We provide a fun, collaborative space for students of all experience levels to write sketches, work with equipment, and entertain.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Operation Smile",
     "instagram": "operationsmileucsc",
     "category": "service & advocacy",
     "email": "hforcefive@gmail.com",
-    "description": "We are a student-led chapter of Operation Smile, a global nonprofit providing free cleft lip and palate surgeries and care. Our members serve as ambassadors on our campus promoting awareness through education and outreach efforts."
+    "description": "We are a student-led chapter of Operation Smile, a global nonprofit providing free cleft lip and palate surgeries and care. Our members serve as ambassadors on our campus promoting awareness through education and outreach efforts.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Pagkakaisa Dance Troupe (PDT)",
     "instagram": "pdt.ucsc",
     "category": "performing arts",
     "email": "pdt.ucsc@gmail.com",
-    "description": "Pagkakaisa Dance Troupe, or PDT, is a Filipino dance troupe housed under Bayanihan that aims to share the Filipino culture to anyone interested through its multiple folklore dances across the many suites. The dance team is open to all students at UCSC"
+    "description": "Pagkakaisa Dance Troupe, or PDT, is a Filipino dance troupe housed under Bayanihan that aims to share the Filipino culture to anyone interested through its multiple folklore dances across the many suites. The dance team is open to all students at UCSC",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Phi Alpha Delta",
     "instagram": "ucscpad",
     "category": "greek",
     "email": "ucscpad1902@gmail.com",
-    "description": "A professional organization that focuses on uniting students pursuing law, offering professional growth and volunteer opportunities in Santa Cruz. Creating a community of support for the next generation of lawyers."
+    "description": "A professional organization that focuses on uniting students pursuing law, offering professional growth and volunteer opportunities in Santa Cruz. Creating a community of support for the next generation of lawyers.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Planned Parenthood: Generation Action",
     "instagram": "plannedparenthooducsc",
     "category": "service & advocacy",
     "email": "ppga.ucsc@gmail.com",
-    "description": "Mobilize advocates for reproductive freedom, organize events that raise public awareness about reproductive health and rights, and educate young people about sexual health and safe sex practices."
+    "description": "Mobilize advocates for reproductive freedom, organize events that raise public awareness about reproductive health and rights, and educate young people about sexual health and safe sex practices.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "POPreka",
@@ -784,35 +1288,62 @@
     "discordFollowable": false,
     "discordMemberCount": 408,
     "discordOnlineCount": 31,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/902609240588439583/cd63e5661a44bd445c9e3dfefb1d36ce.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/902609240588439583/cd63e5661a44bd445c9e3dfefb1d36ce.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Porter College Senate",
+    "instagram": "porter.college",
+    "category": "service & advocacy",
+    "email": "portersenatechair@ucsc.edu",
+    "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
+    "discord": "https://discord.com/invite/xMkchjNS7M",
+    "website": "https://porter.ucsc.edu/student-opportunities/student-government/",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "Pre-Dental Society",
     "instagram": "ucscpredental",
     "category": "pre-professional",
     "email": "predentalslugs@gmail.com",
-    "description": "The Pre-Dental Society helps students explore careers in dentistry through hands-on activities, guest speakers, dental school guidance, networking with professionals, and opportunities for volunteering and shadowing."
+    "description": "The Pre-Dental Society helps students explore careers in dentistry through hands-on activities, guest speakers, dental school guidance, networking with professionals, and opportunities for volunteering and shadowing.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Pre-Med Advisory Program (PAP)",
     "instagram": "pap_ucsc",
     "category": "pre-professional",
     "email": "pap.ucsantacruz@gmail.com",
-    "description": "PAP UCSC is a non-profit, student-led organization dedicated to guiding pre-health students at the University of California, Santa Cruz on their journey into healthcare through targeted meetings and resources."
+    "description": "PAP UCSC is a non-profit, student-led organization dedicated to guiding pre-health students at the University of California, Santa Cruz on their journey into healthcare through targeted meetings and resources.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Pre-Optometry Society of UCSC",
     "instagram": "ucscpreopto",
     "category": "pre-professional",
     "email": "ucsc.preoptometry@gmail.com",
-    "description": "To bring pre-optometry students on the UCSC campus together to network, socialize, and gain more resources during their undergraduate path towards the optometry career. We aim to educate the students on not only the application process but how to succeed."
+    "description": "To bring pre-optometry students on the UCSC campus together to network, socialize, and gain more resources during their undergraduate path towards the optometry career. We aim to educate the students on not only the application process but how to succeed.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Pre-Veterinary Club at UCSC",
     "instagram": "ucscpreveterinaryclub",
     "category": "pre-professional",
     "email": "ucscpreveterinaryclub@gmail.com",
-    "description": "The Pre-Veterinary Club at UCSC is a community of students interested in veterinary medicine. We focus on supporting our members by providing volunteer and research opportunities."
+    "description": "The Pre-Veterinary Club at UCSC is a community of students interested in veterinary medicine. We focus on supporting our members by providing volunteer and research opportunities.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Project Smile",
@@ -822,7 +1353,10 @@
     "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students",
     "discord": "https://discord.gg/nC8C4X2g",
     "discordServerName": "Project Smile Discord",
-    "discordOnlineCount": 0
+    "discordOnlineCount": 0,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Pupcycled at UCSC",
@@ -835,35 +1369,74 @@
     "discordServerName": "Pupcycled at UCSC",
     "discordFollowable": false,
     "discordMemberCount": 47,
-    "discordOnlineCount": 5
+    "discordOnlineCount": 5,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Quantum Computing",
     "instagram": "ucscquantum",
     "category": "tech & science",
     "email": "ucscquantum@gmail.com",
-    "description": "We are a student-led club focused on bringing awareness to the emerging field of Quantum Computing. We focus on hosting events, speakers, hackathons, and publishing research papers throughout the year. Anyone who is interested in learning is welcome to join!"
+    "description": "We are a student-led club focused on bringing awareness to the emerging field of Quantum Computing. We focus on hosting events, speakers, hackathons, and publishing research papers throughout the year. Anyone who is interested in learning is welcome to join!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Quiz Bowl",
     "instagram": "ucsc.quizbowl",
     "category": "gaming",
     "email": "loauyeun@ucsc.edu",
-    "description": "UCSC's Quiz Bowl team prepares for and competes in academic trivia tournaments. Players compete in teams to answer questions across science, history, literature, the arts, and other areas of study (beliefs, social science, geography, philosophy, pop culture, etc.)."
+    "description": "UCSC's Quiz Bowl team prepares for and competes in academic trivia tournaments. Players compete in teams to answer questions across science, history, literature, the arts, and other areas of study (beliefs, social science, geography, philosophy, pop culture, etc.).",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Raas Rangeela",
     "instagram": "raasrangeela",
     "category": "performing arts",
     "email": "ucsc.raas@gmail.com",
-    "description": "Raas Rangeela is a competitive Raas/Garba dance team at the University of California, Santa Cruz."
+    "description": "Raas Rangeela is a competitive Raas/Garba dance team at the University of California, Santa Cruz.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Rachel Carson College Student Council",
+    "instagram": "rcc_ucsc",
+    "category": "community",
+    "email": "rccouncil@ucsc.edu",
+    "description": "Rachel Carson College Council : All RCC students are invited to attend and get involved. Council members lead events, manage funding, and advocate for student interests.",
+    "website": "https://rachelcarson.ucsc.edu/student-opportunities/student-leadership/",
+    "sources": [
+      "college_government"
+    ]
+  },
+  {
+    "name": "Santa Cruz Artificial Intelligence Club (SCAI)",
+    "instagram": "ucscai",
+    "category": "tech & science",
+    "email": null,
+    "description": "University of California Santa Cruz Artifical Intelligence club",
+    "discord": "https://discord.gg/santacruzai",
+    "website": "https://santacruzai.net/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-scai-02debde326ff0891.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Santa Cruz Fighting Game Community",
     "instagram": "santacruzfc",
     "category": "gaming",
     "email": "aiqle@ucsc.edu",
-    "description": "We are an organization of people who play fighting games. These include Super Smash Bros, Street Fighter, Guilty Gear and more. We host tournaments and fun gaming sessions as a community."
+    "description": "We are an organization of people who play fighting games. These include Super Smash Bros, Street Fighter, Guilty Gear and more. We host tournaments and fun gaming sessions as a community.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Santa Cruz Ski and Snow Club",
@@ -889,35 +1462,60 @@
     "discordServerName": "Shutterslug Photography",
     "discordFollowable": true,
     "discordMemberCount": 626,
-    "discordOnlineCount": 82
+    "discordOnlineCount": 82,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Sigma Lambda Beta",
     "instagram": "santacruzbetas",
     "category": "greek",
     "email": "gejocont@ucsc.edu",
-    "description": "Sigma Lambda Beta is a Latino-based, multicultural fraternity founded in 1986 that promotes brotherhood, scholarship, service, and cultural awareness while developing multicultural leaders on campus."
+    "description": "Sigma Lambda Beta is a Latino-based, multicultural fraternity founded in 1986 that promotes brotherhood, scholarship, service, and cultural awareness while developing multicultural leaders on campus.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Sigma Lambda Gamma National Sorority Inc.",
     "instagram": "ucscgammas",
     "category": "greek",
     "email": "ucsc.gammas@gmail.com",
-    "description": "Sigma Lambda Gamma National Sorority, Inc. has evolved into a multicultural sorority that continues to honor that we were originally founded to create a safe space for Latina women on a predominately white campus in the midwest."
+    "description": "Sigma Lambda Gamma National Sorority, Inc. has evolved into a multicultural sorority that continues to honor that we were originally founded to create a safe space for Latina women on a predominately white campus in the midwest.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Sigma Mu Delta",
     "instagram": "ucscsmd",
     "category": "greek",
     "email": "gammasmd@gmail.com",
-    "description": "Sigma Mu Delta is a pre-medical fraternity dedicated to professional development and brotherhood."
+    "description": "Sigma Mu Delta is a pre-medical fraternity dedicated to professional development and brotherhood.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Sigma Omicron Pi",
     "instagram": "ucscsopi",
     "category": "greek",
     "email": "president.ucscsopi@gmail.com",
-    "description": "Our chapter was founded at the University of California, Santa Cruz (UCSC) in 1995. We are a national Asian-interest sorority that has based our sisterhood on four objectives: Unity, Friendship, Leadership, and Service."
+    "description": "Our chapter was founded at the University of California, Santa Cruz (UCSC) in 1995. We are a national Asian-interest sorority that has based our sisterhood on four objectives: Unity, Friendship, Leadership, and Service.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Sigma Pi Alpha Sorority, Inc.",
+    "instagram": "ucsantacruzellas",
+    "category": "greek",
+    "email": "gammachapter.president96@gmail.com",
+    "description": "Sigma Pi Alpha Sorority, Inc. is a Chicana/Latina-based sorority that strives to empower women from all cultures through community service, campus involvement, and sisterhood. We hold our motto, “Mujeres con Cultura, Fuerza, y Hermandad” close to our hearts as it empower us.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Sikh Student Association",
@@ -930,14 +1528,20 @@
     "discordServerName": "UCSC Sikh Slugs",
     "discordFollowable": false,
     "discordMemberCount": 47,
-    "discordOnlineCount": 2
+    "discordOnlineCount": 2,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Slavic Student Association",
     "instagram": "ssa_ucsc",
     "category": "cultural",
     "email": "mleonov@ucsc.edu",
-    "description": "We are an organization hoping to connect people of Slavic and Russian-speaking backgrounds by hosting various events that originate from our culture."
+    "description": "We are an organization hoping to connect people of Slavic and Russian-speaking backgrounds by hosting various events that originate from our culture.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Slug Anime & Manga Association",
@@ -949,15 +1553,21 @@
     "discordGuildId": "710745950380884009",
     "discordServerName": "Slug Anime & Manga Association",
     "discordFollowable": true,
+    "discordMemberCount": 2256,
     "discordOnlineCount": 340,
-    "discordMemberCount": 2256
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Slug Book Club",
     "instagram": "slugbookclub",
     "category": "media & arts",
     "email": "slugbookclub@gmail.com",
-    "description": "Slug Book Club brings together a community of undergraduate students at UCSC who are interested in reading and thoughtful discussion. Members are challenged to engage with a variety of different genres, themes, and authors in a fun and welcoming environment."
+    "description": "Slug Book Club brings together a community of undergraduate students at UCSC who are interested in reading and thoughtful discussion. Members are challenged to engage with a variety of different genres, themes, and authors in a fun and welcoming environment.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Slug Fund Investment Group",
@@ -970,7 +1580,10 @@
     "discordServerName": "Slug Fund Investment Group",
     "discordFollowable": true,
     "discordMemberCount": 576,
-    "discordOnlineCount": 76
+    "discordOnlineCount": 76,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Slug Gaming",
@@ -984,7 +1597,28 @@
     "discordFollowable": true,
     "discordMemberCount": 4000,
     "discordOnlineCount": 755,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/97748273074302976/33ce8f61bfe89989d0d61f15bbfb31a5.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/97748273074302976/33ce8f61bfe89989d0d61f15bbfb31a5.png?size=128",
+    "sources": [
+      "someca",
+      "baskin_engineering"
+    ],
+    "website": "https://sluggaming.club/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/1-22-24-Slug-Gaming-CL-013.jpg"
+  },
+  {
+    "id": "noig_slug_linux_user_group",
+    "noInstagram": true,
+    "name": "Slug Linux User Group",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Slug Linux User Group — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.gg/XbscWTcv2H",
+    "website": "https://sluglinuxusergroup.github.io/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/2-13-24-ScreenPrinting-Class-CL-004.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
@@ -997,21 +1631,72 @@
     "discordServerName": "Slug Rhythm Game Enthusiasts",
     "discordFollowable": true,
     "discordMemberCount": 571,
-    "discordOnlineCount": 231
+    "discordOnlineCount": 231,
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Slug Security",
+    "instagram": "slugsec",
+    "category": "tech & science",
+    "email": "slugsec@ucsc.edu",
+    "description": "Cyber @ UC Santa Cruz",
+    "discord": "https://discord.gg/NUVZCumQXB",
+    "website": "https://slugsec.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-security-0b28890be4e89a30.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Slug' n Boots",
     "instagram": "slugnboots",
     "category": "performing arts",
     "email": "slugnboots@gmail.com",
-    "description": "Beginner friendly line dancing club"
+    "description": "Beginner friendly line dancing club",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_slugbotics",
+    "noInstagram": true,
+    "name": "Slugbotics",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Slugbotics — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://slugbotics.com/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slugbotics-862259b4fe70fa8f.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "SlugMUN",
     "instagram": "ucscslugmun",
     "category": "service & advocacy",
     "email": "ucscslugmun@gmail.com",
-    "description": "Focusing on law and foreign policy, Model United Nations helps engage through debate and publics peaking. Currently ranked within the top 50 teams in North America, our team travels throughout the country to engage in conferences and hosts our own here at UCSC."
+    "description": "Focusing on law and foreign policy, Model United Nations helps engage through debate and publics peaking. Currently ranked within the top 50 teams in North America, our team travels throughout the country to engage in conferences and hosts our own here at UCSC.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_slugsat",
+    "noInstagram": true,
+    "name": "SlugSat",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "SlugSat — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.com/invite/Tt6Aa3P",
+    "website": "https://slugsatclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-sat-ea94040b20f6297f.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "SlugSpeak",
@@ -1024,7 +1709,23 @@
     "discordServerName": "SlugSpeak",
     "discordFollowable": false,
     "discordMemberCount": 170,
-    "discordOnlineCount": 56
+    "discordOnlineCount": 56,
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_society_for_the_advancement_of_chicanos_and_",
+    "noInstagram": true,
+    "name": "Society for the Advancement of Chicanos and Native Americans in Science (SACNAS)",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Society for the Advancement of Chicanos and Native Americans in Science (SACNAS) — Baskin Engineering student organization at UC Santa Cruz.",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-sacnas-40e6672755a81374.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Society of Asian Scientists and Engineers (SASE)",
@@ -1038,63 +1739,139 @@
     "discordFollowable": false,
     "discordMemberCount": 354,
     "discordOnlineCount": 30,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/689561240766513209/d9f03b970e27aa37ad6e5fa83cef2b83.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/689561240766513209/d9f03b970e27aa37ad6e5fa83cef2b83.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Society of Hispanic Professional Engineers (SHPE)",
+    "instagram": "shpe.ucsc",
+    "category": "tech & science",
+    "email": "shpe.ucsc@gmail.com",
+    "extraEmails": [
+      "mlope180@ucsc.edu",
+      "tlaruiz@ucsc.edu",
+      "acarmon2@ucsc.edu",
+      "jomoral85@ucsc.edu",
+      "eamayora@ucsc.edu",
+      "mromer28@ucsc.edu",
+      "cgarc133@ucsc.edu",
+      "saqadiri@ucsc.edu"
+    ],
+    "description": "Society of Hispanic Professional Engineers (SHPE) — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://shpe.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/05/orgs-SHPE.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Society of Physics Students",
     "instagram": "ucscsps",
     "category": "tech & science",
     "email": "sps@ucsc.edu",
-    "description": "SPS at UCSC, for and by physics students, aims to create an academic and social physics community that is welcoming, supportive, and inclusive."
+    "description": "SPS at UCSC, for and by physics students, aims to create an academic and social physics community that is welcoming, supportive, and inclusive.",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Society of Women Engineers (SWESLUGS)",
+    "instagram": "ucsc_swe",
+    "category": "tech & science",
+    "email": "wiseucsc@gmail.com",
+    "extraEmails": [
+      "sweslugs@gmail.com"
+    ],
+    "description": "Society of Women Engineers (SWESLUGS) — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.gg/PJ9euSKgF5",
+    "website": "https://sweclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-sweslugs-879e2785a2453324.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "SOMOS Latinx en medicina",
     "instagram": "ucsc_slm",
     "category": "pre-professional",
     "email": "somos.ucsc@gmail.com",
-    "description": "SOMOS Latinx en Medicina is a student-led organization at UC Santa Cruz dedicated to supporting, empowering, and uplifting Latinx students pursuing careers in healthcare. Our mission is to create accessible opportunities, build community, and increase Latinx representation."
+    "description": "SOMOS Latinx en Medicina is a student-led organization at UC Santa Cruz dedicated to supporting, empowering, and uplifting Latinx students pursuing careers in healthcare. Our mission is to create accessible opportunities, build community, and increase Latinx representation.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "South American Student Association (SASA)",
     "instagram": "sasaucsc",
     "category": "cultural",
     "email": "ucscsasa@gmail.com",
-    "description": "We are a group of students of South American descent looking to foster community between students at UCSC!"
+    "description": "We are a group of students of South American descent looking to foster community between students at UCSC!",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Stevenson Student Council",
+    "instagram": "stevensoncouncil",
+    "category": "community",
+    "email": "jeanvarg@ucsc.edu",
+    "description": "Stevenson Student Council : Council reps are elected from each residential house and help allocate funds, recommend policies, and represent students on campus committees.",
+    "website": "https://stevenson.ucsc.edu/student-opportunities/student-leadership/",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "Student Alliance of Native American and Indigenous Peoples (SANAI)",
     "instagram": "sanaiucsc",
     "category": "cultural",
     "email": "sanaiatucsc@gmail.com",
-    "description": "SANAI is here to provide a safe, inclusive space for Indigenous peoples of all backgrounds, at a University that was not designed for people like us. We host community-building events, educational teach-ins, and advocate for the interests of Indigneous students."
+    "description": "SANAI is here to provide a safe, inclusive space for Indigenous peoples of all backgrounds, at a University that was not designed for people like us. We host community-building events, educational teach-ins, and advocate for the interests of Indigneous students.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Student Cable Television (SCTV)",
     "instagram": "sctv_media",
     "category": "media & arts",
     "email": "studentcabletelevision@gmail.com",
-    "description": "Student Cable Television (SCTV) is a leadership council that represents the broadcast organizations on campus, the Film Production Coalition (FPC) and On The Spot (OTS)."
+    "description": "Student Cable Television (SCTV) is a leadership council that represents the broadcast organizations on campus, the Film Production Coalition (FPC) and On The Spot (OTS).",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Student Initiated Outreach (SIO)",
     "instagram": "e2.ucsc",
     "category": "service & advocacy",
     "email": "engaging@ucsc.edu",
-    "description": "Student initiated outreach program that is under engaging education."
+    "description": "Student initiated outreach program that is under engaging education.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Student Organization Leadership (SOL) Council",
     "instagram": "solatucsc",
     "category": "service & advocacy",
     "email": "solcouncilucsantacruz@gmail.com",
-    "description": "Empowering students through organizing & civic engagementAdvocacy • Education • Student Voice"
+    "description": "Empowering students through organizing & civic engagement Advocacy • Education • Student Voice",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Tabletop Games Association",
     "instagram": "ucsc.tga",
     "category": "gaming",
     "email": "ucsc.tga@gmail.com",
-    "description": "The Tabletop Games Association is dedicated to providing a safe and accessible place for UCSC students to meet and play tabletop games."
+    "description": "The Tabletop Games Association is dedicated to providing a safe and accessible place for UCSC students to meet and play tabletop games.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Taiwanese Student Association (TSA)",
@@ -1107,28 +1884,54 @@
     "discordServerName": "UCSC TSA",
     "discordFollowable": true,
     "discordMemberCount": 283,
-    "discordOnlineCount": 74
+    "discordOnlineCount": 74,
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_tau_beta_pi_tbp",
+    "noInstagram": true,
+    "name": "Tau Beta Pi (TBP)",
+    "instagram": "",
+    "category": "greek",
+    "email": null,
+    "description": "Tau Beta Pi (TBP) — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://www.tbp.org/home.cfm",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-tbp-b8f1aa9fbe5607d6.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Taza Tal",
     "instagram": "officialtazatal",
     "category": "performing arts",
     "email": "ucsctazatal@gmail.com",
-    "description": "Taza Tal is UCSC’s premier award-winning South Asian a cappella team. We compete nationally in the ASA circuit and perform at campus events throughout the year, showcasing a blend of South Asian and Western music through vocal arrangements."
+    "description": "Taza Tal is UCSC’s premier award-winning South Asian a cappella team. We compete nationally in the ASA circuit and perform at campus events throughout the year, showcasing a blend of South Asian and Western music through vocal arrangements.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "The Historical Society at UC Santa Cruz",
     "instagram": "historicalsociety_ucsc",
     "category": "pre-professional",
     "email": "ucschistoricalsociety@gmail.com",
-    "description": "The Historical Society at UCSC is a place for students interested in history to come together socially and academically. All majors welcome."
+    "description": "The Historical Society at UCSC is a place for students interested in history to come together socially and academically. All majors welcome.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "The Slug Collective",
     "instagram": "slugcollective",
-    "category": "community",
+    "category": "media & arts",
     "email": "theslugcollective@gmail.com",
-    "description": "UCSC’s official music production club! Connect and collaborate with creative minds across campus at our weekly meetings!"
+    "description": "UCSC’s official music production club! Connect and collaborate with creative minds across campus at our weekly meetings!",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Transgender Student Union",
@@ -1142,14 +1945,483 @@
     "discordFollowable": true,
     "discordMemberCount": 115,
     "discordOnlineCount": 22,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1306818825328787476/4c268da2f0e0979eb1688f3755e285be.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1306818825328787476/4c268da2f0e0979eb1688f3755e285be.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_ucsc_amateur_radio_club",
+    "noInstagram": true,
+    "name": "UCSC Amateur Radio Club",
+    "instagram": "",
+    "category": "media & arts",
+    "email": null,
+    "description": "UCSC Amateur Radio Club — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.com/invite/yGrXvgUX9H",
+    "website": "https://amateurradioclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/08/Amateur-Radio-Club-group-photo.jpeg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "id": "noig_ucsc_badminton_club",
+    "noInstagram": true,
+    "name": "UCSC Badminton Club",
+    "instagram": "",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scbadminton.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/Q4/Q4kgnYmnjGXGBwbmf6voA41FuR5hF2NivWtiaunp.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Ballroom Dance",
+    "instagram": "ucscballroom",
+    "category": "performing arts",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scballroomdance.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/09/09fPQFZOOfL7iSak1OBXHcsAzG2SChMMA6F97Tvh.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Baseball Club",
+    "instagram": "ucscbaseball",
+    "category": "gaming",
+    "email": "ucscclubbaseball@gmail.com",
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/21/scbaseball.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/ph/phip57GPPH3HoBjptU7JBOehoW805RdGJaEDsYFg.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "id": "noig_ucsc_blueprint",
+    "noInstagram": true,
+    "name": "UCSC Blueprint",
+    "instagram": "",
+    "category": "tech & science",
+    "email": null,
+    "description": "Blueprint strives to make technology accessible and useful for those who assist communities and promote public welfare.",
+    "website": "https://ucscblueprint.org/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/12/10-29-24-Giving-Day-Blueprint-Club-CL-015-1.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "name": "UCSC Computer Networking Student Association (CNSA)",
+    "instagram": "ucsc.cnsa",
+    "category": "tech & science",
+    "email": null,
+    "description": "UCSC Computer Networking Student Association (CNSA) — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.gg/UbF26uDdnV",
+    "website": "https://cnsaclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-cnsa-5c70022f3ff101da.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "id": "noig_ucsc_cross_country_club",
+    "noInstagram": true,
+    "name": "UCSC Cross Country Club",
+    "instagram": "",
+    "category": "gaming",
+    "email": null,
+    "description": "UCSC Cross Country Club — official UC Santa Cruz Recreation & Athletics Sport Club.",
+    "website": "https://goslugs.com/sports/2025/7/14/cross%20country.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/dW/dWxh1PuP8oaQqRRPv2wK3xqiJlt5SdTFvWApiRzh.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "id": "noig_ucsc_current_athletes_club",
+    "noInstagram": true,
+    "name": "UCSC Current Athletes Club",
+    "instagram": "",
+    "category": "community",
+    "email": null,
+    "description": "HANDBOOK 2026-27 Student-Athlete Handbook LINKS NCAA Guide for College Bound Students NCAA Don",
+    "website": "https://goslugs.com/sports/2021/4/30/x-99u9d.aspx",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Cycling Club",
+    "instagram": "ucsccycling",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/cycling.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/G9/G9uNiwvDJis1ILV6dgAMmhswvegfjKh3uJgsUl2r.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Dance Team",
+    "instagram": "ucscdanceteam",
+    "category": "performing arts",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/danceteam.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/L8/L85QHeKiuGWkkHTs2PkKu6dFLBxewQxSaFBHPM9m.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Equestrian Club",
+    "instagram": "ucscequestrian",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/equestrian.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/k9/k9fAiQcjyChehbWBLxiHEFMX8mDKgR7EoR9Zyc40.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Fencing Club",
+    "instagram": "ucscfencing",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/15/fencing.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/zF/zF5gJCzZC44PBAXsUWi04bzK1Dfl3S45MZj1ndSH.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Grappling Club",
+    "instagram": "ucsc_grappling",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scgrappling.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/j8/j8yo3ghigLBtLZmUIKKX4KCS3abAzdoS8HjsjB1A.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Ice Hockey Club",
+    "instagram": "slugshockey",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/21/scicehockey.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/H2/H22RoGQGcGaaklT3yoECphvx5TKOYjM0uTn97Hj9.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Judo Club",
+    "instagram": "ucsc_judo",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scjudo.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/RM/RM4oumCXIFhbwhoFHr1NgtwccecJ9w83MxMIjETA.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Lacrosse",
+    "instagram": "cruzlacrosse",
+    "category": "gaming",
+    "email": null,
+    "description": "UCSC Men's Club Lacrosse — official UC Santa Cruz Recreation & Athletics Sport Club.",
+    "website": "https://recreation.ucsc.edu/sportclubs/mlax/",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/IB/IByHXa7WTtdpWfUU1NLHdst4DIrUNol1jwSoJsO8.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Rugby",
+    "instagram": "ucscmensrugby",
+    "category": "gaming",
+    "email": "rsteins@ucsc.edu",
+    "extraEmails": [
+      "rcunz@ucsc.edu"
+    ],
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/mensrugby.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/OT/OTShDQN7GeSxKIso0n4uolGGYIdGDBSkKvwSpXjd.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Soccer",
+    "instagram": "ucscmensclubsoccer",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scmensclubsoccer.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/4C/4C1Wgi4IlgYaeDoUHIKZpb6tUJiUWLuse6wIUT29.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Ultimate",
+    "instagram": "slugultimate",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/29/mensultimate.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/5t/5tdvepwpgxaLaFgmbZcK05LcpQrX8XEZDqqV0Qvz.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Volleyball",
+    "instagram": "slugsvolleyball",
+    "category": "gaming",
+    "email": null,
+    "description": "UCSC Men's Club Volleyball — official UC Santa Cruz Recreation & Athletics Sport Club.",
+    "website": "https://recreation.ucsc.edu/sportclubs/volleyball/",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/Th/Thxst0PEk2dxP8PQDuu24HfZfpQmb6S2zsoKGEUE.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Men's Club Water Polo",
+    "instagram": "ucsc_mwp",
+    "category": "gaming",
+    "email": "gmwinter@ucsc.edu",
+    "extraEmails": [
+      "jfwitt@ucsc.edu"
+    ],
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/29/menswaterpolo.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/vS/vSv4GWdTb6YHGMavO9nQMH9IiIJrMJbpXtmoO9mM.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Muay Thai Club",
+    "instagram": "ucscmuaythai",
+    "category": "cultural",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scmuaythai.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/f2/f27iN4olgOoYey6ACBZbf9QjoXiQHwNR8Pfdx5nb.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Rocket Team",
+    "instagram": "ucscrocketry",
+    "category": "tech & science",
+    "email": null,
+    "description": "The UCSC Rocket Team is the leading aerospace organization for the University of California, Santa Cruz. We design and build high-powered rockets.",
+    "website": "https://ucscrocketry.org/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/07/UCSC-Rocket-Team-1024x672.png",
+    "sources": [
+      "baskin_engineering"
+    ]
+  },
+  {
+    "name": "UCSC Sailing Club",
+    "instagram": "ucscsailing",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scsailingclub.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/Aa/AaxLY45eeJQM6Degf1uqPsKRsVQFOVZ5816SArWj.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Softball Club",
+    "instagram": "ucscclubsoftball",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/softball.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/xQ/xQf1CUSoD4JfiNpBYmaVQsj6ZWmc8caNu6Zfj7Vx.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "id": "noig_ucsc_spirit_squad",
+    "noInstagram": true,
+    "name": "UCSC Spirit Squad",
+    "instagram": "",
+    "category": "performing arts",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/1/27/ucsc-club-sports",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/Ac/AcDsq5VzxFgdUZgklnQ7cFhaq5QlSYNbuESgKWDW.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Surfing Club",
+    "instagram": "ucscsurfteam",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scsurfingclub.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/jw/jwInAJh0OEXsIrlJgqeJ0eHEi3dXmqgMjGxDVtr3.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Tae Kwon Do Club",
+    "instagram": "ucsctkd",
+    "category": "community",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/sctaekwondoclub.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/02/02yDSKetxRfNLKwCNJrGHyV6vK5ScUu4Vq69BG35.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Tangroupe",
+    "instagram": "tangroupe",
+    "category": "performing arts",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/21/sctangroupe.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/uO/uO9ifL4pRgBYANIiEiQ5CBk3cVimQ7XgFmJK5gch.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Tennis Club",
+    "instagram": "ucscclubtennis",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/sctennisclub.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/SC/SCq50yfffze3ipLgGjhaciuae1lTSP6c9pfNeHia.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Triathlon Club",
+    "instagram": "ucsctriathlon",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/6/26/triathlon.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/aK/aKnB7I7p4nVUQrR3apuF3m8GTzVFPldlC1WvcHba.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Women's Club Lacrosse",
+    "instagram": "ucscwlax",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/21/scwomenslacrosse.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/TM/TMcLK4QEAL43iIDlHbAf4yu84DPFMpt5pe4bXnpw.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Women's Club Rugby",
+    "instagram": "ucscwomensrugby",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/womensrugby.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/Hg/HgpQGSbObTzWJrIFervJUaKObHiWtYflbH0ExU2c.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Women's Club Soccer",
+    "instagram": "ucscwomensclubsoccer",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/14/scwomenssoccer.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/eX/eX5QVjgXRd3BvxHTRanoS8O0GtupIUx7JGk4JNaW.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Women's Club Volleyball",
+    "instagram": "ucscwcvb",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/22/scwomensclubvolleyball.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/0t/0tlwI4zbNmMDoaROq51l30pP7CzXWQXFtfwCYNwZ.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Women's Club Water Polo",
+    "instagram": "ucsc_wwp",
+    "category": "gaming",
+    "email": "ucscwomenspolo@gmail.com",
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/29/womenswaterpolo.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/tA/tAZci9xO68zABrfEdPXdFqMzlglbeGZFjpFuhmWW.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
+  },
+  {
+    "name": "UCSC Womxn's Club Ultimate",
+    "instagram": "sol_ultimate",
+    "category": "gaming",
+    "email": null,
+    "description": "University of California, Santa Cruz",
+    "website": "https://goslugs.com/sports/2025/7/29/womensultimate.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/iu/iu30knAO4lynLJXIx5N2TjakBfL06OSyYE8jVjy7.jpg",
+    "sources": [
+      "sport_clubs"
+    ]
   },
   {
     "name": "UMOJA",
     "instagram": "umoja.ucsc",
     "category": "cultural",
     "email": "ucsantacruz.umoja@gmail.com",
-    "description": "UMOJA is a student-initiated and student-run retention program dedicated to keeping African/Black identified students here at UC Santa Cruz. Meaning “Unity” in Swahili, UMOJA’s goal is to support the ABC community on campus."
+    "description": "UMOJA is a student-initiated and student-run retention program dedicated to keeping African/Black identified students here at UC Santa Cruz. Meaning “Unity” in Swahili, UMOJA’s goal is to support the ABC community on campus.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Undergraduate Neuroscience Club",
@@ -1162,14 +2434,20 @@
     "discordServerName": "UCSC Undergraduate Neuroscience Club",
     "discordFollowable": false,
     "discordMemberCount": 200,
-    "discordOnlineCount": 22
+    "discordOnlineCount": 22,
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Universities Allied for Essential Medicines at UCSC (UAEM at UCSC)",
     "instagram": "uaem_ucsc",
     "category": "pre-professional",
     "email": "ucsc.uaem@gmail.com",
-    "description": "UAEM is a student-led international nonprofit organization that advocates for global health equity, affordable access to life-saving medicines, and responsible licensing of publicly funded university research."
+    "description": "UAEM is a student-led international nonprofit organization that advocates for global health equity, affordable access to life-saving medicines, and responsible licensing of publicly funded university research.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Vietnamese Student Association (VSA)",
@@ -1181,21 +2459,42 @@
     "discordGuildId": "740648963329490997",
     "discordServerName": "UCSC VSA",
     "discordFollowable": false,
-    "discordOnlineCount": 0
+    "discordOnlineCount": 0,
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "name": "Women in Science and Engineering (WiSE)",
+    "instagram": "wiseucsc",
+    "category": "tech & science",
+    "email": "wiseucsc@gmail.com",
+    "description": "WiSE seeks to connect and accelerate careers for women in traditionally underrepresented STEM fields and engages the community via public events and outreach.",
+    "website": "http://wiseucsc.wixsite.com/wise",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-wise-d2c6476d9e0ad4d0.jpg",
+    "sources": [
+      "baskin_engineering"
+    ]
   },
   {
     "name": "Women's Wellness Club",
     "instagram": "wwc.ucsc",
     "category": "service & advocacy",
     "email": "wwc.ucsc@gmail.com",
-    "description": "WWC takes an interdisciplinary approach to discussing women's overall well-being. We meet twice a month to discuss women's wellness news from different disciplines, including research, current events, culture, and politics."
+    "description": "WWC takes an interdisciplinary approach to discussing women's overall well-being. We meet twice a month to discuss women's wellness news from different disciplines, including research, current events, culture, and politics.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "Womens and Allies in Law",
     "instagram": "ucscwomeninlaw",
     "category": "pre-professional",
     "email": "navarroarvizuangela@gmail.com",
-    "description": "We are a pre-law club that empowers women to pursue their passion in law, regardless of its specification. We offer workshops, guest speakers and discussion nights to create a space where students can learn more about law within UCSC and different law schools."
+    "description": "We are a pre-law club that empowers women to pursue their passion in law, regardless of its specification. We offer workshops, guest speakers and discussion nights to create a space where students can learn more about law within UCSC and different law schools.",
+    "sources": [
+      "someca"
+    ]
   },
   {
     "name": "World System Builder at UCSC",
@@ -1207,8 +2506,23 @@
     "discordGuildId": "1421593699053338664",
     "discordServerName": "WSB UCSC",
     "discordFollowable": false,
-    "discordOnlineCount": 4,
     "discordMemberCount": 27,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1421593699053338664/cc6babe946099b44c6ff2a6eea807274.png?size=128"
+    "discordOnlineCount": 4,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1421593699053338664/cc6babe946099b44c6ff2a6eea807274.png?size=128",
+    "sources": [
+      "someca"
+    ]
+  },
+  {
+    "id": "noig_yu_gi_oh_ucsc",
+    "noInstagram": true,
+    "name": "Yu-Gi-Oh @ UCSC",
+    "instagram": "",
+    "category": "gaming",
+    "email": "ucscyugioh@gmail.com",
+    "description": "We are a community about all things Yugioh, with a focus on the TCG.",
+    "sources": [
+      "someca"
+    ]
   }
 ]
