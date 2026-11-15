@@ -20,13 +20,21 @@ import postsRouter from './routes/posts.js';
 import sourcesRouter from './routes/sources.js';
 import dictionaryRouter from './routes/dictionary.js';
 import schedulerRouter from './routes/scheduler.js';
+import webhooksRouter from './routes/webhooks.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middleware ──
 app.use(cors());
-app.use(express.json({ limit: '25mb' }));
+app.use(
+  express.json({
+    limit: '25mb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Request logging
 app.use((req, res, next) => {
@@ -36,6 +44,7 @@ app.use((req, res, next) => {
 
 // ── Webhook, Collector Data, Search, and Dictionary Routes ──
 app.use('/api', dictionaryRouter);
+app.use('/api/webhooks', webhooksRouter);
 
 // ── 5 Collector Table Routes + Multi-Source Connections ──
 app.use('/api/clubs',         clubsRouter);

@@ -8,49 +8,19 @@ import {
   GraduationCap,
   Mail,
   Lock,
-  User,
   AlertCircle,
   Eye,
   EyeOff,
-  CheckCircle2,
-  X,
+  KeyRound,
   Loader2,
+  ExternalLink,
+  X,
 } from 'lucide-react'
-import { ClubHubLogo, Avatar } from './ui'
+import { ClubHubLogo } from './ui'
 
-const GOOGLE_ACCOUNTS_KEY = 'clubhub_google_accounts_v2'
 const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
-
-function getSavedGoogleAccounts() {
-  try {
-    const raw = localStorage.getItem(GOOGLE_ACCOUNTS_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        a =>
-          a &&
-          a.email &&
-          a.email !== 'sslug@ucsc.edu' &&
-          a.email !== 'arivera@ucsc.edu'
-      )
-    }
-  } catch {
-    // Ignore storage errors
-  }
-  return []
-}
-
-function saveGoogleAccount(account) {
-  try {
-    const existing = getSavedGoogleAccounts().filter(
-      a => a.email.toLowerCase() !== account.email.toLowerCase()
-    )
-    const updated = [account, ...existing].slice(0, 5)
-    localStorage.setItem(GOOGLE_ACCOUNTS_KEY, JSON.stringify(updated))
-  } catch {
-    // Ignore storage errors
-  }
-}
+const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
+const STORED_CLERK_KEY = 'clubhub_clerk_publishable_key'
 
 function getRegisteredEmailAccounts() {
   try {
@@ -68,6 +38,60 @@ function saveRegisteredEmailAccount(account) {
   } catch {
     // Ignore storage errors
   }
+}
+
+function getEffectiveGoogleClientId() {
+  const envId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
+  if (envId) return envId
+  try {
+    return (localStorage.getItem(STORED_GOOGLE_CLIENT_ID_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function loadGoogleGsiScript() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('Browser environment required'))
+      return
+    }
+    if (window.google?.accounts?.oauth2) {
+      resolve(window.google)
+      return
+    }
+
+    const existing = document.getElementById('google-gsi-script')
+    if (existing) {
+      let checks = 0
+      const poll = setInterval(() => {
+        checks += 1
+        if (window.google?.accounts?.oauth2) {
+          clearInterval(poll)
+          resolve(window.google)
+        } else if (checks > 50) {
+          clearInterval(poll)
+          reject(new Error('Timed out loading Google Identity Services'))
+        }
+      }, 100)
+      return
+    }
+
+    const script = document.createElement('script')
+    script.id = 'google-gsi-script'
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = () => {
+      if (window.google?.accounts?.oauth2) {
+        resolve(window.google)
+      } else {
+        reject(new Error('Google Identity Services unavailable'))
+      }
+    }
+    script.onerror = () => reject(new Error('Failed to load accounts.google.com SDK'))
+    document.head.appendChild(script)
+  })
 }
 
 function formatNameFromEmail(email) {
@@ -103,20 +127,26 @@ function GoogleGLogo({ size = 18 }) {
 }
 
 /**
- * Helper component that safely accesses Clerk context when ClerkProvider is mounted.
+ * Safely bridges Clerk instance from ClerkProvider without throwing if Clerk is absent.
  */
-function ClerkAuthBridge({ bridgeRef }) {
+function ClerkAuthBridge({ bridgeRef, onReady }) {
   const clerk = useClerk()
+  bridgeRef.current = clerk
+
   useEffect(() => {
     bridgeRef.current = clerk
-  }, [clerk, bridgeRef])
+    if (clerk?.loaded && onReady) {
+      onReady(clerk)
+    }
+  }, [clerk, clerk?.loaded, bridgeRef, onReady])
+
   return null
 }
 
 /**
- * Interactive Mouse-Activated Light Wave Canvas Background.
- * Renders soft, luminous multi-layered waves of light that ripple, bend,
- * and illuminate when activated by mouse movement or touch gestures.
+ * Balanced, Mouse-Activated Light Wave Canvas Background.
+ * Flows smoothly in idle state and visibly ripples, bends, and illuminates
+ * with fluid travelling crests when activated by cursor or touch movement.
  */
 function LightWaveBackground({ dark }) {
   const canvasRef = useRef(null)
@@ -132,49 +162,49 @@ function LightWaveBackground({ dark }) {
       window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    const NODE_COUNT = 84
+    const NODE_COUNT = 78
     const WAVE_CONFIGS = [
       {
-        yRatio: 0.34,
-        freq: 2.1,
-        speed: 0.75,
-        phase: 0,
-        tension: 0.18,
-        spring: 0.02,
-        damping: 0.925,
+        yRatio: 0.35,
+        freq: 1.65,
+        speed: 0.42,
+        phase: 0.2,
+        tension: 0.125,
+        spring: 0.018,
+        damping: 0.912,
         lightColor: [82, 141, 244],   // Sky Blue
         darkColor: [123, 170, 247],
       },
       {
-        yRatio: 0.49,
-        freq: 1.65,
-        speed: -0.58,
-        phase: 1.7,
-        tension: 0.16,
-        spring: 0.018,
-        damping: 0.93,
+        yRatio: 0.5,
+        freq: 1.32,
+        speed: -0.33,
+        phase: 1.8,
+        tension: 0.115,
+        spring: 0.017,
+        damping: 0.915,
         lightColor: [150, 123, 208],  // Soft Violet
         darkColor: [179, 157, 219],
       },
       {
-        yRatio: 0.64,
-        freq: 2.45,
-        speed: 0.64,
-        phase: 3.3,
-        tension: 0.17,
-        spring: 0.019,
-        damping: 0.928,
+        yRatio: 0.65,
+        freq: 1.88,
+        speed: 0.37,
+        phase: 3.4,
+        tension: 0.12,
+        spring: 0.018,
+        damping: 0.912,
         lightColor: [75, 181, 172],   // Aqua Teal
         darkColor: [128, 203, 196],
       },
       {
-        yRatio: 0.78,
-        freq: 1.85,
-        speed: -0.48,
-        phase: 4.9,
-        tension: 0.15,
+        yRatio: 0.79,
+        freq: 1.48,
+        speed: -0.28,
+        phase: 5.0,
+        tension: 0.11,
         spring: 0.017,
-        damping: 0.935,
+        damping: 0.916,
         lightColor: [232, 178, 67],   // Warm Sunlight Gold
         darkColor: [243, 204, 114],
       },
@@ -209,32 +239,32 @@ function LightWaveBackground({ dark }) {
       smoothY: height * 0.5,
       prevX: width * 0.5,
       prevY: height * 0.5,
-      vx: 0,
-      vy: 0,
-      activation: 0, // 0 when idle -> 1 when activated by mouse/touch
+      activation: 0,
       inside: false,
     }
 
     function exciteWaves(px, py, vx, vy, boost = 1) {
       if (prefersReduced) return
       const speed = Math.hypot(vx, vy)
-      const energyGain = Math.min(1, (speed / 28) * boost)
-      pointer.activation = Math.min(1, pointer.activation + energyGain * 0.38)
+      if (speed < 0.2) return
+
+      const energyGain = Math.min(1, (speed / 34) * boost)
+      pointer.activation = Math.min(1, pointer.activation + energyGain * 0.26)
 
       const normX = Math.max(0, Math.min(1, px / Math.max(1, width)))
       const centerNode = normX * (NODE_COUNT - 1)
-      const radiusNodes = Math.max(4.5, NODE_COUNT * 0.085)
+      const radiusNodes = Math.max(5, NODE_COUNT * 0.105)
 
-      // Determine vertical pull + directional wave impulse from horizontal/vertical motion
-      const signedImpulse =
-        (vy * 0.42 + (vx >= 0 ? 1 : -1) * Math.min(18, speed * 0.32)) * boost
+      const clampedVy = Math.max(-18, Math.min(18, vy))
+      const sweep = (vx >= 0 ? 1 : -1) * Math.min(10, speed * 0.22)
+      const signedImpulse = (clampedVy * 0.3 + sweep * 0.55) * boost
 
       waves.forEach((w, wIdx) => {
         const waveY = height * w.yRatio
         const distY = Math.abs(py - waveY)
         const verticalReach = height * 0.58
-        const yFalloff = Math.max(0.22, 1 - distY / verticalReach)
-        const layerSign = wIdx % 2 === 0 ? 1 : -0.85
+        const yFalloff = Math.max(0.2, 1 - distY / verticalReach)
+        const layerSign = wIdx % 2 === 0 ? 1 : -0.82
 
         const startIdx = Math.max(1, Math.floor(centerNode - radiusNodes * 2.5))
         const endIdx = Math.min(NODE_COUNT - 2, Math.ceil(centerNode + radiusNodes * 2.5))
@@ -242,9 +272,8 @@ function LightWaveBackground({ dark }) {
         for (let i = startIdx; i <= endIdx; i++) {
           const d = (i - centerNode) / radiusNodes
           const gaussian = Math.exp(-0.5 * d * d)
-          // Derivative-like antisymmetric component creates a true travelling wave crest on horizontal sweep
-          const wavePacket = gaussian * (1 - 0.35 * d)
-          w.vel[i] += signedImpulse * yFalloff * layerSign * wavePacket * 0.24
+          const wavePacket = gaussian * (1 - 0.26 * d)
+          w.vel[i] += signedImpulse * yFalloff * layerSign * wavePacket * 0.115
         }
       })
     }
@@ -269,8 +298,8 @@ function LightWaveBackground({ dark }) {
     }
 
     function onMouseDown(e) {
-      exciteWaves(e.clientX, e.clientY, 0, -26, 1.65)
-      pointer.activation = Math.min(1, pointer.activation + 0.55)
+      exciteWaves(e.clientX, e.clientY, 0, -16, 1.15)
+      pointer.activation = Math.min(1, pointer.activation + 0.38)
     }
 
     function onTouchMove(e) {
@@ -300,7 +329,7 @@ function LightWaveBackground({ dark }) {
       pointer.prevX = t.clientX
       pointer.prevY = t.clientY
       pointer.inside = true
-      exciteWaves(t.clientX, t.clientY, 0, -18, 1.2)
+      exciteWaves(t.clientX, t.clientY, 0, -12, 0.95)
     }
 
     let rafId = null
@@ -309,17 +338,16 @@ function LightWaveBackground({ dark }) {
     function render(now) {
       const elapsed = (now - t0) * 0.001
 
-      // Smooth cursor interpolation & gentle decay of activation when mouse stops
-      pointer.smoothX += (pointer.x - pointer.smoothX) * 0.14
-      pointer.smoothY += (pointer.y - pointer.smoothY) * 0.14
-      pointer.activation *= 0.968
+      pointer.smoothX += (pointer.x - pointer.smoothX) * 0.115
+      pointer.smoothY += (pointer.y - pointer.smoothY) * 0.115
+      pointer.activation *= 0.966
 
       ctx.clearRect(0, 0, width, height)
 
-      // 1. Soft Mouse-Activated Radial Light Bloom behind the waves
+      // 1. Mouse-Activated Radial Light Bloom
       if (pointer.activation > 0.01) {
         const bloomRadius = Math.min(width, height) * 0.52
-        const bloomAlpha = (dark ? 0.18 : 0.24) * pointer.activation
+        const bloomAlpha = (dark ? 0.13 : 0.165) * pointer.activation
         const radial = ctx.createRadialGradient(
           pointer.smoothX,
           pointer.smoothY,
@@ -330,47 +358,46 @@ function LightWaveBackground({ dark }) {
         )
         if (dark) {
           radial.addColorStop(0, `rgba(123, 170, 247, ${bloomAlpha.toFixed(3)})`)
-          radial.addColorStop(0.5, `rgba(179, 157, 219, ${(bloomAlpha * 0.45).toFixed(3)})`)
+          radial.addColorStop(0.55, `rgba(179, 157, 219, ${(bloomAlpha * 0.44).toFixed(3)})`)
           radial.addColorStop(1, 'rgba(31, 28, 24, 0)')
         } else {
           radial.addColorStop(0, `rgba(82, 141, 244, ${bloomAlpha.toFixed(3)})`)
-          radial.addColorStop(0.5, `rgba(150, 123, 208, ${(bloomAlpha * 0.45).toFixed(3)})`)
+          radial.addColorStop(0.55, `rgba(150, 123, 208, ${(bloomAlpha * 0.44).toFixed(3)})`)
           radial.addColorStop(1, 'rgba(247, 246, 243, 0)')
         }
         ctx.fillStyle = radial
         ctx.fillRect(0, 0, width, height)
       }
 
-      // 2. Step 1D Wave Physics & Render Each Light Wave Ribbon
+      // 2. Step Coupled Wave Physics & Render Luminous Light Ribbons
       const stepX = width / (NODE_COUNT - 1)
       const ptsX = new Float32Array(NODE_COUNT)
       const ptsY = new Float32Array(NODE_COUNT)
 
       waves.forEach(w => {
-        // 1D coupled harmonic wave propagation
         for (let i = 1; i < NODE_COUNT - 1; i++) {
           const laplacian = w.disp[i - 1] + w.disp[i + 1] - 2 * w.disp[i]
           w.nextVel[i] = w.vel[i] + laplacian * w.tension - w.disp[i] * w.spring
         }
         for (let i = 1; i < NODE_COUNT - 1; i++) {
-          w.vel[i] = w.nextVel[i] * w.damping
-          w.disp[i] = Math.max(-75, Math.min(75, w.disp[i] + w.vel[i]))
+          const smoothedVel =
+            w.nextVel[i] * 0.95 + (w.nextVel[i - 1] + w.nextVel[i + 1]) * 0.025
+          w.vel[i] = smoothedVel * w.damping
+          w.disp[i] = Math.max(-36, Math.min(36, w.disp[i] + w.vel[i]))
         }
-        // Pinned smooth boundaries
         w.disp[0] = w.disp[1] * 0.5
         w.disp[NODE_COUNT - 1] = w.disp[NODE_COUNT - 2] * 0.5
 
         const baseY = height * w.yRatio
-        // Calm idle wave vs energized mouse-activated wave
-        const baseAmp = prefersReduced ? 5 : 9 + pointer.activation * 20
+        const baseAmp = prefersReduced ? 4 : 6.5 + pointer.activation * 11.5
 
         for (let i = 0; i < NODE_COUNT; i++) {
           const u = i / (NODE_COUNT - 1)
           const x = i * stepX
           const harmonic =
             Math.sin(u * Math.PI * 2 * w.freq + elapsed * w.speed + w.phase) * baseAmp +
-            Math.cos(u * Math.PI * 2 * (w.freq * 0.6) - elapsed * (w.speed * 0.7) + w.phase) *
-              (baseAmp * 0.4)
+            Math.cos(u * Math.PI * 2 * (w.freq * 0.58) - elapsed * (w.speed * 0.68) + w.phase) *
+              (baseAmp * 0.38)
 
           ptsX[i] = x
           ptsY[i] = baseY + harmonic + w.disp[i]
@@ -379,7 +406,7 @@ function LightWaveBackground({ dark }) {
         const [r, g, b] = dark ? w.darkColor : w.lightColor
         const activeBoost = pointer.activation
 
-        // Trace smooth curve through nodes
+        // Trace smooth curve
         ctx.beginPath()
         ctx.moveTo(ptsX[0], ptsY[0])
         for (let i = 0; i < NODE_COUNT - 1; i++) {
@@ -389,23 +416,23 @@ function LightWaveBackground({ dark }) {
         }
         ctx.lineTo(ptsX[NODE_COUNT - 1], ptsY[NODE_COUNT - 1])
 
-        // Soft Luminous Wave Curtain Fill below the wave crest
-        const curtainHeight = Math.max(130, height * 0.24)
-        const fillGrad = ctx.createLinearGradient(0, baseY - 50, 0, baseY + curtainHeight)
-        const topAlpha = (dark ? 0.08 : 0.11) + activeBoost * (dark ? 0.14 : 0.16)
+        // Luminous Wave Curtain Fill
+        const curtainHeight = Math.max(120, height * 0.22)
+        const fillGrad = ctx.createLinearGradient(0, baseY - 36, 0, baseY + curtainHeight)
+        const topAlpha = (dark ? 0.062 : 0.082) + activeBoost * (dark ? 0.095 : 0.11)
         fillGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${topAlpha.toFixed(3)})`)
-        fillGrad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${(topAlpha * 0.32).toFixed(3)})`)
+        fillGrad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${(topAlpha * 0.3).toFixed(3)})`)
         fillGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
 
         ctx.save()
-        ctx.lineTo(width, baseY + curtainHeight + 80)
-        ctx.lineTo(0, baseY + curtainHeight + 80)
+        ctx.lineTo(width, baseY + curtainHeight + 65)
+        ctx.lineTo(0, baseY + curtainHeight + 65)
         ctx.closePath()
         ctx.fillStyle = fillGrad
         ctx.fill()
         ctx.restore()
 
-        // Re-trace wave crest for luminous stroke
+        // Re-trace crest for luminous filament
         ctx.beginPath()
         ctx.moveTo(ptsX[0], ptsY[0])
         for (let i = 0; i < NODE_COUNT - 1; i++) {
@@ -415,31 +442,30 @@ function LightWaveBackground({ dark }) {
         }
         ctx.lineTo(ptsX[NODE_COUNT - 1], ptsY[NODE_COUNT - 1])
 
-        // Horizontal gradient that brightens around the mouse X coordinate
         const cursorNormX = Math.max(0.05, Math.min(0.95, pointer.smoothX / Math.max(1, width)))
-        const spread = 0.22
+        const spread = 0.24
         const leftStop = Math.max(0, cursorNormX - spread)
         const rightStop = Math.min(1, cursorNormX + spread)
 
-        const baseStrokeAlpha = (dark ? 0.22 : 0.28) + activeBoost * 0.22
-        const peakStrokeAlpha = Math.min(0.95, baseStrokeAlpha + activeBoost * 0.48)
+        const baseStrokeAlpha = (dark ? 0.18 : 0.23) + activeBoost * 0.18
+        const peakStrokeAlpha = Math.min(0.82, baseStrokeAlpha + activeBoost * 0.38)
 
         const strokeGrad = ctx.createLinearGradient(0, 0, width, 0)
-        strokeGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.55).toFixed(3)})`)
+        strokeGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.52).toFixed(3)})`)
         strokeGrad.addColorStop(leftStop, `rgba(${r}, ${g}, ${b}, ${baseStrokeAlpha.toFixed(3)})`)
         strokeGrad.addColorStop(cursorNormX, `rgba(${r}, ${g}, ${b}, ${peakStrokeAlpha.toFixed(3)})`)
         strokeGrad.addColorStop(rightStop, `rgba(${r}, ${g}, ${b}, ${baseStrokeAlpha.toFixed(3)})`)
-        strokeGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.55).toFixed(3)})`)
+        strokeGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.52).toFixed(3)})`)
 
-        // Outer soft light glow along the wave crest
+        // Soft outer light halo
         ctx.strokeStyle = strokeGrad
-        ctx.lineWidth = 5 + activeBoost * 5
-        ctx.globalAlpha = 0.28 + activeBoost * 0.32
+        ctx.lineWidth = 3.8 + activeBoost * 3.2
+        ctx.globalAlpha = 0.22 + activeBoost * 0.24
         ctx.stroke()
 
         // Crisp inner light wave filament
         ctx.globalAlpha = 1
-        ctx.lineWidth = 1.6 + activeBoost * 0.9
+        ctx.lineWidth = 1.35 + activeBoost * 0.65
         ctx.stroke()
       })
 
@@ -480,37 +506,84 @@ export default function SignInPage({
   onEnterDemo,
   onLocalSignIn,
 }) {
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
-  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [verificationStep, setVerificationStep] = useState(null) // null | 'signup_code' | 'signin_code'
+  const [verificationCode, setVerificationCode] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  // Interactive Google OAuth Dialog state
-  const [googleModalOpen, setGoogleModalOpen] = useState(false)
-  const [savedGoogleAccounts, setSavedGoogleAccounts] = useState(getSavedGoogleAccounts)
-  const [googleStep, setGoogleStep] = useState('choose') // 'choose' | 'email' | 'password'
-  const [googleEmailInput, setGoogleEmailInput] = useState('')
-  const [googleNameInput, setGoogleNameInput] = useState('')
-  const [googlePassInput, setGooglePassInput] = useState('')
-  const [googleModalError, setGoogleModalError] = useState('')
+  // Shown when Clerk instance does not have oauth_google toggled on yet and no VITE_GOOGLE_CLIENT_ID is set
+  const [googleConfigPromptOpen, setGoogleConfigPromptOpen] = useState(false)
+  const [oauthKeyInput, setOauthKeyInput] = useState('')
+  const [oauthConfigError, setOauthConfigError] = useState('')
 
   const clerkBridgeRef = useRef(null)
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const ssoContinueHandledRef = useRef(false)
+  const autoLaunchHandledRef = useRef(false)
 
   useEffect(() => {
-    if (!googleClientId) return
-    if (document.getElementById('google-gsi-script')) return
-    const script = document.createElement('script')
-    script.id = 'google-gsi-script'
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.defer = true
-    document.head.appendChild(script)
-  }, [googleClientId])
+    const clientId = getEffectiveGoogleClientId()
+    if (clientId) {
+      loadGoogleGsiScript().catch(() => {})
+    }
+  }, [])
+
+  async function handleClerkReady(clerk) {
+    if (typeof window === 'undefined') return
+
+    // If reloaded right after saving a new Clerk key with Google SSO enabled, auto-launch Google OAuth
+    if (!autoLaunchHandledRef.current && window.location.search.includes('auto_google_oauth=1')) {
+      autoLaunchHandledRef.current = true
+      window.history.replaceState({}, '', window.location.pathname)
+      handleGoogleLoginClick()
+      return
+    }
+
+    if (ssoContinueHandledRef.current || !window.location.search.includes('sso-continue')) return
+    ssoContinueHandledRef.current = true
+
+    const signUp = clerk?.client?.signUp
+    if (!signUp) return
+
+    try {
+      if (signUp.status === 'complete' && signUp.createdSessionId) {
+        await clerk.setActive({ session: signUp.createdSessionId })
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      if (signUp.status === 'missing_requirements') {
+        const missing = signUp.missingFields || []
+        const updatePayload = {}
+        if (missing.includes('username')) {
+          const base = (signUp.emailAddress || 'student')
+            .split('@')[0]
+            .replace(/[^a-zA-Z0-9_-]/g, '')
+            .toLowerCase()
+          updatePayload.username = `${base || 'student'}_${Math.floor(100 + Math.random() * 900)}`
+        }
+        if (missing.includes('legal_accepted')) {
+          updatePayload.legalAccepted = true
+        }
+        if (Object.keys(updatePayload).length > 0) {
+          const updated = await signUp.update(updatePayload)
+          if (updated.status === 'complete' && updated.createdSessionId) {
+            await clerk.setActive({ session: updated.createdSessionId })
+            window.history.replaceState({}, '', window.location.pathname)
+          }
+        }
+      }
+    } catch (err) {
+      const msg =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        'Please finish completing your account details to continue.'
+      setError(msg)
+    }
+  }
 
   function finalizeUserSession(profile) {
     const cleanEmail = (profile.email || '').trim().toLowerCase()
@@ -524,127 +597,232 @@ export default function SignInPage({
       provider: profile.provider || 'email',
       authenticated: true,
       verifiedEdu: cleanEmail.endsWith('.edu'),
+      darkMode: typeof profile.darkMode === 'boolean' ? profile.darkMode : undefined,
       avatarBg: profile.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
     }
     if (onLocalSignIn) onLocalSignIn(userObj)
   }
 
-  async function handleGoogleLoginClick() {
+  async function launchDirectGoogleOAuth(clientId) {
     setError('')
+    setOauthConfigError('')
     setGoogleLoading(true)
 
-    // 1. If Google Identity Services OAuth Client ID is configured, launch native Google OAuth popup
-    if (googleClientId && window.google?.accounts?.oauth2) {
-      try {
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: googleClientId,
-          scope: 'openid email profile',
-          prompt: 'select_account',
-          callback: async tokenResponse => {
+    try {
+      const google = await loadGoogleGsiScript()
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'openid email profile',
+        prompt: 'select_account',
+        error_callback: err => {
+          setGoogleLoading(false)
+          if (err?.type && err.type !== 'popup_closed') {
+            setError(`Google OAuth error: ${err.type}`)
+          }
+        },
+        callback: async tokenResponse => {
+          if (!tokenResponse?.access_token) {
             setGoogleLoading(false)
-            if (tokenResponse?.access_token) {
-              try {
-                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-                })
-                const data = await res.json()
-                const account = {
-                  fullName: data.name || formatNameFromEmail(data.email),
-                  email: data.email,
-                  picture: data.picture || null,
-                  provider: 'google',
-                  avatarBg: 'linear-gradient(135deg, #4285F4, #34A853)',
-                }
-                saveGoogleAccount(account)
-                setSavedGoogleAccounts(getSavedGoogleAccounts())
-                finalizeUserSession(account)
-              } catch {
-                openGoogleOAuthModal()
-              }
-            }
-          },
-        })
-        tokenClient.requestAccessToken()
-        return
-      } catch {
-        // Continue to Clerk or Google OAuth dialog
-      }
+            return
+          }
+          try {
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            })
+            if (!res.ok) throw new Error('Could not retrieve Google account profile.')
+            const data = await res.json()
+            setGoogleLoading(false)
+            setGoogleConfigPromptOpen(false)
+            finalizeUserSession({
+              fullName: data.name || formatNameFromEmail(data.email),
+              email: data.email,
+              picture: data.picture || null,
+              provider: 'google',
+              avatarBg: 'linear-gradient(135deg, #4285F4, #34A853)',
+            })
+          } catch (err) {
+            setGoogleLoading(false)
+            setError(err?.message || 'Google Sign-In failed. Please try again.')
+          }
+        },
+      })
+      tokenClient.requestAccessToken()
+    } catch (err) {
+      setGoogleLoading(false)
+      setError(err?.message || 'Unable to load Google Identity Services.')
+    }
+  }
+
+  /**
+   * Launches real Google OAuth (accounts.google.com) via Google Identity Services or Clerk OAuth.
+   */
+  async function handleGoogleLoginClick() {
+    setError('')
+    setOauthConfigError('')
+
+    // 1. If a Google OAuth Web Client ID is configured (.env or saved), open real Google OAuth popup directly
+    const directClientId = getEffectiveGoogleClientId()
+    if (directClientId) {
+      await launchDirectGoogleOAuth(directClientId)
+      return
     }
 
-    // 2. If Clerk is active and has Google OAuth enabled on the Clerk instance, redirect to Google OAuth
-    const clerk = clerkBridgeRef.current
-    if (hasPublishableKey && clerk?.client?.signIn) {
+    setGoogleLoading(true)
+
+    // 2. Otherwise use Clerk's Google OAuth redirect (accounts.google.com)
+    if (hasPublishableKey) {
+      let waited = 0
+      while (!clerkBridgeRef.current?.client && waited < 6000) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        waited += 100
+      }
+
+      const clerk = clerkBridgeRef.current
+      const baseUrl = `${window.location.origin}${window.location.pathname}`
+      const redirectUrl = `${baseUrl}?sso-callback=1`
+
+      if (!clerk?.client?.signIn) {
+        setGoogleLoading(false)
+        setError(
+          'Clerk authentication is still initializing (or reload your dev server to pick up .env). Try clicking Continue with Google again.'
+        )
+        return
+      }
+
       try {
-        const googleEnabled =
-          clerk?.__unstable__environment?.userSettings?.social?.oauth_google?.enabled
-        if (googleEnabled) {
-          await clerk.client.signIn.authenticateWithRedirect({
-            strategy: 'oauth_google',
-            redirectUrl: `${window.location.origin}/#/sso-callback`,
-            redirectUrlComplete: window.location.origin,
-          })
+        try {
+          localStorage.removeItem('clubhub_auth_user')
+        } catch {
+          // Ignore storage errors
+        }
+
+        await clerk.client.signIn.authenticateWithRedirect({
+          strategy: 'oauth_google',
+          redirectUrl,
+          redirectUrlComplete: baseUrl,
+          oidcPrompt: 'select_account',
+        })
+        return
+      } catch (err) {
+        setGoogleLoading(false)
+        const rawMsg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          ''
+        const errCode = err?.errors?.[0]?.code || ''
+
+        // Detect when oauth_google is turned OFF in the active Clerk Dashboard instance
+        if (
+          errCode === 'form_param_value_invalid' ||
+          rawMsg.includes('oauth_google') ||
+          rawMsg.includes('allowed values for parameter strategy')
+        ) {
+          setGoogleConfigPromptOpen(true)
           return
         }
-      } catch {
-        // Fallback to interactive Google Sign-In flow if Clerk oauth_google is not enabled
+
+        setError(rawMsg || 'Unable to start Google Sign-In.')
+        return
       }
     }
 
     setGoogleLoading(false)
-    openGoogleOAuthModal()
+    setGoogleConfigPromptOpen(true)
   }
 
-  function openGoogleOAuthModal() {
-    const currentAccounts = getSavedGoogleAccounts()
-    setSavedGoogleAccounts(currentAccounts)
-    setGoogleModalError('')
-    const prefillEmail = email.trim().toLowerCase()
-    setGoogleEmailInput(prefillEmail.includes('@') ? prefillEmail : '')
-    setGoogleNameInput(fullName.trim())
-    setGooglePassInput('')
-    setGoogleStep(currentAccounts.length > 0 && !prefillEmail ? 'choose' : 'email')
-    setGoogleModalOpen(true)
-  }
-
-  function handleSelectSavedGoogleAccount(acc) {
-    saveGoogleAccount(acc)
-    setSavedGoogleAccounts(getSavedGoogleAccounts())
-    setGoogleModalOpen(false)
-    finalizeUserSession({ ...acc, provider: 'google' })
-  }
-
-  function handleGoogleEmailNext(e) {
+  async function handleSaveOAuthKeyAndConnect(e) {
     e.preventDefault()
-    setGoogleModalError('')
-    const clean = googleEmailInput.trim().toLowerCase()
-    if (!clean || !clean.includes('@') || !clean.includes('.')) {
-      setGoogleModalError('Enter a valid Google or university email address.')
+    setOauthConfigError('')
+    const trimmed = oauthKeyInput.trim()
+
+    if (!trimmed) {
+      // If left blank, user likely just enabled Google in their Clerk Dashboard and wants to retry
+      setGoogleConfigPromptOpen(false)
+      handleGoogleLoginClick()
       return
     }
-    setGoogleStep('password')
-  }
 
-  function handleGooglePasswordSubmit(e) {
-    e.preventDefault()
-    setGoogleModalError('')
-    if (googlePassInput.length < 4) {
-      setGoogleModalError('Enter your Google account password to continue.')
+    // Case A: Google OAuth Web Client ID (...apps.googleusercontent.com)
+    if (trimmed.includes('.apps.googleusercontent.com')) {
+      try {
+        localStorage.setItem(STORED_GOOGLE_CLIENT_ID_KEY, trimmed)
+      } catch {
+        // Ignore storage errors
+      }
+      await launchDirectGoogleOAuth(trimmed)
       return
     }
-    const cleanEmail = googleEmailInput.trim().toLowerCase()
-    const resolvedName = googleNameInput.trim() || formatNameFromEmail(cleanEmail)
-    const account = {
-      fullName: resolvedName,
-      email: cleanEmail,
-      provider: 'google',
-      avatarBg: 'linear-gradient(135deg, #4285F4, #34A853)',
+
+    // Case B: Clerk Publishable Key (pk_test_... or pk_live_...) with Google SSO enabled
+    if (trimmed.startsWith('pk_test_') || trimmed.startsWith('pk_live_')) {
+      try {
+        localStorage.setItem(STORED_CLERK_KEY, trimmed)
+      } catch {
+        // Ignore storage errors
+      }
+      const baseUrl = `${window.location.origin}${window.location.pathname}`
+      window.location.href = `${baseUrl}?auto_google_oauth=1`
+      return
     }
-    saveGoogleAccount(account)
-    setSavedGoogleAccounts(getSavedGoogleAccounts())
-    setGoogleModalOpen(false)
-    finalizeUserSession(account)
+
+    setOauthConfigError(
+      'Enter either a Google Client ID (*.apps.googleusercontent.com) or a Clerk Publishable Key (pk_test_...).'
+    )
   }
 
+  async function handleVerifyCodeSubmit(e) {
+    e.preventDefault()
+    setError('')
+    const code = verificationCode.trim()
+    if (!code) {
+      setError('Please enter the verification code sent to your email.')
+      return
+    }
+
+    const clerk = clerkBridgeRef.current
+    if (!clerk?.client) {
+      setError('Authentication session expired. Please try again.')
+      setVerificationStep(null)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      if (verificationStep === 'signup_code') {
+        const res = await clerk.client.signUp.attemptEmailAddressVerification({ code })
+        if (res?.status === 'complete' && res?.createdSessionId) {
+          await clerk.setActive({ session: res.createdSessionId })
+          setSubmitting(false)
+          return
+        }
+      } else if (verificationStep === 'signin_code') {
+        const res = await clerk.client.signIn.attemptFirstFactor({
+          strategy: 'email_code',
+          code,
+        })
+        if (res?.status === 'complete' && res?.createdSessionId) {
+          await clerk.setActive({ session: res.createdSessionId })
+          setSubmitting(false)
+          return
+        }
+      }
+      setSubmitting(false)
+      setError('Verification could not be completed. Please double-check your code.')
+    } catch (err) {
+      setSubmitting(false)
+      setError(
+        err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          'Invalid verification code. Please try again.'
+      )
+    }
+  }
+
+  /**
+   * Unified Sign In + Sign Up handler:
+   * Signs into an existing account if found, or automatically creates a new account if not.
+   */
   async function handleFormSubmit(e) {
     e.preventDefault()
     setError('')
@@ -655,77 +833,169 @@ export default function SignInPage({
       return
     }
 
-    if (mode === 'signup' && !fullName.trim()) {
-      setError('Please enter your full name.')
-      return
-    }
-
     if (password.length < 6) {
       setError('Password must be at least 6 characters.')
       return
     }
 
     setSubmitting(true)
-
-    // Try Clerk email/password authentication first if Clerk is loaded
     const clerk = clerkBridgeRef.current
-    if (hasPublishableKey && clerk?.client?.signIn && mode === 'signin') {
-      try {
-        const res = await clerk.client.signIn.create({
-          identifier: cleanEmail,
-          password,
-        })
-        if (res?.status === 'complete' && res?.createdSessionId) {
-          await clerk.setActive({ session: res.createdSessionId })
-          setSubmitting(false)
-          return
-        }
-      } catch {
-        // Proceed with local account registry if user is not in Clerk instance
-      }
-    }
-
     const registered = getRegisteredEmailAccounts()
-    const existing = registered[cleanEmail]
+    const existingLocal = registered[cleanEmail]
 
-    if (mode === 'signup') {
-      const newAccount = {
-        email: cleanEmail,
-        fullName: fullName.trim(),
-        password,
-        avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
+    // 1. Try Clerk authentication first when Clerk is active
+    if (hasPublishableKey && clerk?.client) {
+      let notFoundInClerk = false
+
+      if (clerk.client.signIn) {
+        try {
+          const res = await clerk.client.signIn.create({
+            identifier: cleanEmail,
+            password,
+          })
+          if (res?.status === 'complete' && res?.createdSessionId) {
+            await clerk.setActive({ session: res.createdSessionId })
+            setSubmitting(false)
+            return
+          }
+          if (res?.status === 'needs_first_factor') {
+            const emailFactor = (res.supportedFirstFactors || []).find(
+              f => f.strategy === 'email_code'
+            )
+            if (emailFactor) {
+              await clerk.client.signIn.prepareFirstFactor({
+                strategy: 'email_code',
+                emailAddressId: emailFactor.emailAddressId,
+              })
+              setVerificationStep('signin_code')
+              setVerificationCode('')
+              setSubmitting(false)
+              return
+            }
+          }
+        } catch (err) {
+          const code = err?.errors?.[0]?.code
+          if (code === 'form_password_incorrect') {
+            setSubmitting(false)
+            setError('Incorrect password for this account. Please try again.')
+            return
+          }
+          if (code === 'form_identifier_not_found') {
+            notFoundInClerk = true
+          }
+        }
       }
-      saveRegisteredEmailAccount(newAccount)
+
+      // If email is not in Clerk yet and not an existing local account, auto-create in Clerk
+      if (notFoundInClerk && !existingLocal && clerk.client.signUp) {
+        try {
+          const derivedName = formatNameFromEmail(cleanEmail)
+          const nameParts = derivedName.split(/\s+/)
+          const firstName = nameParts[0] || 'Student'
+          const lastName = nameParts.slice(1).join(' ') || undefined
+
+          let signUpRes = await clerk.client.signUp.create({
+            emailAddress: cleanEmail,
+            password,
+            firstName,
+            ...(lastName ? { lastName } : {}),
+          })
+
+          if (signUpRes?.status === 'missing_requirements') {
+            const missing = signUpRes.missingFields || []
+            const patch = {}
+            if (missing.includes('username')) {
+              const base = cleanEmail
+                .split('@')[0]
+                .replace(/[^a-zA-Z0-9_-]/g, '')
+                .toLowerCase()
+              patch.username = `${base || 'student'}_${Math.floor(100 + Math.random() * 900)}`
+            }
+            if (missing.includes('legal_accepted')) {
+              patch.legalAccepted = true
+            }
+            if (Object.keys(patch).length > 0) {
+              signUpRes = await clerk.client.signUp.update(patch)
+            }
+          }
+
+          if (signUpRes?.status === 'complete' && signUpRes?.createdSessionId) {
+            await clerk.setActive({ session: signUpRes.createdSessionId })
+            setSubmitting(false)
+            return
+          }
+
+          if (signUpRes?.unverifiedFields?.includes('email_address')) {
+            await clerk.client.signUp.prepareEmailAddressVerification({
+              strategy: 'email_code',
+            })
+            setVerificationStep('signup_code')
+            setVerificationCode('')
+            setSubmitting(false)
+            return
+          }
+        } catch (err) {
+          const code = err?.errors?.[0]?.code
+          if (
+            code === 'form_password_pwned' ||
+            code === 'form_password_length_too_short' ||
+            code === 'form_param_format_invalid'
+          ) {
+            setSubmitting(false)
+            setError(
+              err?.errors?.[0]?.longMessage ||
+                err?.errors?.[0]?.message ||
+                'New accounts require a stronger password (at least 8 characters).'
+            )
+            return
+          }
+        }
+      }
+    }
+
+    // 2. Unified local account sign-in / automatic sign-up fallback
+    if (existingLocal) {
+      if (existingLocal.password && existingLocal.password !== password) {
+        setSubmitting(false)
+        setError('Incorrect password for this account. Please try again.')
+        return
+      }
+
+      const accountToSave = {
+        ...existingLocal,
+        email: cleanEmail,
+        fullName: existingLocal.fullName || formatNameFromEmail(cleanEmail),
+        password,
+        darkMode:
+          typeof existingLocal.darkMode === 'boolean' ? existingLocal.darkMode : undefined,
+        avatarBg:
+          existingLocal.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+      }
+      saveRegisteredEmailAccount(accountToSave)
       setSubmitting(false)
-      finalizeUserSession(newAccount)
+      finalizeUserSession(accountToSave)
       return
     }
 
-    // Sign In mode
-    if (existing && existing.password && existing.password !== password) {
-      setSubmitting(false)
-      setError('Incorrect password for this account. Please try again.')
-      return
-    }
-
-    const resolvedName =
-      existing?.fullName || fullName.trim() || formatNameFromEmail(cleanEmail)
-    const accountToSave = {
+    const newAccount = {
       email: cleanEmail,
-      fullName: resolvedName,
+      fullName: formatNameFromEmail(cleanEmail),
       password,
-      avatarBg: existing?.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+      darkMode: Boolean(dark),
+      avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
     }
-    saveRegisteredEmailAccount(accountToSave)
+    saveRegisteredEmailAccount(newAccount)
     setSubmitting(false)
-    finalizeUserSession(accountToSave)
+    finalizeUserSession(newAccount)
   }
 
   return (
     <div className="relative min-h-dvh w-full flex flex-col bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 overflow-x-hidden">
-      {hasPublishableKey && <ClerkAuthBridge bridgeRef={clerkBridgeRef} />}
+      {hasPublishableKey && (
+        <ClerkAuthBridge bridgeRef={clerkBridgeRef} onReady={handleClerkReady} />
+      )}
 
-      {/* ── Mouse-Activated Light Wave Canvas Background ── */}
+      {/* ── Balanced Mouse-Activated Light Wave Canvas Background ── */}
       <LightWaveBackground dark={dark} />
 
       {/* ── Minimal, Uncluttered Top Bar ── */}
@@ -808,409 +1078,249 @@ export default function SignInPage({
             </div>
           </div>
 
-          {/* ── Right Column: Clean Login Card (Google Button Above Normal Login Fields) ── */}
+          {/* ── Right Column: Clean Login Card (Google OAuth Above Normal Login Fields) ── */}
           <div className="lg:col-span-6 flex justify-center lg:justify-end w-full fade-in">
             <div
               className="w-full max-w-[410px] rounded-[24px] bg-[var(--bg-card)]/90 backdrop-blur-xl
                 border border-[var(--border)] shadow-[var(--shadow-lg)] p-5 sm:p-7 space-y-5"
             >
               {/* Card Header */}
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[var(--text)]">
-                    {mode === 'signup' ? 'Create account' : 'Welcome back'}
-                  </h2>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    {mode === 'signup'
-                      ? 'Join your campus club workspace'
-                      : 'Sign in to your ClubHub account'}
-                  </p>
-                </div>
-
-                {/* Clean Sign In / Sign Up Switch */}
-                <div className="flex items-center p-1 rounded-full bg-[var(--bg-subtle)] border border-[var(--border)] shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('signin')
-                      setError('')
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border-none transition-all ${
-                      mode === 'signin'
-                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('signup')
-                      setError('')
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border-none transition-all ${
-                      mode === 'signup'
-                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    Sign Up
-                  </button>
-                </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[var(--text)]">
+                  {verificationStep ? 'Verify your email' : 'Welcome to ClubHub'}
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  {verificationStep
+                    ? `Enter the code sent to ${email}`
+                    : 'Sign in or create your account in one step'}
+                </p>
               </div>
 
-              {/* ── 1. Login with Google Button (Above Normal Login Fields) ── */}
-              <button
-                type="button"
-                onClick={handleGoogleLoginClick}
-                disabled={googleLoading}
-                className="w-full min-h-[46px] py-2.5 px-4 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)]
-                  border border-[var(--border-strong)] hover:border-[var(--blue)]
-                  text-[13.5px] font-semibold text-[var(--text)] shadow-2xs hover:shadow-xs
-                  flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-60"
-              >
-                {googleLoading ? (
-                  <Loader2 size={18} className="animate-spin text-[var(--blue)]" />
-                ) : (
-                  <GoogleGLogo size={18} />
-                )}
-                <span>Continue with Google</span>
-              </button>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 text-[11px] text-[var(--text-light)]">
-                <div className="flex-1 h-px bg-[var(--border)]" />
-                <span>or continue with email</span>
-                <div className="flex-1 h-px bg-[var(--border)]" />
-              </div>
-
-              {/* ── 2. Normal Email & Password Login Fields ── */}
-              <form onSubmit={handleFormSubmit} className="space-y-3.5">
-                {mode === 'signup' && (
+              {verificationStep ? (
+                <form onSubmit={handleVerifyCodeSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                      Full Name
+                      Verification Code
                     </label>
                     <div className="flex items-center gap-2.5 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] transition-colors">
-                      <User size={15} className="text-[var(--text-light)] shrink-0" />
+                      <KeyRound size={15} className="text-[var(--text-light)] shrink-0" />
                       <input
                         type="text"
-                        value={fullName}
-                        onChange={e => setFullName(e.target.value)}
-                        placeholder="Your full name"
-                        autoComplete="name"
-                        className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)]"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        autoFocus
+                        value={verificationCode}
+                        onChange={e => setVerificationCode(e.target.value)}
+                        placeholder="6-digit code"
+                        className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)] tracking-widest"
                       />
                     </div>
                   </div>
-                )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                    Email Address
-                  </label>
-                  <div className="flex items-center gap-2.5 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] transition-colors">
-                    <Mail size={15} className="text-[var(--text-light)] shrink-0" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="name@ucsc.edu"
-                      autoComplete="email"
-                      className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                    Password
-                  </label>
-                  <div className="flex items-center gap-2.5 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] transition-colors">
-                    <Lock size={15} className="text-[var(--text-light)] shrink-0" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                      className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(prev => !prev)}
-                      className="text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-1 flex items-center"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="flex items-center gap-2 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3.5 py-2.5 rounded-xl border border-[var(--red)]/20">
-                    <AlertCircle size={14} className="shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full min-h-[46px] py-2.5 rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-sm font-semibold
-                    shadow-[0_4px_14px_rgba(82,141,244,0.32)] flex items-center justify-center gap-1.5
-                    transition-all cursor-pointer border-none disabled:opacity-60"
-                >
-                  {submitting ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <>
-                      <span>{mode === 'signup' ? 'Create Account' : 'Sign In'}</span>
-                      <ArrowRight size={15} />
-                    </>
+                  {error && (
+                    <div className="flex items-center gap-2 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3.5 py-2.5 rounded-xl border border-[var(--red)]/20">
+                      <AlertCircle size={14} className="shrink-0" />
+                      <span>{error}</span>
+                    </div>
                   )}
-                </button>
-              </form>
 
-              {/* Card Footer */}
-              <div className="pt-3 border-t border-[var(--border)] flex items-center justify-center text-xs text-[var(--text-muted)]">
-                <span>
-                  {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full min-h-[46px] py-2.5 rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-sm font-semibold
+                      shadow-[0_4px_14px_rgba(82,141,244,0.32)] flex items-center justify-center gap-1.5
+                      transition-all cursor-pointer border-none disabled:opacity-60"
+                  >
+                    {submitting ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <>
+                        <span>Verify &amp; Continue</span>
+                        <ArrowRight size={15} />
+                      </>
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
-                      setMode(mode === 'signup' ? 'signin' : 'signup')
+                      setVerificationStep(null)
+                      setVerificationCode('')
                       setError('')
                     }}
-                    className="font-semibold text-[var(--blue-ink)] hover:underline cursor-pointer bg-transparent border-none p-0"
+                    className="w-full text-center text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer py-1"
                   >
-                    {mode === 'signup' ? 'Sign in' : 'Sign up'}
+                    &larr; Back to sign in
                   </button>
-                </span>
-              </div>
+                </form>
+              ) : (
+                <>
+                  {/* ── 1. Real Google OAuth Button (Above Normal Login Fields) ── */}
+                  <button
+                    type="button"
+                    onClick={handleGoogleLoginClick}
+                    disabled={googleLoading || submitting}
+                    className="w-full min-h-[46px] py-2.5 px-4 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)]
+                      border border-[var(--border-strong)] hover:border-[var(--blue)]
+                      text-[13.5px] font-semibold text-[var(--text)] shadow-2xs hover:shadow-xs
+                      flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {googleLoading ? (
+                      <Loader2 size={18} className="animate-spin text-[var(--blue)]" />
+                    ) : (
+                      <GoogleGLogo size={18} />
+                    )}
+                    <span>
+                      {googleLoading ? 'Connecting to Google…' : 'Continue with Google'}
+                    </span>
+                  </button>
+
+                  {/* ── Actionable OAuth Setup Helper if Clerk Instance Has Google SSO Turned Off ── */}
+                  {googleConfigPromptOpen && (
+                    <form
+                      onSubmit={handleSaveOAuthKeyAndConnect}
+                      className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-strong)] space-y-2.5 text-xs fade-in"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-[var(--text)]">
+                          Enable Google OAuth on Clerk or paste a Client ID
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGoogleConfigPromptOpen(false)
+                            setOauthConfigError('')
+                          }}
+                          className="text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0.5"
+                          aria-label="Dismiss"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+
+                      <p className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">
+                        The current Clerk instance does not have <strong>Google SSO</strong> toggled
+                        on yet. Either enable <strong>Google</strong> under{' '}
+                        <a
+                          href="https://dashboard.clerk.com"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-0.5 text-[var(--blue-ink)] font-semibold hover:underline"
+                        >
+                          Clerk Dashboard &rarr; SSO Connections <ExternalLink size={10} />
+                        </a>{' '}
+                        (uses Clerk&apos;s shared dev credentials immediately), or paste a{' '}
+                        <code className="text-[10.5px]">*.apps.googleusercontent.com</code> Client ID
+                        or your own <code className="text-[10.5px]">pk_test_...</code> key below:
+                      </p>
+
+                      <input
+                        type="text"
+                        value={oauthKeyInput}
+                        onChange={e => setOauthKeyInput(e.target.value)}
+                        placeholder="...apps.googleusercontent.com or pk_test_..."
+                        className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-base sm:text-xs text-[var(--text)] outline-none focus:border-[var(--blue)]"
+                      />
+
+                      {oauthConfigError && (
+                        <div className="text-[11px] text-[var(--red-ink)]">{oauthConfigError}</div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="submit"
+                          className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-xs font-semibold border-none cursor-pointer transition-opacity"
+                        >
+                          {oauthKeyInput.trim() ? 'Save & Launch Google' : 'Retry Google Sign-In'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3 text-[11px] text-[var(--text-light)]">
+                    <div className="flex-1 h-px bg-[var(--border)]" />
+                    <span>or continue with email</span>
+                    <div className="flex-1 h-px bg-[var(--border)]" />
+                  </div>
+
+                  {/* ── 2. Unified Email & Password Fields ── */}
+                  <form onSubmit={handleFormSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                        Email Address
+                      </label>
+                      <div className="flex items-center gap-2.5 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] transition-colors">
+                        <Mail size={15} className="text-[var(--text-light)] shrink-0" />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          placeholder="name@ucsc.edu"
+                          autoComplete="email"
+                          className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                        Password
+                      </label>
+                      <div className="flex items-center gap-2.5 px-3.5 min-h-[44px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] focus-within:border-[var(--blue)] transition-colors">
+                        <Lock size={15} className="text-[var(--text-light)] shrink-0" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          placeholder="Enter or create a password"
+                          autoComplete="current-password"
+                          className="w-full bg-transparent border-none outline-none text-base sm:text-sm text-[var(--text)] placeholder:text-[var(--text-light)]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(prev => !prev)}
+                          className="text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-1 flex items-center"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="flex items-center gap-2 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3.5 py-2.5 rounded-xl border border-[var(--red)]/20">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    {/* Clerk Smart Bot Protection Mount Point */}
+                    <div id="clerk-captcha" />
+
+                    <button
+                      type="submit"
+                      disabled={submitting || googleLoading}
+                      className="w-full min-h-[46px] py-2.5 rounded-xl bg-[var(--blue)] hover:opacity-95 text-white text-sm font-semibold
+                        shadow-[0_4px_14px_rgba(82,141,244,0.32)] flex items-center justify-center gap-1.5
+                        transition-all cursor-pointer border-none disabled:opacity-60"
+                    >
+                      {submitting ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <>
+                          <span>Continue</span>
+                          <ArrowRight size={15} />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </div>
       </main>
-
-      {/* ── Google Account OAuth Modal ── */}
-      {googleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-[2px] fade-in">
-          <div className="w-full max-w-[390px] bg-[var(--bg-card)] border border-[var(--border)] rounded-[22px] shadow-[var(--shadow-lg)] overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <GoogleGLogo size={17} />
-                <span className="text-xs font-semibold text-[var(--text-muted)]">
-                  Sign in with Google
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setGoogleModalOpen(false)
-                  setGoogleModalError('')
-                }}
-                aria-label="Close"
-                className="w-7 h-7 rounded-full hover:bg-[var(--bg-subtle)] flex items-center justify-center text-[var(--text-muted)] border-none bg-transparent cursor-pointer"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="text-center mb-5">
-                <div className="flex justify-center mb-2">
-                  <ClubHubLogo size={34} />
-                </div>
-                <h3 className="text-lg font-bold text-[var(--text)]">
-                  {googleStep === 'choose'
-                    ? 'Choose an account'
-                    : googleStep === 'password'
-                      ? 'Welcome'
-                      : 'Sign in'}
-                </h3>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  {googleStep === 'password' ? (
-                    <span className="font-medium text-[var(--text)]">{googleEmailInput}</span>
-                  ) : (
-                    <>
-                      to continue to <strong className="text-[var(--text)]">ClubHub</strong>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              {googleStep === 'choose' && (
-                <div className="flex flex-col gap-2">
-                  {savedGoogleAccounts.map(acc => {
-                    const initials = (acc.fullName || acc.email || 'U')
-                      .split(' ')
-                      .map(w => w[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase()
-                    return (
-                      <button
-                        key={acc.email}
-                        type="button"
-                        onClick={() => handleSelectSavedGoogleAccount(acc)}
-                        className="w-full p-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--blue-light)]
-                          border border-[var(--border)] hover:border-[var(--blue)]
-                          flex items-center gap-3 text-left transition-colors cursor-pointer"
-                      >
-                        <Avatar
-                          initials={initials}
-                          bg={acc.avatarBg || 'linear-gradient(135deg, #4285F4, #34A853)'}
-                          size={34}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                            {acc.fullName}
-                          </div>
-                          <div className="text-xs text-[var(--text-muted)] truncate">
-                            {acc.email}
-                          </div>
-                        </div>
-                        <CheckCircle2 size={15} className="text-[var(--blue)] shrink-0" />
-                      </button>
-                    )
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGoogleStep('email')
-                      setGoogleModalError('')
-                    }}
-                    className="w-full p-2.5 rounded-xl bg-transparent hover:bg-[var(--bg-surface)]
-                      border border-dashed border-[var(--border-strong)]
-                      flex items-center justify-center gap-2 text-xs font-semibold text-[var(--blue-ink)]
-                      transition-colors cursor-pointer mt-1"
-                  >
-                    <span>Use another Google account</span>
-                  </button>
-                </div>
-              )}
-
-              {googleStep === 'email' && (
-                <form onSubmit={handleGoogleEmailNext} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1">
-                      Google or University Email
-                    </label>
-                    <input
-                      type="email"
-                      autoFocus
-                      value={googleEmailInput}
-                      onChange={e => setGoogleEmailInput(e.target.value)}
-                      placeholder="yourname@ucsc.edu"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]
-                        text-base sm:text-sm text-[var(--text)] outline-none focus:border-[var(--blue)]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1">
-                      Your Name{' '}
-                      <span className="text-[var(--text-light)] font-normal">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={googleNameInput}
-                      onChange={e => setGoogleNameInput(e.target.value)}
-                      placeholder="Full name"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]
-                        text-base sm:text-sm text-[var(--text)] outline-none focus:border-[var(--blue)]"
-                    />
-                  </div>
-
-                  {googleModalError && (
-                    <div className="flex items-center gap-1.5 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3 py-2 rounded-lg">
-                      <AlertCircle size={14} className="shrink-0" />
-                      <span>{googleModalError}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2 gap-2">
-                    {savedGoogleAccounts.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGoogleStep('choose')
-                          setGoogleModalError('')
-                        }}
-                        className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-surface)] border-none bg-transparent cursor-pointer"
-                      >
-                        Back
-                      </button>
-                    ) : (
-                      <span />
-                    )}
-
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold
-                        flex items-center gap-1.5 border-none cursor-pointer transition-colors"
-                    >
-                      <span>Next</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {googleStep === 'password' && (
-                <form onSubmit={handleGooglePasswordSubmit} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1">
-                      Enter your password
-                    </label>
-                    <input
-                      type="password"
-                      autoFocus
-                      value={googlePassInput}
-                      onChange={e => setGooglePassInput(e.target.value)}
-                      placeholder="Google password"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]
-                        text-base sm:text-sm text-[var(--text)] outline-none focus:border-[var(--blue)]"
-                    />
-                  </div>
-
-                  {googleModalError && (
-                    <div className="flex items-center gap-1.5 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3 py-2 rounded-lg">
-                      <AlertCircle size={14} className="shrink-0" />
-                      <span>{googleModalError}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGoogleStep('email')
-                        setGoogleModalError('')
-                      }}
-                      className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-surface)] border-none bg-transparent cursor-pointer"
-                    >
-                      Back
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold
-                        flex items-center gap-1.5 border-none cursor-pointer transition-colors"
-                    >
-                      <span>Sign in with Google</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

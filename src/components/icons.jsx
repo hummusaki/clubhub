@@ -70,6 +70,27 @@ export function NavIcon({ name, active = false, size = 19 }) {
           <circle cx="12" cy="17" r="1.2" fill="currentColor" />
         </svg>
       )
+    case 'Clock':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <circle
+            cx="12"
+            cy="12"
+            r="8.5"
+            fill="currentColor"
+            fillOpacity={fillOpacity * 1.25}
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+          />
+          <path
+            d="M12 7.5V12L15.2 13.8"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )
     case 'Users':
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
@@ -156,6 +177,13 @@ export function StatIcon({ name, size = 22 }) {
           <rect x="7.2" y="12.4" width="4.2" height="4.2" rx="1.2" fill="currentColor" />
           <circle cx="15.2" cy="13.5" r="1.1" fill="currentColor" fillOpacity="0.55" />
           <circle cx="15.2" cy="17" r="1.1" fill="currentColor" fillOpacity="0.55" />
+        </svg>
+      )
+    case 'Clock':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="8.6" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M12 7.4V12.2L15.4 14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )
     case 'Link':

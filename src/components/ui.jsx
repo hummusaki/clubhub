@@ -212,14 +212,14 @@ export function SearchBox({
   const isControlled = value !== undefined
   return (
     <div
-      className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[var(--bg-card)]
-        border border-[var(--border)] transition-all duration-200
+      className="flex items-center gap-2.5 px-3.5 min-h-[42px] rounded-xl bg-[var(--bg-card)]
+        border border-[var(--border)] transition-all duration-200 max-w-full min-w-0
         focus-within:border-[var(--blue)]"
       style={{ width }}
     >
       <svg
-        width="15"
-        height="15"
+        width="16"
+        height="16"
         viewBox="0 0 24 24"
         fill="none"
         className="shrink-0 text-[var(--text-light)]"
@@ -249,17 +249,17 @@ export function SearchBox({
         placeholder={placeholder}
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
-        className="border-none outline-none bg-transparent text-[var(--text)] text-[13px] w-full
+        className="border-none outline-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0
           placeholder:text-[var(--text-light)]"
       />
       {isControlled && value && (
         <button
           type="button"
           onClick={() => onChange && onChange('')}
-          className="text-[var(--text-light)] hover:text-[var(--text)] p-0.5 cursor-pointer bg-transparent border-none flex items-center"
+          className="text-[var(--text-light)] hover:text-[var(--text)] p-1 cursor-pointer bg-transparent border-none flex items-center shrink-0"
           aria-label="Clear search"
         >
-          <X size={13} />
+          <X size={14} />
         </button>
       )}
     </div>

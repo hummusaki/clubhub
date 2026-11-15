@@ -5,7 +5,7 @@
 }
 
 /* ═══════════════════════════════════════════════
-   ClubHub — Google-Bubble Palette (Crisp & Airy)
+   ClubHub — Crisp & Airy Palette
    ═══════════════════════════════════════════════ */
 
 :root {
@@ -14,7 +14,7 @@
   --bg-surface:    #FBFBF9;
   --bg-subtle:     #F2F0EC;
   --bg-card:       #FFFFFF;
-  --bg-glass:      rgba(255, 255, 255, 0.88);
+  --bg-glass:      rgba(255, 255, 255, 0.9);
   --border:        #EAE6DF;
   --border-subtle: #F2EFE9;
   --border-strong: #DCD6CC;
@@ -24,7 +24,7 @@
   --text-muted:    #736A5F;
   --text-light:    #A3998E;
 
-  /* Google-bubble accents — airy pastels + rich readable inks */
+  /* Accents — airy pastels + rich readable inks */
   --blue:          #528DF4;
   --blue-ink:      #255BC2;
   --blue-light:    #ECF3FF;
@@ -66,7 +66,7 @@
   --bg-surface:    #27231E;
   --bg-subtle:     #2F2A24;
   --bg-card:       #2E2923;
-  --bg-glass:      rgba(46, 41, 35, 0.88);
+  --bg-glass:      rgba(46, 41, 35, 0.9);
   --border:        #433D35;
   --border-subtle: #38332C;
   --border-strong: #574F45;
@@ -113,6 +113,12 @@
     padding: 0;
   }
 
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
@@ -122,6 +128,14 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.01em;
+  }
+
+  /* Prevent mobile form controls from stretching containers or showing unwanted scrollbars */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+    min-width: 0;
   }
 
   ::selection {
@@ -135,24 +149,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-light); }
+/* Custom scrollbars ONLY on desktop pointer devices — never force scrollbars onto mobile layouts */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-light); }
+}
 
 /* ── Animations ── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-in { animation: fadeInUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-@keyframes pulseSoft {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.55; transform: scale(1.18); }
-}
-.pulse-dot { animation: pulseSoft 2.2s ease-in-out infinite; }
+.fade-in { animation: fadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -160,126 +170,4 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
-}
-
-/* ═══════════════════════════════════════════════
-   Interactive Cursor-Reactive Login Stage
-   ═══════════════════════════════════════════════ */
-
-.login-dot-grid {
-  background-image: radial-gradient(var(--border-strong) 1.25px, transparent 1.25px);
-  background-size: 26px 26px;
-  opacity: 0.55;
-}
-
-.dark .login-dot-grid {
-  opacity: 0.38;
-}
-
-.login-dot-grid-glow {
-  background-image: radial-gradient(var(--blue) 1.6px, transparent 1.6px);
-  background-size: 26px 26px;
-  opacity: 0.65;
-  -webkit-mask-image: radial-gradient(
-    360px circle at var(--spot-x, 50%) var(--spot-y, 35%),
-    #000 0%,
-    rgba(0, 0, 0, 0.4) 45%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(
-    360px circle at var(--spot-x, 50%) var(--spot-y, 35%),
-    #000 0%,
-    rgba(0, 0, 0, 0.4) 45%,
-    transparent 100%
-  );
-}
-
-.parallax-stage {
-  perspective: 1200px;
-}
-
-.parallax-tilt {
-  transform-style: preserve-3d;
-  transform:
-    rotateX(calc(var(--my, 0) * -5deg))
-    rotateY(calc(var(--mx, 0) * 6deg))
-    translate3d(calc(var(--mx, 0) * 7px), calc(var(--my, 0) * 7px), 0);
-  will-change: transform;
-}
-
-.parallax-float {
-  transform: translate3d(
-    calc(var(--mx, 0) * var(--depth-x, 20px)),
-    calc(var(--my, 0) * var(--depth-y, 20px)),
-    0
-  );
-  will-change: transform;
-}
-
-.magnetic-item {
-  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, box-shadow 0.25s ease;
-  will-change: transform;
-}
-
-.spotlight-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.spotlight-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    320px circle at var(--local-x, -200px) var(--local-y, -200px),
-    color-mix(in srgb, var(--blue) 13%, transparent),
-    transparent 70%
-  );
-  opacity: var(--local-opacity, 0);
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.auth-glass-card {
-  position: relative;
-  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  transform:
-    perspective(1200px)
-    rotateX(calc(var(--my, 0) * -1.8deg))
-    rotateY(calc(var(--mx, 0) * 2.2deg))
-    translate3d(calc(var(--mx, 0) * -5px), calc(var(--my, 0) * -5px), 0);
-  will-change: transform;
-}
-
-@media (max-width: 1023px) {
-  .auth-glass-card {
-    transform: none;
-  }
-  .parallax-tilt {
-    transform:
-      rotateX(calc(var(--my, 0) * -2.2deg))
-      rotateY(calc(var(--mx, 0) * 2.5deg))
-      translate3d(calc(var(--mx, 0) * 3px), calc(var(--my, 0) * 3px), 0);
-  }
-  .parallax-float {
-    transform: translate3d(
-      calc(var(--mx, 0) * var(--depth-x, 10px) * 0.45),
-      calc(var(--my, 0) * var(--depth-y, 10px) * 0.45),
-      0
-    );
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .parallax-tilt,
-  .parallax-float,
-  .magnetic-item,
-  .auth-glass-card {
-    transform: none !important;
-    transition: none !important;
-  }
 }

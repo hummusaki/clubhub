@@ -8,11 +8,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node --no-warnings server/index.js",
+    "sync:static": "node --no-warnings server/exportStatic.js",
+    "sync:push": "bash scripts/local-sync-and-push.sh",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
     "@clerk/react": "^6.18.8",
     "@clerk/themes": "^2.4.57",
+    "chrono-node": "^2.10.3",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",

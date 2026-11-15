@@ -1,31 +1,96 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useUser, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { Sparkles } from 'lucide-react'
+import { Clock, ArrowRight } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
-import TodaySchedule from './components/TodaySchedule'
+import CalendarView from './components/CalendarView'
+import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
-import MyClubs from './components/MyClubs'
-import ClubBoard from './components/ClubBoard'
+import ClubsHub from './components/ClubsHub'
 import LinksResources from './components/LinksResources'
-import MemberActivity from './components/MemberActivity'
-import SourceFeedHub from './components/SourceFeedHub'
-import CollabScheduler from './components/CollabScheduler'
 import SignInPage from './components/SignInPage'
-import { cleanText } from './components/ui'
-import { clubs as initialClubs } from './data/sampleData'
+import { Card, IconBadge, cleanText } from './components/ui'
+import {
+  clubs as initialClubs,
+  todaySchedule as fallbackSchedule,
+  links as fallbackLinks,
+} from './data/sampleData'
 import {
   getClubHub,
-  getDictionary,
+  getDictKey,
+  setDictKey,
   getAnnouncements,
   getEvents,
   getLinks,
   getStats,
+  createEvent,
   deleteEvent,
+  getStaticSnapshot,
 } from './api/client'
 
 const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
+const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
+const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v1'
+const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_dark_v1'
+const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
+const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
+
+function getStoredRsvps() {
+  try {
+    return JSON.parse(localStorage.getItem(RSVP_STORAGE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function getAccountThemeMap() {
+  try {
+    return JSON.parse(localStorage.getItem(ACCOUNT_THEMES_STORAGE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function saveAccountThemeForKeys(keys, isDark) {
+  try {
+    const map = getAccountThemeMap()
+    keys.filter(Boolean).forEach(k => {
+      map[k] = Boolean(isDark)
+    })
+    localStorage.setItem(ACCOUNT_THEMES_STORAGE_KEY, JSON.stringify(map))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getGuestTheme() {
+  try {
+    const raw = localStorage.getItem(GUEST_THEME_STORAGE_KEY)
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+  } catch {
+    // Ignore storage errors
+  }
+  return false
+}
+
+function saveGuestTheme(isDark) {
+  try {
+    localStorage.setItem(GUEST_THEME_STORAGE_KEY, String(Boolean(isDark)))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function persistBackendAccountTheme(email, isDark) {
+  if (!email) return
+  setDictKey(
+    `user_theme:${email.toLowerCase()}`,
+    { darkMode: Boolean(isDark), updatedAt: new Date().toISOString() },
+    { namespace: 'user_prefs', source: 'account_theme' }
+  ).catch(() => {})
+}
 
 const KIND_ICON_MAP = {
   discord: 'MessageCircle',
@@ -39,6 +104,13 @@ const KIND_COLOR_MAP = {
   form: 'red',
   document: 'blue',
   website: 'green',
+}
+
+const KIND_CATEGORY_MAP = {
+  discord: 'Community',
+  form: 'Events',
+  document: 'Documents',
+  website: 'Resources',
 }
 
 const CLUB_AVATAR_GRADIENTS = [
@@ -64,7 +136,7 @@ const STATIC_HUB_FALLBACK = {
         clubId: 'demo_ucsc_csclub',
         source: 'instagram',
         postedAt: '2026-11-14T01:34:07.526Z',
-        title: 'Intro to React Workshop!',
+        title: 'Intro to React Workshop',
         summary: 'Learn to build your first web app from scratch. Nov 17 · 6–8 PM · Baskin Engineering 152.',
       },
       {
@@ -82,14 +154,6 @@ const STATIC_HUB_FALLBACK = {
         postedAt: '2026-11-13T18:00:00.000Z',
         title: 'Weekly Digest & Technical Interview Prep',
         summary: 'Technical Interview Prep session this Wednesday from 7:00 PM to 8:30 PM in Baskin Engineering 152.',
-      },
-      {
-        id: 'gcal_cs_officehours',
-        clubId: 'demo_ucsc_csclub',
-        source: 'google_calendar',
-        postedAt: '2026-11-14T12:00:00.000Z',
-        title: 'Officer Hours & Resume Review',
-        summary: 'Friday from 2:00 PM to 4:00 PM at Baskin Engineering 152.',
       },
     ],
   },
@@ -145,6 +209,39 @@ const STATIC_HUB_FALLBACK = {
   },
 }
 
+function formatScheduleItem(e, index = 0) {
+  const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
+  const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
+  const startDate = new Date(e.start)
+  const timeLabel = e.allDay
+    ? `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (All Day)`
+    : startDate.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+
+  return {
+    id: e.id,
+    club: cleanText(e.clubName || e.clubId || 'Campus Club'),
+    event: cleanText(e.title),
+    time: timeLabel,
+    location: cleanText(e.location || 'TBD'),
+    duration: isBookedCollab
+      ? 'Scheduled from Availability Poll'
+      : e.recurring
+        ? `Every ${e.recurring}`
+        : '',
+    color: isBookedCollab ? 'green' : palette[index % palette.length],
+    isBookedCollab,
+    isCustom: Boolean(e.isCustom),
+    startIso: e.start,
+    endIso: e.end,
+  }
+}
+
 function getInitialStoredUser() {
   try {
     const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY)
@@ -175,27 +272,42 @@ function MainDashboard({
   const [activeNav, setActiveNav] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData, setClubsData] = useState(initialClubs)
-  const [linksCount, setLinksCount] = useState(24)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [linksCount, setLinksCount] = useState(fallbackLinks.length)
+  const [rsvpMap, setRsvpMap] = useState(getStoredRsvps)
 
   const [hubDict, setHubDict] = useState(STATIC_HUB_FALLBACK)
-  const [rawDict, setRawDict] = useState(STATIC_HUB_FALLBACK)
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
   const [liveClubs, setLiveClubs] = useState(null)
   const [liveSchedule, setLiveSchedule] = useState(null)
   const [rawEvents, setRawEvents] = useState([])
+  const [localAddedEvents, setLocalAddedEvents] = useState([])
+  const [removedEventIds, setRemovedEventIds] = useState(() => new Set())
   const [liveLinks, setLiveLinks] = useState(null)
+  const [localAddedLinks, setLocalAddedLinks] = useState([])
+  const [pinnedLinkOverrides, setPinnedLinkOverrides] = useState({})
+  const [localClubPosts, setLocalClubPosts] = useState([])
   const [liveStats, setLiveStats] = useState(null)
 
   const loadBackendData = useCallback(async () => {
-    const [hub, dict, anns, evts, lnks, dbStats] = await Promise.all([
+    let [hub, anns, evts, lnks, dbStats] = await Promise.all([
       getClubHub(),
-      getDictionary(),
-      getAnnouncements({ limit: 6 }),
+      getAnnouncements({ limit: 8 }),
       getEvents(),
       getLinks(),
       getStats(),
     ])
+
+    // If backend server (port 3001) is offline (e.g. on GitHub Pages), load exported static snapshot
+    if (!hub) {
+      const snap = await getStaticSnapshot()
+      if (snap) {
+        hub = snap.hub || null
+        anns = Array.isArray(snap.announcements) ? snap.announcements.slice(0, 8) : null
+        evts = Array.isArray(snap.events) ? snap.events : null
+        lnks = Array.isArray(snap.links) ? snap.links : null
+        dbStats = snap.stats || null
+      }
+    }
 
     if (hub && Object.keys(hub).length > 0) {
       setHubDict(hub)
@@ -229,6 +341,9 @@ function MainDashboard({
             .toUpperCase(),
           members: c.followers || 0,
           category: c.category || 'academic',
+          description: (c.posts || [])[0]?.summary
+            ? cleanText((c.posts || [])[0].summary)
+            : '',
           tags: [
             ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
             ...(c.category ? [{ label: c.category, color: 'purple' }] : []),
@@ -239,67 +354,60 @@ function MainDashboard({
           joined: true,
         }
       })
-      if (mappedClubs.length > 0) setLiveClubs(mappedClubs)
-    }
+      if (mappedClubs.length > 0) {
+        const mappedNames = new Set(
+          mappedClubs.map(mc => (mc.name || '').toLowerCase().trim())
+        )
+        const extraDiscoverClubs = initialClubs
+          .filter(ic => !mappedNames.has((ic.name || '').toLowerCase().trim()))
+          .map(ic => ({ ...ic, joined: false }))
 
-    if (dict && Object.keys(dict).length > 0) {
-      setRawDict(dict)
+        setLiveClubs(prev => {
+          const prevJoinedMap = new Map((prev || []).map(p => [p.id, p.joined]))
+          return [...mappedClubs, ...extraDiscoverClubs].map(club =>
+            prevJoinedMap.has(club.id)
+              ? { ...club, joined: prevJoinedMap.get(club.id) }
+              : club
+          )
+        })
+      }
     }
 
     if (evts && evts.length > 0) {
       setRawEvents(evts)
-      const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
-      // Put newly booked collaboration events at the top of the schedule so they are immediately visible!
       const sortedEvts = [...evts].sort((a, b) => {
         const aBooked = String(a.id || '').startsWith('collab_evt_') ? 1 : 0
         const bBooked = String(b.id || '').startsWith('collab_evt_') ? 1 : 0
         if (aBooked !== bBooked) return bBooked - aBooked
         return new Date(a.start).getTime() - new Date(b.start).getTime()
       })
-      setLiveSchedule(
-        sortedEvts.map((e, i) => {
-          const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
-          const startDate = new Date(e.start)
-          const timeLabel = e.allDay
-            ? `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (All Day)`
-            : startDate.toLocaleString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-              })
-          return {
-            id: e.id,
-            club: cleanText(e.clubName || e.clubId),
-            event: cleanText(e.title),
-            time: timeLabel,
-            location: cleanText(e.location || 'TBD'),
-            duration: isBookedCollab
-              ? 'Booked via Collab Scheduler'
-              : e.recurring
-                ? `Every ${e.recurring}`
-                : e.kind || 'event',
-            color: isBookedCollab ? 'green' : palette[i % palette.length],
-            upcoming: false,
-            isBookedCollab,
-            startIso: e.start,
-            endIso: e.end,
-          }
-        })
-      )
+      setLiveSchedule(sortedEvts.map((e, i) => formatScheduleItem(e, i)))
     }
 
     if (anns && anns.length > 0) {
       setLiveAnnouncements(
-        anns.map(a => ({
-          id: a.id,
-          type: a.important ? 'Urgent' : 'Announcement',
-          color: a.important ? 'red' : 'yellow',
-          time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
-          title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
-          description: cleanText(a.summary || ''),
-        }))
+        anns.map(a => {
+          const src = a.source || 'instagram'
+          const isDiscord = src === 'discord'
+          const isStory = src === 'instagram_story'
+          return {
+            id: a.id,
+            source: src,
+            permalink: a.permalink || null,
+            type: a.important
+              ? 'Urgent'
+              : isDiscord
+                ? 'Discord'
+                : isStory
+                  ? 'IG Story'
+                  : 'Announcement',
+            color: a.important ? 'red' : isDiscord ? 'blue' : isStory ? 'purple' : 'yellow',
+            time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
+            title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
+            description: cleanText(a.summary || ''),
+            navTarget: 'clubs',
+          }
+        })
       )
     }
 
@@ -310,6 +418,7 @@ function MainDashboard({
           title: cleanText(`${l.clubName ? l.clubName + ' — ' : ''}${l.label || l.kind || 'Link'}`),
           subtitle: l.url,
           url: l.url,
+          category: KIND_CATEGORY_MAP[l.kind] || 'Resources',
           color: KIND_COLOR_MAP[l.kind] || 'blue',
           icon: KIND_ICON_MAP[l.kind] || 'Globe',
         }))
@@ -318,10 +427,10 @@ function MainDashboard({
 
     if (dbStats) {
       setLiveStats([
-        { label: 'Active Clubs',      value: dbStats.clubs ?? 0,   color: 'blue',   icon: 'Users' },
-        { label: 'Connected Sources', value: dbStats.sources ?? 0, color: 'green',  icon: 'Heart' },
-        { label: 'Upcoming Events',   value: dbStats.events ?? 0,  color: 'yellow', icon: 'Calendar' },
-        { label: 'Shared Links',      value: dbStats.links ?? 0,   color: 'purple', icon: 'Link' },
+        { label: 'Active Clubs',    value: dbStats.clubs ?? 0,  color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
+        { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
+        { label: 'Group Polls',     value: 1,                   color: 'green',  icon: 'Clock',    navTarget: 'availability' },
+        { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
       ])
     }
   }, [])
@@ -330,8 +439,36 @@ function MainDashboard({
     loadBackendData()
   }, [loadBackendData])
 
+  // Clear search query when switching to Availability so filters stay intuitive
+  function handleNavigate(nextNav) {
+    setActiveNav(nextNav)
+    if (nextNav === 'availability') {
+      setSearchQuery('')
+    }
+  }
+
   const effectiveClubs = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
   const joinedCount = effectiveClubs.filter(c => c.joined !== false).length
+
+  const effectiveSchedule = useMemo(() => {
+    const base = liveSchedule && liveSchedule.length > 0 ? liveSchedule : fallbackSchedule
+    const formattedLocal = localAddedEvents.map((e, i) => formatScheduleItem(e, i))
+    const seen = new Set()
+    const merged = []
+
+    for (const item of [...formattedLocal, ...base]) {
+      if (removedEventIds.has(item.id) || seen.has(item.id)) continue
+      seen.add(item.id)
+      merged.push(item)
+    }
+    return merged
+  }, [liveSchedule, localAddedEvents, removedEventIds])
+
+  const combinedRawEvents = useMemo(
+    () =>
+      [...localAddedEvents, ...rawEvents].filter(ev => !removedEventIds.has(ev.id)),
+    [localAddedEvents, rawEvents, removedEventIds]
+  )
 
   function toggleJoinClub(clubId) {
     if (liveClubs && liveClubs.length > 0) {
@@ -364,17 +501,87 @@ function MainDashboard({
     }
   }
 
-  const showAll = activeNav === 'overview'
+  function handleToggleRsvp(eventId, isGoing) {
+    setRsvpMap(prev => {
+      const next = { ...prev, [eventId]: isGoing }
+      try {
+        localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // Ignore storage errors
+      }
+      return next
+    })
+  }
+
+  async function handleAddCalendarEvent(eventPayload) {
+    const id = eventPayload.id || `custom_evt_${Date.now()}`
+    const created = await createEvent({ ...eventPayload, id })
+    if (created && created.id) {
+      await loadBackendData()
+    } else {
+      setLocalAddedEvents(prev => [{ ...eventPayload, id, isCustom: true }, ...prev])
+    }
+  }
+
+  async function handleDeleteCalendarEvent(eventId) {
+    await deleteEvent(eventId)
+    setRemovedEventIds(prev => new Set(prev).add(eventId))
+    setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
+    await loadBackendData()
+  }
+
+  function handleAddLocalCollabEvent(ev) {
+    setRemovedEventIds(prev => {
+      const next = new Set(prev)
+      next.delete(ev.id)
+      return next
+    })
+    setLocalAddedEvents(prev => [ev, ...prev.filter(x => x.id !== ev.id)])
+  }
+
+  function handleRemoveLocalCollabEvent(eventId) {
+    setRemovedEventIds(prev => new Set(prev).add(eventId))
+    setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
+  }
+
+  const totalLinksCount =
+    (liveLinks ? liveLinks.length : linksCount) + localAddedLinks.length
+
+  const effectiveStats = useMemo(() => {
+    if (!liveStats) return null
+    return liveStats.map(s => {
+      if (s.label === 'Active Clubs') {
+        return { ...s, value: joinedCount }
+      }
+      if (s.label === 'Upcoming Events') {
+        return { ...s, value: effectiveSchedule.length }
+      }
+      if (s.label === 'Shared Links') {
+        return { ...s, value: totalLinksCount }
+      }
+      return s
+    })
+  }, [liveStats, joinedCount, effectiveSchedule.length, totalLinksCount])
+
+  function handleAddLocalLink(linkObj) {
+    setLocalAddedLinks(prev => [linkObj, ...prev])
+  }
+
+  function handleTogglePinOverride(linkId, nextPinned) {
+    setPinnedLinkOverrides(prev => ({ ...prev, [linkId]: nextPinned }))
+  }
+
+  function handleAddLocalClubPost(postObj) {
+    setLocalClubPosts(prev => [postObj, ...prev])
+  }
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <Sidebar
         activeNav={activeNav}
-        onNav={setActiveNav}
+        onNav={handleNavigate}
         dark={dark}
         onToggleDark={toggleDark}
-        mobileOpen={mobileMenuOpen}
-        onCloseMobile={() => setMobileMenuOpen(false)}
         user={user}
         isDemo={isDemo}
         onExitDemo={onExitDemo}
@@ -382,140 +589,399 @@ function MainDashboard({
         hasClerkKey={hasClerkKey}
       />
 
-      <main className="flex-1 w-full min-w-0 overflow-y-auto px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-24 sm:py-7 lg:pb-8">
+      <main className="flex-1 w-full min-w-0 overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-24 sm:py-7 lg:pb-8">
         <Header
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           activeNav={activeNav}
-          onNav={setActiveNav}
+          onNav={handleNavigate}
           dark={dark}
           onToggleDark={toggleDark}
-          onOpenMobileMenu={() => setMobileMenuOpen(true)}
           user={user}
           isDemo={isDemo}
+          onExitDemo={onExitDemo}
           onSignOut={onSignOut}
           hasClerkKey={hasClerkKey}
+          announcements={liveAnnouncements}
+          upcomingCount={effectiveSchedule.length}
         />
 
-        {isDemo && (
-          <div className="mb-4 px-4 py-2.5 rounded-[var(--radius-sm)] bg-[var(--blue-light)] border border-[rgba(123,170,247,0.3)] flex items-center justify-between text-xs text-[var(--blue-ink)] fade-in">
-            <div className="flex items-center gap-2">
-              <Sparkles size={15} />
-              <span>
-                You are viewing ClubHub in <strong>Demo Preview Mode</strong>.
-              </span>
+        {/* ── 1. OVERVIEW (Clean Summary Only — Zero Clutter) ── */}
+        {activeNav === 'overview' && (
+          <div className="space-y-5 sm:space-y-6">
+            <StatCards
+              items={effectiveStats}
+              joinedCount={joinedCount}
+              eventsCount={effectiveSchedule.length}
+              linksCount={totalLinksCount}
+              onNav={handleNavigate}
+            />
+
+            <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5">
+              <CalendarView
+                compact={true}
+                items={effectiveSchedule}
+                clubs={effectiveClubs}
+                searchQuery={searchQuery}
+                rsvpMap={rsvpMap}
+                onToggleRsvp={handleToggleRsvp}
+                onDeleteEvent={handleDeleteCalendarEvent}
+                onOpenCalendar={() => handleNavigate('calendar')}
+              />
+              <Announcements
+                items={liveAnnouncements}
+                searchQuery={searchQuery}
+                onNav={handleNavigate}
+              />
             </div>
-            {onExitDemo && (
-              <button
-                type="button"
-                onClick={onExitDemo}
-                className="font-bold underline cursor-pointer bg-transparent border-none text-[var(--blue-ink)] hover:opacity-80"
-              >
-                Sign In with Google &rarr;
-              </button>
-            )}
+
+            {/* Clean Shortcut Card to Separated Group Availability Tool */}
+            <Card
+              delay={4}
+              onClick={() => handleNavigate('availability')}
+              className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:border-[var(--blue)]/40"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <IconBadge color="green" size={42} radius={13}>
+                  <Clock size={21} />
+                </IconBadge>
+                <div className="min-w-0">
+                  <div className="text-sm sm:text-base font-bold text-[var(--text)]">
+                    Coordinate Group Availability
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Poll members for free hours and schedule the best overlapping time onto the calendar.
+                  </p>
+                </div>
+              </div>
+
+              <span className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto">
+                <span>Open Availability</span>
+                <ArrowRight size={14} />
+              </span>
+            </Card>
+
+            <ClubsHub
+              compact={true}
+              items={liveClubs}
+              clubsData={clubsData}
+              onToggleJoin={toggleJoinClub}
+              searchQuery={searchQuery}
+              onOpenClubs={() => handleNavigate('clubs')}
+            />
           </div>
         )}
 
-        {showAll && (
-          <StatCards
-            items={liveStats}
-            joinedCount={joinedCount}
-            linksCount={liveLinks ? liveLinks.length : linksCount}
-            onNav={setActiveNav}
+        {/* ── 2. CALENDAR (Dedicated Club Events & Schedule) ── */}
+        {activeNav === 'calendar' && (
+          <CalendarView
+            items={effectiveSchedule}
+            clubs={effectiveClubs}
+            searchQuery={searchQuery}
+            rsvpMap={rsvpMap}
+            onToggleRsvp={handleToggleRsvp}
+            onAddEvent={handleAddCalendarEvent}
+            onDeleteEvent={handleDeleteCalendarEvent}
           />
         )}
 
-        {/* Schedule + Announcements */}
-        {(showAll || activeNav === 'calendar') && (
-          <>
-            <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
-              <TodaySchedule
-                items={liveSchedule}
-                searchQuery={searchQuery}
-                onDeleteEvent={async id => {
-                  await deleteEvent(id)
-                  await loadBackendData()
-                }}
-              />
-              <Announcements items={liveAnnouncements} />
-            </div>
-
-            <CollabScheduler
-              user={user}
-              clubs={effectiveClubs}
-              events={rawEvents}
-              onEventBooked={loadBackendData}
-            />
-          </>
+        {/* ── 3. AVAILABILITY (Dedicated When2Meet-Style Group Polls) ── */}
+        {activeNav === 'availability' && (
+          <AvailabilityView
+            user={user}
+            events={combinedRawEvents}
+            onEventBooked={loadBackendData}
+            onAddLocalEvent={handleAddLocalCollabEvent}
+            onRemoveLocalEvent={handleRemoveLocalCollabEvent}
+            onOpenCalendar={() => handleNavigate('calendar')}
+          />
         )}
 
-        {/* My Clubs / Discover */}
-        {(showAll || activeNav === 'myclubs' || activeNav === 'discover') && (
-          <MyClubs
-            key={activeNav === 'discover' ? 'discover' : 'myclubs'}
+        {/* ── 4. CLUBS (My Clubs, Discover, Feed & Directory) ── */}
+        {activeNav === 'clubs' && (
+          <ClubsHub
             items={liveClubs}
             clubsData={clubsData}
-            onToggleJoin={toggleJoinClub}
-            defaultTab={activeNav === 'discover' ? 'Discover' : 'All'}
-            searchQuery={searchQuery}
-          />
-        )}
-
-        {/* Multi-Source Feed */}
-        {(activeNav === 'discover' || showAll) && (
-          <SourceFeedHub
             hubDict={hubDict}
-            rawDict={rawDict}
+            onToggleJoin={toggleJoinClub}
+            searchQuery={searchQuery}
             onRefresh={loadBackendData}
+            localPosts={localClubPosts}
+            onAddLocalPost={handleAddLocalClubPost}
           />
         )}
 
-        {/* Board + Links */}
-        {(showAll || activeNav === 'links') && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
-            <ClubBoard />
-            <LinksResources
-              items={liveLinks}
-              clubs={Object.values(hubDict)}
-              onRefresh={loadBackendData}
-              onCountChange={setLinksCount}
-            />
-          </div>
-        )}
-
-        {/* Member Activity */}
-        {(showAll || activeNav === 'members') && (
-          <MemberActivity globalSearch={searchQuery} />
+        {/* ── 5. RESOURCES (Links & Documents) ── */}
+        {activeNav === 'links' && (
+          <LinksResources
+            items={liveLinks}
+            clubs={effectiveClubs}
+            searchQuery={searchQuery}
+            onRefresh={loadBackendData}
+            localAdded={localAddedLinks}
+            onAddLocalLink={handleAddLocalLink}
+            pinnedOverrides={pinnedLinkOverrides}
+            onTogglePinOverride={handleTogglePinOverride}
+          />
         )}
       </main>
     </div>
   )
 }
 
-function ClerkAppWrapper({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOut }) {
+function getInitialTheme() {
+  const storedLocal = getInitialStoredUser()
+  const map = getAccountThemeMap()
+
+  if (storedLocal?.email) {
+    const emailKey = `email:${storedLocal.email.toLowerCase()}`
+    if (typeof storedLocal.darkMode === 'boolean') return storedLocal.darkMode
+    if (typeof map[emailKey] === 'boolean') return map[emailKey]
+  }
+
+  try {
+    const lastAccount = localStorage.getItem(LAST_ACTIVE_ACCOUNT_KEY)
+    if (lastAccount && typeof map[lastAccount] === 'boolean') {
+      return map[lastAccount]
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  return getGuestTheme()
+}
+
+function ClerkAppWrapper({
+  dark,
+  setDark,
+  localUser,
+  onLocalSignIn,
+  onLocalSignOut,
+  onUpdateLocalUserTheme,
+}) {
   const { isLoaded, isSignedIn, user } = useUser()
   const [demoMode, setDemoMode] = useState(false)
   const [loadTimedOut, setLoadTimedOut] = useState(false)
+  const syncedAccountRef = useRef(null)
+  const darkRef = useRef(dark)
+  darkRef.current = dark
 
   const isOAuthCallback =
     typeof window !== 'undefined' &&
-    (window.location.hash.includes('sso-callback') ||
-      window.location.search.includes('__clerk_'))
+    (window.location.search.includes('sso-callback') ||
+      window.location.hash.includes('sso-callback') ||
+      window.location.search.includes('__clerk_') ||
+      window.location.hash.includes('__clerk_'))
 
   useEffect(() => {
-    if (isLoaded) return
-    const timer = setTimeout(() => setLoadTimedOut(true), 2500)
+    if (isLoaded) {
+      setLoadTimedOut(false)
+      return
+    }
+    const timeoutMs = isOAuthCallback ? 8000 : 3500
+    const timer = setTimeout(() => setLoadTimedOut(true), timeoutMs)
     return () => clearTimeout(timer)
-  }, [isLoaded])
+  }, [isLoaded, isOAuthCallback])
 
-  if (isOAuthCallback && !isSignedIn && !localUser) {
+  // Ensure a real Clerk/Google session takes precedence over any leftover local session
+  useEffect(() => {
+    if (isSignedIn && user && localUser) {
+      onLocalSignOut({ silent: true })
+    }
+  }, [isSignedIn, user, localUser, onLocalSignOut])
+
+  // Clean OAuth callback parameters from the URL once Clerk finishes signing in
+  useEffect(() => {
+    if (isSignedIn && user && isOAuthCallback && typeof window !== 'undefined') {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [isSignedIn, user, isOAuthCallback])
+
+  const clerkEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || ''
+  const localEmail = localUser?.email?.toLowerCase() || ''
+  const activeAccountKey =
+    isSignedIn && user
+      ? `clerk:${user.id}`
+      : localUser && localEmail
+        ? `email:${localEmail}`
+        : 'guest'
+
+  // Sync dark mode automatically whenever the signed-in account changes
+  useEffect(() => {
+    if (activeAccountKey === 'guest') {
+      if (!isLoaded && !loadTimedOut) return
+      if (syncedAccountRef.current === 'guest') return
+      syncedAccountRef.current = 'guest'
+      try {
+        localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
+      } catch {
+        // Ignore storage errors
+      }
+      setDark(getGuestTheme())
+      return
+    }
+
+    if (syncedAccountRef.current === activeAccountKey) return
+    syncedAccountRef.current = activeAccountKey
+
+    try {
+      localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, activeAccountKey)
+    } catch {
+      // Ignore storage errors
+    }
+
+    const map = getAccountThemeMap()
+
+    if (isSignedIn && user) {
+      const clerkKey = `clerk:${user.id}`
+      const emailKey = clerkEmail ? `email:${clerkEmail}` : null
+      const metaDark = user.unsafeMetadata?.darkMode
+
+      if (typeof metaDark === 'boolean') {
+        setDark(metaDark)
+        saveAccountThemeForKeys([clerkKey, emailKey], metaDark)
+        return
+      }
+
+      const localStored =
+        typeof map[clerkKey] === 'boolean'
+          ? map[clerkKey]
+          : emailKey && typeof map[emailKey] === 'boolean'
+            ? map[emailKey]
+            : undefined
+
+      if (typeof localStored === 'boolean') {
+        setDark(localStored)
+        saveAccountThemeForKeys([clerkKey, emailKey], localStored)
+        user
+          .update({
+            unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: localStored },
+          })
+          .catch(() => {})
+        return
+      }
+
+      if (clerkEmail) {
+        getDictKey(`user_theme:${clerkEmail}`).then(entry => {
+          const remoteDark = entry?.value?.darkMode
+          if (typeof remoteDark === 'boolean') {
+            setDark(remoteDark)
+            saveAccountThemeForKeys([clerkKey, emailKey], remoteDark)
+            user
+              .update({
+                unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: remoteDark },
+              })
+              .catch(() => {})
+          } else {
+            const initialForAccount = Boolean(darkRef.current)
+            saveAccountThemeForKeys([clerkKey, emailKey], initialForAccount)
+            user
+              .update({
+                unsafeMetadata: {
+                  ...(user.unsafeMetadata || {}),
+                  darkMode: initialForAccount,
+                },
+              })
+              .catch(() => {})
+          }
+        })
+      }
+      return
+    }
+
+    if (localUser && localEmail) {
+      const emailKey = `email:${localEmail}`
+      if (typeof localUser.darkMode === 'boolean') {
+        setDark(localUser.darkMode)
+        saveAccountThemeForKeys([emailKey], localUser.darkMode)
+        return
+      }
+      if (typeof map[emailKey] === 'boolean') {
+        setDark(map[emailKey])
+        return
+      }
+      getDictKey(`user_theme:${localEmail}`).then(entry => {
+        const remoteDark = entry?.value?.darkMode
+        if (typeof remoteDark === 'boolean') {
+          setDark(remoteDark)
+          saveAccountThemeForKeys([emailKey], remoteDark)
+        } else {
+          saveAccountThemeForKeys([emailKey], Boolean(darkRef.current))
+        }
+      })
+    }
+  }, [
+    activeAccountKey,
+    isLoaded,
+    loadTimedOut,
+    isSignedIn,
+    user,
+    clerkEmail,
+    localUser,
+    localEmail,
+    setDark,
+  ])
+
+  function handleToggleDark() {
+    const next = !dark
+    setDark(next)
+
+    if (isSignedIn && user) {
+      const clerkKey = `clerk:${user.id}`
+      const emailKey = clerkEmail ? `email:${clerkEmail}` : null
+      saveAccountThemeForKeys([clerkKey, emailKey], next)
+      user
+        .update({
+          unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: next },
+        })
+        .catch(() => {})
+      if (clerkEmail) {
+        persistBackendAccountTheme(clerkEmail, next)
+      }
+      return
+    }
+
+    if (localUser && localEmail) {
+      onUpdateLocalUserTheme(next)
+      return
+    }
+
+    saveGuestTheme(next)
+  }
+
+  const baseUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : '/'
+
+  if (isOAuthCallback && !isSignedIn) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-semibold text-[var(--text-muted)]">Completing Google Sign-In…</span>
-        <AuthenticateWithRedirectCallback />
+        <span className="text-xs font-semibold text-[var(--text-muted)]">
+          Completing Google Sign-In…
+        </span>
+        <div id="clerk-captcha" />
+        <AuthenticateWithRedirectCallback
+          signInForceRedirectUrl={baseUrl}
+          signUpForceRedirectUrl={baseUrl}
+          signInFallbackRedirectUrl={baseUrl}
+          signUpFallbackRedirectUrl={baseUrl}
+          continueSignUpUrl={`${baseUrl}?sso-continue=1`}
+        />
       </div>
+    )
+  }
+
+  if (isSignedIn && user) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={handleToggleDark}
+        user={user}
+        isDemo={false}
+        hasClerkKey={true}
+      />
     )
   }
 
@@ -523,7 +989,7 @@ function ClerkAppWrapper({ dark, toggleDark, localUser, onLocalSignIn, onLocalSi
     return (
       <MainDashboard
         dark={dark}
-        toggleDark={toggleDark}
+        toggleDark={handleToggleDark}
         user={localUser}
         isDemo={false}
         onSignOut={onLocalSignOut}
@@ -541,23 +1007,11 @@ function ClerkAppWrapper({ dark, toggleDark, localUser, onLocalSignIn, onLocalSi
     )
   }
 
-  if (isSignedIn && user) {
-    return (
-      <MainDashboard
-        dark={dark}
-        toggleDark={toggleDark}
-        user={user}
-        isDemo={false}
-        hasClerkKey={true}
-      />
-    )
-  }
-
   if (demoMode) {
     return (
       <MainDashboard
         dark={dark}
-        toggleDark={toggleDark}
+        toggleDark={handleToggleDark}
         user={null}
         isDemo={true}
         onExitDemo={() => setDemoMode(false)}
@@ -569,22 +1023,68 @@ function ClerkAppWrapper({ dark, toggleDark, localUser, onLocalSignIn, onLocalSi
   return (
     <SignInPage
       dark={dark}
-      onToggleDark={toggleDark}
-      hasPublishableKey={!loadTimedOut}
+      onToggleDark={handleToggleDark}
+      hasPublishableKey={true}
       onEnterDemo={() => setDemoMode(true)}
       onLocalSignIn={onLocalSignIn}
     />
   )
 }
 
-function FallbackApp({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOut }) {
+function FallbackApp({
+  dark,
+  setDark,
+  localUser,
+  onLocalSignIn,
+  onLocalSignOut,
+  onUpdateLocalUserTheme,
+}) {
   const [demoMode, setDemoMode] = useState(false)
+  const syncedAccountRef = useRef(null)
+  const localEmail = localUser?.email?.toLowerCase() || ''
+  const activeAccountKey = localUser && localEmail ? `email:${localEmail}` : 'guest'
+
+  useEffect(() => {
+    if (syncedAccountRef.current === activeAccountKey) return
+    syncedAccountRef.current = activeAccountKey
+
+    if (activeAccountKey === 'guest') {
+      setDark(getGuestTheme())
+      return
+    }
+
+    const map = getAccountThemeMap()
+    const emailKey = `email:${localEmail}`
+    if (typeof localUser?.darkMode === 'boolean') {
+      setDark(localUser.darkMode)
+      saveAccountThemeForKeys([emailKey], localUser.darkMode)
+    } else if (typeof map[emailKey] === 'boolean') {
+      setDark(map[emailKey])
+    } else {
+      getDictKey(`user_theme:${localEmail}`).then(entry => {
+        if (typeof entry?.value?.darkMode === 'boolean') {
+          setDark(entry.value.darkMode)
+          saveAccountThemeForKeys([emailKey], entry.value.darkMode)
+        }
+      })
+    }
+  }, [activeAccountKey, localUser, localEmail, setDark])
+
+  function handleToggleDark() {
+    const next = !dark
+    setDark(next)
+    if (localUser && localEmail) {
+      onUpdateLocalUserTheme(next)
+    } else {
+      saveGuestTheme(next)
+    }
+  }
 
   if (localUser) {
     return (
       <MainDashboard
         dark={dark}
-        toggleDark={toggleDark}
+        toggleDark={handleToggleDark}
         user={localUser}
         isDemo={false}
         onSignOut={onLocalSignOut}
@@ -597,7 +1097,7 @@ function FallbackApp({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOu
     return (
       <MainDashboard
         dark={dark}
-        toggleDark={toggleDark}
+        toggleDark={handleToggleDark}
         user={null}
         isDemo={true}
         onExitDemo={() => setDemoMode(false)}
@@ -609,7 +1109,7 @@ function FallbackApp({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOu
   return (
     <SignInPage
       dark={dark}
-      onToggleDark={toggleDark}
+      onToggleDark={handleToggleDark}
       hasPublishableKey={false}
       onEnterDemo={() => setDemoMode(true)}
       onLocalSignIn={onLocalSignIn}
@@ -617,48 +1117,92 @@ function FallbackApp({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOu
   )
 }
 
-const DEFAULT_CLERK_KEY =
+const DEFAULT_CLERK_KEY = (
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
-  'pk_test_c2VjdXJlLWNvdy0zMDI1LmNsZXJrLmFjY291bnRzLmRldiQ'
+  import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  ''
+).trim()
 
 export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(getInitialTheme)
   const [localUser, setLocalUser] = useState(getInitialStoredUser)
 
-  function toggleDark() {
-    setDark(prev => {
-      const next = !prev
-      document.documentElement.classList.toggle('dark', next)
-      return next
-    })
-  }
+  // Always keep root <html> .dark class synchronized with active dark state
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', Boolean(dark))
+  }, [dark])
 
-  function handleLocalSignIn(profile) {
-    setLocalUser(profile)
+  const updateLocalUserTheme = useCallback(nextDark => {
+    setLocalUser(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, darkMode: Boolean(nextDark) }
+      const emailLower = (prev.email || '').toLowerCase()
+      try {
+        localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(updated))
+        if (emailLower) {
+          saveAccountThemeForKeys([`email:${emailLower}`], nextDark)
+          const regRaw = localStorage.getItem(EMAIL_ACCOUNTS_KEY)
+          const reg = regRaw ? JSON.parse(regRaw) : {}
+          if (reg[emailLower]) {
+            reg[emailLower] = { ...reg[emailLower], darkMode: Boolean(nextDark) }
+            localStorage.setItem(EMAIL_ACCOUNTS_KEY, JSON.stringify(reg))
+          }
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      if (emailLower) {
+        persistBackendAccountTheme(emailLower, nextDark)
+      }
+      return updated
+    })
+  }, [])
+
+  const handleLocalSignIn = useCallback(profile => {
+    const emailLower = (profile.email || '').toLowerCase()
+    const map = getAccountThemeMap()
+    const resolvedDark =
+      typeof profile.darkMode === 'boolean'
+        ? profile.darkMode
+        : emailLower && typeof map[`email:${emailLower}`] === 'boolean'
+          ? map[`email:${emailLower}`]
+          : undefined
+
+    const nextProfile =
+      typeof resolvedDark === 'boolean' ? { ...profile, darkMode: resolvedDark } : profile
+
+    setLocalUser(nextProfile)
     try {
-      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(profile))
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextProfile))
+      if (emailLower) {
+        localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, `email:${emailLower}`)
+      }
     } catch {
       // Ignore storage errors
     }
-  }
+  }, [])
 
-  function handleLocalSignOut() {
+  const handleLocalSignOut = useCallback((opts = {}) => {
     setLocalUser(null)
     try {
       localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+      if (!opts?.silent) {
+        localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
+      }
     } catch {
       // Ignore storage errors
     }
-  }
+  }, [])
 
   if (hasClerkKey) {
     return (
       <ClerkAppWrapper
         dark={dark}
-        toggleDark={toggleDark}
+        setDark={setDark}
         localUser={localUser}
         onLocalSignIn={handleLocalSignIn}
         onLocalSignOut={handleLocalSignOut}
+        onUpdateLocalUserTheme={updateLocalUserTheme}
       />
     )
   }
@@ -666,10 +1210,11 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
   return (
     <FallbackApp
       dark={dark}
-      toggleDark={toggleDark}
+      setDark={setDark}
       localUser={localUser}
       onLocalSignIn={handleLocalSignIn}
       onLocalSignOut={handleLocalSignOut}
+      onUpdateLocalUserTheme={updateLocalUserTheme}
     />
   )
 }

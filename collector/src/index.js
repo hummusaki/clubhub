@@ -12,8 +12,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fetchClub } from './instagram.js'
+import { scrapePersonalClubs } from './instagramFallback.js'
 import { extractPost } from './extract.js'
 import { extractWithClaude, llmEnabled } from './llm.js'
+import {
+  unpackBioWebsite,
+  extractGoogleCalendarId,
+  fetchPublicGoogleCalendarEvents,
+  fetchDiscordInviteMetadata,
+} from './enrichWeb.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 if (fs.existsSync(path.join(ROOT, '.env'))) process.loadEnvFile(path.join(ROOT, '.env'))
@@ -29,9 +36,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // ── Sources ────────────────────────────────────────────────────────────────
 
-async function* liveSource(clubs) {
+async function* liveSource(clubs, { fallbackPersonal = false, personalOnly = false, stories = false } = {}) {
+  if (personalOnly) {
+    console.log(`Running personal-account Instaloader scraper on ${clubs.length} club(s)...`)
+    const fb = await scrapePersonalClubs(clubs, { stories })
+    for (const item of fb.items) yield item
+    for (const err of fb.errors) yield { club: { instagram: err.club }, error: err.message }
+    return
+  }
+
   let { IG_USER_ID, IG_ACCESS_TOKEN, GRAPH_API_VERSION, POSTS_PER_CLUB } = process.env
   if (!IG_USER_ID || !IG_ACCESS_TOKEN) {
+    if (fallbackPersonal) {
+      console.warn('! Missing IG_USER_ID or IG_ACCESS_TOKEN; using Instaloader scraper directly...')
+      const fb = await scrapePersonalClubs(clubs, { stories })
+      for (const item of fb.items) yield item
+      for (const err of fb.errors) yield { club: { instagram: err.club }, error: err.message }
+      return
+    }
     throw new Error('Missing IG_USER_ID or IG_ACCESS_TOKEN in .env (see README). Try `npm run demo` meanwhile.')
   }
   if (!/^\d+$/.test(IG_USER_ID.trim())) {
@@ -40,7 +62,11 @@ async function* liveSource(clubs) {
   if (/\s/.test(IG_ACCESS_TOKEN.trim())) {
     throw new Error('IG_ACCESS_TOKEN contains spaces or line breaks. Re-copy it as one line.')
   }
-  for (const club of clubs) {
+
+  const personalFallbackQueue = []
+
+  for (let idx = 0; idx < clubs.length; idx++) {
+    const club = clubs[idx]
     try {
       const data = await fetchClub(club.instagram, {
         igUserId: IG_USER_ID.trim(),
@@ -50,9 +76,75 @@ async function* liveSource(clubs) {
       })
       yield { club, ...data }
     } catch (err) {
-      yield { club, error: err.message }
+      // Code 190 = IG_ACCESS_TOKEN expired; stop calling Graph API and fall back to Instaloader!
+      if (fallbackPersonal && err.code === 190) {
+        console.warn(`\n! ${err.message}`)
+        console.warn('! Switching to Instaloader scraper since IG_ACCESS_TOKEN is expired...')
+        personalFallbackQueue.push(...clubs.slice(idx))
+        break
+      }
+      // Codes 100 / 110 indicate a personal (non-Business/Creator) or private account
+      if (fallbackPersonal && (err.code === 100 || err.code === 110)) {
+        personalFallbackQueue.push(club)
+      } else {
+        yield { club, error: err.message }
+      }
     }
     await sleep(500) // stay well under the API rate limit
+  }
+
+  if (personalFallbackQueue.length > 0) {
+    // Prioritize personal clubs that haven't been synced yet (or oldest sync) so 2-hour runs rotate cleanly
+    const prevClubStatus = new Map()
+    for (const candidateFile of [
+      path.resolve(ROOT, '../public/clubhub-data.json'),
+      path.join(ROOT, 'output/clubhub-data.json'),
+    ]) {
+      try {
+        if (fs.existsSync(candidateFile)) {
+          const prev = JSON.parse(fs.readFileSync(candidateFile, 'utf8'))
+          for (const c of prev.clubs || []) {
+            if (c?.id && !prevClubStatus.has(c.id.toLowerCase())) {
+              prevClubStatus.set(c.id.toLowerCase(), c)
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    personalFallbackQueue.sort((a, b) => {
+      const ca = prevClubStatus.get(a.instagram.toLowerCase())
+      const cb = prevClubStatus.get(b.instagram.toLowerCase())
+      const aHasPosts = Boolean(ca?.lastPostAt)
+      const bHasPosts = Boolean(cb?.lastPostAt)
+      if (aHasPosts !== bHasPosts) return aHasPosts ? 1 : -1
+      return String(ca?.lastPostAt || '').localeCompare(String(cb?.lastPostAt || ''))
+    })
+
+    console.log(
+      `\n↻ Running Instaloader fallback on ${personalFallbackQueue.length} personal-account club(s)...`
+    )
+    const queueByHandle = new Map(
+      personalFallbackQueue.map(c => [c.instagram.toLowerCase().replace(/^@/, ''), c])
+    )
+    const fb = await scrapePersonalClubs(personalFallbackQueue, { stories })
+    const resolvedSet = new Set([
+      ...fb.items.map(i => i.club?.instagram?.toLowerCase()),
+      ...fb.errors.map(e => e.club?.toLowerCase()),
+    ])
+    for (const item of fb.items) yield item
+    for (const err of fb.errors) {
+      const origClub = queueByHandle.get((err.club || '').toLowerCase()) || { instagram: err.club }
+      yield { club: origClub, error: err.message }
+    }
+    // Any remaining clubs skipped if rate-limit circuit breaker tripped early
+    for (const club of personalFallbackQueue) {
+      if (!resolvedSet.has(club.instagram.toLowerCase())) {
+        yield { club, error: `@${club.instagram}: deferred to next 2h batch (rate limit protection)` }
+      }
+    }
   }
 }
 
@@ -121,13 +213,21 @@ async function analyze(post, profile) {
   return extractPost(post, profile)
 }
 
-export async function collect({ demo = false, only } = {}) {
+export async function collect({
+  demo = false,
+  only,
+  fallbackPersonal = process.env.IG_PERSONAL_FALLBACK === 'true',
+  personalOnly = false,
+  stories = process.env.IG_SCRAPER_STORIES === 'true',
+} = {}) {
   let clubs = JSON.parse(fs.readFileSync(path.join(ROOT, 'clubs.json'), 'utf8'))
   if (only) clubs = clubs.filter(c => c.instagram.toLowerCase() === only.toLowerCase().replace(/^@/, ''))
   if (only && !clubs.length) clubs = [{ name: only, instagram: only.replace(/^@/, ''), category: null }]
 
   const out = { collectedAt: new Date().toISOString(), clubs: [], posts: [], events: [], announcements: [], links: [], errors: [] }
-  const source = demo ? demoSource() : liveSource(clubs)
+  const source = demo
+    ? demoSource()
+    : liveSource(clubs, { fallbackPersonal, personalOnly, stories })
 
   for await (const item of source) {
     const { club } = item
@@ -180,23 +280,54 @@ export async function collect({ demo = false, only } = {}) {
 
     const clubLinks = new Map()
     for (const l of contactLinks(club, clubId)) clubLinks.set(l.url.toLowerCase(), l)
-    if (profile.website) clubLinks.set(profile.website.toLowerCase(), { url: profile.website, label: 'Link in bio', kind: 'website', postId: null })
+    const bioUrls = [
+      ...(profile.website ? [profile.website] : []),
+      ...(Array.isArray(profile.extraBioLinks) ? profile.extraBioLinks : []),
+    ]
+    for (const bioUrl of [...new Set(bioUrls)]) {
+      clubLinks.set(bioUrl.toLowerCase(), {
+        url: bioUrl,
+        label: bioUrl === profile.website ? 'Link in bio' : 'Bio link',
+        kind: /discord\.(?:gg|com\/invite)/i.test(bioUrl) ? 'discord' : 'website',
+        postId: null,
+      })
+
+      // Crawl Linktree / bio website to discover Discord invites, Forms, and Public Google Calendars
+      if (!demo) {
+        const unpacked = await unpackBioWebsite(bioUrl)
+        for (const l of unpacked) {
+          if (!clubLinks.has(l.url.toLowerCase())) {
+            clubLinks.set(l.url.toLowerCase(), { ...l, postId: null })
+          }
+          const gcalId = extractGoogleCalendarId(l.url)
+          if (gcalId) {
+            const gcalEvents = await fetchPublicGoogleCalendarEvents(gcalId, {
+              clubId,
+              clubName,
+              calendarUrl: l.url,
+            })
+            for (const ge of gcalEvents) out.events.push(ge)
+          }
+        }
+      }
+    }
 
     for (const post of posts) {
       const info = await analyze(post, profile)
+      const postSource = post.isStory ? 'instagram_story' : 'instagram'
 
       out.posts.push({
         id: post.id, clubId, postedAt: post.postedAt, permalink: post.permalink, imageUrl: post.imageUrl,
         caption: post.caption, type: info.type, important: info.important, title: info.title,
-        summary: info.summary, extractedBy: info.extractedBy,
+        summary: info.summary, extractedBy: info.extractedBy, source: postSource,
       })
 
-      info.events.forEach((e, i) => out.events.push({ id: `${post.id}-${i}`, clubId, clubName, postId: post.id, permalink: post.permalink, ...e }))
+      info.events.forEach((e, i) => out.events.push({ id: `${post.id}-${i}`, clubId, clubName, postId: post.id, permalink: post.permalink, source: postSource, ...e }))
 
-      if (info.type === 'announcement' || info.important) {
+      if (info.type === 'announcement' || info.important || post.isStory) {
         out.announcements.push({
           id: post.id, clubId, clubName, title: info.title, summary: info.summary,
-          important: info.important, postedAt: post.postedAt, permalink: post.permalink,
+          important: info.important, postedAt: post.postedAt, permalink: post.permalink, source: postSource,
         })
       }
 
@@ -204,6 +335,25 @@ export async function collect({ demo = false, only } = {}) {
         if (!clubLinks.has(l.url.toLowerCase())) clubLinks.set(l.url.toLowerCase(), { ...l, postId: post.id })
       }
     }
+
+    // Enrich any discovered Discord invite links with live server name & member/online counts
+    if (!demo) {
+      for (const l of clubLinks.values()) {
+        if (l.kind === 'discord') {
+          const inviteMeta = await fetchDiscordInviteMetadata(l.url)
+          if (inviteMeta?.serverName) {
+            const stats =
+              inviteMeta.memberCount != null
+                ? ` (${inviteMeta.memberCount.toLocaleString()} members${
+                    inviteMeta.onlineCount != null ? ` · ${inviteMeta.onlineCount} online` : ''
+                  })`
+                : ''
+            l.label = `Discord — ${inviteMeta.serverName}${stats}`
+          }
+        }
+      }
+    }
+
     for (const l of clubLinks.values()) out.links.push({ id: `${clubId}:${l.url}`, clubId, clubName, ...l })
   }
 
@@ -230,7 +380,16 @@ async function save(data) {
 }
 
 async function main() {
-  const run = async () => save(await collect({ demo: flag('demo'), only: option('club') }))
+  const run = async () =>
+    save(
+      await collect({
+        demo: flag('demo'),
+        only: option('club'),
+        fallbackPersonal: flag('fallback-personal') || process.env.IG_PERSONAL_FALLBACK === 'true',
+        personalOnly: flag('personal-only'),
+        stories: flag('stories') || process.env.IG_SCRAPER_STORIES === 'true',
+      })
+    )
   await run()
   const every = Number(option('watch'))
   if (every > 0) {

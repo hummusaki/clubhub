@@ -64,16 +64,47 @@ function createDatabaseWrapper(rawDb) {
   return rawDb;
 }
 
+function openAndInitDb() {
+  const instance = createDatabaseWrapper(new DatabaseSync(DB_PATH));
+  instance.pragma('journal_mode = WAL');
+  instance.pragma('synchronous = NORMAL');
+  instance.pragma('foreign_keys = ON');
+  instance.pragma('busy_timeout = 5000');
+  instance.pragma('temp_store = MEMORY');
+  instance.pragma('cache_size = -16000');
+  initSchema(instance);
+  // Full B-tree & index integrity check so corrupted tables/indexes trigger auto-recreation
+  const check = instance.prepare('PRAGMA quick_check').get();
+  if (check && check.quick_check && check.quick_check !== 'ok') {
+    throw new Error(`database disk image is malformed (${check.quick_check})`);
+  }
+  return instance;
+}
+
 export function getDb() {
   if (!db) {
-    db = createDatabaseWrapper(new DatabaseSync(DB_PATH));
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
-    db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
-    db.pragma('temp_store = MEMORY');
-    db.pragma('cache_size = -16000');
-    initSchema(db);
+    try {
+      db = openAndInitDb();
+    } catch (err) {
+      if (/malformed|not a database|corrupt/i.test(err.message || '')) {
+        console.warn('⚠️ Corrupted SQLite file detected; recreating server/clubhub.db cleanly...');
+        try {
+          db?.close?.();
+        } catch {
+          // ignore
+        }
+        for (const ext of ['', '-wal', '-shm']) {
+          try {
+            if (fs.existsSync(DB_PATH + ext)) fs.unlinkSync(DB_PATH + ext);
+          } catch {
+            // ignore
+          }
+        }
+        db = openAndInitDb();
+      } else {
+        throw err;
+      }
+    }
   }
   return db;
 }
