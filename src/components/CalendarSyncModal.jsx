@@ -504,48 +504,35 @@ export default function CalendarSyncModal({
           />
         </div>
 
-        {/* Club Source Selector */}
+        {/* Club Membership Scope Banner */}
         <div>
           <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
             Clubs Included on Calendar
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {[
-              {
-                id: 'joined',
-                title: `Currently Joined Clubs (${joinedClubs.length})`,
-                desc: 'Automatically adds or removes events as your memberships change',
-              },
-              {
-                id: 'all',
-                title: 'All Campus Clubs',
-                desc: 'Include events from every campus organization on ClubHub',
-              },
-            ].map(opt => {
-              const selected = settings.clubScope === opt.id
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => onUpdateSyncSettings({ clubScope: opt.id })}
-                  className={`${rowPad} rounded-xl border text-left flex items-start justify-between gap-2.5 cursor-pointer transition-all ${
-                    selected
-                      ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-[var(--shadow-xs)]'
-                      : 'content-tile content-tile-interactive'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
-                      {opt.title}
-                    </div>
-                    <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5 leading-snug">
-                      {opt.desc}
-                    </div>
-                  </div>
-                  {selected && <Check size={15} className="text-[var(--blue-ink)] shrink-0 mt-0.5" />}
-                </button>
-              )
-            })}
+          <div className={`${rowPad} rounded-xl border bg-[var(--blue-light)] border-[var(--blue)]/35 flex flex-wrap items-center justify-between gap-2.5`}>
+            <div className="min-w-0">
+              <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
+                Currently Joined Clubs ({joinedClubs.length})
+              </div>
+              <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5 leading-snug">
+                {joinedClubs.length > 0
+                  ? 'Events sync exclusively from clubs you have joined and update automatically when your memberships change.'
+                  : 'You are not in any clubs yet — join a club to start syncing club events onto your calendar.'}
+              </div>
+            </div>
+            {joinedClubs.length === 0 && onBrowseClubs && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClose) onClose()
+                  onBrowseClubs()
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none shrink-0"
+              >
+                <span>Browse Clubs</span>
+                <ArrowRight size={12} />
+              </button>
+            )}
           </div>
         </div>
 

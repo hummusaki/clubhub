@@ -8,11 +8,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { categorizeClub } from '../collector/src/categorize.js';
+import {
+  extractPost,
+  filterActualEvents,
+  isActualClubEvent,
+} from '../collector/src/extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.CLUBHUB_DB_PATH
-  ? path.resolve(process.env.CLUBHUB_DB_PATH)
-  : path.join(__dirname, 'clubhub.db');
+function resolveDbPath() {
+  const override = String(process.env.CLUBHUB_DB_PATH || '').trim();
+  if (!override) return path.join(__dirname, 'clubhub.db');
+  return override === ':memory:' ? ':memory:' : path.resolve(override);
+}
+const DB_PATH = resolveDbPath();
 const COLLECTOR_OUTPUT_PATH = path.resolve(__dirname, '../collector/output/clubhub-data.json');
 const PUBLIC_SNAPSHOT_PATH = path.resolve(__dirname, '../public/clubhub-data.json');
 const COLLECTOR_SAMPLE_PATH = path.resolve(__dirname, '../collector/fixtures/sample-output.json');
@@ -69,8 +77,11 @@ function createDatabaseWrapper(rawDb) {
 }
 
 function openAndInitDb() {
-  const instance = createDatabaseWrapper(new DatabaseSync(DB_PATH));
-  instance.pragma('journal_mode = WAL');
+  const activePath = resolveDbPath();
+  const instance = createDatabaseWrapper(new DatabaseSync(activePath));
+  if (activePath !== ':memory:') {
+    instance.pragma('journal_mode = WAL');
+  }
   instance.pragma('synchronous = NORMAL');
   instance.pragma('foreign_keys = ON');
   instance.pragma('busy_timeout = 5000');
@@ -471,6 +482,11 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
   };
 
   const counts = { clubs: 0, posts: 0, events: 0, announcements: 0, links: 0, roster: 0 };
+  const payloadPostsById = new Map();
+  for (const p of posts) {
+    if (p?.id) payloadPostsById.set(String(p.id), p);
+  }
+  const getPostForEventStmt = db.stmt('SELECT caption, postedAt, source FROM posts WHERE id = ?');
 
   const runTransaction = db.transaction(() => {
     for (const c of clubs) {
@@ -537,6 +553,19 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
     for (const e of events) {
       const cid = ensureClub(e.clubId, e.clubName);
       if (!e.id || !cid || !e.start) continue;
+      const postCtx =
+        (e.postId && payloadPostsById.get(String(e.postId))) ||
+        (e.postId ? getPostForEventStmt.get(String(e.postId)) : null);
+      if (
+        !isActualClubEvent(e, {
+          post: postCtx,
+          caption: postCtx?.caption || '',
+          postedAt: postCtx?.postedAt || null,
+          source: e.source || postCtx?.source || 'instagram',
+        })
+      ) {
+        continue;
+      }
       upsertEventStmt.run(
         String(e.id),
         cid,
@@ -672,7 +701,165 @@ export function importCollectorFile(customFilePath = null) {
     imported: true,
     file: targetPath,
     ...upsertCollectorData(data),
+    pruned: pruneNonEventsFromDb().removed,
   };
+}
+
+// ── Prune non-events, clean legacy locations, and optionally re-extract rule-based posts ──
+export function pruneNonEventsFromDb({ reextractRulePosts = false } = {}) {
+  const db = getDb();
+  const affectedClubs = new Set();
+  let removed = 0;
+  let updated = 0;
+
+  const runClean = db.transaction(() => {
+    if (reextractRulePosts) {
+      const clubsMap = new Map(
+        db.prepare('SELECT id, name, website FROM clubs').all().map(c => [c.id, c])
+      );
+      const rulePosts = db
+        .prepare(
+          "SELECT * FROM posts WHERE (extractedBy IS NULL OR extractedBy = 'rules') AND source IN ('instagram', 'instagram_story')"
+        )
+        .all();
+
+      const updatePostStmt = db.stmt(`
+        UPDATE posts
+           SET type = ?, important = ?, title = ?, summary = ?
+         WHERE id = ?
+      `);
+      const deletePostEventsStmt = db.stmt('DELETE FROM events WHERE postId = ?');
+      const insertEventStmt = db.stmt(`
+        INSERT OR REPLACE INTO events (
+          id, clubId, clubName, postId, permalink, title,
+          kind, start, end, allDay, recurring, location, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const upsertAnnStmt = db.stmt(`
+        INSERT INTO announcements (
+          id, clubId, clubName, title, summary, important, postedAt, permalink, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title     = excluded.title,
+          summary   = excluded.summary,
+          important = excluded.important
+      `);
+
+      for (const p of rulePosts) {
+        const clubInfo = clubsMap.get(p.clubId);
+        const clubName = clubInfo?.name || p.clubId;
+        const info = extractPost(
+          {
+            id: p.id,
+            caption: p.caption || '',
+            postedAt: p.postedAt,
+            permalink: p.permalink,
+            imageUrl: p.imageUrl,
+          },
+          { username: p.clubId, name: clubName, website: clubInfo?.website || null }
+        );
+
+        const nextImportant = info.important ? 1 : 0;
+        if (
+          p.type !== info.type ||
+          Number(p.important) !== nextImportant ||
+          p.title !== info.title
+        ) {
+          updatePostStmt.run(info.type, nextImportant, info.title, info.summary, p.id);
+          affectedClubs.add(p.clubId);
+        }
+
+        const delRes = deletePostEventsStmt.run(p.id);
+        if (delRes.changes > 0 || info.events.length > 0) {
+          affectedClubs.add(p.clubId);
+        }
+        info.events.forEach((ev, idx) => {
+          insertEventStmt.run(
+            `${p.id}-${idx}`,
+            p.clubId,
+            clubName,
+            p.id,
+            p.permalink || null,
+            ev.title || info.title || 'Untitled Event',
+            ev.kind || 'event',
+            ev.start,
+            ev.end || null,
+            ev.allDay ? 1 : 0,
+            ev.recurring || null,
+            ev.location || null,
+            p.source || 'instagram'
+          );
+        });
+
+        if (info.type === 'announcement' || info.important || p.source === 'instagram_story') {
+          upsertAnnStmt.run(
+            p.id,
+            p.clubId,
+            clubName,
+            info.title || 'Announcement',
+            info.summary || null,
+            nextImportant,
+            p.postedAt || null,
+            p.permalink || null,
+            p.source || 'instagram'
+          );
+          affectedClubs.add(p.clubId);
+        }
+      }
+    }
+
+    const postsById = new Map(
+      db.prepare('SELECT id, caption, postedAt, source FROM posts').all().map(p => [String(p.id), p])
+    );
+    const allEvents = db
+      .prepare('SELECT * FROM events ORDER BY start ASC')
+      .all()
+      .map(formatEventRow);
+
+    const keptEvents = filterActualEvents(allEvents, { postsById });
+    const keptById = new Map(keptEvents.map(ev => [String(ev.id), ev]));
+
+    const deleteEventStmt = db.stmt('DELETE FROM events WHERE id = ?');
+    const updateEventFieldsStmt = db.stmt(`
+      UPDATE events SET title = ?, location = ? WHERE id = ?
+    `);
+
+    for (const orig of allEvents) {
+      const kept = keptById.get(String(orig.id));
+      if (!kept) {
+        deleteEventStmt.run(orig.id);
+        removed++;
+        if (orig.clubId) affectedClubs.add(orig.clubId);
+      } else if (
+        (kept.location || null) !== (orig.location || null) ||
+        kept.title !== orig.title
+      ) {
+        updateEventFieldsStmt.run(kept.title, kept.location || null, orig.id);
+        updated++;
+        if (orig.clubId) affectedClubs.add(orig.clubId);
+      }
+    }
+
+    for (const cid of affectedClubs) {
+      syncClubDictionary(cid);
+    }
+
+    if (removed > 0 || updated > 0 || affectedClubs.size > 0) {
+      const prevMeta = getDictEntry('meta:last_collection')?.value || {};
+      setDictEntry(
+        'meta:last_collection',
+        {
+          ...prevMeta,
+          updatedAt: new Date().toISOString(),
+          counts: getStats(),
+        },
+        { namespace: 'meta', source: 'collector' }
+      );
+    }
+  });
+
+  runClean();
+  return { removed, updated, clubsUpdated: affectedClubs.size };
 }
 
 // ── Fast single-query database counts ───────────────────────────────

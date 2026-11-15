@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ChevronDown } from 'lucide-react'
+import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ChevronDown, ArrowRight } from 'lucide-react'
 import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, Avatar, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 import AiClubAgentModal from './AiClubAgentModal'
-import { announcements as initialAnnouncements } from '../data/sampleData'
 
 export default function Header({
   searchQuery = '',
@@ -19,7 +18,9 @@ export default function Header({
   onSignOut,
   announcements = null,
   upcomingCount = 0,
+  joinedCount = 0,
   clubs = [],
+  events = [],
   onToggleJoinClub,
   onNotify,
 }) {
@@ -33,7 +34,10 @@ export default function Header({
   const userMenuBtnRef = useRef(null)
   const userMenuPanelRef = useRef(null)
 
-  const rawItems = announcements && announcements.length > 0 ? announcements : initialAnnouncements
+  const rawItems = useMemo(
+    () => (joinedCount > 0 && Array.isArray(announcements) ? announcements : []),
+    [joinedCount, announcements]
+  )
 
   // Apply channel preferences from User Settings
   const items = useMemo(() => {
@@ -172,7 +176,10 @@ export default function Header({
   }
 
   const viewSubtitles = {
-    overview: `${upcomingCount} upcoming ${upcomingCount === 1 ? 'event' : 'events'} across your campus clubs`,
+    overview:
+      joinedCount === 0
+        ? 'Join a campus club to unlock events, announcements, and notifications'
+        : `${upcomingCount} upcoming ${upcomingCount === 1 ? 'event' : 'events'} across your joined clubs`,
     tasks: 'Track club deliverables, section progress, and board assignments',
     calendar: 'Scheduled club meetings, workshops, and RSVPs',
     availability: 'Click or drag when you are free — group overlap updates automatically',
@@ -291,12 +298,15 @@ export default function Header({
             </div>
           )}
 
-          {/* ── AI Agent Button on the side of the search bar (Overview only) ── */}
-          {activeNav === 'overview' && (
+          {/* ── AI Search Modal Button beside normal search on non-Overview pages ── */}
+          {showSearch && activeNav !== 'overview' && (
             <AiClubAgentModal
               clubs={clubs}
+              events={events}
+              userSettings={userSettings}
               onToggleJoinClub={onToggleJoinClub}
               onOpenClub={opts => onNav && onNav('clubs', opts)}
+              onOpenCalendar={opts => onNav && onNav('calendar', opts)}
               onNotify={onNotify}
             />
           )}
@@ -449,9 +459,28 @@ export default function Header({
                 )
               })}
             </div>
+          ) : joinedCount === 0 ? (
+            <div className="py-5 px-2 text-center space-y-2.5">
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                You aren&apos;t in any clubs yet. Join a club to start receiving announcements and notifications.
+              </p>
+              {onNav && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNav('clubs', { section: 'discover' })
+                    setNotifOpen(false)
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none"
+                >
+                  <span>Browse Clubs</span>
+                  <ArrowRight size={12} />
+                </button>
+              )}
+            </div>
           ) : (
             <div className="py-6 text-center text-xs text-[var(--text-muted)]">
-              No notifications for your enabled channels.
+              No notifications from your joined clubs right now.
             </div>
           )}
         </div>

@@ -84,15 +84,19 @@ let hasNativeSupabaseSession = false
 let clerkJwtRejectedBySupabase = false
 
 if (supabase) {
-  supabase.auth
-    .getSession()
-    .then(({ data }) => {
-      hasNativeSupabaseSession = Boolean(data?.session?.access_token)
+  if (typeof supabase.auth?.getSession === 'function') {
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        hasNativeSupabaseSession = Boolean(data?.session?.access_token)
+      })
+      .catch(() => {})
+  }
+  if (typeof supabase.auth?.onAuthStateChange === 'function') {
+    supabase.auth.onAuthStateChange((_event, session) => {
+      hasNativeSupabaseSession = Boolean(session?.access_token)
     })
-    .catch(() => {})
-  supabase.auth.onAuthStateChange((_event, session) => {
-    hasNativeSupabaseSession = Boolean(session?.access_token)
-  })
+  }
 }
 
 export function markClerkSupabaseJwtRejected() {

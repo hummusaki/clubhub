@@ -11,7 +11,7 @@ import {
   getDictionary,
   deleteDictEntry,
 } from '../database.js';
-import { extractPost } from '../../collector/src/extract.js';
+import { classify, extractPost, filterActualEvents } from '../../collector/src/extract.js';
 
 export function upsertDataSource({ clubId, platform, identifier, isActive = true, config = {} }) {
   const cid = normalizeClubId(clubId);
@@ -75,13 +75,39 @@ export function ingestResourceItem({
   const fullText =
     title && caption && !caption.includes(title) ? `${title}\n${caption}` : caption || title || '';
 
-  // Run the collector's extractor (unless pre-extracted by vision LLM)
-  const info =
+  // Run the collector's extractor (unless pre-extracted by vision LLM / structured source)
+  const rawInfo =
     extractedInfo ||
     extractPost(
       { id: postId, caption: fullText, postedAt: postTime, permalink, imageUrl },
       { username: cid, name: resolvedClubName }
     );
+
+  const candidateEvents = (rawInfo.events || []).map((e, i) => ({
+    id: `${postId}-${i}`,
+    clubId: cid,
+    clubName: resolvedClubName,
+    postId,
+    permalink,
+    ...e,
+    source: rawInfo.extractedBy === 'discord_scheduled' ? 'discord_scheduled' : source,
+  }));
+
+  const validEvents = filterActualEvents(candidateEvents, {
+    defaultCaption: fullText,
+    defaultPostedAt: postTime,
+  }).map(ev => ({ ...ev, source }));
+
+  const resolvedType =
+    validEvents.length === 0 && (rawInfo.type === 'event' || rawInfo.type === 'meeting')
+      ? classify(fullText, [])
+      : rawInfo.type;
+
+  const info = {
+    ...rawInfo,
+    type: resolvedType,
+    events: validEvents,
+  };
 
   // Record the connected data source in dictionary_store
   if (identifier || source) {
@@ -122,15 +148,7 @@ export function ingestResourceItem({
         source,
       },
     ],
-    events: (info.events || []).map((e, i) => ({
-      id: `${postId}-${i}`,
-      clubId: cid,
-      clubName: resolvedClubName,
-      postId,
-      permalink,
-      ...e,
-      source,
-    })),
+    events: validEvents,
     announcements: shouldCreateAnnouncement
       ? [
           {

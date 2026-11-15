@@ -964,7 +964,7 @@ export class DiscordService {
           { token }
         );
         for (const ev of scheduled || []) {
-          if (!ev?.id || !ev?.scheduled_start_time) continue;
+          if (!ev?.id || !ev?.scheduled_start_time || ev.status === 4) continue;
           const matched = matchClubFromDiscordContext(
             {
               explicitClubId: guild.clubId,
@@ -1214,8 +1214,62 @@ export class DiscordService {
     url = '',
     events = [],
     poll = null,
+    task = null,
   } = {}) {
     const nowIso = new Date().toISOString();
+
+    if (kind === 'task_reminder' || task) {
+      const taskTitle = task?.title || title || 'Upcoming Task';
+      const priorityRaw = String(task?.priority || 'medium').toLowerCase();
+      const priorityLabel =
+        priorityRaw === 'critical'
+          ? '🔴 Urgent'
+          : priorityRaw === 'high'
+            ? '🟡 High'
+            : priorityRaw === 'low'
+              ? '🔵 Low'
+              : '🟢 Medium';
+      const embedColor =
+        priorityRaw === 'critical'
+          ? 0xed4245
+          : priorityRaw === 'high'
+            ? 0xfee75c
+            : 0x5865f2;
+      const dueDt = task?.dueAtIso ? new Date(task.dueAtIso) : null;
+      const dueUnix =
+        dueDt && !Number.isNaN(dueDt.getTime()) ? Math.floor(dueDt.getTime() / 1000) : null;
+      const dueFieldVal = dueUnix
+        ? `<t:${dueUnix}:f> (<t:${dueUnix}:R>)`
+        : task?.dueLabel || [task?.dueDate, task?.dueTime].filter(Boolean).join(' · ') || 'Upcoming';
+      const scopeLabel =
+        task?.visibility === 'personal' || task?.isPersonal
+          ? 'Personal To-Do'
+          : task?.visibility === 'board'
+            ? 'Board Task'
+            : 'Club Task';
+      const fields = [
+        { name: 'Due', value: String(dueFieldVal), inline: true },
+        { name: 'Priority', value: priorityLabel, inline: true },
+        { name: 'List', value: String(task?.sectionTitle || scopeLabel), inline: true },
+      ];
+      return {
+        username: 'ClubHub Task Reminders',
+        embeds: [
+          {
+            author: clubName ? { name: `${clubName} · ${scopeLabel}` } : undefined,
+            title: `⏰ ${taskTitle}`,
+            description:
+              String(task?.notes || message || '').slice(0, 2000) ||
+              'Heads-up: this task is coming up on your ClubHub board.',
+            url: url || undefined,
+            color: embedColor,
+            fields,
+            footer: { text: 'ClubHub Task Reminder' },
+            timestamp: nowIso,
+          },
+        ],
+      };
+    }
 
     if (kind === 'test') {
       return {

@@ -178,6 +178,9 @@ export async function fetchActionJSON(path, options = {}) {
     }
     return { ok: true, offline: false, data: body, ...body };
   } catch (err) {
+    if (err?.name === 'AbortError') {
+      return { ok: false, aborted: true, error: 'Request aborted' };
+    }
     if (!EXPLICIT_API_BASE && isLocalhostHost()) {
       apiAvailabilityState = 'disabled';
       localRetryAfter = Date.now() + 15_000;

@@ -27,16 +27,15 @@ export default function StatCards({
         isCompact ? 'gap-3 sm:gap-3.5 mb-3.5 sm:mb-4' : 'gap-3.5 sm:gap-4.5 mb-5 sm:mb-6'
       }`}
     >
-      {stats.map((stat, i) => (
+      {stats.map(stat => (
         <div
           key={stat.label}
           onClick={stat.navTarget && onNav ? () => onNav(stat.navTarget) : undefined}
           style={{
-            ...(i > 0 ? { animationDelay: `${i * 0.03}s` } : {}),
             borderTopWidth: '3px',
             borderTopColor: `var(--${stat.color})`,
           }}
-          className={`content-tile content-tile-interactive rounded-[var(--radius)] fade-in ${
+          className={`content-tile content-tile-interactive rounded-[var(--radius)] ${
             stat.navTarget && onNav ? 'cursor-pointer' : ''
           } ${isCompact ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'} flex items-center`}
         >

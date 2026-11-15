@@ -9,6 +9,7 @@
    ═══════════════════════════════════════════════ */
 
 :root {
+  color-scheme: light;
   /* Surfaces — calm, low-glare warm stone canvas & stepped ivory-stone tiles */
   --bg:                #DFDDD5;
   --bg-sidebar:        #E3E0D8;
@@ -71,6 +72,7 @@
 
 /* ── Dark mode (vivid deep midnight with punchy jewel/electric accents & crisp stepped tiles) ── */
 .dark {
+  color-scheme: dark;
   --bg:                #080C14;
   --bg-sidebar:        #0F1624;
   --bg-card:           #0F1624;
@@ -211,15 +213,17 @@
 
 /* ── Animations ── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-in {
-  animation: fadeInUp 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+.fade-in,
+.view-enter {
+  animation: fadeInUp 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 html.reduce-motion *,
-html.reduce-motion .fade-in {
+html.reduce-motion .fade-in,
+html.reduce-motion .view-enter {
   animation-delay: 0s !important;
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
@@ -236,8 +240,7 @@ html.reduce-motion .fade-in {
     transition:
       background-color 0.2s ease,
       border-color 0.2s ease,
-      box-shadow 0.2s ease,
-      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow 0.2s ease;
   }
 
   .content-tile:hover {
@@ -246,14 +249,22 @@ html.reduce-motion .fade-in {
     box-shadow: var(--shadow-tile-hover);
   }
 
+  .content-tile-interactive {
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
   .content-tile-interactive:hover {
     transform: translateY(-1.5px);
   }
 
-  /* Skip browser layout & paint for off-screen feed items during long scrolls */
-  .feed-tile-virtual {
+  /* Skip browser layout & paint only for below-the-fold items so initial viewport tiles never resize mid-animation */
+  .feed-tile-virtual:nth-child(n + 10) {
     content-visibility: auto;
-    contain-intrinsic-size: auto 128px;
+    contain-intrinsic-size: auto 180px;
   }
 
   /* Unified Segmented Control Track & Buttons */

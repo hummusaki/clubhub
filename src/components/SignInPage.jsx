@@ -29,6 +29,10 @@ import {
   authenticateWorkspaceEmail,
   syncExternalWorkspaceSession,
 } from '../api/workspaceClient'
+import {
+  isSupabaseConfigured,
+  signInOrSignUpWithSupabase,
+} from '../lib/supabaseClient'
 
 const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
 
@@ -1098,6 +1102,21 @@ export default function SignInPage({
     )
   }
 
+  async function ensureSupabaseSessionForCredentials(targetEmail, targetPassword) {
+    if (!isSupabaseConfigured() || !targetEmail || !targetPassword || targetPassword.length < 6) {
+      return
+    }
+    try {
+      await signInOrSignUpWithSupabase({
+        email: targetEmail,
+        password: targetPassword,
+        fullName: formatNameFromEmail(targetEmail),
+      })
+    } catch {
+      // Best-effort native Supabase Auth bridge alongside Clerk
+    }
+  }
+
   async function handleVerifyCodeSubmit(e) {
     e.preventDefault()
     setError('')
@@ -1119,6 +1138,7 @@ export default function SignInPage({
       if (verificationStep === 'signup_code') {
         const res = await clerk.client.signUp.attemptEmailAddressVerification({ code })
         if (res?.status === 'complete' && res?.createdSessionId) {
+          await ensureSupabaseSessionForCredentials(email.trim().toLowerCase(), password)
           await clerk.setActive({ session: res.createdSessionId })
           setSubmitting(false)
           return
@@ -1129,6 +1149,7 @@ export default function SignInPage({
           code,
         })
         if (res?.status === 'complete' && res?.createdSessionId) {
+          await ensureSupabaseSessionForCredentials(email.trim().toLowerCase(), password)
           await clerk.setActive({ session: res.createdSessionId })
           setSubmitting(false)
           return
@@ -1179,6 +1200,7 @@ export default function SignInPage({
             password,
           })
           if (res?.status === 'complete' && res?.createdSessionId) {
+            await ensureSupabaseSessionForCredentials(cleanEmail, password)
             await clerk.setActive({ session: res.createdSessionId })
             setSubmitting(false)
             return
@@ -1244,6 +1266,7 @@ export default function SignInPage({
           }
 
           if (signUpRes?.status === 'complete' && signUpRes?.createdSessionId) {
+            await ensureSupabaseSessionForCredentials(cleanEmail, password)
             await clerk.setActive({ session: signUpRes.createdSessionId })
             setSubmitting(false)
             return

@@ -849,4 +849,319 @@ describe('Phase 1, 4 & 5: Two-Tier Task Board, Announcements, Deletions & Cloud 
       'Raw email address must never be stored in or returned from calendar sync profile'
     );
   });
+
+  it('delivers zero incoming announcements or synced calendar events until a user joins a club', async () => {
+    const pres = await registerUser(ctx.baseUrl, {
+      email: 'pres_gate@ucsc.edu',
+      fullName: 'Club President',
+    });
+    const newcomer = await registerUser(ctx.baseUrl, {
+      email: 'newcomer_gate@ucsc.edu',
+      fullName: 'New Student',
+    });
+
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/robotics_club/join', {
+      method: 'POST',
+      token: pres.token,
+      body: { clubName: 'Robotics Club' },
+    });
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/robotics_club/claims', {
+      method: 'POST',
+      token: pres.token,
+      body: { rosterId: 'seat_pres', requestedRole: 'President' },
+    });
+
+    // President publishes both a 'public' and a 'members' announcement
+    const pubAnnRes = await apiRequest(
+      ctx.baseUrl,
+      '/api/workspace/clubs/robotics_club/announcements',
+      {
+        method: 'POST',
+        token: pres.token,
+        body: {
+          title: 'Robotics Kickoff Night',
+          body: 'Build bots in Baskin 152!',
+          visibility: 'public',
+        },
+      }
+    );
+    assert.equal(pubAnnRes.status, 201);
+
+    // 1. Unauthenticated caller gets 0 announcements
+    const unauthAnns = await apiRequest(ctx.baseUrl, '/api/workspace/announcements');
+    assert.equal(unauthAnns.status, 200);
+    assert.deepEqual(unauthAnns.data.announcements, []);
+
+    // 2. Signed-in student with 0 joined clubs gets 0 announcements
+    const beforeJoinAnns = await apiRequest(ctx.baseUrl, '/api/workspace/announcements', {
+      token: newcomer.token,
+    });
+    assert.equal(beforeJoinAnns.status, 200);
+    assert.deepEqual(beforeJoinAnns.data.announcements, []);
+
+    // 3. Calendar sync profile with 0 joined clubs syncs 0 events and serves an empty .ics feed
+    const calZero = await apiRequest(ctx.baseUrl, '/api/calendar/profile/cal_zero_clubs', {
+      method: 'PUT',
+      body: {
+        joinedClubIds: [],
+        fallbackEvents: [
+          {
+            id: 'evt_rob_1',
+            clubId: 'robotics_club',
+            clubName: 'Robotics Club',
+            title: 'Robotics Lab Session',
+            start: '2027-09-15T18:00:00.000Z',
+            end: '2027-09-15T19:00:00.000Z',
+          },
+        ],
+        settings: { clubScope: 'all' },
+      },
+    });
+    assert.equal(calZero.status, 200);
+    assert.equal(calZero.data.syncedCount, 0);
+
+    // 4. Once the student joins Robotics Club, both announcements and calendar events unlock!
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/robotics_club/join', {
+      method: 'POST',
+      token: newcomer.token,
+      body: { clubName: 'Robotics Club' },
+    });
+
+    const afterJoinAnns = await apiRequest(ctx.baseUrl, '/api/workspace/announcements', {
+      token: newcomer.token,
+    });
+    assert.equal(afterJoinAnns.status, 200);
+    assert.equal(afterJoinAnns.data.announcements.length, 1);
+    assert.equal(afterJoinAnns.data.announcements[0].title, 'Robotics Kickoff Night');
+
+    const calAfterJoin = await apiRequest(ctx.baseUrl, '/api/calendar/profile/cal_zero_clubs', {
+      method: 'PUT',
+      body: {
+        joinedClubIds: ['robotics_club'],
+        fallbackEvents: [
+          {
+            id: 'evt_rob_1',
+            clubId: 'robotics_club',
+            clubName: 'Robotics Club',
+            title: 'Robotics Lab Session',
+            start: '2027-09-15T18:00:00.000Z',
+            end: '2027-09-15T19:00:00.000Z',
+          },
+        ],
+      },
+    });
+    assert.equal(calAfterJoin.status, 200);
+    assert.equal(calAfterJoin.data.syncedCount, 1);
+  });
+
+  it('persists dueTime + Discord/Email task reminders, isolates per-member overrides & private emails, and resets sentAt on reschedule', async () => {
+    const leader = await registerUser(ctx.baseUrl, {
+      email: 'remind_leader@example.edu',
+      fullName: 'Reminder Leader',
+    });
+    const member = await registerUser(ctx.baseUrl, {
+      email: 'remind_member@example.edu',
+      fullName: 'Reminder Member',
+    });
+
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/claims', {
+      method: 'POST',
+      token: leader.token,
+      body: { requestedRole: 'President', clubName: 'Solar Car Team' },
+    });
+    await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/join', {
+      method: 'POST',
+      token: member.token,
+      body: { clubName: 'Solar Car Team' },
+    });
+
+    // 1. Member creates a personal task with dueDate + dueTime + opt-in Discord/Email reminder
+    const personalTaskRes = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      method: 'POST',
+      token: member.token,
+      body: {
+        title: 'Submit composites lab quiz',
+        visibility: 'personal',
+        isPersonal: true,
+        dueDate: '2027-08-20',
+        dueTime: '17:00',
+        reminder: {
+          enabled: true,
+          offsetMinutes: 60,
+          channels: ['discord', 'email'],
+          dueAtIso: '2027-08-20T17:00:00.000Z',
+          remindAtIso: '2027-08-20T16:00:00.000Z',
+          recipientEmail: 'member_private_alert@example.edu',
+        },
+      },
+    });
+    assert.equal(personalTaskRes.status, 201);
+    const personalTask = personalTaskRes.data.task;
+    assert.equal(personalTask.dueDate, '2027-08-20');
+    assert.equal(personalTask.dueTime, '17:00');
+    assert.equal(personalTask.reminder.enabled, true);
+    assert.equal(personalTask.reminder.offsetMinutes, 60);
+    assert.deepEqual(personalTask.reminder.channels, ['discord', 'email']);
+    assert.equal(personalTask.reminder.recipientEmail, 'member_private_alert@example.edu');
+    assert.equal(personalTask.reminder.sentAt, null);
+
+    // 2. Leader creates a shared club task with dueTime + board reminder, and Member sets their own personal reminder override
+    const sharedTaskRes = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      method: 'POST',
+      token: leader.token,
+      body: {
+        title: 'Telemetry dry-run check-in',
+        audience: 'general',
+        visibility: 'members',
+        dueDate: '2027-08-21',
+        dueTime: '14:30',
+        reminder: {
+          enabled: true,
+          offsetMinutes: 180,
+          channels: ['discord'],
+          dueAtIso: '2027-08-21T14:30:00.000Z',
+          remindAtIso: '2027-08-21T11:30:00.000Z',
+          recipientEmail: 'leader_secret@example.edu',
+        },
+      },
+    });
+    assert.equal(sharedTaskRes.status, 201);
+    const sharedId = sharedTaskRes.data.task.id;
+
+    // Member fetches shared task -> must NOT see leader's private `recipientEmail`
+    const memberInitialGet = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: member.token,
+    });
+    const sharedSeenByMember = memberInitialGet.data.tasks.find(t => t.id === sharedId);
+    assert.ok(sharedSeenByMember);
+    assert.equal(
+      sharedSeenByMember.reminder.recipientEmail,
+      '',
+      'Non-owners must never see creator private reminder recipientEmail'
+    );
+
+    // Member sets their own personal 15-min Email reminder override on the shared task without 403
+    const memberOverrideRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${sharedId}`,
+      {
+        method: 'PATCH',
+        token: member.token,
+        body: {
+          reminder: {
+            enabled: true,
+            offsetMinutes: 15,
+            channels: ['email'],
+            dueAtIso: '2027-08-21T14:30:00.000Z',
+            remindAtIso: '2027-08-21T14:15:00.000Z',
+            recipientEmail: 'member_override@example.edu',
+          },
+        },
+      }
+    );
+    assert.equal(memberOverrideRes.status, 200);
+    assert.equal(memberOverrideRes.data.task.reminder.isPersonalOverride, true);
+    assert.equal(memberOverrideRes.data.task.reminder.offsetMinutes, 15);
+    assert.equal(memberOverrideRes.data.task.reminder.recipientEmail, 'member_override@example.edu');
+
+    // Leader still sees their own 180-min primary reminder (not overwritten by member)
+    const leaderGetAfter = await apiRequest(ctx.baseUrl, '/api/workspace/clubs/solar_car/tasks', {
+      token: leader.token,
+    });
+    const sharedSeenByLeader = leaderGetAfter.data.tasks.find(t => t.id === sharedId);
+    assert.equal(sharedSeenByLeader.reminder.offsetMinutes, 180);
+    assert.equal(sharedSeenByLeader.reminder.recipientEmail, 'leader_secret@example.edu');
+
+    // 3. Due reminder check before remindAtIso fires 0 reminders; after remindAtIso fires once & stamps sentAt
+    const earlyCheck = await apiRequest(ctx.baseUrl, '/api/workspace/tasks/reminders/check', {
+      method: 'POST',
+      token: member.token,
+      body: {
+        clubId: 'solar_car',
+        markSentOnAttempt: true,
+        nowIso: '2027-08-20T15:30:00.000Z',
+      },
+    });
+    assert.equal(earlyCheck.status, 200);
+    assert.equal(earlyCheck.data.dueCount, 0);
+
+    const dueCheck1 = await apiRequest(ctx.baseUrl, '/api/workspace/tasks/reminders/check', {
+      method: 'POST',
+      token: member.token,
+      body: {
+        clubId: 'solar_car',
+        markSentOnAttempt: true,
+        nowIso: '2027-08-20T16:05:00.000Z',
+      },
+    });
+    assert.equal(dueCheck1.status, 200);
+    assert.equal(dueCheck1.data.dueCount, 1);
+    assert.equal(dueCheck1.data.dueReminders[0].taskId, personalTask.id);
+    assert.equal(dueCheck1.data.dueReminders[0].sentAt, '2027-08-20T16:05:00.000Z');
+
+    // Second check at 16:10 does NOT duplicate-fire
+    const dueCheck2 = await apiRequest(ctx.baseUrl, '/api/workspace/tasks/reminders/check', {
+      method: 'POST',
+      token: member.token,
+      body: {
+        clubId: 'solar_car',
+        markSentOnAttempt: true,
+        nowIso: '2027-08-20T16:10:00.000Z',
+      },
+    });
+    assert.equal(dueCheck2.status, 200);
+    assert.equal(dueCheck2.data.dueCount, 0);
+
+    // 4. Rescheduling dueTime resets reminder.sentAt to null so it will remind again at the new time
+    const rescheduleRes = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${personalTask.id}`,
+      {
+        method: 'PATCH',
+        token: member.token,
+        body: {
+          dueDate: '2027-08-20',
+          dueTime: '19:00',
+          reminder: {
+            enabled: true,
+            offsetMinutes: 60,
+            channels: ['discord', 'email'],
+            dueAtIso: '2027-08-20T19:00:00.000Z',
+            remindAtIso: '2027-08-20T18:00:00.000Z',
+          },
+        },
+      }
+    );
+    assert.equal(rescheduleRes.status, 200);
+    assert.equal(rescheduleRes.data.task.dueTime, '19:00');
+    assert.equal(
+      rescheduleRes.data.task.reminder.sentAt,
+      null,
+      'Rescheduling dueTime must clear sentAt so the updated reminder fires'
+    );
+
+    // 5. Manual `/remind` endpoint blocks non-owners on private personal tasks (403) and stamps lastManualSentAt for owner
+    const leaderSnoopRemind = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${personalTask.id}/remind`,
+      {
+        method: 'POST',
+        token: leader.token,
+        body: { channels: ['email'] },
+      }
+    );
+    assert.equal(leaderSnoopRemind.status, 403);
+
+    const ownerManualRemind = await apiRequest(
+      ctx.baseUrl,
+      `/api/workspace/clubs/solar_car/tasks/${personalTask.id}/remind`,
+      {
+        method: 'POST',
+        token: member.token,
+        body: { channels: ['discord', 'email'] },
+      }
+    );
+    assert.equal(ownerManualRemind.status, 200);
+    assert.ok(ownerManualRemind.data.task.reminder.lastManualSentAt);
+  });
 });

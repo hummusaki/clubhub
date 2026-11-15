@@ -1,13 +1,17 @@
 import express from 'express';
 import workspaceRouter from '../../server/routes/workspace.js';
 import schedulerRouter from '../../server/routes/scheduler.js';
+import calendarRouter from '../../server/routes/calendar.js';
+import dictionaryRouter from '../../server/routes/dictionary.js';
+import { closeDb } from '../../server/database.js';
 import {
   setPrivateDbPathForTesting,
   closePrivateDb,
   ensurePrivateSchema,
 } from '../../server/privateDb.js';
 
-// Force ephemeral in-memory private DB and disable external cloud overrides during automated tests
+// Force ephemeral in-memory public & private DBs and disable external cloud overrides during automated tests
+process.env.CLUBHUB_DB_PATH = ':memory:';
 process.env.PRIVATE_DB_PATH = ':memory:';
 delete process.env.TURSO_DATABASE_URL;
 delete process.env.TURSO_AUTH_TOKEN;
@@ -15,7 +19,9 @@ delete process.env.SUPABASE_URL;
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export async function resetTestDb() {
+  closeDb();
   closePrivateDb();
+  process.env.CLUBHUB_DB_PATH = ':memory:';
   setPrivateDbPathForTesting(':memory:');
   await ensurePrivateSchema();
 }
@@ -27,6 +33,8 @@ export async function startTestServer() {
   app.use(express.json());
   app.use('/api/workspace', workspaceRouter);
   app.use('/api/scheduler', schedulerRouter);
+  app.use('/api/calendar', calendarRouter);
+  app.use('/api', dictionaryRouter);
   app.use((err, _req, res, _next) => {
     res.status(err.status || 500).json({ error: err.message || 'Internal error' });
   });
@@ -43,6 +51,7 @@ export async function startTestServer() {
     baseUrl,
     async close() {
       await new Promise(resolve => server.close(() => resolve()));
+      closeDb();
       closePrivateDb();
     },
   };

@@ -13,7 +13,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fetchClub, isRateLimitError } from './instagram.js'
 import { scrapePersonalClubs } from './instagramFallback.js'
-import { extractPost, extractLinks } from './extract.js'
+import { classify, extractPost, extractLinks, filterActualEvents } from './extract.js'
 import { extractWithClaude, llmEnabled } from './llm.js'
 import {
   unpackBioWebsite,
@@ -400,9 +400,9 @@ async function analyze(post, profile, prevSnapshot = null) {
     (prevPost.caption || '').length === (post.caption || '').length &&
     prevPost.title &&
     prevPost.type &&
-    (prevPost.extractedBy === 'claude' || llmEnabled())
+    prevPost.extractedBy === 'claude'
   ) {
-    const cachedEvents = (prevSnapshot.eventsByPostId?.get(post.id) || []).map(
+    const rawCachedEvents = (prevSnapshot.eventsByPostId?.get(post.id) || []).map(
       ({ title, kind, start, end, allDay, recurring, location }) => ({
         title,
         kind,
@@ -413,21 +413,40 @@ async function analyze(post, profile, prevSnapshot = null) {
         location,
       })
     )
+    const cachedEvents = filterActualEvents(rawCachedEvents, {
+      defaultCaption: post.caption || '',
+      defaultPostedAt: post.postedAt || null,
+    })
+    const resolvedType =
+      cachedEvents.length === 0 && (prevPost.type === 'event' || prevPost.type === 'meeting')
+        ? classify(post.caption || '', [])
+        : prevPost.type
     return {
-      type: prevPost.type,
+      type: resolvedType,
       important: Boolean(prevPost.important),
       title: prevPost.title,
       summary: prevPost.summary || '',
       events: cachedEvents,
       links: extractLinks(post.caption || '', profile.website),
-      extractedBy: prevPost.extractedBy || 'rules',
+      extractedBy: 'claude',
     }
   }
 
   if (llmEnabled()) {
     const c = loadCache()
     const key = `${post.id}:${(post.caption || '').length}` // re-read if the caption was edited
-    if (c[key]) return c[key]
+    if (c[key]) {
+      const cachedInfo = c[key]
+      const cleanedCachedEvents = filterActualEvents(cachedInfo.events || [], {
+        defaultCaption: post.caption || '',
+        defaultPostedAt: post.postedAt || null,
+      })
+      const cleanedType =
+        cleanedCachedEvents.length === 0 && (cachedInfo.type === 'event' || cachedInfo.type === 'meeting')
+          ? classify(post.caption || '', [])
+          : cachedInfo.type
+      return { ...cachedInfo, type: cleanedType, events: cleanedCachedEvents }
+    }
     try {
       const info = await extractWithClaude(post, profile)
       c[key] = info
@@ -823,6 +842,12 @@ export async function collect({
       `↻ Sync batch summary: ${liveSyncedCount} club(s) synced live, ${preservedCacheCount} club(s) preserved from snapshot cache.`
     )
   }
+
+  const allPostsById = new Map(prevSnapshot?.postsById || [])
+  for (const p of out.posts) {
+    if (p?.id) allPostsById.set(p.id, p)
+  }
+  out.events = filterActualEvents(out.events, { postsById: allPostsById })
 
   out.events.sort((a, b) => a.start.localeCompare(b.start))
   out.announcements.sort((a, b) => b.postedAt.localeCompare(a.postedAt))

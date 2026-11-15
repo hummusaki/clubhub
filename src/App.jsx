@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
 import { Clock, ArrowRight } from 'lucide-react'
 import Sidebar from './components/Sidebar'
@@ -46,12 +46,14 @@ import {
 import {
   DEFAULT_CALENDAR_SYNC_SETTINGS,
   normalizeCalendarSyncSettings,
+  normalizeClubKey,
   extractGoingEventIds,
   filterEventsForCalendarSync,
   buildIcsCalendar,
   downloadIcsFile,
   getOrCreateCalendarSyncToken,
   isLocalhostUrl,
+  normalizeExternalPostUrl,
 } from './utils/calendarSync'
 import {
   getEffectiveGoogleClientId,
@@ -65,8 +67,22 @@ import {
 } from './utils/googleCalendarSync'
 import { isValidClerkPublishableKey } from './utils/authValidation'
 import { buildDashboardPageTitle } from './utils/pageTitle'
+import {
+  clearTaskBoardPrefsForAccount,
+  SENT_TASK_REMINDERS_LEDGER_KEY,
+} from './utils/taskReminders'
 
 const AUTH_USER_SESSION_KEY = 'clubhub_auth_user_session_v1'
+const ACTIVE_NAV_STORAGE_KEY = 'clubhub_active_nav_v1'
+const VALID_NAV_SECTIONS = new Set([
+  'overview',
+  'calendar',
+  'availability',
+  'clubs',
+  'tasks',
+  'links',
+  'settings',
+])
 const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v2'
 const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_theme_mode_v1'
 const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
@@ -478,14 +494,15 @@ function cleanScrapedLocation(raw) {
     .trim()
   if (
     stripped.length < 3 ||
-    /^(?:opers|be\s|to\s|and\s|our\s|we\s|have\s|having\s|join\s)/i.test(stripped)
+    (!/^BE\s*[-#]?\s*\d/.test(stripped) &&
+      /^(?:opers|be\s|to\s|and\s|our\s|we\s|have\s|having\s|join\s)/i.test(stripped))
   ) {
     return 'Campus / See post'
   }
   return stripped
 }
 
-function formatScheduleItem(e, index = 0) {
+function formatScheduleItem(e, index = 0, hub = null) {
   const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
   const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
   const startDate = new Date(e.start)
@@ -504,10 +521,32 @@ function formatScheduleItem(e, index = 0) {
         minute: '2-digit',
       })
 
+  const clubRecord =
+    e.clubId && hub && typeof hub === 'object'
+      ? hub[e.clubId] || hub[String(e.clubId).toLowerCase()] || null
+      : null
+  const matchedPost =
+    e.postId && Array.isArray(clubRecord?.posts)
+      ? clubRecord.posts.find(p => String(p?.id) === String(e.postId)) || null
+      : null
+  const resolvedPermalink = normalizeExternalPostUrl(e.permalink || matchedPost?.permalink || null)
+  const fallbackClubPageUrl =
+    !resolvedPermalink &&
+    !e.isCustom &&
+    !isBookedCollab &&
+    clubRecord?.instagram &&
+    !String(clubRecord.instagram).startsWith('demo_')
+      ? normalizeExternalPostUrl(
+          clubRecord.instagramUrl || `https://www.instagram.com/${clubRecord.instagram}/`
+        )
+      : null
+
   return {
     id: e.id,
     clubId: e.clubId || null,
-    club: cleanText(e.clubName || e.clubId || 'Campus Club'),
+    postId: e.postId || null,
+    source: e.source || matchedPost?.source || null,
+    club: cleanText(e.clubName || clubRecord?.name || e.clubId || 'Campus Club'),
     event: cleanText(e.title),
     time: timeLabel,
     location: cleanScrapedLocation(e.location),
@@ -520,7 +559,8 @@ function formatScheduleItem(e, index = 0) {
     isBookedCollab,
     isCustom: Boolean(e.isCustom),
     allDay: isAllDay,
-    permalink: e.permalink || null,
+    permalink: resolvedPermalink,
+    clubPageUrl: fallbackClubPageUrl,
     startIso: e.start,
     endIso: e.end,
   }
@@ -574,13 +614,27 @@ function MainDashboard({
         const urlPoll = new URLSearchParams(window.location.search).get('poll')
         const pendingPoll = sessionStorage.getItem(PENDING_POLL_SESSION_KEY)
         if (urlPoll || pendingPoll) return 'availability'
+        if (!isDemo) {
+          const savedNav = localStorage.getItem(ACTIVE_NAV_STORAGE_KEY)
+          if (savedNav && VALID_NAV_SECTIONS.has(savedNav)) return savedNav
+        }
       } catch {
-        // Ignore URL/sessionStorage errors
+        // Ignore URL/sessionStorage/localStorage errors
       }
     }
     return 'overview'
   })
-  const [pageSubContext, setPageSubContext] = useState(null)
+
+  useEffect(() => {
+    if (isDemo || typeof window === 'undefined') return
+    if (!VALID_NAV_SECTIONS.has(activeNav)) return
+    try {
+      localStorage.setItem(ACTIVE_NAV_STORAGE_KEY, activeNav)
+    } catch {
+      // Ignore storage errors
+    }
+  }, [activeNav, isDemo])
+  const pageSubContextRef = useRef(null)
   const [clubsInitialSection, setClubsInitialSection] = useState(null)
   const [clubsInitialRbacClubId, setClubsInitialRbacClubId] = useState('')
   const [tasksInitialClubId, setTasksInitialClubId] = useState('')
@@ -691,28 +745,47 @@ function MainDashboard({
     }
   }, [])
 
+  const applyJoinedClubIds = useCallback(nextIds => {
+    setJoinedClubIds(prev => {
+      if (
+        prev.length === nextIds.length &&
+        prev.every((val, idx) => String(val) === String(nextIds[idx]))
+      ) {
+        return prev
+      }
+      return nextIds
+    })
+  }, [])
+
   // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined for signed-in accounts)
   useEffect(() => {
     if (isDemo) return
     const emailKey = accountEmail ? `email:${accountEmail}` : null
     if (hasStoredJoinedClubs(accountKey)) {
-      setJoinedClubIds(getStoredJoinedClubIds(accountKey))
+      applyJoinedClubIds(getStoredJoinedClubIds(accountKey))
       return
     }
     if (emailKey && hasStoredJoinedClubs(emailKey)) {
       const stored = getStoredJoinedClubIds(emailKey)
-      setJoinedClubIds(stored)
+      applyJoinedClubIds(stored)
       saveStoredJoinedClubIds([accountKey, emailKey], stored)
       return
     }
     if (hasClerkKey && Array.isArray(effectiveUser?.unsafeMetadata?.joinedClubIds)) {
       const metaIds = effectiveUser.unsafeMetadata.joinedClubIds.map(String)
-      setJoinedClubIds(metaIds)
+      applyJoinedClubIds(metaIds)
       saveStoredJoinedClubIds([accountKey, emailKey], metaIds)
       return
     }
-    setJoinedClubIds([])
-  }, [isDemo, accountKey, accountEmail, hasClerkKey, effectiveUser?.unsafeMetadata?.joinedClubIds])
+    applyJoinedClubIds([])
+  }, [
+    isDemo,
+    accountKey,
+    accountEmail,
+    hasClerkKey,
+    effectiveUser?.unsafeMetadata?.joinedClubIds,
+    applyJoinedClubIds,
+  ])
 
   const loadBackendData = useCallback(async () => {
     let [hub, anns, evts, lnks, dbStats] = await Promise.all([
@@ -805,14 +878,10 @@ function MainDashboard({
           category: catId,
           categoryLabel: catMeta.label,
           description: rawDesc ? cleanText(rawDesc) : '',
-<<<<<<< Updated upstream
           directoryDescription: c.directoryDescription ? cleanText(c.directoryDescription) : '',
           alsoKnownAs: Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : [],
-          profilePictureUrl: c.profilePictureUrl || null,
-=======
           profilePictureUrl: c.discordIconUrl || c.profilePictureUrl || null,
           logoUrl: c.discordIconUrl || c.profilePictureUrl || null,
->>>>>>> Stashed changes
           instagram: c.instagram || null,
           email: resolvedEmail,
           extraEmails: emailLinks.filter(e => e !== resolvedEmail),
@@ -829,7 +898,6 @@ function MainDashboard({
       })
 
       if (mappedClubs.length > 0) {
-<<<<<<< Updated upstream
         const mappedNames = new Set(
           mappedClubs.map(mc => (mc.name || '').toLowerCase().trim())
         )
@@ -848,9 +916,6 @@ function MainDashboard({
           })
 
         nextClubs = [...mappedClubs, ...extraDiscoverClubs]
-=======
-        setLiveClubs(mappedClubs)
->>>>>>> Stashed changes
 
         if (isDemo && !demoLiveSeededRef.current && !demoUserModifiedClubsRef.current) {
           demoLiveSeededRef.current = true
@@ -869,16 +934,18 @@ function MainDashboard({
 
     let nextSchedule = null
     if (evts && evts.length > 0) {
-      // Keep ALL valid past + upcoming events (2025+) for the Full Calendar view
+      // Keep ALL valid past + upcoming actual events (2025+) for the Full Calendar view
       const validEvts = evts.filter(e => {
         if (String(e.id || '').startsWith('collab_evt_') || e.isCustom) return true
+        if (String(e.kind || '').toLowerCase() === 'deadline') return false
+        if (/^(?:deadline|due)\s*:/i.test(String(e.title || '').trim())) return false
         const ts = new Date(e.start).getTime()
         return !Number.isNaN(ts) && ts >= calendarMinCutoffMs
       })
       const sortedEvts = [...validEvts].sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
       )
-      nextSchedule = sortedEvts.map((e, i) => formatScheduleItem(e, i))
+      nextSchedule = sortedEvts.map((e, i) => formatScheduleItem(e, i, hub))
     }
 
     const nextAnnouncements =
@@ -940,17 +1007,15 @@ function MainDashboard({
         ]
       : null
 
-    startTransition(() => {
-      if (nextHub) setHubDict(nextHub)
-      if (nextClubs) setLiveClubs(nextClubs)
-      if (nextDemoIds) setJoinedClubIds(nextDemoIds)
-      if (evts && evts.length > 0) setRawEvents(evts)
-      if (nextSchedule) setLiveSchedule(nextSchedule)
-      if (nextAnnouncements) setLiveAnnouncements(nextAnnouncements)
-      if (nextLinks) setLiveLinks(nextLinks)
-      if (nextStats) setLiveStats(nextStats)
-    })
-  }, [isDemo])
+    if (nextHub) setHubDict(nextHub)
+    if (nextClubs) setLiveClubs(nextClubs)
+    if (nextDemoIds) applyJoinedClubIds(nextDemoIds)
+    if (evts && evts.length > 0) setRawEvents(evts)
+    if (nextSchedule) setLiveSchedule(nextSchedule)
+    if (nextAnnouncements) setLiveAnnouncements(nextAnnouncements)
+    if (nextLinks) setLiveLinks(nextLinks)
+    if (nextStats) setLiveStats(nextStats)
+  }, [isDemo, applyJoinedClubIds])
 
   useEffect(() => {
     loadBackendData()
@@ -959,7 +1024,7 @@ function MainDashboard({
   // Hydrate authenticated workspace memberships & targeted RBAC announcements
   const loadWorkspaceState = useCallback(async () => {
     if (isDemo) {
-      setWorkspaceAnnouncements([])
+      setWorkspaceAnnouncements(prev => (prev.length === 0 ? prev : []))
       return
     }
     if (hasClerkKey && effectiveUser && accountEmail && !effectiveUser.workspaceSynced) {
@@ -970,10 +1035,7 @@ function MainDashboard({
         fullName: effectiveUser.fullName || accountEmail.split('@')[0],
       }).catch(() => {})
     }
-    const [meRes, annRes] = await Promise.all([
-      effectiveUser ? getWorkspaceMe() : Promise.resolve(null),
-      getWorkspaceAnnouncements(),
-    ])
+    const meRes = effectiveUser ? await getWorkspaceMe(effectiveUser) : null
     const dbClubIds =
       meRes?.ok && Array.isArray(meRes.memberships) && meRes.memberships.length > 0
         ? meRes.memberships.map(m => String(m.clubId || m.club_id || '')).filter(Boolean)
@@ -990,6 +1052,7 @@ function MainDashboard({
         await syncWorkspaceMemberships(unsyncedIds).catch(() => {})
       }
     }
+    const annRes = effectiveUser ? await getWorkspaceAnnouncements() : null
     const mappedWorkspaceAnns =
       annRes?.ok && Array.isArray(annRes.announcements)
         ? annRes.announcements.map(a => ({
@@ -1016,14 +1079,20 @@ function MainDashboard({
           }))
         : null
 
-    startTransition(() => {
-      if (dbClubIds) {
-        setJoinedClubIds(prev => Array.from(new Set([...prev, ...dbClubIds])))
-      }
-      if (mappedWorkspaceAnns) {
-        setWorkspaceAnnouncements(mappedWorkspaceAnns)
-      }
-    })
+    if (dbClubIds) {
+      setJoinedClubIds(prev => {
+        const merged = Array.from(new Set([...prev, ...dbClubIds]))
+        if (merged.length === prev.length && merged.every((v, idx) => v === prev[idx])) {
+          return prev
+        }
+        return merged
+      })
+    }
+    if (mappedWorkspaceAnns) {
+      setWorkspaceAnnouncements(prev =>
+        prev.length === 0 && mappedWorkspaceAnns.length === 0 ? prev : mappedWorkspaceAnns
+      )
+    }
   }, [isDemo, hasClerkKey, effectiveUser, accountEmail, accountKey])
 
   useEffect(() => {
@@ -1033,12 +1102,15 @@ function MainDashboard({
   useEffect(() => {
     if (isDemo) return undefined
     return onWorkspacePermissionChange(detail => {
-      loadWorkspaceState()
-      if (detail?.status === 403) {
+      if (detail?.status === 403 && detail?.code !== 'NOT_CLUB_MEMBER') {
+        loadWorkspaceState()
         showToast(detail.error || 'Your club permissions were updated.', { type: 'info' })
+      } else if (detail?.sessionExpired && !hasClerkKey && onSignOut) {
+        onSignOut({ silent: true })
+        showToast('Your session expired. Please sign in again.', { type: 'info' })
       }
     })
-  }, [isDemo, loadWorkspaceState, showToast])
+  }, [isDemo, hasClerkKey, onSignOut, loadWorkspaceState, showToast])
 
   function handleNavigate(nextNav, options = {}) {
     if (nextNav === 'clubs') {
@@ -1063,7 +1135,7 @@ function MainDashboard({
     }
     setActiveNav(nextNav)
     if (nextNav === 'overview' || nextNav === 'settings') {
-      setPageSubContext(null)
+      pageSubContextRef.current = null
     }
     if (options.searchQuery !== undefined) {
       setSearchQuery(options.searchQuery)
@@ -1081,12 +1153,18 @@ function MainDashboard({
     [joinedClubIds]
   )
 
+  const joinedClubKeySet = useMemo(
+    () => new Set(joinedClubIds.map(normalizeClubKey).filter(Boolean)),
+    [joinedClubIds]
+  )
+
   const effectiveClubs = useMemo(() => {
     const base = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
     return base.map(c => {
       const catId = categorizeClub(c)
       const catMeta = getClubCategoryMeta(catId)
-      const isJoined = joinedClubSet.has(String(c.id))
+      const isJoined =
+        joinedClubSet.has(String(c.id)) || joinedClubKeySet.has(normalizeClubKey(c.id))
       return {
         ...c,
         category: catId,
@@ -1096,12 +1174,12 @@ function MainDashboard({
         members: (c.members || 0) + (isJoined ? 1 : 0),
       }
     })
-  }, [liveClubs, clubsData, joinedClubSet])
+  }, [liveClubs, clubsData, joinedClubSet, joinedClubKeySet])
 
-  const joinedCount = joinedClubSet.size
+  const joinedCount = joinedClubKeySet.size
 
   const effectiveSchedule = useMemo(() => {
-    const base = liveSchedule && liveSchedule.length > 0 ? liveSchedule : fallbackSchedule
+    const base = liveSchedule && liveSchedule.length > 0 ? liveSchedule : isDemo ? fallbackSchedule : []
     const formattedLocal = localAddedEvents.map((e, i) => formatScheduleItem(e, i))
     const seen = new Set()
     const merged = []
@@ -1112,12 +1190,25 @@ function MainDashboard({
       merged.push(item)
     }
     return merged
-  }, [liveSchedule, localAddedEvents, removedEventIds])
+  }, [liveSchedule, isDemo, localAddedEvents, removedEventIds])
 
-  // Strictly upcoming events (starting today / from current time onward — never 14 days ago!)
-  const upcomingSchedule = useMemo(() => {
+  // Incoming calendar events require club membership — 0 joined clubs means 0 incoming events
+  const memberScopedSchedule = useMemo(() => {
+    if (joinedClubKeySet.size === 0) return []
+    return effectiveSchedule.filter(ev => {
+      const cid = normalizeClubKey(ev.clubId)
+      if (ev.isCustom || ev.isBookedCollab) {
+        return !cid || joinedClubKeySet.has(cid)
+      }
+      return Boolean(cid && joinedClubKeySet.has(cid))
+    })
+  }, [effectiveSchedule, joinedClubKeySet])
+
+  // Strictly upcoming events from joined clubs (never falling back to unjoined campus events)
+  const personalizedSchedule = useMemo(() => {
+    if (joinedClubKeySet.size === 0) return []
     const now = new Date()
-    return effectiveSchedule
+    return memberScopedSchedule
       .filter(ev => isEventUpcoming(ev, now))
       .sort((a, b) => {
         const aBooked = a.isBookedCollab ? 1 : 0
@@ -1125,35 +1216,31 @@ function MainDashboard({
         if (aBooked !== bBooked) return bBooked - aBooked
         return new Date(a.startIso || 0).getTime() - new Date(b.startIso || 0).getTime()
       })
-  }, [effectiveSchedule])
+  }, [memberScopedSchedule, joinedClubKeySet])
 
-  const personalizedSchedule = useMemo(() => {
-    if (joinedClubSet.size === 0) return upcomingSchedule
-    const matched = upcomingSchedule.filter(
-      ev =>
-        ev.isCustom ||
-        ev.isBookedCollab ||
-        (ev.clubId && joinedClubSet.has(String(ev.clubId)))
-    )
-    return matched.length > 0 ? matched : upcomingSchedule
-  }, [upcomingSchedule, joinedClubSet])
-
+  // Incoming announcements & notifications strictly require membership in that club
   const personalizedAnnouncements = useMemo(() => {
-    const baseList = Array.isArray(liveAnnouncements) ? liveAnnouncements : []
-    const matched =
-      joinedClubSet.size > 0
-        ? baseList.filter(a => a.clubId && joinedClubSet.has(String(a.clubId)))
-        : baseList
-    const publicSlice = matched.length > 0 ? matched : baseList
-    const merged = [...workspaceAnnouncements, ...publicSlice]
-    return merged.length > 0 ? merged.slice(0, 10) : liveAnnouncements
-  }, [workspaceAnnouncements, liveAnnouncements, joinedClubSet])
+    if (joinedClubKeySet.size === 0) return []
+    const scopedWorkspace = (Array.isArray(workspaceAnnouncements) ? workspaceAnnouncements : []).filter(
+      a => a?.clubId && joinedClubKeySet.has(normalizeClubKey(a.clubId))
+    )
+    const scopedLive = (Array.isArray(liveAnnouncements) ? liveAnnouncements : []).filter(
+      a => a?.clubId && joinedClubKeySet.has(normalizeClubKey(a.clubId))
+    )
+    return [...scopedWorkspace, ...scopedLive].slice(0, 15)
+  }, [workspaceAnnouncements, liveAnnouncements, joinedClubKeySet])
 
-  const combinedRawEvents = useMemo(
-    () =>
-      [...localAddedEvents, ...rawEvents].filter(ev => !removedEventIds.has(ev.id)),
-    [localAddedEvents, rawEvents, removedEventIds]
-  )
+  const combinedRawEvents = useMemo(() => {
+    if (joinedClubKeySet.size === 0) return []
+    return [...localAddedEvents, ...rawEvents].filter(ev => {
+      if (!ev || removedEventIds.has(ev.id)) return false
+      const cid = normalizeClubKey(ev.clubId)
+      if (ev.isCustom || ev.isBookedCollab) {
+        return !cid || joinedClubKeySet.has(cid)
+      }
+      return Boolean(cid && joinedClubKeySet.has(cid))
+    })
+  }, [localAddedEvents, rawEvents, removedEventIds, joinedClubKeySet])
 
   function toggleJoinClub(clubId) {
     const targetId = String(clubId)
@@ -1331,6 +1418,10 @@ function MainDashboard({
       localStorage.removeItem(PINNED_LINK_OVERRIDES_KEY)
       localStorage.removeItem(LOCAL_CLUB_POSTS_KEY)
       localStorage.removeItem('clubhub_custom_polls_v1')
+      localStorage.removeItem(ACTIVE_NAV_STORAGE_KEY)
+      localStorage.removeItem(SENT_TASK_REMINDERS_LEDGER_KEY)
+      clearTaskBoardPrefsForAccount(accountKey)
+      if (emailKey) clearTaskBoardPrefsForAccount(emailKey)
       saveStoredJoinedClubIds([accountKey, emailKey], [])
     } catch {
       // Ignore storage errors
@@ -1398,24 +1489,24 @@ function MainDashboard({
   )
 
   const goingEventIds = useMemo(
-    () => Array.from(extractGoingEventIds(rsvpMap, effectiveSchedule)),
-    [rsvpMap, effectiveSchedule]
+    () => Array.from(extractGoingEventIds(rsvpMap, memberScopedSchedule)),
+    [rsvpMap, memberScopedSchedule]
   )
 
   const syncedCalendarEvents = useMemo(
     () =>
-      filterEventsForCalendarSync(effectiveSchedule, {
+      filterEventsForCalendarSync(memberScopedSchedule, {
         joinedClubIds,
         rsvpIds: goingEventIds,
         rsvpMap,
         settings: calSyncSettings,
       }),
-    [effectiveSchedule, joinedClubIds, goingEventIds, rsvpMap, calSyncSettings]
+    [memberScopedSchedule, joinedClubIds, goingEventIds, rsvpMap, calSyncSettings]
   )
 
   const feedFallbackEvents = useMemo(
     () =>
-      effectiveSchedule.map(ev => ({
+      memberScopedSchedule.map(ev => ({
         id: ev.id,
         clubId: ev.clubId || null,
         clubName: ev.club || 'ClubHub',
@@ -1428,7 +1519,7 @@ function MainDashboard({
         isCustom: Boolean(ev.isCustom),
         isBookedCollab: Boolean(ev.isBookedCollab),
       })),
-    [effectiveSchedule]
+    [memberScopedSchedule]
   )
 
   const flushCalendarFeedProfile = useCallback(
@@ -1445,11 +1536,20 @@ function MainDashboard({
         removedEventIds: Array.from(removedEventIds),
         settings: calSyncSettings,
       })
-      setFeedState({
-        mode: res.mode || 'static',
-        feedHttpUrl: res.feedHttpUrl || '',
-        feedWebcalUrl: res.feedWebcalUrl || '',
-      })
+      const nextMode = res.mode || 'static'
+      const nextHttpUrl = res.feedHttpUrl || ''
+      const nextWebcalUrl = res.feedWebcalUrl || ''
+      setFeedState(prev =>
+        prev.mode === nextMode &&
+        prev.feedHttpUrl === nextHttpUrl &&
+        prev.feedWebcalUrl === nextWebcalUrl
+          ? prev
+          : {
+              mode: nextMode,
+              feedHttpUrl: nextHttpUrl,
+              feedWebcalUrl: nextWebcalUrl,
+            }
+      )
       return res
     },
     [
@@ -1735,12 +1835,41 @@ function MainDashboard({
     ).length
   }, [calSyncSettings.inAppRsvpOnly, personalizedSchedule, rsvpMap])
 
+  const titleInputsRef = useRef({
+    activeNav,
+    searchQuery,
+    upcomingCount: visibleOverviewUpcomingCount,
+    joinedCount,
+    inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+  })
+  titleInputsRef.current = {
+    activeNav,
+    searchQuery,
+    upcomingCount: visibleOverviewUpcomingCount,
+    joinedCount,
+    inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+  }
+
+  const handlePageContextChange = useCallback(nextSubContext => {
+    pageSubContextRef.current = nextSubContext
+    if (typeof document === 'undefined') return
+    const cur = titleInputsRef.current
+    document.title = buildDashboardPageTitle({
+      activeNav: cur.activeNav,
+      subContext: nextSubContext,
+      searchQuery: cur.searchQuery,
+      upcomingCount: cur.upcomingCount,
+      joinedCount: cur.joinedCount,
+      inAppRsvpOnly: cur.inAppRsvpOnly,
+    })
+  }, [])
+
   // Synchronize browser tab page title with the live state of ClubHub
   useEffect(() => {
     if (typeof document === 'undefined') return
     document.title = buildDashboardPageTitle({
       activeNav,
-      subContext: pageSubContext,
+      subContext: pageSubContextRef.current,
       searchQuery,
       upcomingCount: visibleOverviewUpcomingCount,
       joinedCount,
@@ -1748,7 +1877,6 @@ function MainDashboard({
     })
   }, [
     activeNav,
-    pageSubContext,
     searchQuery,
     visibleOverviewUpcomingCount,
     joinedCount,
@@ -1796,8 +1924,14 @@ function MainDashboard({
             onSignOut={onSignOut}
             announcements={personalizedAnnouncements}
             upcomingCount={visibleOverviewUpcomingCount}
+            joinedCount={joinedCount}
+            clubs={effectiveClubs}
+            events={effectiveSchedule}
+            onToggleJoinClub={toggleJoinClub}
+            onNotify={showToast}
           />
 
+          <div key={`${activeNav}_${resetGeneration}`} className="view-enter">
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
             <div className={isCompactDensity ? 'space-y-3.5' : 'space-y-5 sm:space-y-6'}>
@@ -1806,8 +1940,8 @@ function MainDashboard({
                   query={searchQuery}
                   onClearQuery={() => setSearchQuery('')}
                   clubs={effectiveClubs}
-                  events={upcomingSchedule}
-                  announcements={liveAnnouncements || []}
+                  events={personalizedSchedule}
+                  announcements={personalizedAnnouncements}
                   links={[...localAddedLinks, ...(liveLinks || fallbackLinks)]}
                   userSettings={userSettings}
                   onToggleJoinClub={toggleJoinClub}
@@ -1829,12 +1963,14 @@ function MainDashboard({
                 }
               />
 
-              {/* Dedicated AI Club Matchmaker (separate from normal site-wide search) */}
+              {/* Dedicated AI Club Search & Advisor (separate from normal site-wide search) */}
               <AiOverviewSearchBar
                 clubs={effectiveClubs}
+                events={effectiveSchedule}
                 userSettings={userSettings}
                 onToggleJoinClub={toggleJoinClub}
                 onOpenClub={opts => handleNavigate('clubs', opts)}
+                onOpenCalendar={opts => handleNavigate('calendar', opts)}
                 onNotify={showToast}
               />
 
@@ -1847,19 +1983,22 @@ function MainDashboard({
                   compact={true}
                   items={personalizedSchedule}
                   clubs={effectiveClubs}
+                  joinedCount={joinedCount}
                   userSettings={userSettings}
                   onUpdateSettings={onUpdateSettings}
                   calendarIntegration={calendarIntegration}
-                  onPageContextChange={setPageSubContext}
+                  onPageContextChange={handlePageContextChange}
                   searchQuery={searchQuery}
                   rsvpMap={rsvpMap}
                   onToggleRsvp={handleToggleRsvp}
                   onDeleteEvent={handleDeleteCalendarEvent}
                   onOpenCalendar={() => handleNavigate('calendar', { view: 'month' })}
+                  onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
                   onNotify={showToast}
                 />
                 <Announcements
                   items={personalizedAnnouncements}
+                  joinedCount={joinedCount}
                   userSettings={userSettings}
                   searchQuery={searchQuery}
                   onNav={handleNavigate}
@@ -1922,18 +2061,20 @@ function MainDashboard({
           {activeNav === 'calendar' && (
             <CalendarView
               key={`cal_${resetGeneration}`}
-              items={effectiveSchedule}
+              items={memberScopedSchedule}
               clubs={effectiveClubs}
+              joinedCount={joinedCount}
               initialView={calendarInitialView}
               userSettings={userSettings}
               onUpdateSettings={onUpdateSettings}
               calendarIntegration={calendarIntegration}
-              onPageContextChange={setPageSubContext}
+              onPageContextChange={handlePageContextChange}
               searchQuery={searchQuery}
               rsvpMap={rsvpMap}
               onToggleRsvp={handleToggleRsvp}
               onAddEvent={handleAddCalendarEvent}
               onDeleteEvent={handleDeleteCalendarEvent}
+              onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
               onNotify={showToast}
             />
           )}
@@ -1953,7 +2094,7 @@ function MainDashboard({
               onRemoveLocalEvent={handleRemoveLocalCollabEvent}
               onOpenCalendar={() => handleNavigate('calendar')}
               onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
-              onPageContextChange={setPageSubContext}
+              onPageContextChange={handlePageContextChange}
               onNotify={showToast}
             />
           )}
@@ -1968,7 +2109,7 @@ function MainDashboard({
               items={effectiveClubs}
               clubsData={clubsData}
               hubDict={hubDict}
-              events={effectiveSchedule}
+              events={memberScopedSchedule}
               calendarIntegration={calendarIntegration}
               initialSection={clubsInitialSection}
               initialRbacClubId={clubsInitialRbacClubId}
@@ -1981,7 +2122,7 @@ function MainDashboard({
               onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
               localPosts={localClubPosts}
               onAddLocalPost={handleAddLocalClubPost}
-              onPageContextChange={setPageSubContext}
+              onPageContextChange={handlePageContextChange}
               onNotify={showToast}
             />
           )}
@@ -1992,6 +2133,8 @@ function MainDashboard({
               key={`tasks_${resetGeneration}`}
               user={effectiveUser}
               accountKey={accountKey}
+              accountEmail={accountEmail}
+              userSettings={userSettings}
               isDemo={isDemo}
               clubs={effectiveClubs}
               joinedClubIds={joinedClubIds}
@@ -2004,6 +2147,7 @@ function MainDashboard({
               }}
               onOpenClubsRbac={cid => handleNavigate('clubs', { section: 'rbac', clubId: cid })}
               onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
+              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
               onNotify={showToast}
             />
           )}
@@ -2021,7 +2165,7 @@ function MainDashboard({
               onAddLocalLink={handleAddLocalLink}
               pinnedOverrides={pinnedLinkOverrides}
               onTogglePinOverride={handleTogglePinOverride}
-              onPageContextChange={setPageSubContext}
+              onPageContextChange={handlePageContextChange}
               onNotify={showToast}
             />
           )}
@@ -2038,7 +2182,7 @@ function MainDashboard({
               onUpdateSettings={onUpdateSettings}
               onSetThemeMode={onSetExplicitThemeMode}
               clubs={effectiveClubs}
-              events={effectiveSchedule}
+              events={memberScopedSchedule}
               calendarIntegration={calendarIntegration}
               onRefresh={loadBackendData}
               onResetLocalData={handleResetLocalData}
@@ -2047,6 +2191,7 @@ function MainDashboard({
               onNotify={showToast}
             />
           )}
+          </div>
         </div>
       </main>
     </div>
@@ -2840,9 +2985,20 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
     let active = true
     getWorkspaceMe()
       .then(res => {
-        if (!active || !res?.user?.id) return
+        if (!active) return
+        if (res?.sessionExpired && !(typeof window !== 'undefined' && window.Clerk?.user?.id)) {
+          setLocalUser(null)
+          try {
+            sessionStorage.removeItem(AUTH_USER_SESSION_KEY)
+          } catch {
+            // Ignore storage errors
+          }
+          return
+        }
+        if (!res?.user?.id) return
         setLocalUser(prev => {
           const merged = {
+            authenticated: true,
             ...(prev || {}),
             id: res.user.id,
             email: res.user.email,

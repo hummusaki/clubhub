@@ -686,7 +686,26 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
     }
 
     if (path === '/announcements' && method === 'GET') {
-      const { data } = await sb.from('announcements').select('*').order('created_at', { ascending: false }).limit(50)
+      const profile = await getDirectUserProfile()
+      if (!profile) {
+        return { ok: true, announcements: [] }
+      }
+      const { data: memberships } = await sb
+        .from('club_members')
+        .select('club_id')
+        .eq('user_id', profile.id)
+      const joinedIds = Array.from(
+        new Set((memberships || []).map(m => normalizeClub(m.club_id)).filter(Boolean))
+      )
+      if (joinedIds.length === 0) {
+        return { ok: true, announcements: [] }
+      }
+      const { data } = await sb
+        .from('announcements')
+        .select('*')
+        .in('club_id', joinedIds)
+        .order('created_at', { ascending: false })
+        .limit(50)
       return {
         ok: true,
         announcements: (data || []).map(a => ({

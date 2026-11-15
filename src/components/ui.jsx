@@ -224,21 +224,18 @@ export function Card({
   children,
   className = '',
   style = {},
-  delay = 0,
-  animate = true,
+  animate = false,
   onClick,
 }) {
   const interactiveClasses = onClick
     ? 'cursor-pointer hover:shadow-[var(--shadow-md)] transition-[box-shadow,border-color,background-color] duration-200'
     : ''
-  const animStyle =
-    animate && delay > 0 ? { animationDelay: `${Math.min(delay, 5) * 0.03}s` } : undefined
   return (
     <div
       onClick={onClick}
       className={`bg-[var(--bg-card)] border border-[var(--border)] rounded-[var(--radius)]
         shadow-[var(--shadow)] ${animate ? 'fade-in' : ''} ${interactiveClasses} ${className}`}
-      style={animStyle ? { ...animStyle, ...style } : style}
+      style={style}
     >
       {children}
     </div>

@@ -1,7 +1,7 @@
 // Optional: uses Claude to read the caption AND the post image (flyers often have the date/time/room
 // only in the picture). Falls back to the rule-based extractor if no key is set or a call fails.
 
-import { extractLinks, makeTitle } from './extract.js'
+import { classify, extractLinks, filterActualEvents, makeTitle } from './extract.js'
 
 const SYSTEM = `You extract structured club info from a UCSC student club's Instagram post.
 Return ONLY a JSON object, no prose, with this shape:
@@ -12,7 +12,7 @@ Return ONLY a JSON object, no prose, with this shape:
   "summary": string,               // 1-2 plain sentences
   "events": [{
     "title": string,
-    "kind": "meeting" | "event" | "deadline",
+    "kind": "meeting" | "event",
     "start": string,               // ISO 8601 with offset, America/Los_Angeles time
     "end": string | null,
     "allDay": boolean,             // true if no time of day was given
@@ -21,8 +21,11 @@ Return ONLY a JSON object, no prose, with this shape:
   }],
   "links": [{ "url": string, "label": string }]
 }
-Rules: resolve relative dates ("this Friday", "tomorrow") against the post date. Use info from the image too.
-Only include events actually announced in the post. If nothing is scheduled, use an empty events array.`
+Rules:
+- Resolve relative dates ("this Friday", "tomorrow") against the post date. Use info from the image too.
+- ONLY include actual attendable club meetings or events in "events" (in-person gatherings, workshops, GBMs, socials, performances, tournaments, campus tabling/boba fundraisers, or live online sessions with a scheduled start time).
+- NEVER include non-events in "events": application/submission/preorder/form deadlines, online UCSC Giving Day / crowdfunding / Venmo donation asks without a live meetup, merch drops, surveys, prize reveals, officer/member spotlights, meeting cancellations ("No GBM this week"), historical anniversaries/holidays, recaps/thank-you posts without a newly scheduled timed future event, or vague "see you next week" sign-offs. Put deadlines and cancellations under "type": "announcement", "important": true, with "events": [].
+- If nothing attendable is scheduled, return an empty "events" array.`
 
 let claudeCooldownUntil = 0
 
@@ -80,22 +83,34 @@ ${post.caption || '(no caption)'}`,
   for (const l of json.links || []) {
     if (l?.url && !links.has(l.url.toLowerCase())) links.set(l.url.toLowerCase(), { url: l.url, kind: 'website', label: l.label || 'Link' })
   }
+  const rawEvents = (json.events || [])
+    .filter(e => e?.start && e.kind !== 'deadline' && !Number.isNaN(Date.parse(e.start)))
+    .map(e => ({
+      title: e.title || json.title,
+      kind: e.kind === 'meeting' ? 'meeting' : 'event',
+      start: new Date(e.start).toISOString(),
+      end: e.end && !Number.isNaN(Date.parse(e.end)) ? new Date(e.end).toISOString() : null,
+      allDay: Boolean(e.allDay),
+      recurring: e.recurring || null,
+      location: e.location || null,
+    }))
+
+  const filteredEvents = filterActualEvents(rawEvents, {
+    defaultCaption: post.caption || '',
+    defaultPostedAt: post.postedAt || null,
+  })
+
+  const resolvedType =
+    filteredEvents.length === 0 && (json.type === 'event' || json.type === 'meeting')
+      ? classify(post.caption || '', [])
+      : json.type || classify(post.caption || '', filteredEvents)
+
   return {
-    type: json.type || 'other',
+    type: resolvedType,
     important: Boolean(json.important),
     title: json.title || makeTitle(post.caption || ''),
     summary: json.summary || '',
-    events: (json.events || [])
-      .filter(e => e?.start && !Number.isNaN(Date.parse(e.start)))
-      .map(e => ({
-        title: e.title || json.title,
-        kind: ['meeting', 'event', 'deadline'].includes(e.kind) ? e.kind : 'event',
-        start: new Date(e.start).toISOString(),
-        end: e.end && !Number.isNaN(Date.parse(e.end)) ? new Date(e.end).toISOString() : null,
-        allDay: Boolean(e.allDay),
-        recurring: e.recurring || null,
-        location: e.location || null,
-      })),
+    events: filteredEvents,
     links: [...links.values()],
     extractedBy: 'claude',
   }

@@ -24,6 +24,13 @@ import {
   getUserWorkspaceOverview,
 } from '../services/authService.js';
 import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import {
+  normalizeDueDateAndTime,
+  buildUpdatedReminderConfigJson,
+  formatTaskReminderForViewer,
+  dispatchTaskReminderChannels,
+  checkAndDispatchDueTaskReminders,
+} from '../services/taskReminders.js';
 
 const router = Router();
 
@@ -443,7 +450,9 @@ async function ensureDefaultTaskSections(clubId, actorUserId = 'system') {
   );
 }
 
-function formatTaskRow(row) {
+function formatTaskRow(row, viewerUserId = '') {
+  const dueDate = row.dueDate || '';
+  const dueTime = row.dueTime || '';
   return {
     id: row.id,
     clubId: row.clubId,
@@ -454,7 +463,14 @@ function formatTaskRow(row) {
     audience: row.audience || 'general',
     status: row.status || 'not_started',
     priority: row.priority || 'medium',
-    dueDate: row.dueDate || '',
+    dueDate,
+    dueTime,
+    reminder: formatTaskReminderForViewer(row.reminderConfigJson || '{}', {
+      dueDate,
+      dueTime,
+      viewerUserId,
+      createdByUserId: row.createdByUserId || '',
+    }),
     assignees: parseJsonSafe(row.assigneesJson, []),
     groupIds: parseJsonSafe(row.groupIdsJson, []),
     completedBy: parseJsonSafe(row.completedByJson, []),
@@ -1447,7 +1463,7 @@ async function buildClubTasksBoardPayload(clubId, user, perm) {
   const formattedTasks = rawTasks
     .filter(row => row.visibility !== 'personal')
     .map(row => {
-      const t = formatTaskRow(row);
+      const t = formatTaskRow(row, user?.id || '');
       const cleanGroupIds = (t.groupIds || []).filter(gid => validGroupIds.has(gid));
       const cleanAssignees = (t.assignees || []).filter(
         a => !a.userId || activeClubUserIds.has(a.userId)
@@ -1490,7 +1506,7 @@ async function buildClubTasksBoardPayload(clubId, user, perm) {
     ? rawTasks
         .filter(row => row.visibility === 'personal' && row.createdByUserId === user.id)
         .map(row => {
-          const t = formatTaskRow(row);
+          const t = formatTaskRow(row, user.id);
           const resolvedSectionId = validPersonalSectionIds.has(t.sectionId)
             ? t.sectionId
             : defaultPersonalSection.id;
@@ -1637,12 +1653,19 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
     audience: rawAudience = 'general',
     status: rawStatus = 'not_started',
     priority: rawPriority = 'medium',
-    dueDate = '',
+    dueDate: rawDueDate = '',
+    dueTime: rawDueTime = '',
+    reminder: rawReminder = undefined,
     assignees = [],
     groupIds = [],
     shortcutTargets = [],
     isPersonal = false,
   } = req.body || {};
+
+  const { dueDate: cleanDueDate, dueTime: cleanDueTime } = normalizeDueDateAndTime(
+    rawDueDate,
+    rawDueTime
+  );
 
   const wantsPersonalTask =
     Boolean(isPersonal) ||
@@ -1692,13 +1715,22 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
       status === 'done'
         ? [{ userId: req.user.id, name: req.user.fullName, completedAt: nowIso }]
         : [];
+    const reminderConfigJson = buildUpdatedReminderConfigJson({
+      existingRawJson: '{}',
+      incomingReminder: rawReminder,
+      dueDate: cleanDueDate,
+      dueTime: cleanDueTime,
+      actorUserId: req.user.id,
+      isPersonalOrBoardOwner: true,
+    });
 
     await privExecute(
       `INSERT INTO club_tasks (
          id, clubId, sectionId, title, notes, visibility, audience,
-         status, priority, dueDate, assigneesJson, groupIdsJson, completedByJson,
+         status, priority, dueDate, dueTime, reminderConfigJson,
+         assigneesJson, groupIdsJson, completedByJson,
          position, createdByUserId, createdByName, createdAt, updatedAt
-       ) VALUES (?, ?, ?, ?, ?, 'personal', 'personal', ?, ?, ?, ?, '[]', ?, 0, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, 'personal', 'personal', ?, ?, ?, ?, ?, ?, '[]', ?, 0, ?, ?, ?, ?)`,
       [
         taskId,
         clubId,
@@ -1707,7 +1739,9 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
         String(notes || '').trim().slice(0, 800),
         status,
         priority,
-        String(dueDate || '').trim().slice(0, 32),
+        cleanDueDate,
+        cleanDueTime,
+        reminderConfigJson,
         JSON.stringify(selfAssignee),
         JSON.stringify(initialCompletedBy),
         req.user.id,
@@ -1795,13 +1829,22 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
   const priority = VALID_TASK_PRIORITIES.has(rawPriority) ? rawPriority : 'medium';
   const taskId = `tsk_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
   const nowIso = new Date().toISOString();
+  const sharedReminderJson = buildUpdatedReminderConfigJson({
+    existingRawJson: '{}',
+    incomingReminder: rawReminder,
+    dueDate: cleanDueDate,
+    dueTime: cleanDueTime,
+    actorUserId: req.user.id,
+    isPersonalOrBoardOwner: true,
+  });
 
   await privExecute(
     `INSERT INTO club_tasks (
        id, clubId, sectionId, title, notes, visibility, audience,
-       status, priority, dueDate, assigneesJson, groupIdsJson, completedByJson,
+       status, priority, dueDate, dueTime, reminderConfigJson,
+       assigneesJson, groupIdsJson, completedByJson,
        position, createdByUserId, createdByName, createdAt, updatedAt
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 0, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 0, ?, ?, ?, ?)`,
     [
       taskId,
       clubId,
@@ -1812,7 +1855,9 @@ router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
       audience,
       status,
       priority,
-      String(dueDate || '').trim().slice(0, 32),
+      cleanDueDate,
+      cleanDueTime,
+      sharedReminderJson,
       JSON.stringify(resolvedAssignees),
       JSON.stringify(finalGroupIds),
       req.user.id,
@@ -1843,7 +1888,7 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
   );
   if (!rawRow) return res.status(404).json({ error: 'Task not found.' });
 
-  const task = formatTaskRow(rawRow);
+  const task = formatTaskRow(rawRow, req.user.id);
   const nowIso = new Date().toISOString();
   const body = req.body || {};
 
@@ -1863,8 +1908,18 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
       typeof body.notes === 'string' ? body.notes.trim().slice(0, 800) : task.notes;
     const nextPriority =
       body.priority && VALID_TASK_PRIORITIES.has(body.priority) ? body.priority : task.priority;
-    const nextDueDate =
-      typeof body.dueDate === 'string' ? body.dueDate.trim().slice(0, 32) : task.dueDate;
+
+    const rawNextDueDate = typeof body.dueDate === 'string' ? body.dueDate : task.dueDate;
+    const rawNextDueTime =
+      typeof body.dueTime === 'string'
+        ? body.dueTime
+        : body.dueDate === ''
+          ? ''
+          : task.dueTime;
+    const { dueDate: nextDueDate, dueTime: nextDueTime } = normalizeDueDateAndTime(
+      rawNextDueDate,
+      rawNextDueTime
+    );
 
     let nextStatus = task.status;
     let nextCompletedBy = [...task.completedBy];
@@ -1901,10 +1956,21 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
       }
     }
 
+    const nextReminderJson = buildUpdatedReminderConfigJson({
+      existingRawJson: rawRow.reminderConfigJson || '{}',
+      incomingReminder: body.reminder,
+      dueDate: nextDueDate,
+      dueTime: nextDueTime,
+      actorUserId: req.user.id,
+      isPersonalOrBoardOwner: true,
+      reopenedFromDone: task.status === 'done' && nextStatus !== 'done',
+    });
+
     await privExecute(
       `UPDATE club_tasks
           SET sectionId = ?, title = ?, notes = ?, visibility = 'personal', audience = 'personal',
-              status = ?, priority = ?, dueDate = ?, completedByJson = ?, updatedAt = ?
+              status = ?, priority = ?, dueDate = ?, dueTime = ?, reminderConfigJson = ?,
+              completedByJson = ?, updatedAt = ?
         WHERE id = ? AND clubId = ? AND createdByUserId = ?`,
       [
         nextSectionId,
@@ -1913,6 +1979,8 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
         nextStatus,
         nextPriority,
         nextDueDate,
+        nextDueTime,
+        nextReminderJson,
         JSON.stringify(nextCompletedBy),
         nowIso,
         task.id,
@@ -1930,13 +1998,14 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Board leadership permissions required for board tasks.' });
   }
 
-  // Regular Member RBAC path: strictly scoped to own completion on general tasks OR status on tasks assigned to them / their groups
+  // Regular Member RBAC path: strictly scoped to own completion, assigned status, or own personal reminder override
   if (!perm.isBoard) {
     const forbiddenFields = [
       'title',
       'notes',
       'priority',
       'dueDate',
+      'dueTime',
       'visibility',
       'audience',
       'assignees',
@@ -1961,15 +2030,16 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
     const isGroupAssigned = task.groupIds.some(gid => perm.groupIds.includes(gid));
     const canModifyTargeted = isDirectlyAssigned || isGroupAssigned;
 
+    if (task.audience !== 'general' && !canModifyTargeted) {
+      return res.status(403).json({
+        error: 'This task is assigned to specific members or groups.',
+      });
+    }
+
     let nextStatus = task.status;
     let nextCompletedBy = [...task.completedBy];
 
     if (body.toggleCompletedForSelf) {
-      if (task.audience !== 'general' && !canModifyTargeted) {
-        return res.status(403).json({
-          error: 'This task is assigned to specific members or groups.',
-        });
-      }
       const alreadyIdx = nextCompletedBy.findIndex(c => c.userId === req.user.id);
       if (alreadyIdx >= 0) {
         nextCompletedBy.splice(alreadyIdx, 1);
@@ -2009,9 +2079,23 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
       }
     }
 
+    const nextMemberReminderJson =
+      body.reminder !== undefined
+        ? buildUpdatedReminderConfigJson({
+            existingRawJson: rawRow.reminderConfigJson || '{}',
+            incomingReminder: body.reminder,
+            dueDate: task.dueDate,
+            dueTime: task.dueTime,
+            actorUserId: req.user.id,
+            isPersonalOrBoardOwner: false,
+          })
+        : rawRow.reminderConfigJson || '{}';
+
     await privExecute(
-      `UPDATE club_tasks SET status = ?, completedByJson = ?, updatedAt = ? WHERE id = ?`,
-      [nextStatus, JSON.stringify(nextCompletedBy), nowIso, task.id]
+      `UPDATE club_tasks
+          SET status = ?, completedByJson = ?, reminderConfigJson = ?, updatedAt = ?
+        WHERE id = ?`,
+      [nextStatus, JSON.stringify(nextCompletedBy), nextMemberReminderJson, nowIso, task.id]
     );
 
     const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
@@ -2031,8 +2115,19 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
     body.status && VALID_TASK_STATUSES.has(body.status) ? body.status : task.status;
   const nextPriority =
     body.priority && VALID_TASK_PRIORITIES.has(body.priority) ? body.priority : task.priority;
-  const nextDueDate =
-    typeof body.dueDate === 'string' ? body.dueDate.trim().slice(0, 32) : task.dueDate;
+
+  const rawBoardDueDate = typeof body.dueDate === 'string' ? body.dueDate : task.dueDate;
+  const rawBoardDueTime =
+    typeof body.dueTime === 'string'
+      ? body.dueTime
+      : body.dueDate === ''
+        ? ''
+        : task.dueTime;
+  const { dueDate: nextDueDate, dueTime: nextDueTime } = normalizeDueDateAndTime(
+    rawBoardDueDate,
+    rawBoardDueTime
+  );
+
   const nextSectionId =
     typeof body.sectionId === 'string' && body.sectionId ? body.sectionId : task.sectionId;
   let nextVisibility =
@@ -2082,10 +2177,20 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
     else nextCompletedBy.push({ userId: req.user.id, name: req.user.fullName, completedAt: nowIso });
   }
 
+  const nextBoardReminderJson = buildUpdatedReminderConfigJson({
+    existingRawJson: rawRow.reminderConfigJson || '{}',
+    incomingReminder: body.reminder,
+    dueDate: nextDueDate,
+    dueTime: nextDueTime,
+    actorUserId: req.user.id,
+    isPersonalOrBoardOwner: true,
+    reopenedFromDone: task.status === 'done' && nextStatus !== 'done',
+  });
+
   await privExecute(
     `UPDATE club_tasks
         SET sectionId = ?, title = ?, notes = ?, visibility = ?, audience = ?,
-            status = ?, priority = ?, dueDate = ?,
+            status = ?, priority = ?, dueDate = ?, dueTime = ?, reminderConfigJson = ?,
             assigneesJson = ?, groupIdsJson = ?, completedByJson = ?, updatedAt = ?
       WHERE id = ? AND clubId = ?`,
     [
@@ -2097,6 +2202,8 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
       nextStatus,
       nextPriority,
       nextDueDate,
+      nextDueTime,
+      nextBoardReminderJson,
       JSON.stringify(nextAssignees),
       JSON.stringify(nextGroupIds),
       JSON.stringify(nextCompletedBy),
@@ -2109,6 +2216,119 @@ router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
   const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
   const updatedTask = payload.tasks.find(t => t.id === task.id) || null;
   res.json({ ok: true, task: updatedTask, ...payload });
+});
+
+router.post('/clubs/:clubId/tasks/:taskId/remind', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isMember && !perm.isBoard) {
+    return res.status(403).json({
+      error: 'Club membership required.',
+      code: 'NOT_CLUB_MEMBER',
+    });
+  }
+
+  const rawRow = await privQueryGet(
+    `SELECT * FROM club_tasks WHERE id = ? AND clubId = ?`,
+    [req.params.taskId, clubId]
+  );
+  if (!rawRow) return res.status(404).json({ error: 'Task not found.' });
+
+  if (rawRow.visibility === 'personal' && rawRow.createdByUserId !== req.user.id) {
+    return res.status(403).json({
+      error: 'Personal tasks are private and can only be accessed by their creator.',
+    });
+  }
+  if (!perm.isBoard && (rawRow.visibility === 'board' || rawRow.audience === 'board')) {
+    return res.status(403).json({ error: 'Board leadership permissions required.' });
+  }
+
+  const task = formatTaskRow(rawRow, req.user.id);
+  if (!perm.isBoard && rawRow.visibility !== 'personal' && task.audience !== 'general') {
+    const userEmailLower = normalizeEmail(req.user.email);
+    const isAssigned = task.assignees.some(
+      a =>
+        (a.userId && a.userId === req.user.id) ||
+        (a.email && normalizeEmail(a.email) === userEmailLower)
+    );
+    const isGroup = task.groupIds.some(gid => perm.groupIds.includes(gid));
+    if (!isAssigned && !isGroup) {
+      return res.status(403).json({ error: 'You do not have access to this targeted task.' });
+    }
+  }
+
+  const {
+    channels = null,
+    webhookUrl = '',
+    recipientEmail = '',
+    accountKey = '',
+    url = '',
+    markAutoSent = false,
+  } = req.body || {};
+
+  const cfgObj = parseJsonSafe(rawRow.reminderConfigJson, {});
+  const isOwnerOrBoard = rawRow.visibility === 'personal' || perm.isBoard;
+  const activeEntry =
+    !isOwnerOrBoard && cfgObj.userReminders?.[req.user.id]
+      ? cfgObj.userReminders[req.user.id]
+      : cfgObj;
+
+  const dispatchOut = await dispatchTaskReminderChannels({
+    task: rawRow,
+    clubId,
+    targetUser: req.user,
+    reminderEntry: activeEntry,
+    channelsOverride: Array.isArray(channels) ? channels : null,
+    webhookUrlOverride: webhookUrl,
+    recipientEmailOverride: recipientEmail,
+    accountKey,
+    url,
+  });
+
+  const nowIso = new Date().toISOString();
+  if (!isOwnerOrBoard && cfgObj.userReminders) {
+    const prevU = cfgObj.userReminders[req.user.id] || {};
+    cfgObj.userReminders[req.user.id] = {
+      ...prevU,
+      lastManualSentAt: nowIso,
+      ...(markAutoSent ? { sentAt: nowIso } : {}),
+    };
+  } else {
+    cfgObj.lastManualSentAt = nowIso;
+    if (markAutoSent) cfgObj.sentAt = nowIso;
+  }
+
+  await privExecute(
+    `UPDATE club_tasks SET reminderConfigJson = ?, updatedAt = ? WHERE id = ?`,
+    [JSON.stringify(cfgObj), nowIso, rawRow.id]
+  );
+
+  const boardPayload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  const updatedTask =
+    rawRow.visibility === 'personal'
+      ? boardPayload.personalTasks.find(t => t.id === rawRow.id) || null
+      : boardPayload.tasks.find(t => t.id === rawRow.id) || null;
+
+  res.json({
+    ok: true,
+    anyDelivered: dispatchOut.anyDelivered,
+    results: dispatchOut.results,
+    dueLabel: dispatchOut.dueLabel,
+    task: updatedTask,
+    ...boardPayload,
+  });
+});
+
+router.post('/tasks/reminders/check', requireAuth, async (req, res) => {
+  const { accountKey = '', markSentOnAttempt = false, nowIso = '' } = req.body || {};
+  const checkDate = nowIso && !Number.isNaN(new Date(nowIso).getTime()) ? new Date(nowIso) : new Date();
+  const out = await checkAndDispatchDueTaskReminders({
+    onlyUserId: req.user.id,
+    accountKey,
+    now: checkDate,
+    markSentOnAttempt: Boolean(markSentOnAttempt),
+  });
+  res.json({ ok: true, ...out });
 });
 
 router.delete('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
@@ -2155,8 +2375,16 @@ router.delete('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
 // ── 6. Board-Verified Club Announcements with Audience Shortcuts ──────
 
 router.get('/announcements', optionalAuth, async (req, res) => {
-  const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
+  if (!req.user) {
+    return res.json({ announcements: [] });
+  }
+
+  const overview = await getUserWorkspaceOverview(req.user);
   const perms = overview?.permissionsByClub || {};
+  const joinedClubKeys = Object.keys(perms).filter(cid => perms[cid]?.isMember);
+  if (joinedClubKeys.length === 0) {
+    return res.json({ announcements: [] });
+  }
 
   const rows = await privQueryAll(
     `SELECT * FROM club_announcements_private ORDER BY createdAt DESC LIMIT 100`
@@ -2164,8 +2392,6 @@ router.get('/announcements', optionalAuth, async (req, res) => {
 
   const visible = rows
     .filter(r => {
-      if (r.visibility === 'public') return true;
-      if (!req.user) return false;
       const p = perms[r.clubId];
       if (!p || !p.isMember) return false;
       if (r.visibility === 'board') return Boolean(p.isBoard);

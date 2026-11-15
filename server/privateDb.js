@@ -152,6 +152,8 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
     status           TEXT NOT NULL DEFAULT 'not_started',
     priority         TEXT NOT NULL DEFAULT 'medium',
     dueDate          TEXT NOT NULL DEFAULT '',
+    dueTime          TEXT NOT NULL DEFAULT '',
+    reminderConfigJson TEXT NOT NULL DEFAULT '{}',
     assigneesJson    TEXT NOT NULL DEFAULT '[]',
     groupIdsJson     TEXT NOT NULL DEFAULT '[]',
     completedByJson  TEXT NOT NULL DEFAULT '[]',
@@ -382,12 +384,14 @@ export async function ensurePrivateSchema() {
         turso,
         PRIVATE_SCHEMA_STATEMENTS.map(sql => ({ sql, params: [] }))
       );
-      const [tableInfo, userTableInfo] = await runTursoPipeline(turso, [
+      const [tableInfo, userTableInfo, taskTableInfo] = await runTursoPipeline(turso, [
         { sql: 'PRAGMA table_info(club_polls)', params: [] },
         { sql: 'PRAGMA table_info(users)', params: [] },
+        { sql: 'PRAGMA table_info(club_tasks)', params: [] },
       ]);
       const colNames = new Set((tableInfo?.rows || []).map(r => r.name));
       const userColNames = new Set((userTableInfo?.rows || []).map(r => r.name));
+      const taskColNames = new Set((taskTableInfo?.rows || []).map(r => r.name));
       const migrations = [];
       if (!colNames.has('archived')) {
         migrations.push({
@@ -404,6 +408,18 @@ export async function ensurePrivateSchema() {
       if (!userColNames.has('themeMode')) {
         migrations.push({
           sql: "ALTER TABLE users ADD COLUMN themeMode TEXT NOT NULL DEFAULT 'system'",
+          params: [],
+        });
+      }
+      if (!taskColNames.has('dueTime')) {
+        migrations.push({
+          sql: "ALTER TABLE club_tasks ADD COLUMN dueTime TEXT NOT NULL DEFAULT ''",
+          params: [],
+        });
+      }
+      if (!taskColNames.has('reminderConfigJson')) {
+        migrations.push({
+          sql: "ALTER TABLE club_tasks ADD COLUMN reminderConfigJson TEXT NOT NULL DEFAULT '{}'",
           params: [],
         });
       }
@@ -436,6 +452,18 @@ export async function ensurePrivateSchema() {
     );
     if (!userCols.has('themeMode')) {
       db.exec("ALTER TABLE users ADD COLUMN themeMode TEXT NOT NULL DEFAULT 'system'");
+    }
+    const taskCols = new Set(
+      db
+        .prepare('PRAGMA table_info(club_tasks)')
+        .all()
+        .map(c => c.name)
+    );
+    if (!taskCols.has('dueTime')) {
+      db.exec("ALTER TABLE club_tasks ADD COLUMN dueTime TEXT NOT NULL DEFAULT ''");
+    }
+    if (!taskCols.has('reminderConfigJson')) {
+      db.exec("ALTER TABLE club_tasks ADD COLUMN reminderConfigJson TEXT NOT NULL DEFAULT '{}'");
     }
     if (!activeDbPathOverride && isServerSupabaseConfigured()) {
       await hydrateInMemoryDbFromSupabase(db);

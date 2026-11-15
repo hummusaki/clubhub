@@ -1,17 +1,20 @@
 import { useMemo } from 'react'
 import { ExternalLink, ArrowRight } from 'lucide-react'
-import { announcements as defaultAnnouncements } from '../data/sampleData'
 import { Card, BubbleTag, IconBadge, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 import { filterAndRankBySearch } from '../utils/search'
 
 export default function Announcements({
   items,
+  joinedCount = 0,
   userSettings = {},
   searchQuery = '',
   onNav,
 }) {
-  const base = items && items.length > 0 ? items : defaultAnnouncements
+  const base = useMemo(
+    () => (joinedCount > 0 && Array.isArray(items) ? items : []),
+    [joinedCount, items]
+  )
   const channels = userSettings?.channels || {}
 
   const announcements = useMemo(() => {
@@ -141,9 +144,27 @@ export default function Announcements({
               )
             })}
           </div>
+        ) : joinedCount === 0 ? (
+          <div className="py-7 px-3 text-center space-y-3">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+              You&apos;re not in any clubs yet. Join a club to receive incoming announcements and updates.
+            </p>
+            {onNav && (
+              <button
+                type="button"
+                onClick={() => onNav('clubs', { section: 'discover' })}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none"
+              >
+                <span>Browse Clubs</span>
+                <ArrowRight size={13} />
+              </button>
+            )}
+          </div>
         ) : (
           <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-            No matching announcements for your enabled channels.
+            {searchQuery.trim()
+              ? 'No matching announcements in your joined clubs.'
+              : 'No announcements from your joined clubs yet.'}
           </div>
         )}
       </div>

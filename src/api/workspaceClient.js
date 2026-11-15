@@ -13,7 +13,10 @@ import {
   signInOrSignUpWithSupabase,
   signOutSupabase,
 } from '../lib/supabaseClient'
-import { handleDirectWorkspaceAction } from './supabaseDirectWorkspace'
+import {
+  handleDirectWorkspaceAction,
+  clearDirectUserProfileCache,
+} from './supabaseDirectWorkspace'
 import { handleDirectTasksAction, handleDirectPollAction } from './supabaseDirectTasksAndPolls'
 
 const permissionRevokedListeners = new Set()
@@ -35,16 +38,26 @@ function notifyPermissionChange(detail) {
 
 let clerkAutoSyncPromise = null
 
-export async function ensureWorkspaceAuthReady(fallbackUser = null) {
+export async function ensureWorkspaceAuthReady(
+  fallbackUser = null,
+  { forceRefresh = false } = {}
+) {
+  const previousToken = getApiSessionToken()
+  if (forceRefresh && previousToken) {
+    setApiSessionToken('')
+  }
+
   if (isSupabaseConfigured()) {
     const sbToken = await getSupabaseAccessToken()
-    if (sbToken) {
+    if (sbToken && (!forceRefresh || sbToken !== previousToken)) {
       setApiSessionToken(sbToken)
       return sbToken
     }
   }
-  const existingToken = getApiSessionToken()
-  if (existingToken) return existingToken
+
+  if (!forceRefresh && previousToken) {
+    return previousToken
+  }
 
   const extUser =
     (typeof window !== 'undefined' ? window.Clerk?.user : null) || fallbackUser || null
@@ -93,12 +106,26 @@ function isMissingBackendEndpoint(res) {
   return Boolean(res?.offline || (res?.status === 404 && !res?.data?.error))
 }
 
+const AUTH_SKIP_PATHS = new Set(['/auth/sync-external', '/auth/session', '/auth/logout'])
+
 async function workspaceRequest(path, options = {}) {
-  if (path !== '/auth/sync-external' && path !== '/auth/session') {
+  const skipAuthBootstrap = AUTH_SKIP_PATHS.has(path)
+  if (!skipAuthBootstrap) {
     await ensureWorkspaceAuthReady()
   }
 
   let res = await fetchActionJSON(`/workspace${path}`, options)
+
+  // Transparently refresh stale in-memory Express sessions (`ch_sess_...`) after server restarts
+  if (!res.ok && res.status === 401 && !skipAuthBootstrap) {
+    const refreshed = await ensureWorkspaceAuthReady(null, { forceRefresh: true })
+    if (refreshed) {
+      res = await fetchActionJSON(`/workspace${path}`, options)
+    } else {
+      setApiSessionToken('')
+      res = { ...res, sessionExpired: true }
+    }
+  }
 
   // Serverless GitHub Pages / standalone fallback: talk directly to Supabase Cloud!
   if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
@@ -114,13 +141,23 @@ async function workspaceRequest(path, options = {}) {
     }
   }
 
-  if (!res.ok && (res.status === 401 || res.status === 403)) {
-    notifyPermissionChange({
-      status: res.status,
-      code: res.code || (res.status === 403 ? 'PERMISSION_DENIED' : 'UNAUTHENTICATED'),
-      error: res.error,
-      path,
-    })
+  if (!res.ok && !skipAuthBootstrap) {
+    if (res.status === 403 && res.code !== 'NOT_CLUB_MEMBER') {
+      notifyPermissionChange({
+        status: 403,
+        code: res.code || 'PERMISSION_DENIED',
+        error: res.error,
+        path,
+      })
+    } else if (res.status === 401) {
+      notifyPermissionChange({
+        status: 401,
+        sessionExpired: true,
+        code: res.code || 'UNAUTHENTICATED',
+        error: res.error,
+        path,
+      })
+    }
   }
   return res
 }
@@ -200,9 +237,10 @@ export async function getWorkspaceStatus() {
   return workspaceRequest('/status')
 }
 
-export async function getWorkspaceMe() {
-  await ensureWorkspaceAuthReady()
-  if (!getApiSessionToken() && !isSupabaseConfigured()) {
+export async function getWorkspaceMe(fallbackUser = null) {
+  await ensureWorkspaceAuthReady(fallbackUser)
+  const hasClerkUser = typeof window !== 'undefined' && Boolean(window.Clerk?.user?.id)
+  if (!getApiSessionToken() && !hasClerkUser) {
     return { ok: false, unauthenticated: true }
   }
   return workspaceRequest('/auth/me')
@@ -215,6 +253,7 @@ export const updateWorkspaceProfile = payload =>
   })
 
 export async function logoutWorkspaceSession() {
+  clearDirectUserProfileCache()
   await signOutSupabase()
   if (getApiSessionToken()) {
     await workspaceRequest('/auth/logout', { method: 'POST' }).catch(() => {})
@@ -340,89 +379,130 @@ export const deleteClubTask = (clubId, taskId) =>
     { method: 'DELETE' }
   )
 
+export const sendClubTaskReminder = (clubId, taskId, payload = {}) =>
+  workspaceRequest(
+    `/clubs/${encodeURIComponent(clubId)}/tasks/${encodeURIComponent(taskId)}/remind`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  )
+
+export const checkDueTaskReminders = (payload = {}) =>
+  workspaceRequest('/tasks/reminders/check', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
 // ── 6. Poll Action Helpers (Returning Structured Errors / RBAC Status) ──
 
-export const createVerifiedPoll = async (payload, fallbackUser = null) => {
+async function schedulerActionRequest(path, options = {}, fallbackUser = null) {
   await ensureWorkspaceAuthReady(fallbackUser)
-  const res = await fetchActionJSON('/scheduler/polls', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
+  let res = await fetchActionJSON(path, options)
+
+  // Transparently refresh stale in-memory Express sessions (`ch_sess_...`) after server restarts
+  if (!res.ok && res.status === 401) {
+    const refreshed = await ensureWorkspaceAuthReady(fallbackUser, { forceRefresh: true })
+    if (refreshed) {
+      res = await fetchActionJSON(path, options)
+    } else {
+      setApiSessionToken('')
+      res = { ...res, sessionExpired: true }
+    }
+  }
+
+  // Serverless GitHub Pages / standalone fallback: talk directly to Supabase Cloud!
   if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
-    return (await handleDirectPollAction('/scheduler/polls', {
+    const directRes = await handleDirectPollAction(path, options)
+    if (directRes) res = directRes
+  } else if (res.offline && !isSupabaseConfigured()) {
+    res = {
+      ...res,
+      error:
+        'Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to GitHub Repository Secrets (or run `npm run dev:full` locally) to create and share availability polls.',
+    }
+  }
+
+  if (!res.ok) {
+    if (res.status === 403) {
+      notifyPermissionChange({
+        status: 403,
+        code: res.code || 'PERMISSION_DENIED',
+        error: res.error,
+        path,
+      })
+    } else if (res.status === 401) {
+      notifyPermissionChange({
+        status: 401,
+        sessionExpired: true,
+        code: res.code || 'UNAUTHENTICATED',
+        error: res.error,
+        path,
+      })
+    }
+  }
+
+  // Normalize top-level Express poll JSON (`res.id`) and wrapped responses (`res.data.id` / `res.poll.id`)
+  if (res?.ok) {
+    const pollObj = res.data?.id ? res.data : res.poll?.id ? res.poll : res.id ? res : null
+    if (pollObj) {
+      return {
+        ...pollObj,
+        ...res,
+        data: pollObj,
+        poll: pollObj,
+      }
+    }
+  }
+
+  return res
+}
+
+export const createVerifiedPoll = (payload, fallbackUser = null) =>
+  schedulerActionRequest(
+    '/scheduler/polls',
+    {
       method: 'POST',
       body: JSON.stringify(payload),
-    })) || res
-  }
-  return res
-}
+    },
+    fallbackUser
+  )
 
-export const inviteShortcutsToPoll = async (pollId, payload, fallbackUser = null) => {
-  await ensureWorkspaceAuthReady(fallbackUser)
-  const path = `/scheduler/polls/${encodeURIComponent(pollId)}/invite`
-  const bodyStr = JSON.stringify(payload)
-  const res = await fetchActionJSON(path, {
-    method: 'POST',
-    body: bodyStr,
-  })
-  if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
-    return (
-      (await handleDirectPollAction(path, {
-        method: 'POST',
-        body: bodyStr,
-      })) || res
-    )
-  }
-  return res
-}
-
-export const submitVerifiedPollResponse = async (pollId, payload, fallbackUser = null) => {
-  await ensureWorkspaceAuthReady(fallbackUser)
-  const path = `/scheduler/polls/${encodeURIComponent(pollId)}/respond`
-  const res = await fetchActionJSON(path, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-  if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
-    return (await handleDirectPollAction(path, {
+export const inviteShortcutsToPoll = (pollId, payload, fallbackUser = null) =>
+  schedulerActionRequest(
+    `/scheduler/polls/${encodeURIComponent(pollId)}/invite`,
+    {
       method: 'POST',
       body: JSON.stringify(payload),
-    })) || res
-  }
-  return res
-}
+    },
+    fallbackUser
+  )
 
-export const archiveVerifiedPoll = async (pollId, archived = true, fallbackUser = null) => {
-  await ensureWorkspaceAuthReady(fallbackUser)
-  const path = `/scheduler/polls/${encodeURIComponent(pollId)}/archive`
-  const bodyStr = JSON.stringify({ archived: Boolean(archived) })
-  const res = await fetchActionJSON(path, {
-    method: 'PATCH',
-    body: bodyStr,
-  })
-  if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
-    return (
-      (await handleDirectPollAction(path, {
-        method: 'PATCH',
-        body: bodyStr,
-      })) || res
-    )
-  }
-  return res
-}
+export const submitVerifiedPollResponse = (pollId, payload, fallbackUser = null) =>
+  schedulerActionRequest(
+    `/scheduler/polls/${encodeURIComponent(pollId)}/respond`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    fallbackUser
+  )
 
-export const deleteVerifiedPoll = async (pollId, fallbackUser = null) => {
-  await ensureWorkspaceAuthReady(fallbackUser)
-  const path = `/scheduler/polls/${encodeURIComponent(pollId)}`
-  const res = await fetchActionJSON(path, {
-    method: 'DELETE',
-  })
-  if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
-    return (
-      (await handleDirectPollAction(path, {
-        method: 'DELETE',
-      })) || res
-    )
-  }
-  return res
-}
+export const archiveVerifiedPoll = (pollId, archived = true, fallbackUser = null) =>
+  schedulerActionRequest(
+    `/scheduler/polls/${encodeURIComponent(pollId)}/archive`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ archived: Boolean(archived) }),
+    },
+    fallbackUser
+  )
+
+export const deleteVerifiedPoll = (pollId, fallbackUser = null) =>
+  schedulerActionRequest(
+    `/scheduler/polls/${encodeURIComponent(pollId)}`,
+    {
+      method: 'DELETE',
+    },
+    fallbackUser
+  )

@@ -12,6 +12,7 @@ import {
   getDb,
   closeDb,
   upsertCollectorData,
+  pruneNonEventsFromDb,
   getAllCollectorData,
   getDictionary,
   getStats,
@@ -120,10 +121,16 @@ async function main() {
     `);
   }
 
-  // Prune bogus historical false-positive event dates (e.g. anniversary captions parsed as 1991/2003)
+  // Prune bogus historical dates, deadlines, campaigns, recaps, cancellations, and non-events on every 2-hour sync
   db.exec(`
     DELETE FROM events WHERE start < '2024-01-01' OR start > '2030-01-01';
   `);
+  const pruned = pruneNonEventsFromDb({ reextractRulePosts: true });
+  if (pruned.removed > 0 || pruned.updated > 0) {
+    console.log(
+      `🧹 Filtered non-events & cleaned metadata (${pruned.removed} non-event/duplicate row(s) removed, ${pruned.updated} event(s) tidied across ${pruned.clubsUpdated} club(s)).`
+    );
+  }
 
   const collectorData = getAllCollectorData();
   collectorData.errors = (collectorData.errors || []).filter(

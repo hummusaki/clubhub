@@ -4,6 +4,9 @@ import {
   Check,
   CheckSquare,
   Calendar,
+  Bell,
+  BellOff,
+  Send,
   Layers,
   Lock,
   Search,
@@ -12,6 +15,21 @@ import {
 } from 'lucide-react'
 import { Avatar, SectionHeader, cleanText } from './ui'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
+import { DateInputField, TimePickerSelect } from './TimePickerSelect'
+import {
+  getLocalYmd,
+  addDaysYmd,
+  normalizeTime24h,
+  formatClockTime,
+  formatSmartDueDate,
+  isTaskOverdue,
+  REMINDER_OFFSET_OPTIONS,
+  buildClientReminderPayload,
+  computeTaskDueDateObj,
+} from '../utils/taskReminders'
+import { isValidDiscordWebhookUrl } from '../utils/directIntegrations'
+
+export { getLocalYmd, addDaysYmd, formatClockTime, formatSmartDueDate, isTaskOverdue }
 
 export const TASK_STATUS_META = {
   not_started: {
@@ -91,59 +109,6 @@ export const SECTION_INK_META = {
   red: 'var(--red-ink)',
 }
 
-export function getLocalYmd(dateObj = new Date()) {
-  const y = dateObj.getFullYear()
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0')
-  const d = String(dateObj.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-export function addDaysYmd(days) {
-  const dt = new Date()
-  dt.setDate(dt.getDate() + days)
-  return getLocalYmd(dt)
-}
-
-export function formatSmartDueDate(ymd, isDone = false) {
-  if (!ymd) return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd).trim())
-  if (!match) return { label: ymd, tone: 'neutral' }
-  const target = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000)
-
-  if (isDone) {
-    return {
-      label: target.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      tone: 'done',
-    }
-  }
-  if (diffDays < 0) {
-    const abs = Math.abs(diffDays)
-    return {
-      label: abs === 1 ? 'Yesterday · Overdue' : `${abs}d overdue`,
-      tone: 'overdue',
-    }
-  }
-  if (diffDays === 0) return { label: 'Due Today', tone: 'soon' }
-  if (diffDays === 1) return { label: 'Tomorrow', tone: 'soon' }
-  if (diffDays <= 6) {
-    return {
-      label: target.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-      }),
-      tone: 'upcoming',
-    }
-  }
-  return {
-    label: target.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    tone: 'neutral',
-  }
-}
-
 export default function TaskModal({
   clubName = '',
   sections = [],
@@ -152,7 +117,14 @@ export default function TaskModal({
   clubPeople = null,
   initialTask = null,
   defaultSectionId = '',
+  reminderDefaults = null,
+  integrationSummary = null,
+  accountEmail = '',
+  timeFormat = '12h',
   busy = false,
+  sendingReminder = false,
+  onSaveIntegrationChannelPrefs,
+  onSendReminderNow,
   onClose,
   onSubmit,
 }) {
@@ -184,6 +156,42 @@ export default function TaskModal({
   const [status, setStatus] = useState(initialTask?.status || 'not_started')
   const [priority, setPriority] = useState(initialTask?.priority || 'medium')
   const [dueDate, setDueDate] = useState(initialTask?.dueDate || '')
+  const [dueTime, setDueTime] = useState(() => normalizeTime24h(initialTask?.dueTime || ''))
+
+  // Optional Reminder state ("if needed")
+  const [reminderEnabled, setReminderEnabled] = useState(() => {
+    if (initialTask?.reminder?.enabled !== undefined) {
+      return Boolean(initialTask.reminder.enabled)
+    }
+    return Boolean(reminderDefaults?.autoRemindTimedTasks && initialTask?.dueDate)
+  })
+  const [reminderOffset, setReminderOffset] = useState(() => {
+    if (initialTask?.reminder?.offsetMinutes !== undefined) {
+      return Number(initialTask.reminder.offsetMinutes)
+    }
+    return Number(reminderDefaults?.defaultOffsetMinutes ?? 60)
+  })
+  const [reminderChannels, setReminderChannels] = useState(() => {
+    if (
+      Array.isArray(initialTask?.reminder?.channels) &&
+      initialTask.reminder.channels.length > 0
+    ) {
+      return initialTask.reminder.channels
+    }
+    return Array.isArray(reminderDefaults?.defaultChannels) &&
+      reminderDefaults.defaultChannels.length > 0
+      ? reminderDefaults.defaultChannels
+      : ['discord', 'email']
+  })
+  const [customEmail, setCustomEmail] = useState(
+    () =>
+      initialTask?.reminder?.recipientEmail ||
+      integrationSummary?.recipientEmail ||
+      accountEmail ||
+      ''
+  )
+  const [customWebhook, setCustomWebhook] = useState('')
+  const [showChannelInputs, setShowChannelInputs] = useState(false)
 
   const [selectedShortcuts, setSelectedShortcuts] = useState([])
   const [selectedGroupIds, setSelectedGroupIds] = useState(() => initialTask?.groupIds || [])
@@ -207,15 +215,73 @@ export default function TaskModal({
     return [...sections, ...personalSections]
   }, [lockToPersonal, scopeMode, sections, personalSections])
 
-  const quickDatePresets = useMemo(
-    () => [
-      { label: 'Today', value: getLocalYmd() },
-      { label: 'Tomorrow', value: addDaysYmd(1) },
-      { label: '+3 Days', value: addDaysYmd(3) },
-      { label: 'Next Week', value: addDaysYmd(7) },
-    ],
-    []
+  const reminderFirePreview = useMemo(() => {
+    if (!dueDate || !reminderEnabled) return ''
+    const baseDt = computeTaskDueDateObj(dueDate, dueTime, 9)
+    if (!baseDt || Number.isNaN(baseDt.getTime())) return ''
+    const fireDt = new Date(baseDt.getTime() - Number(reminderOffset || 0) * 60_000)
+    return fireDt.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: timeFormat !== '24h',
+    })
+  }, [dueDate, dueTime, reminderEnabled, reminderOffset, timeFormat])
+
+  const discordReady = Boolean(
+    integrationSummary?.discordReady || isValidDiscordWebhookUrl(customWebhook)
   )
+  const emailReady = Boolean(
+    integrationSummary?.emailReady || String(customEmail || accountEmail || '').includes('@')
+  )
+
+  function applyDueDateAndTime(nextDate, nextTime = dueTime) {
+    const cleanTime = nextDate ? normalizeTime24h(nextTime) : ''
+    setDueDate(nextDate)
+    setDueTime(cleanTime)
+    if (!nextDate) {
+      setReminderEnabled(false)
+    } else if (!dueDate && reminderDefaults?.autoRemindTimedTasks && cleanTime) {
+      setReminderEnabled(true)
+    }
+  }
+
+  function handleDueTimeChange(rawTime) {
+    const cleanTime = normalizeTime24h(rawTime)
+    if (!cleanTime) {
+      setDueTime('')
+      return
+    }
+    // Never fail if the user picks a time before picking a date — default Date to Today
+    const effectiveDate = dueDate || getLocalYmd()
+    if (!dueDate) setDueDate(effectiveDate)
+    setDueTime(cleanTime)
+    if (reminderDefaults?.autoRemindTimedTasks && !reminderEnabled) {
+      setReminderEnabled(true)
+    }
+  }
+
+  function handleToggleReminderSwitch() {
+    if (reminderEnabled) {
+      setReminderEnabled(false)
+      return
+    }
+    if (!dueDate) {
+      setDueDate(getLocalYmd())
+      if (!dueTime) setDueTime('17:00')
+    }
+    setReminderEnabled(true)
+  }
+
+  function toggleReminderChannel(ch) {
+    setReminderChannels(prev => {
+      const exists = prev.includes(ch)
+      if (exists && prev.length === 1) return prev
+      return exists ? prev.filter(x => x !== ch) : [...prev, ch]
+    })
+  }
 
   function handleScopeModeSelect(nextMode) {
     setScopeMode(nextMode)
@@ -306,6 +372,26 @@ export default function TaskModal({
     e.preventDefault()
     if (!title.trim() || busy) return
 
+    const cleanWebhook = isValidDiscordWebhookUrl(customWebhook) ? customWebhook.trim() : ''
+    const cleanEmail = String(customEmail || '').trim()
+
+    if (onSaveIntegrationChannelPrefs && (cleanWebhook || cleanEmail)) {
+      onSaveIntegrationChannelPrefs({
+        ...(cleanWebhook ? { discordWebhookUrl: cleanWebhook } : {}),
+        ...(cleanEmail ? { recipientEmail: cleanEmail } : {}),
+      })
+    }
+
+    const reminderPayload = buildClientReminderPayload({
+      enabled: Boolean(reminderEnabled && dueDate),
+      dueDate,
+      dueTime,
+      offsetMinutes: reminderOffset,
+      channels: reminderChannels,
+      recipientEmail: cleanEmail,
+      discordWebhookUrl: cleanWebhook,
+    })
+
     if (isPersonalScope) {
       const resolvedPersonalSec =
         personalSections.find(s => s.id === sectionId) || personalSections[0] || null
@@ -318,6 +404,8 @@ export default function TaskModal({
         status,
         priority,
         dueDate,
+        dueTime: dueDate ? dueTime : '',
+        reminder: reminderPayload,
         visibility: 'personal',
         audience: 'personal',
         isPersonal: true,
@@ -339,6 +427,8 @@ export default function TaskModal({
       status,
       priority,
       dueDate,
+      dueTime: dueDate ? dueTime : '',
+      reminder: reminderPayload,
       visibility,
       audience,
       assignees: selectedAssignees,
@@ -373,6 +463,10 @@ export default function TaskModal({
       icon: Lock,
     },
   ]
+
+  const todayStr = getLocalYmd()
+  const tomorrowStr = addDaysYmd(1)
+  const nextWeekStr = addDaysYmd(7)
 
   return (
     <div
@@ -489,8 +583,8 @@ export default function TaskModal({
             </div>
           )}
 
-          {/* 3. List / Section + Smart Due Date Picker */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 3. Clean Labeled Dropdowns: List, Priority & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 {isPersonalScope ? 'Personal List' : 'Board Section'}
@@ -509,15 +603,15 @@ export default function TaskModal({
                   if (sec?.visibility === 'board') setScopeMode('board')
                   else if (scopeMode === 'personal') setScopeMode('general')
                 }}
-                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
               >
                 {selectableSections.map(s => (
                   <option key={s.id} value={s.id}>
-                    {cleanText(s.title)}{' '}
+                    {cleanText(s.title)}
                     {s.visibility === 'personal'
-                      ? '(Only You)'
+                      ? ' (Only You)'
                       : s.visibility === 'board'
-                        ? '(Board Only)'
+                        ? ' (Board Only)'
                         : ''}
                   </option>
                 ))}
@@ -525,129 +619,310 @@ export default function TaskModal({
             </div>
 
             <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-[var(--text-muted)]">
-                  Due Date <span className="font-normal text-[var(--text-light)]">(Optional)</span>
-                </label>
-                {dueDate && (
-                  <button
-                    type="button"
-                    onClick={() => setDueDate('')}
-                    className="text-[11px] font-semibold text-[var(--text-light)] hover:text-[var(--red-ink)] bg-transparent border-none cursor-pointer"
-                  >
-                    Clear date
-                  </button>
-                )}
-              </div>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              />
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                {quickDatePresets.map(preset => {
-                  const active = dueDate === preset.value
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => setDueDate(active ? '' : preset.value)}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border cursor-pointer transition-colors ${
-                        active
-                          ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                          : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <Calendar size={10} />
-                      <span>{preset.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Visual Clickable Priority & Status Pills */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Priority
               </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {Object.entries(TASK_PRIORITY_META).map(([k, meta]) => {
-                  const active = priority === k
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setPriority(k)}
-                      style={
-                        active
-                          ? {
-                              background: meta.bg,
-                              color: meta.color,
-                              borderColor: meta.dot,
-                            }
-                          : undefined
-                      }
-                      className={`min-h-[38px] px-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                        active
-                          ? 'shadow-2xs'
-                          : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ background: meta.dot }}
-                      />
-                      <span>{meta.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              <select
+                value={priority}
+                onChange={e => setPriority(e.target.value)}
+                aria-label="Task priority"
+                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+              >
+                {Object.entries(TASK_PRIORITY_META).map(([k, meta]) => (
+                  <option key={k} value={k}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Status
               </label>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(TASK_STATUS_META).map(([k, meta]) => {
-                  const active = status === k
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setStatus(k)}
-                      style={
-                        active
-                          ? {
-                              background: meta.bg,
-                              color: meta.color,
-                              borderColor: meta.dot,
-                            }
-                          : undefined
-                      }
-                      className={`min-h-[38px] px-2.5 rounded-xl text-xs font-bold border cursor-pointer transition-all inline-flex items-center gap-1.5 ${
-                        active
-                          ? 'shadow-2xs'
-                          : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ background: meta.dot }}
-                      />
-                      <span>{meta.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+                aria-label="Task status"
+                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+              >
+                {Object.entries(TASK_STATUS_META).map(([k, meta]) => (
+                  <option key={k} value={k}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* 5. One-Click Leadership Shortcuts & Assignee Pickers (for Shared Club Tasks) */}
+          {/* 4. Clean Due Date, Working Time Selector & Optional Reminder Card */}
+          <div className="content-tile p-4 rounded-2xl space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text)]">
+                <Calendar size={14} className="text-[var(--blue)]" />
+                <span>Due Date &amp; Time</span>
+                <span className="font-normal text-[var(--text-light)]">(Optional)</span>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="text-[var(--text-light)] hidden xs:inline">Quick set:</span>
+                <button
+                  type="button"
+                  onClick={() => applyDueDateAndTime(todayStr, dueTime)}
+                  className={`font-semibold bg-transparent border-none cursor-pointer hover:underline ${
+                    dueDate === todayStr ? 'text-[var(--blue-ink)] underline' : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  Today
+                </button>
+                <span className="text-[var(--border-strong)]">·</span>
+                <button
+                  type="button"
+                  onClick={() => applyDueDateAndTime(tomorrowStr, dueTime)}
+                  className={`font-semibold bg-transparent border-none cursor-pointer hover:underline ${
+                    dueDate === tomorrowStr ? 'text-[var(--blue-ink)] underline' : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  Tomorrow
+                </button>
+                <span className="text-[var(--border-strong)]">·</span>
+                <button
+                  type="button"
+                  onClick={() => applyDueDateAndTime(nextWeekStr, dueTime)}
+                  className={`font-semibold bg-transparent border-none cursor-pointer hover:underline ${
+                    dueDate === nextWeekStr ? 'text-[var(--blue-ink)] underline' : 'text-[var(--text-muted)]'
+                  }`}
+                >
+                  Next week
+                </button>
+                {(dueDate || dueTime) && (
+                  <>
+                    <span className="text-[var(--border-strong)]">·</span>
+                    <button
+                      type="button"
+                      onClick={() => applyDueDateAndTime('', '')}
+                      className="font-semibold text-[var(--red-ink)] bg-transparent border-none cursor-pointer hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Side-by-Side Date Input & 1-Click Time Selector */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                  Date
+                </label>
+                <DateInputField
+                  value={dueDate}
+                  onChange={nextDate => applyDueDateAndTime(nextDate, dueTime)}
+                  ariaLabel="Due date"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                  Time
+                </label>
+                <TimePickerSelect
+                  value={dueTime}
+                  onChange={handleDueTimeChange}
+                  timeFormat={timeFormat}
+                  placeholder="All day (no time)"
+                  ariaLabel="Due time"
+                />
+              </div>
+            </div>
+
+            {/* Optional Discord & Email Reminder Switch */}
+            <div className="pt-3 border-t border-[var(--border-subtle)] space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {reminderEnabled && dueDate ? (
+                    <Bell size={15} className="text-[var(--blue)] shrink-0" />
+                  ) : (
+                    <BellOff size={15} className="text-[var(--text-light)] shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-[var(--text)]">
+                      Reminder Notification
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)]">
+                      {reminderEnabled && dueDate
+                        ? reminderFirePreview
+                          ? `Scheduled for ${reminderFirePreview}`
+                          : 'Active before due time'
+                        : 'Get notified on Discord or Email before this task is due'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Standard Accessible Toggle Switch */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(reminderEnabled && dueDate)}
+                  aria-label="Toggle reminder notification"
+                  onClick={handleToggleReminderSwitch}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-none cursor-pointer transition-colors ${
+                    reminderEnabled && dueDate ? 'bg-[var(--blue)]' : 'bg-[var(--bg-subtle)]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4.5 w-4.5 rounded-full bg-[var(--switch-thumb)] shadow-xs transition-transform ${
+                      reminderEnabled && dueDate ? 'translate-x-5.5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {reminderEnabled && dueDate && (
+                <div className="space-y-3 pt-1 fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                        When to remind
+                      </label>
+                      <select
+                        value={reminderOffset}
+                        onChange={e => setReminderOffset(Number(e.target.value))}
+                        aria-label="Reminder timing"
+                        className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+                      >
+                        {REMINDER_OFFSET_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                        Notify via
+                      </span>
+                      <div className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center gap-3.5">
+                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={reminderChannels.includes('discord')}
+                            onChange={() => toggleReminderChannel('discord')}
+                            className="rounded accent-[var(--blue)]"
+                          />
+                          <span>Discord</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={reminderChannels.includes('email')}
+                            onChange={() => toggleReminderChannel('email')}
+                            className="rounded accent-[var(--blue)]"
+                          />
+                          <span>Email</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={reminderChannels.includes('browser')}
+                            onChange={() => toggleReminderChannel('browser')}
+                            className="rounded accent-[var(--blue)]"
+                          />
+                          <span>In-App</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Destination summary + optional inline webhook/email setup + optional Send Now */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowChannelInputs(v => !v)}
+                      className="font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+                    >
+                      {showChannelInputs
+                        ? 'Hide Discord / Email destination fields'
+                        : discordReady || emailReady
+                          ? 'Edit Discord webhook or email address'
+                          : 'Set Discord webhook or email address'}
+                    </button>
+
+                    {isEditing && onSendReminderNow && initialTask?.id && (
+                      <button
+                        type="button"
+                        disabled={sendingReminder || busy}
+                        onClick={() =>
+                          onSendReminderNow({
+                            ...initialTask,
+                            title: title.trim() || initialTask.title,
+                            notes: notes.trim(),
+                            dueDate,
+                            dueTime,
+                            priority,
+                            reminder: {
+                              ...(initialTask.reminder || {}),
+                              enabled: true,
+                              offsetMinutes: reminderOffset,
+                              channels: reminderChannels,
+                            },
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--blue-light)] text-[var(--text)] hover:text-[var(--blue-ink)] border border-[var(--border)] font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <Send size={11} />
+                        <span>{sendingReminder ? 'Sending…' : 'Send reminder now'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {(showChannelInputs ||
+                    (reminderChannels.includes('discord') && !discordReady) ||
+                    (reminderChannels.includes('email') && !emailReady)) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5 fade-in">
+                      {reminderChannels.includes('discord') && (
+                        <div>
+                          <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                            Discord Webhook URL{' '}
+                            {integrationSummary?.discordReady ? '(Connected ✓)' : ''}
+                          </label>
+                          <input
+                            type="url"
+                            value={customWebhook}
+                            onChange={e => setCustomWebhook(e.target.value)}
+                            placeholder={
+                              integrationSummary?.discordReady
+                                ? 'Using saved Discord webhook'
+                                : 'https://discord.com/api/webhooks/...'
+                            }
+                            className="w-full min-h-[36px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[#5865F2]"
+                          />
+                        </div>
+                      )}
+                      {reminderChannels.includes('email') && (
+                        <div>
+                          <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                            Reminder Email
+                          </label>
+                          <input
+                            type="email"
+                            value={customEmail}
+                            onChange={e => setCustomEmail(e.target.value)}
+                            placeholder="you@ucsc.edu"
+                            className="w-full min-h-[36px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. Leadership Shortcuts & Assignee Pickers (for Shared Club Tasks) */}
           {!isPersonalScope && clubPeople?.permission?.isBoard && (
             <LeadershipShortcutBar
               clubPeople={clubPeople}

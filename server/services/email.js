@@ -1684,9 +1684,70 @@ export class EmailService {
     url = '',
     events = [],
     poll = null,
+    task = null,
     attachIcs = true,
     customConfig = {},
   } = {}) {
+    if (kind === 'task_reminder' || task) {
+      const taskTitle = task?.title || title || 'Upcoming Task';
+      const priorityRaw = String(task?.priority || 'medium').toLowerCase();
+      const priorityLabel =
+        priorityRaw === 'critical'
+          ? 'Urgent'
+          : priorityRaw === 'high'
+            ? 'High'
+            : priorityRaw === 'low'
+              ? 'Low'
+              : 'Medium';
+      const dueStr =
+        task?.dueLabel ||
+        (task?.dueAtIso
+          ? new Date(task.dueAtIso).toLocaleString('en-US', {
+              timeZone: 'America/Los_Angeles',
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+          : [task?.dueDate, task?.dueTime].filter(Boolean).join(' at ') || 'Upcoming');
+      const scopeLabel =
+        task?.visibility === 'personal' || task?.isPersonal
+          ? 'Personal To-Do'
+          : task?.visibility === 'board'
+            ? 'Board Task'
+            : 'Club Task';
+      const subj = subject || `⏰ Reminder: ${taskTitle} (${clubName})`;
+      const notesText = String(task?.notes || message || '').trim();
+      const plain = [
+        `Task Reminder — ${clubName} (${scopeLabel})`,
+        `Task: ${taskTitle}`,
+        `Due: ${dueStr}`,
+        `Priority: ${priorityLabel}`,
+        notesText ? `Notes: ${notesText}` : '',
+        url ? `Open Task Board: ${url}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      const cardHtml = `<div style="padding:14px 16px;border-radius:12px;background:#f7f7f3;border:1px solid #e4e4dc;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#6b6b66;margin-bottom:4px;">${escapeHtml(clubName)} · ${escapeHtml(scopeLabel)}</div>
+        <div style="font-size:16px;font-weight:700;color:#111111;margin-bottom:8px;">${escapeHtml(taskTitle)}</div>
+        <div style="font-size:13px;color:#333330;"><strong>Due:</strong> ${escapeHtml(dueStr)} &nbsp;·&nbsp; <strong>Priority:</strong> ${escapeHtml(priorityLabel)}</div>
+        ${notesText ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e4e4dc;font-size:13px;color:#444440;white-space:pre-line;">${escapeHtml(notesText)}</div>` : ''}
+      </div>`;
+
+      const html = renderClubHubEmailTemplate({
+        badge: 'Task Reminder',
+        title: `⏰ ${taskTitle}`,
+        intro: `Heads-up! You have an upcoming ${scopeLabel.toLowerCase()} in ${clubName}.`,
+        bodyHtml: cardHtml,
+        ctaLabel: url ? 'Open Task Board' : '',
+        ctaUrl: url,
+      });
+
+      return this.sendEmail({ to, subject: subj, text: plain, html, customConfig });
+    }
     if (kind === 'test') {
       const subj = subject || 'ClubHub Email Integration Verified';
       const intro =

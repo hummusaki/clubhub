@@ -18,6 +18,7 @@ import express from 'express';
 import cors from 'cors';
 import { getDb, getStats } from './database.js';
 import { seedDatabase } from './seed.js';
+import { startTaskReminderScheduler } from './services/taskReminders.js';
 
 const DIST_DIR = path.resolve(__dirname, '../dist');
 
@@ -34,6 +35,7 @@ import webhooksRouter from './routes/webhooks.js';
 import calendarRouter from './routes/calendar.js';
 import integrationsRouter from './routes/integrations.js';
 import workspaceRouter from './routes/workspace.js';
+import aiRouter from './routes/ai.js';
 import { ensurePrivateSchema } from './privateDb.js';
 
 const app = express();
@@ -78,6 +80,7 @@ app.use('/api/scheduler',     schedulerRouter);
 app.use('/api/calendar',      calendarRouter);
 app.use('/api/integrations',  integrationsRouter);
 app.use('/api/workspace',     workspaceRouter);
+app.use('/api/ai',            aiRouter);
 
 // ── Stats endpoint ──
 app.get('/api/stats', (req, res) => {
@@ -116,6 +119,7 @@ if (process.env.CLUBHUB_SKIP_SEED !== '1') {
 }
 
 if (process.env.CLUBHUB_SKIP_LISTEN !== '1') {
+  startTaskReminderScheduler();
   app.listen(PORT, () => {
     console.log(`\n🚀 ClubHub API server running at http://localhost:${PORT}`);
     console.log(`🪝 Collector Webhook (DB_WEBHOOK_URL): POST http://localhost:${PORT}/api/webhook`);

@@ -5,6 +5,8 @@
 //   3. Queries Discord's official public Invite API (`GET /api/v10/invites/{code}?with_counts=true`)
 //      to get server names, descriptions, and member/online counts without needing bot/admin approval.
 
+import { isActualClubEvent } from './extract.js'
+
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
@@ -227,7 +229,7 @@ export async function fetchPublicGoogleCalendarEvents(calendarId, { clubId, club
       const endParsed = dtEndRaw ? parseIcsDate(dtEndRaw) : null
       const cleanUid = (uid || `${summary}_${startParsed.iso}`).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)
 
-      events.push({
+      const candidate = {
         id: `gcal_${clubId}_${cleanUid}`,
         clubId,
         clubName,
@@ -241,7 +243,10 @@ export async function fetchPublicGoogleCalendarEvents(calendarId, { clubId, club
         recurring: null,
         location: location ? location.slice(0, 80) : null,
         source: 'google_calendar',
-      })
+      }
+      if (isActualClubEvent(candidate, { source: 'google_calendar' })) {
+        events.push(candidate)
+      }
     }
 
     return events.slice(0, 20)

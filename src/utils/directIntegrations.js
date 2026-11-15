@@ -65,8 +65,61 @@ function buildBrowserDiscordPayload({
   url = '',
   events = [],
   poll = null,
+  task = null,
 } = {}) {
   const nowIso = new Date().toISOString()
+
+  if (kind === 'task_reminder' || task) {
+    const taskTitle = task?.title || title || 'Upcoming Task'
+    const priorityRaw = String(task?.priority || 'medium').toLowerCase()
+    const priorityLabel =
+      priorityRaw === 'critical'
+        ? '🔴 Urgent'
+        : priorityRaw === 'high'
+          ? '🟡 High'
+          : priorityRaw === 'low'
+            ? '🔵 Low'
+            : '🟢 Medium'
+    const embedColor =
+      priorityRaw === 'critical'
+        ? 0xed4245
+        : priorityRaw === 'high'
+          ? 0xfee75c
+          : 0x5865f2
+    const dueDt = task?.dueAtIso ? new Date(task.dueAtIso) : null
+    const dueUnix =
+      dueDt && !Number.isNaN(dueDt.getTime()) ? Math.floor(dueDt.getTime() / 1000) : null
+    const dueFieldVal = dueUnix
+      ? `<t:${dueUnix}:f> (<t:${dueUnix}:R>)`
+      : task?.dueLabel || [task?.dueDate, task?.dueTime].filter(Boolean).join(' · ') || 'Upcoming'
+    const scopeLabel =
+      task?.visibility === 'personal' || task?.isPersonal
+        ? 'Personal To-Do'
+        : task?.visibility === 'board'
+          ? 'Board Task'
+          : 'Club Task'
+    return {
+      username: 'ClubHub Task Reminders',
+      embeds: [
+        {
+          author: clubName ? { name: `${clubName} · ${scopeLabel}` } : undefined,
+          title: `⏰ ${taskTitle}`,
+          description:
+            String(task?.notes || message || '').slice(0, 2000) ||
+            'Heads-up: this task is coming up on your ClubHub board.',
+          url: url || undefined,
+          color: embedColor,
+          fields: [
+            { name: 'Due', value: String(dueFieldVal), inline: true },
+            { name: 'Priority', value: priorityLabel, inline: true },
+            { name: 'List', value: String(task?.sectionTitle || scopeLabel), inline: true },
+          ],
+          footer: { text: 'ClubHub Task Reminder' },
+          timestamp: nowIso,
+        },
+      ],
+    }
+  }
 
   if (kind === 'test') {
     return {
@@ -262,6 +315,22 @@ export async function dispatchEmailNotification(
         options.message || `Please mark the times you're free for "${pollTitle}".`,
         options.poll?.duration ? `Target Duration: ${options.poll.duration} hr` : '',
         voteUrl ? `Vote here: ${voteUrl}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+    } else if (options.kind === 'task_reminder' || options.task) {
+      const taskTitle = options.task?.title || options.title || 'Upcoming Task'
+      const dueStr =
+        options.task?.dueLabel ||
+        [options.task?.dueDate, options.task?.dueTime].filter(Boolean).join(' at ') ||
+        'Upcoming'
+      subject = options.subject || `⏰ Reminder: ${taskTitle} (${options.clubName || 'ClubHub'})`
+      body = [
+        `Task Reminder — ${options.clubName || 'ClubHub'}`,
+        `Task: ${taskTitle}`,
+        `Due: ${dueStr}`,
+        options.task?.notes || options.message || '',
+        options.url ? `Open Task Board: ${options.url}` : '',
       ]
         .filter(Boolean)
         .join('\n\n')

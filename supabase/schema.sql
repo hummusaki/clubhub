@@ -236,6 +236,8 @@ create table if not exists public.tasks (
   status                text not null default 'not_started' check (status in ('not_started', 'working_on_it', 'in_review', 'stuck', 'done')),
   priority              text not null default 'medium' check (priority in ('low', 'medium', 'high', 'critical')),
   due_date              date,
+  due_time              text not null default '',
+  reminder_config       jsonb not null default '{}'::jsonb,
   assigned_user_ids     uuid[] not null default '{}',
   assigned_group_ids    uuid[] not null default '{}',
   completed_by_user_ids uuid[] not null default '{}',
@@ -244,6 +246,9 @@ create table if not exists public.tasks (
   created_at            timestamptz not null default timezone('utc', now()),
   updated_at            timestamptz not null default timezone('utc', now())
 );
+
+alter table public.tasks add column if not exists due_time text not null default '';
+alter table public.tasks add column if not exists reminder_config jsonb not null default '{}'::jsonb;
 
 create index if not exists idx_tasks_club_vis on public.tasks (club_id, visibility, status);
 
@@ -458,24 +463,32 @@ drop policy if exists group_members_manage_board on public.group_members;
 create policy group_members_manage_board on public.group_members
   for all to authenticated using (public.is_club_board(club_id)) with check (public.is_club_board(club_id));
 
--- 6. POLLS: Visibility enforced by poll tier; Board creates club polls
+-- 6. POLLS: Visibility enforced by poll tier; Board-only polls strictly gated to club board
 drop policy if exists polls_select_scoped on public.polls;
 create policy polls_select_scoped on public.polls
-  for select to authenticated
+  for select
   using (
-    created_by = public.current_user_id()
-    or visibility = 'public_link'
-    or public.current_user_id() = any(invited_user_ids)
-    or public.is_in_any_club_group(target_group_ids)
-    or (club_id is not null and visibility = 'club_members' and public.is_club_member(club_id))
-    or (club_id is not null and visibility = 'board_only' and public.is_club_board(club_id))
+    visibility = 'public_link'
+    or (
+      public.current_user_id() is not null
+      and (
+        created_by = public.current_user_id()
+        or public.current_user_id() = any(invited_user_ids)
+        or public.is_in_any_club_group(target_group_ids)
+        or (club_id is not null and visibility = 'club_members' and public.is_club_member(club_id))
+        or (club_id is not null and visibility = 'board_only' and public.is_club_board(club_id))
+      )
+    )
   );
 drop policy if exists polls_insert_board_or_personal on public.polls;
 create policy polls_insert_board_or_personal on public.polls
   for insert to authenticated
   with check (
     created_by = public.current_user_id()
-    and (club_id is null or public.is_club_board(club_id))
+    and (
+      visibility <> 'board_only'
+      or (club_id is not null and public.is_club_board(club_id))
+    )
   );
 drop policy if exists polls_update_creator_or_board on public.polls;
 create policy polls_update_creator_or_board on public.polls
@@ -487,10 +500,10 @@ create policy polls_delete_creator_or_board on public.polls
   for delete to authenticated
   using (created_by = public.current_user_id() or (club_id is not null and public.is_club_board(club_id)));
 
--- 7. POLL_RESPONSES: Visible to poll participants; users can ONLY insert/update/delete their own response
+-- 7. POLL_RESPONSES: Visible to poll viewers; users can ONLY insert/update/delete their own response
 drop policy if exists poll_responses_select on public.poll_responses;
 create policy poll_responses_select on public.poll_responses
-  for select to authenticated
+  for select
   using (
     exists (select 1 from public.polls p where p.id = poll_id)
   );

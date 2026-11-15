@@ -7,7 +7,7 @@ const EMOJI_STRIP_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u
 const SOURCE_PREFIX_RE = /^\s*\[(?:Discord[^\]]*|Google Calendar|Club Website|Mailing List:[^\]]*)\]\s*/i
 
 export const DEFAULT_CALENDAR_SYNC_SETTINGS = {
-  clubScope: 'joined',          // 'joined' (updates with currently joined clubs) | 'all' (All Campus)
+  clubScope: 'joined',          // Strictly scoped to currently joined clubs
   rsvpOnly: false,              // Only include events you RSVP'd ("Going") to on synced calendars
   inAppRsvpOnly: false,         // Also filter the in-app ClubHub Calendar views to RSVP'd events only
   includeCustomAndPolls: true,  // Include custom added events & booked Group Availability Poll slots
@@ -43,7 +43,7 @@ export function normalizeCalendarSyncSettings(raw = {}) {
     : DEFAULT_CALENDAR_SYNC_SETTINGS.reminderMinutes
 
   return {
-    clubScope: src.clubScope === 'all' ? 'all' : 'joined',
+    clubScope: 'joined',
     rsvpOnly: Boolean(src.rsvpOnly),
     inAppRsvpOnly: Boolean(src.inAppRsvpOnly),
     includeCustomAndPolls:
@@ -100,6 +100,9 @@ export function filterEventsForCalendarSync(
 ) {
   const settings = normalizeCalendarSyncSettings(rawSettings)
   const joinedSet = new Set((joinedClubIds || []).map(normalizeClubKey).filter(Boolean))
+  if (joinedSet.size === 0) {
+    return []
+  }
   const goingSet = extractGoingEventIds(rsvpMap, events, rsvpIds)
 
   const nowDt = now instanceof Date ? now : new Date(now)
@@ -127,6 +130,10 @@ export function filterEventsForCalendarSync(
       idStr.startsWith('collab_evt_') ||
       idStr.startsWith('custom_evt_')
 
+    if (!isCustomOrPoll && String(ev.kind || '').toLowerCase() === 'deadline') {
+      continue
+    }
+
     if (!isCustomOrPoll && startMs < minHistoricalMs) {
       continue
     }
@@ -147,19 +154,14 @@ export function filterEventsForCalendarSync(
 
     const isGoing = idStr ? goingSet.has(idStr) : Boolean(ev.isGoing || ev.rsvp)
 
-    // 2. Club membership filter
-    if (settings.clubScope === 'joined' && !isCustomOrPoll) {
-      const cid = normalizeClubKey(ev.clubId)
-      if (joinedSet.size > 0) {
-        if (!cid || !joinedSet.has(cid)) {
-          continue
-        }
-      } else {
-        // When 0 clubs are joined yet, only include explicitly RSVP'd events if RSVP-only is on
-        if (!(settings.rsvpOnly && isGoing)) {
-          continue
-        }
+    // 2. Club membership filter (must belong to a joined club)
+    const cid = normalizeClubKey(ev.clubId)
+    if (isCustomOrPoll) {
+      if (cid && !joinedSet.has(cid)) {
+        continue
       }
+    } else if (!cid || !joinedSet.has(cid)) {
+      continue
     }
 
     // 3. RSVP-only filter ("only make events that you RSVP'd to show up on the calendar")
@@ -185,9 +187,6 @@ export function getCalendarFeedName(rawSettings = {}, joinedCount = 0) {
   const settings = normalizeCalendarSyncSettings(rawSettings)
   if (settings.rsvpOnly) {
     return 'ClubHub — My RSVPs'
-  }
-  if (settings.clubScope === 'all') {
-    return 'ClubHub — All Campus'
   }
   return joinedCount > 0 ? `ClubHub — My Clubs (${joinedCount})` : 'ClubHub — My Clubs'
 }
@@ -487,5 +486,75 @@ export function isLocalhostUrl(urlStr) {
     )
   } catch {
     return true
+  }
+}
+
+export function normalizeExternalPostUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  if (/^mailto:/i.test(trimmed)) return trimmed
+  const withProto = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : /^(?:www\.|instagram\.com\/|discord\.(?:gg|com)\/|calendar\.google\.com\/)/i.test(trimmed)
+      ? `https://${trimmed}`
+      : null
+  if (!withProto) return null
+  try {
+    const parsed = new URL(withProto)
+    if (parsed.hostname.toLowerCase().endsWith('l.instagram.com')) {
+      const inner = parsed.searchParams.get('u')
+      if (inner && /^https?:\/\//i.test(inner)) return inner
+    }
+    return parsed.toString()
+  } catch {
+    return withProto
+  }
+}
+
+export function resolveSchedulePostLink(item) {
+  if (!item) return null
+  const raw = item.permalink || (!item.isCustom && !item.isBookedCollab ? item.clubPageUrl : null)
+  const finalUrl = normalizeExternalPostUrl(raw)
+  if (!finalUrl) return null
+
+  const isFallbackClubPage = !item.permalink && Boolean(item.clubPageUrl)
+  if (isFallbackClubPage) {
+    return {
+      url: finalUrl,
+      label: 'Club Page',
+      tooltip: 'Open club page for event details',
+    }
+  }
+
+  if (
+    /instagram\.com/i.test(finalUrl) ||
+    item.source === 'instagram' ||
+    item.source === 'instagram_story'
+  ) {
+    return {
+      url: finalUrl,
+      label: 'Original Post',
+      tooltip: 'View original Instagram post',
+    }
+  }
+  if (/discord\.(?:com|gg)/i.test(finalUrl) || item.source === 'discord') {
+    return {
+      url: finalUrl,
+      label: 'Original Post',
+      tooltip: 'View original Discord post or event',
+    }
+  }
+  if (/calendar\.google\.com/i.test(finalUrl) || item.source === 'google_calendar') {
+    return {
+      url: finalUrl,
+      label: 'Original Post',
+      tooltip: 'Open original club calendar source',
+    }
+  }
+  return {
+    url: finalUrl,
+    label: 'Original Post',
+    tooltip: 'Open original event post',
   }
 }

@@ -252,6 +252,19 @@ export default function OverviewSearchResults({
                         )}
                       </div>
                     </div>
+                    {ev.permalink && (
+                      <a
+                        href={ev.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        title="Open original post"
+                        className="inline-flex items-center gap-1 px-2.5 min-h-[26px] rounded-full bg-[var(--bg-card)] text-[11px] font-semibold text-[var(--blue-ink)] border border-[var(--border)] hover:border-[var(--blue)] no-underline shrink-0"
+                      >
+                        <span>Original Post</span>
+                        <ExternalLink size={10.5} />
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

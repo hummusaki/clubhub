@@ -7,13 +7,13 @@ import {
   isSupabaseConfigured,
   markClerkSupabaseJwtRejected,
   isJwtSignatureError,
-} from '../lib/supabaseClient'
-import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts'
+} from '../lib/supabaseClient.js'
+import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts.js'
 import {
   getDirectUserProfile,
   buildDirectClubPeople,
   ensureClubRow,
-} from './supabaseDirectWorkspace'
+} from './supabaseDirectWorkspace.js'
 
 const normalizeClub = id => String(id || '').trim().replace(/^@+/, '').toLowerCase()
 const toInitials = name =>
@@ -122,6 +122,10 @@ async function buildDirectTasksBoard(sb, clubId) {
         status: r.status || 'not_started',
         priority: r.priority || 'medium',
         dueDate: r.due_date || '',
+        dueTime: r.due_time || '',
+        reminder: r.reminder_config && typeof r.reminder_config === 'object'
+          ? r.reminder_config
+          : { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
         assignees: [],
         groupIds: [],
         completedBy: (r.completed_by_user_ids || []).map(uid => ({ userId: uid })),
@@ -159,6 +163,10 @@ async function buildDirectTasksBoard(sb, clubId) {
       status: r.status || 'not_started',
       priority: r.priority || 'medium',
       dueDate: r.due_date || '',
+      dueTime: r.due_time || '',
+      reminder: r.reminder_config && typeof r.reminder_config === 'object'
+        ? r.reminder_config
+        : { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
       assignees,
       groupIds: r.assigned_group_ids || [],
       completedBy: (r.completed_by_user_ids || []).map(uid => ({ userId: uid })),
@@ -215,7 +223,7 @@ export async function handleDirectTasksAction(path, options = {}) {
 
     if (wantsPersonal) {
       const initStatus = body.status || 'not_started'
-      const { error } = await sb.from('tasks').insert({
+      const insertRow = {
         club_id: cid,
         section_title: body.sectionTitle || 'My To-Do List',
         section_color: body.sectionColor || 'green',
@@ -226,11 +234,18 @@ export async function handleDirectTasksAction(path, options = {}) {
         status: initStatus,
         priority: body.priority || 'medium',
         due_date: body.dueDate || null,
+        due_time: body.dueTime || '',
+        reminder_config: body.reminder && typeof body.reminder === 'object' ? body.reminder : {},
         assigned_user_ids: [profile.id],
         assigned_group_ids: [],
         completed_by_user_ids: initStatus === 'done' ? [profile.id] : [],
         created_by: profile.id,
-      })
+      }
+      let { error } = await sb.from('tasks').insert(insertRow)
+      if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+        const { due_time: _dt, reminder_config: _rc, ...legacyRow } = insertRow
+        ;({ error } = await sb.from('tasks').insert(legacyRow))
+      }
       if (error) return { ok: false, status: 403, error: error.message }
       return buildDirectTasksBoard(sb, cid)
     }
@@ -255,7 +270,7 @@ export async function handleDirectTasksAction(path, options = {}) {
     const vis = body.visibility === 'board' ? 'board' : 'members'
     const aud = vis === 'board' ? 'board' : userIds.length > 0 || finalGrps.length > 0 ? 'targeted' : body.audience || 'general'
 
-    const { error } = await sb.from('tasks').insert({
+    const sharedInsertRow = {
       club_id: cid,
       section_title: vis === 'board' ? 'Executive Board Internal' : aud === 'targeted' ? 'Team & Group Assignments' : 'General Club Checklist',
       section_color: vis === 'board' ? 'purple' : aud === 'targeted' ? 'blue' : 'teal',
@@ -266,10 +281,17 @@ export async function handleDirectTasksAction(path, options = {}) {
       status: body.status || 'not_started',
       priority: body.priority || 'medium',
       due_date: body.dueDate || null,
+      due_time: body.dueTime || '',
+      reminder_config: body.reminder && typeof body.reminder === 'object' ? body.reminder : {},
       assigned_user_ids: userIds,
       assigned_group_ids: finalGrps,
       created_by: profile.id,
-    })
+    }
+    let { error } = await sb.from('tasks').insert(sharedInsertRow)
+    if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+      const { due_time: _dt, reminder_config: _rc, ...legacyRow } = sharedInsertRow
+      ;({ error } = await sb.from('tasks').insert(legacyRow))
+    }
     if (error) return { ok: false, status: 403, error: error.message }
     return buildDirectTasksBoard(sb, cid)
   }
@@ -292,6 +314,10 @@ export async function handleDirectTasksAction(path, options = {}) {
     if (body.title) patch.title = body.title
     if (body.notes !== undefined) patch.notes = body.notes
     if (body.dueDate !== undefined) patch.due_date = body.dueDate || null
+    if (body.dueTime !== undefined) patch.due_time = body.dueTime || ''
+    if (body.reminder !== undefined && typeof body.reminder === 'object') {
+      patch.reminder_config = body.reminder
+    }
     if (existing.visibility === 'personal' && body.sectionTitle) {
       patch.section_title = body.sectionTitle
     }
@@ -307,7 +333,15 @@ export async function handleDirectTasksAction(path, options = {}) {
         patch.completed_by_user_ids = Array.from(cur)
       }
     }
-    const { error } = await sb.from('tasks').update(patch).eq('id', tid)
+    let { error } = await sb.from('tasks').update(patch).eq('id', tid)
+    if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+      const { due_time: _dt, reminder_config: _rc, ...legacyPatch } = patch
+      if (Object.keys(legacyPatch).length > 0) {
+        ;({ error } = await sb.from('tasks').update(legacyPatch).eq('id', tid))
+      } else {
+        error = null
+      }
+    }
     if (error) return { ok: false, status: 403, error: error.message }
     return buildDirectTasksBoard(sb, cid)
   }

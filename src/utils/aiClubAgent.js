@@ -4,7 +4,6 @@
 // multi-turn conversational refinement, and grounded AI Overview synthesis.
 
 export const SAMPLE_INTEREST_PROMPTS = [
-<<<<<<< Updated upstream
   {
     label: '💻 CS + Creative Balance',
     query: "I'm into coding and hackathons, plus something creative like design or film",
@@ -37,16 +36,6 @@ export const SAMPLE_INTEREST_PROMPTS = [
     label: '🌲 Outdoors, Chess & Games',
     query: 'Hiking redwoods, chess tournaments, tabletop RPGs, or casual esports',
   },
-=======
-  { label: 'Game Dev & Coding', query: 'game development coding hackathons' },
-  { label: 'Hiking & Outdoors', query: 'hiking camping redwoods outdoor adventure nature environment' },
-  { label: 'Art, Drawing & Zines', query: 'drawing painting zines visual art literary magazine' },
-  { label: 'Debate & Public Speaking', query: 'debate public speaking rhetoric pre-law model un' },
-  { label: 'Robotics & Hardware', query: 'robotics hardware arduino CAD 3D printing engineering' },
-  { label: 'Singing & Vocal Music', query: 'singing vocal harmonies a cappella music performance' },
-  { label: 'Investing & Economics', query: 'investing stocks finance economics business consulting' },
-  { label: 'Film & Photography', query: 'photography 35mm analog camera film cinema media' },
->>>>>>> Stashed changes
 ]
 
 const STOP_WORDS = new Set([
@@ -78,7 +67,6 @@ const STOP_WORDS = new Set([
 export const TOPIC_CLUSTERS = [
   {
     id: 'tech_coding',
-<<<<<<< Updated upstream
     label: 'Coding, AI & Software',
     categories: ['tech & science'],
     targetClubIds: [
@@ -90,18 +78,6 @@ export const TOPIC_CLUSTERS = [
       'ucscquantum',
       'ucscsase',
       'nsbe.ucsc',
-=======
-    label: 'Coding & Tech',
-    targetClubIds: [
-      'acm_ucsc',
-      'gdgc_ucsc',
-      'gdacollab',
-      'sluggamingucsc',
-      'slugsecurity',
-      'slugdataatucsc',
-      'sluglug_ucsc',
-      'demo_ucsc_csclub',
->>>>>>> Stashed changes
     ],
     keywords: [
       'code', 'coding', 'programmer', 'programming', 'software', 'developer',
@@ -116,7 +92,6 @@ export const TOPIC_CLUSTERS = [
       `Strong technical fit for ${terms} with hands-on coding workshops, hackathons, and project teams.`,
   },
   {
-<<<<<<< Updated upstream
     id: 'game_dev',
     label: 'Game Design & Dev',
     categories: ['tech & science', 'gaming'],
@@ -135,36 +110,23 @@ export const TOPIC_CLUSTERS = [
     categories: ['tech & science'],
     targetClubIds: [
       'ucsc_robotics',
+      'ucscsps',
+      'ucscquantum',
       'nsbe.ucsc',
       'ucscsase',
-      'ucscsps',
-      'acs_ucsc',
-      'ucscquantum',
-=======
-    id: 'robotics_hardware',
-    label: 'Robotics & Hardware',
-    targetClubIds: [
-      'ucscslugbotics',
-      'slugworks_ucsc',
-      'ieee.ucsc',
-      'formulaslug',
-      'rocketry.ucsc',
-      'ucsc_robotics',
->>>>>>> Stashed changes
     ],
     keywords: [
       'robot', 'robots', 'robotics', 'hardware', 'maker', 'makers', 'cad',
       'arduino', 'raspberry pi', 'circuits', 'circuit', 'electrical', 'mechanical',
       '3d print', '3d printing', 'rover', 'combat robotics', 'embedded', 'firmware',
       'sensors', 'mechatronics', 'engineering', 'engineer', 'engineers', 'soldering',
-      'physics', 'astronomy', 'astrophysics', 'space', 'quantum', 'quantum computing',
-      'stem',
+      'physics', 'astronomy', 'astrophysics', 'aerospace', 'rocketry', 'quantum',
+      'quantum computing', 'stem',
     ],
     rationaleTemplate: terms =>
       `Tailored for ${terms} through hands-on hardware builds, research discussions, and STEM community mentorship.`,
   },
   {
-<<<<<<< Updated upstream
     id: 'premed_neuro',
     label: 'Pre-Med, Healthcare & Neuroscience',
     categories: ['pre-professional', 'tech & science'],
@@ -194,94 +156,6 @@ export const TOPIC_CLUSTERS = [
     label: 'Economics, Finance & Business',
     categories: ['pre-professional'],
     targetClubIds: ['ucsc_econ_society', 'ucscbea', 'ucsc.sfig', 'ucsciba'],
-=======
-    id: 'outdoors_adventure',
-    label: 'Outdoors & Adventure',
-    targetClubIds: [
-      'enviroslug',
-      'ucsc_runningclub',
-      'ucscfigure',
-      'ucscsurf',
-      'ucsc_sailing',
-      'ucsc_outdoor',
-    ],
-    keywords: [
-      'outdoor', 'outdoors', 'nature', 'hike', 'hiking', 'backpacking', 'backpack',
-      'camp', 'camping', 'trail', 'trails', 'redwoods', 'forest', 'bouldering',
-      'rock climbing', 'climbing', 'climb', 'kayak', 'kayaking', 'surf', 'surfing',
-      'ocean', 'beach', 'adventure', 'travel', 'trip', 'trips', 'wilderness', 'gear',
-      'environment', 'environmental', 'sustainability'
-    ],
-    rationaleTemplate: (terms) =>
-      `Perfect match for ${terms} — offers outdoor excursions, redwood trail hikes, environmental stewardship, and active campus trips.`
-  },
-  {
-    id: 'visual_arts',
-    label: 'Visual Arts & Design',
-    targetClubIds: [
-      'chinquapinucsc',
-      'matchboxucsc',
-      'twacanasianucsc',
-      'eyecandyfilmjournal',
-      'demo_ucsc_artcollective',
-    ],
-    keywords: [
-      'art', 'arts', 'visual art', 'draw', 'drawing', 'paint', 'painting',
-      'sketch', 'sketching', 'zine', 'zines', 'printmaking', 'print', 'gallery',
-      'design', 'graphic design', 'illustration', 'studio', 'craft', 'crafts',
-      'creative', 'ceramics', 'digital art', 'exhibition', 'sculpture', 'literary', 'magazine'
-    ],
-    rationaleTemplate: (terms) =>
-      `Matches your passion for ${terms} with open studio sessions, zine & print publications, and seasonal campus showcases.`
-  },
-  {
-    id: 'debate_speaking',
-    label: 'Debate & Public Speaking',
-    targetClubIds: [
-      'slugmun',
-      'mocktrialucsc',
-      'ucsc_pla',
-      'demo_ucsc_debate',
-    ],
-    keywords: [
-      'debate', 'debating', 'speech', 'speaking', 'public speaking', 'rhetoric',
-      'parliamentary', 'law', 'pre-law', 'politics', 'policy', 'argument',
-      'argumentation', 'discussion', 'discourse', 'rhetorical', 'moot court',
-      'government', 'model un', 'communication', 'mun'
-    ],
-    rationaleTemplate: (terms) =>
-      `Great fit for ${terms} — offers parliamentary debate & Model UN conferences, public rhetoric training, and policy analysis rounds.`
-  },
-  {
-    id: 'music_vocal',
-    label: 'Music & Vocal Performance',
-    targetClubIds: [
-      'acquireacappella',
-      'cloud9acappella',
-      'isanghimig',
-      'thegoldentones_ucsc',
-      'ucsc_acappella',
-    ],
-    keywords: [
-      'music', 'sing', 'singing', 'singer', 'vocal', 'vocals', 'vocalist',
-      'harmony', 'harmonies', 'a cappella', 'acappella', 'choir', 'band',
-      'song', 'songs', 'concert', 'performance', 'quarry', 'rehearsal',
-      'instrument', 'instruments', 'voice', 'musical', 'audio'
-    ],
-    rationaleTemplate: (terms) =>
-      `Aligns with your passion for ${terms} — features student-arranged vocal harmonies, quarry amphitheater concerts, and regional gigs.`
-  },
-  {
-    id: 'economics_finance',
-    label: 'Economics & Finance',
-    targetClubIds: [
-      'ucsc.sfig',
-      'ucscconsulting',
-      'ucsc_bfa',
-      'akpsi.ucsc',
-      'ucsc_econ_society',
-    ],
->>>>>>> Stashed changes
     keywords: [
       'econ', 'economics', 'finance', 'invest', 'investing', 'investment',
       'stock', 'stocks', 'markets', 'business', 'banking', 'investment banking',
@@ -289,7 +163,6 @@ export const TOPIC_CLUSTERS = [
       'microeconomic', 'startup', 'entrepreneurship', 'entrepreneur', 'portfolio',
       'financial', 'accounting', 'wealth', 'quant',
     ],
-<<<<<<< Updated upstream
     rationaleTemplate: terms =>
       `Matches your interest in ${terms} via student-managed market analysis, career prep, and case competitions.`,
   },
@@ -478,38 +351,53 @@ export const TOPIC_CLUSTERS = [
     ],
     rationaleTemplate: terms =>
       `Chapter community offering Greek life leadership, social events, and philanthropy.`,
-=======
-    rationaleTemplate: (terms) =>
-      `Ideal for your interest in ${terms} — features investment workshops, finance roundtables, and real-world consulting case competitions.`
-  },
-  {
-    id: 'film_photo',
-    label: 'Film & Photography',
-    targetClubIds: [
-      'eyecandyfilmjournal',
-      'fsc.ucsc',
-      'chinquapinucsc',
-      'ucsc_film_photo',
-    ],
-    keywords: [
-      'film', 'filmmaking', 'photo', 'photography', 'camera', '35mm',
-      'darkroom', 'analog', 'cinema', 'movie', 'movies', 'screenplay',
-      'screenwriting', 'video', 'video editing', 'cinematography', 'screening',
-      'visual storytelling', 'lens', 'shutter', 'media'
-    ],
-    rationaleTemplate: (terms) =>
-      `Superb fit for ${terms} — gives you film screenings, cinema journalism, photography shoots, and creative media production.`
->>>>>>> Stashed changes
   },
 ]
 
 const CATEGORY_NEGATION_TRIGGERS = [
-  { category: 'greek', label: 'Greek Life', patterns: [/\bgreek(\s+life)?\b/i, /\bfraternit(y|ies)\b/i, /\bsororit(y|ies)\b/i, /\brush\b/i] },
-  { category: 'faith', label: 'Faith Orgs', patterns: [/\breligio(us|n)\b/i, /\bfaith\b/i, /\bchurch\b/i] },
-  { category: 'performing arts', label: 'Performing Arts', patterns: [/\bperforming\s+arts?\b/i, /\ba\s*cappella\b/i, /\bdanc(e|ing)\b/i] },
-  { category: 'gaming', label: 'Gaming', patterns: [/\bgaming\b/i, /\besports\b/i, /\bvideo\s+games?\b/i] },
-  { category: 'tech & science', label: 'Tech & Coding', patterns: [/\bcoding\b/i, /\bprogramming\b/i, /\bcomputer\s+science\b/i, /\btech\b/i] },
-  { category: 'pre-professional', label: 'Pre-Professional', patterns: [/\bpre-?prof(essional)?\b/i, /\bfinance\b/i] },
+  {
+    category: 'greek',
+    label: 'Greek Life',
+    patterns: [/\bgreek(\s+life)?\b/i, /\bfraternit(y|ies)\b/i, /\bsororit(y|ies)\b/i, /\brush\b/i],
+  },
+  {
+    category: 'faith',
+    label: 'Faith Orgs',
+    patterns: [/\breligio(us|n)\b/i, /\bfaith\b/i, /\bchurch\b/i],
+  },
+]
+
+const CLUSTER_NEGATION_TRIGGERS = [
+  {
+    clusterId: 'tech_coding',
+    label: 'Coding & CS',
+    terms: ['coding', 'programming', 'software', 'computer science', 'developer', 'hackathon'],
+    patterns: [/\bcoding\b/i, /\bprogramming\b/i, /\bcomputer\s+science\b/i, /\bsoftware\b/i, /\bcs\b/i],
+  },
+  {
+    clusterId: 'dance_theater',
+    label: 'Dance',
+    terms: ['dance', 'dancing', 'choreography', 'ballroom', 'hip hop'],
+    patterns: [/\bdanc(e|ing)\b/i, /\bchoreograph/i],
+  },
+  {
+    clusterId: 'music_vocal',
+    label: 'A Cappella & Singing',
+    terms: ['a cappella', 'acappella', 'singing', 'vocal', 'choir'],
+    patterns: [/\ba\s*cappella\b/i, /\bsinging\b/i, /\bchoir\b/i],
+  },
+  {
+    clusterId: 'gaming_tabletop',
+    label: 'Video Games & Esports',
+    terms: ['esports', 'video games', 'gaming', 'valorant', 'fighting game'],
+    patterns: [/\besports\b/i, /\bvideo\s+games?\b/i, /\bgaming\b/i],
+  },
+  {
+    clusterId: 'economics_finance',
+    label: 'Finance & Consulting',
+    terms: ['finance', 'investment', 'investing', 'consulting', 'economics'],
+    patterns: [/\bfinance\b/i, /\binvest(ing|ment)?\b/i, /\bconsulting\b/i],
+  },
 ]
 
 const REGEX_CACHE = new Map()
@@ -556,6 +444,8 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
   const lower = fullText.toLowerCase()
 
   const excludedCategories = new Set()
+  const excludedClusterIds = new Set()
+  const excludedClubIds = new Set()
   const excludedTerms = []
   const excludedLabels = []
 
@@ -567,7 +457,7 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
 
   // Extract negation clauses bounded by punctuation or conjunctions
   const negationClauseRe =
-    /\b(?:no|not|without|except|avoid|avoiding|exclude|excluding|other\s+than|besides)\s+([^,.;!?]+?)(?=$|[,.;!?]|\b(?:and\s+i|but\s+i|also|plus|with)\b)/gi
+    /\b(?:no|not|without|except|avoid|avoiding|exclude|excluding|other\s+than|besides)\s+([^,.;!?]+?)(?=$|[,.;!?]|\b(?:and\s+i|but|just|instead|only|also|plus|with)\b)/gi
 
   let positiveText = lower
   let match
@@ -578,18 +468,35 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
     // Remove negated span from positive matching text so "no greek life" never boosts Greek life!
     positiveText = positiveText.replace(match[0], ' ')
 
-    let matchedCategoryRule = false
+    let matchedRule = false
     for (const rule of CATEGORY_NEGATION_TRIGGERS) {
       if (rule.patterns.some(p => p.test(clause))) {
         excludedCategories.add(rule.category)
         if (!excludedLabels.includes(rule.label)) {
           excludedLabels.push(rule.label)
         }
-        matchedCategoryRule = true
+        matchedRule = true
       }
     }
 
-    if (!matchedCategoryRule && !/joined/i.test(clause)) {
+    for (const rule of CLUSTER_NEGATION_TRIGGERS) {
+      if (rule.patterns.some(p => p.test(clause))) {
+        excludedClusterIds.add(rule.clusterId)
+        for (const t of rule.terms) excludedTerms.push(t)
+        const targetCluster = TOPIC_CLUSTERS.find(c => c.id === rule.clusterId)
+        if (targetCluster) {
+          for (const cid of targetCluster.targetClubIds) {
+            excludedClubIds.add(cid)
+          }
+        }
+        if (!excludedLabels.includes(rule.label)) {
+          excludedLabels.push(rule.label)
+        }
+        matchedRule = true
+      }
+    }
+
+    if (!matchedRule && !/joined/i.test(clause)) {
       const negWords = clause
         .replace(/[^a-z0-9+#\s-]/g, ' ')
         .split(/\s+/)
@@ -600,6 +507,13 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
         excludedLabels.push(nw)
       }
     }
+  }
+
+  // Multi-turn override: strip any explicitly negated terms from earlier turns in positiveText
+  const uniqueExcludedTerms = Array.from(new Set(excludedTerms))
+  for (const neg of uniqueExcludedTerms) {
+    const re = new RegExp(`(?:^|[^a-z0-9])${escapeRegex(neg)}(?=[^a-z0-9]|$)`, 'gi')
+    positiveText = positiveText.replace(re, ' ')
   }
 
   // Detect vibe, experience, size & schedule modifiers
@@ -621,12 +535,13 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
     )
 
   // Tokenize positive query
+  const excludedTermSet = new Set(uniqueExcludedTerms)
   const tokens = positiveText
     .replace(/['’‘`]/g, '')
     .replace(/[^a-z0-9+#\s-]/g, ' ')
     .split(/\s+/)
     .map(w => w.replace(/^-+|-+$/g, '').trim())
-    .filter(w => w.length > 1 && !STOP_WORDS.has(w))
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w) && !excludedTermSet.has(w))
 
   // Optional soft major boost when user's profile has a major and query is broad/open
   const userMajor = String(options.userMajor || '').trim().toLowerCase()
@@ -636,7 +551,9 @@ export function parseQueryIntent(rawQuery = '', options = {}) {
     positiveText: positiveText.trim(),
     tokens,
     excludedCategories: Array.from(excludedCategories),
-    excludedTerms: Array.from(new Set(excludedTerms)),
+    excludedClusterIds: Array.from(excludedClusterIds),
+    excludedClubIds: Array.from(excludedClubIds),
+    excludedTerms: uniqueExcludedTerms,
     excludedLabels: Array.from(new Set(excludedLabels)),
     excludeJoined,
     prefersBeginner,
@@ -665,6 +582,26 @@ function truncateSnippet(text, maxLen = 148) {
   return `${singleLine.slice(0, maxLen - 1).replace(/[,;:\s]+$/, '')}…`
 }
 
+export function formatEventWhenLabel(ev) {
+  if (!ev) return ''
+  const dayDate = [ev.day, ev.date].filter(Boolean).join(' ').trim()
+  if (dayDate) {
+    return ev.time && ev.time !== 'All day' ? `${dayDate} · ${ev.time}` : dayDate
+  }
+  const iso = ev.startIso || ev.start
+  if (iso) {
+    const parsed = new Date(iso)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+    }
+  }
+  return ev.time || ''
+}
+
 /**
  * Index upcoming events by clubId & lowercase club name for O(1) lookup during ranking.
  */
@@ -678,8 +615,9 @@ function buildUpcomingEventsByClub(events = []) {
       if (!byId.has(k)) byId.set(k, [])
       byId.get(k).push(ev)
     }
-    if (ev.club) {
-      const nk = String(ev.club).toLowerCase().trim()
+    const clubTitle = ev.club || ev.clubName
+    if (clubTitle) {
+      const nk = String(clubTitle).toLowerCase().trim()
       if (!byName.has(nk)) byName.set(nk, [])
       byName.get(nk).push(ev)
     }
@@ -691,6 +629,15 @@ function buildUpcomingEventsByClub(events = []) {
  * Generate smart contextual follow-up chips based on current results & intent.
  */
 function buildFollowUpSuggestions(intent, matches, matchedClusters, hasAnyUpcoming) {
+  if (matches.length === 0) {
+    return [
+      { label: '💻 Coding, AI & Hackathons', replaceQuery: 'Beginner friendly coding, AI, or hackathon clubs' },
+      { label: '🎨 Creative Arts & Film', replaceQuery: 'Visual arts, design, photography, or filmmaking clubs' },
+      { label: '🩺 Pre-Med & STEM Research', replaceQuery: 'Pre-med clinical volunteering or STEM research clubs' },
+      { label: '🌲 Outdoors, Music & Social', replaceQuery: 'Hiking redwoods, music, or casual social clubs' },
+    ]
+  }
+
   const chips = []
 
   if (!intent.prefersUpcomingEvents && hasAnyUpcoming) {
@@ -767,19 +714,22 @@ function synthesizeGroundedOverview({
   const details = []
   const top1 = matches[0]
   if (top1?.nextEvent) {
+    const evTitle = truncateSnippet(top1.nextEvent.event || top1.nextEvent.title || 'an upcoming meeting', 68)
+    const whenStr = formatEventWhenLabel(top1.nextEvent)
     details.push(
-      `${top1.club.name} has "${top1.nextEvent.event || top1.nextEvent.title}" coming up on ${top1.nextEvent.day || ''} ${top1.nextEvent.date || ''}${top1.nextEvent.time ? ` at ${top1.nextEvent.time}` : ''}.`.replace(
-        /\s+/g,
-        ' '
-      )
+      whenStr
+        ? `${top1.club.name} has "${evTitle}" scheduled for ${whenStr}.`
+        : `${top1.club.name} also has "${evTitle}" on the calendar.`
     )
   } else if (relatedEvents.length > 0) {
     const ev = relatedEvents[0]
+    const evClub = ev.club || ev.clubName || 'A matched club'
+    const evTitle = truncateSnippet(ev.event || ev.title || 'an upcoming event', 68)
+    const whenStr = formatEventWhenLabel(ev)
     details.push(
-      `Upcoming related event: ${ev.club} is hosting "${ev.event || ev.title}" (${ev.day || ''} ${ev.date || ''}).`.replace(
-        /\s+/g,
-        ' '
-      )
+      whenStr
+        ? `Upcoming related event: ${evClub} is hosting "${evTitle}" (${whenStr}).`
+        : `Upcoming related event: ${evClub} is hosting "${evTitle}".`
     )
   }
 
@@ -867,6 +817,7 @@ export function recommendClubsForInterests(
   // 1. Identify matched semantic clusters on positive text (never on negated clauses!)
   const matchedClusters = []
   for (const cluster of TOPIC_CLUSTERS) {
+    if (intent.excludedClusterIds.includes(cluster.id)) continue
     if (cluster.categories.every(cat => intent.excludedCategories.includes(cat))) {
       continue
     }
@@ -892,6 +843,10 @@ export function recommendClubsForInterests(
     }
   }
 
+  const positiveTargetClubIds = new Set(
+    matchedClusters.flatMap(mc => mc.cluster.targetClubIds)
+  )
+
   // Compute IDF-like document frequencies for BM25 lexical weighting across club corpus
   const docCount = Math.max(1, clubs.length)
   const tokenDocFreq = new Map()
@@ -914,6 +869,12 @@ export function recommendClubsForInterests(
     if (intent.excludeJoined && club.joined) continue
     const catLower = String(club.category || '').toLowerCase()
     if (intent.excludedCategories.includes(catLower)) continue
+    if (
+      intent.excludedClubIds.includes(club.id) &&
+      !positiveTargetClubIds.has(club.id)
+    ) {
+      continue
+    }
 
     const clubName = String(club.name || '').toLowerCase()
     const clubAliases = Array.isArray(club.alsoKnownAs)
@@ -923,12 +884,8 @@ export function recommendClubsForInterests(
     const clubDesc = `${club.description || ''} ${club.directoryDescription || ''} ${club.bio || ''}`.toLowerCase()
     const clubCat = `${club.category || ''} ${club.categoryLabel || ''}`.toLowerCase()
 
-    // Check explicit negated keywords
-    if (
-      intent.excludedTerms.some(
-        neg => containsWholeTerm(clubName, neg) || containsWholeTerm(clubCat, neg)
-      )
-    ) {
+    // Check explicit negated keywords in club name (skip generic category labels so sibling clubs survive)
+    if (intent.excludedTerms.some(neg => containsWholeTerm(clubName, neg))) {
       continue
     }
 

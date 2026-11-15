@@ -1091,7 +1091,6 @@ export default function ClubsHub({
   const [clubLayout, setClubLayout] = useState('grouped') // 'grouped' | 'grid'
   const [expandedCategories, setExpandedCategories] = useState({})
   const [selectedSource, setSelectedSource] = useState('all')
-  const [feedScope, setFeedScope] = useState('myclubs') // 'myclubs' | 'all'
   const [visibleFeedCount, setVisibleFeedCount] = useState(FEED_PAGE_SIZE)
   const [expandedPostIds, setExpandedPostIds] = useState({})
   const feedSentinelRef = useRef(null)
@@ -1140,7 +1139,7 @@ export default function ClubsHub({
   // Post Update form state
   const [showPostForm, setShowPostForm] = useState(false)
   const [postClubId, setPostClubId] = useState(
-    () => joinedClubs[0]?.id || allClubs[0]?.id || 'demo_ucsc_csclub'
+    () => joinedClubs[0]?.id || ''
   )
   const [postSource, setPostSource] = useState('discord')
   const [postTitle, setPostTitle] = useState('')
@@ -1154,13 +1153,13 @@ export default function ClubsHub({
   const [internalLocalPosts, setInternalLocalPosts] = useState([])
 
   useEffect(() => {
-    const fallbackId = joinedClubs[0]?.id || allClubs[0]?.id
-    if (!fallbackId) return
-    if (!allClubs.some(c => String(c.id) === String(personClubId))) {
-      setPersonClubId(String(fallbackId))
+    const fallbackPersonId = joinedClubs[0]?.id || allClubs[0]?.id
+    if (fallbackPersonId && !allClubs.some(c => String(c.id) === String(personClubId))) {
+      setPersonClubId(String(fallbackPersonId))
     }
-    if (!allClubs.some(c => String(c.id) === String(postClubId))) {
-      setPostClubId(String(fallbackId))
+    const fallbackPostId = joinedClubs[0]?.id || ''
+    if (!joinedClubs.some(c => String(c.id) === String(postClubId))) {
+      setPostClubId(fallbackPostId ? String(fallbackPostId) : '')
     }
   }, [allClubs, joinedClubs, personClubId, postClubId])
 
@@ -1226,6 +1225,7 @@ export default function ClubsHub({
   ])
 
   const categoryFilters = useMemo(() => {
+    if (compact) return []
     const pool = section === 'discover' ? allClubs : joinedClubs
     const counts = new Map()
     for (const c of pool) {
@@ -1240,9 +1240,10 @@ export default function ClubsHub({
       count: counts.get(cat.id) || 0,
     }))
     return [{ value: 'All', label: 'All Categories', shortLabel: 'All', count: pool.length }, ...ordered]
-  }, [allClubs, joinedClubs, section])
+  }, [compact, allClubs, joinedClubs, section])
 
   const filteredClubs = useMemo(() => {
+    if (compact) return []
     const pool = section === 'discover' ? allClubs : joinedClubs
     const catLower = category === 'All' ? null : category.toLowerCase()
     const catScoped = catLower ? pool.filter(c => c.category === catLower) : pool
@@ -1251,9 +1252,10 @@ export default function ClubsHub({
       secondary: [c.instagram, c.id, c.categoryLabel, ...(c.tags || []).map(t => t.label)],
       tertiary: [c.description, c.directoryDescription, c.email, c.schedule],
     }))
-  }, [allClubs, joinedClubs, section, category, searchQuery])
+  }, [compact, allClubs, joinedClubs, section, category, searchQuery])
 
   const groupedClubs = useMemo(() => {
+    if (compact) return []
     const groups = new Map()
     for (const c of filteredClubs) {
       const key = c.category
@@ -1264,15 +1266,20 @@ export default function ClubsHub({
       ...cat,
       clubs: groups.get(cat.id),
     }))
-  }, [filteredClubs])
+  }, [compact, filteredClubs])
 
   const joinedIdSet = useMemo(
     () => new Set(joinedClubs.map(c => String(c.id))),
     [joinedClubs]
   )
 
+  const joinedLowerSet = useMemo(
+    () => new Set(joinedClubs.map(c => String(c.id).toLowerCase())),
+    [joinedClubs]
+  )
+
   const feedPosts = useMemo(() => {
-    if (compact || section !== 'updates') return []
+    if (compact || section !== 'updates' || joinedLowerSet.size === 0) return []
 
     // Lazily build and cache normalized, chronologically sorted hub posts once per hubDict reference
     if (hubPostsCacheRef.current.hubRef !== hubDict) {
@@ -1321,11 +1328,13 @@ export default function ClubsHub({
         : hubPostsCacheRef.current.items
 
     const channels = userSettings?.channels || {}
-    const scopeToMyClubs = joinedIdSet.size > 0 && feedScope === 'myclubs'
     const parsedFeedQuery = parseSearchQuery(searchQuery)
 
     return allNormalized.filter(post => {
-      if (scopeToMyClubs && post.clubIdStr && !joinedIdSet.has(post.clubIdStr)) {
+      if (
+        !post.clubIdStr ||
+        (!joinedIdSet.has(post.clubIdStr) && !joinedLowerSet.has(post.clubIdStr.toLowerCase()))
+      ) {
         return false
       }
 
@@ -1355,7 +1364,7 @@ export default function ClubsHub({
     hubDict,
     localPosts,
     joinedIdSet,
-    feedScope,
+    joinedLowerSet,
     selectedSource,
     searchQuery,
     userSettings?.channels,
@@ -1364,7 +1373,7 @@ export default function ClubsHub({
   // Reset pagination window whenever feed filters or search query change
   useEffect(() => {
     setVisibleFeedCount(FEED_PAGE_SIZE)
-  }, [selectedSource, feedScope, searchQuery])
+  }, [selectedSource, joinedLowerSet, searchQuery])
 
   const visibleFeedPosts = useMemo(
     () => feedPosts.slice(0, visibleFeedCount),
@@ -1392,17 +1401,19 @@ export default function ClubsHub({
 
   const directoryData = useMemo(
     () =>
-      buildClubDirectoryData({
-        allClubs,
-        hubDict,
-        customRoster,
-        initialOfficers,
-        initialMembers,
-        user,
-        userSettings,
-        isDemo,
-      }),
-    [allClubs, hubDict, customRoster, user, userSettings, isDemo]
+      compact
+        ? { officers: [], members: [], clubPeopleCounts: new Map() }
+        : buildClubDirectoryData({
+            allClubs,
+            hubDict,
+            customRoster,
+            initialOfficers,
+            initialMembers,
+            user,
+            userSettings,
+            isDemo,
+          }),
+    [compact, allClubs, hubDict, customRoster, user, userSettings, isDemo]
   )
 
   const allOfficers = directoryData.officers
@@ -1411,6 +1422,9 @@ export default function ClubsHub({
 
   // Pre-category scoped lists (applies Scope + Specific Club + Search Query so category pills show live counts)
   const { preCatOfficers, preCatMembers } = useMemo(() => {
+    if (compact || section !== 'directory') {
+      return { preCatOfficers: allOfficers, preCatMembers: allMembers }
+    }
     const scopeToJoined =
       directoryClubFilter === 'all' && directoryScope === 'myclubs' && joinedIdSet.size > 0
 
@@ -1459,6 +1473,8 @@ export default function ClubsHub({
 
     return { preCatOfficers: nextOfficers, preCatMembers: nextMembers }
   }, [
+    compact,
+    section,
     allOfficers,
     allMembers,
     directoryClubFilter,
@@ -2636,11 +2652,7 @@ export default function ClubsHub({
                     setSection(tab.id)
                     setCategory('All')
                   }}
-<<<<<<< Updated upstream
-                  className={`shrink-0 whitespace-nowrap px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
-=======
-                  className={`inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
->>>>>>> Stashed changes
+                  className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
                     isActive
                       ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
@@ -2685,16 +2697,29 @@ export default function ClubsHub({
             </div>
           )}
 
-          {section === 'updates' && (
-            <button
-              type="button"
-              onClick={() => setShowPostForm(prev => !prev)}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
-            >
-              {showPostForm ? <X size={14} /> : <Plus size={14} />}
-              <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
-            </button>
-          )}
+          {section === 'updates' &&
+            (joinedClubs.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowPostForm(prev => !prev)}
+                className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+              >
+                {showPostForm ? <X size={14} /> : <Plus size={14} />}
+                <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setSection('discover')
+                  setCategory('All')
+                }}
+                className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+              >
+                <span>Discover Clubs</span>
+                <ArrowRight size={14} />
+              </button>
+            ))}
 
           {section === 'directory' && (
             <button
@@ -2899,30 +2924,14 @@ export default function ClubsHub({
               )}
 
               {joinedClubs.length > 0 && (
-                <div className="segmented-track">
-                  {[
-                    { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
-                    { id: 'all',     label: 'All Campus' },
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setFeedScope(opt.id)}
-                      className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                        feedScope === opt.id
-                          ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                          : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <span className="inline-flex items-center px-3 min-h-[34px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)]">
+                  My Clubs ({joinedClubs.length})
+                </span>
               )}
             </div>
           </div>
 
-          {showPostForm && (
+          {showPostForm && joinedClubs.length > 0 && (
             <form
               onSubmit={handlePostUpdateSubmit}
               className="p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
@@ -2938,7 +2947,7 @@ export default function ClubsHub({
                     onChange={e => setPostClubId(e.target.value)}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
-                    {allClubs.map(c => (
+                    {joinedClubs.map(c => (
                       <option key={c.id} value={c.id}>
                         {cleanText(c.name)}
                       </option>
@@ -3073,6 +3082,26 @@ export default function ClubsHub({
                 </div>
               )}
             </>
+          ) : joinedClubs.length === 0 ? (
+            <div className="py-10 px-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-center space-y-3">
+              <div className="text-sm font-bold text-[var(--text)]">
+                Join a club to receive incoming updates &amp; announcements
+              </div>
+              <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
+                You aren&apos;t in any clubs yet. Once you join a club, its official announcements, Discord updates, and Instagram posts appear here.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSection('discover')
+                  setCategory('All')
+                }}
+                className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--text)] text-[var(--bg)] border-none text-xs font-semibold cursor-pointer hover:opacity-90"
+              >
+                <span>Discover Clubs</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
           ) : (
             <div className="py-10 px-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-center space-y-3">
               <div className="text-xs font-medium text-[var(--text-muted)]">

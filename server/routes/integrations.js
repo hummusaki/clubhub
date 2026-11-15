@@ -233,6 +233,7 @@ router.post('/discord/send', async (req, res) => {
       url,
       events,
       poll,
+      task,
     } = req.body || {};
     const sub = accountKey ? getSubscriptionRecord(accountKey) : {};
     const effectiveWebhook =
@@ -249,6 +250,7 @@ router.post('/discord/send', async (req, res) => {
       url,
       events,
       poll,
+      task,
     });
     res.json(result);
   } catch (err) {
@@ -380,6 +382,7 @@ router.post('/email/send', async (req, res) => {
       url,
       events,
       poll,
+      task: req.body?.task,
       attachIcs,
     });
     res.json(result);

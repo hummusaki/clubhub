@@ -6,7 +6,11 @@ import {
   Users,
   Layers,
   Calendar,
-  CheckCircle2,
+  Clock,
+  Bell,
+  BellRing,
+  Send,
+  ExternalLink,
   CheckSquare,
   ChevronDown,
   ChevronRight,
@@ -14,12 +18,12 @@ import {
   Trash2,
   Search,
   SlidersHorizontal,
-  StickyNote,
   Lock,
   UserPlus,
   FolderPlus,
   Compass,
   X,
+  Loader2,
 } from 'lucide-react'
 import {
   Card,
@@ -38,8 +42,32 @@ import {
   createClubTask,
   updateClubTask,
   deleteClubTask,
+  sendClubTaskReminder,
   onWorkspacePermissionChange,
 } from '../api/workspaceClient'
+import {
+  getIntegrationsStatus,
+  saveIntegrationSubscription,
+} from '../api/client'
+import {
+  getLocalIntegrationPrefs,
+  saveLocalIntegrationPrefs,
+  isValidDiscordWebhookUrl,
+  dispatchDiscordNotification,
+  dispatchEmailNotification,
+} from '../utils/directIntegrations'
+import {
+  readTaskBoardPrefs,
+  writeTaskBoardPrefs,
+  REMINDER_OFFSET_OPTIONS,
+  normalizeTime24h,
+  formatReminderOffsetLabel,
+  buildClientReminderPayload,
+  computeTaskDueDateObj,
+  isTaskOverdue,
+  hasLocalReminderFired,
+  markLocalReminderFired,
+} from '../utils/taskReminders'
 import TaskModal, {
   TASK_STATUS_META,
   TASK_PRIORITY_META,
@@ -49,6 +77,7 @@ import TaskModal, {
   addDaysYmd,
   formatSmartDueDate,
 } from './TaskModal'
+import { DateInputField, TimePickerSelect } from './TimePickerSelect'
 
 const normalizeClubId = id =>
   String(id || '')
@@ -156,6 +185,8 @@ function createSeedDemoBoard(clubId, clubName) {
         status: 'not_started',
         priority: 'medium',
         dueDate: addDaysYmd(2),
+        dueTime: '18:00',
+        reminder: { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
         assignees: [],
         groupIds: [],
         completedBy: [],
@@ -175,6 +206,8 @@ function createSeedDemoBoard(clubId, clubName) {
         status: 'not_started',
         priority: 'medium',
         dueDate: getLocalYmd(),
+        dueTime: '17:00',
+        reminder: { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
         assignees: [],
         groupIds: [],
         completedBy: [],
@@ -185,9 +218,21 @@ function createSeedDemoBoard(clubId, clubName) {
   }
 }
 
-function DueDateBadge({ dueDate, isDone = false }) {
-  const info = formatSmartDueDate(dueDate, isDone)
+function DueDateBadge({
+  dueDate,
+  dueTime = '',
+  reminder = null,
+  isDone = false,
+  now,
+  timeFormat = '12h',
+  onClick,
+  title,
+}) {
+  const info = formatSmartDueDate(dueDate, dueTime, isDone, { now, timeFormat })
   if (!info) return null
+
+  const remActive = Boolean(!isDone && reminder?.enabled)
+  const remSent = Boolean(reminder?.sentAt)
 
   const toneStyles =
     info.tone === 'overdue'
@@ -208,14 +253,235 @@ function DueDateBadge({ dueDate, isDone = false }) {
             borderColor: 'var(--border)',
           }
 
+  const content = (
+    <>
+      {dueTime ? <Clock size={11} /> : <Calendar size={11} />}
+      <span>{info.label}</span>
+      {remActive && (
+        <span
+          className="inline-flex items-center gap-0.5 pl-1 ml-0.5 border-l border-current/25 text-[10px]"
+          title={
+            remSent
+              ? 'Reminder sent'
+              : `Reminder set (${formatReminderOffsetLabel(reminder?.offsetMinutes ?? 60, true)})`
+          }
+        >
+          <Bell size={9.5} />
+          {remSent && <span>✓</span>}
+        </span>
+      )}
+    </>
+  )
+
+  if (onClick && !isDone) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title || 'Edit due date, time, or reminder'}
+        style={toneStyles}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold font-mono-num shrink-0 cursor-pointer hover:brightness-95 transition-all"
+      >
+        {content}
+      </button>
+    )
+  }
+
   return (
     <span
       style={toneStyles}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-semibold font-mono-num shrink-0"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold font-mono-num shrink-0"
     >
-      <Calendar size={10.5} />
-      <span>{info.label}</span>
+      {content}
     </span>
+  )
+}
+
+function MemberTaskReminderModal({
+  task,
+  reminderDefaults,
+  dueLabel,
+  busy,
+  sendingNow,
+  onSave,
+  onSendNow,
+  onClose,
+}) {
+  const [enabled, setEnabled] = useState(() =>
+    task?.reminder?.enabled !== undefined ? Boolean(task.reminder.enabled) : true
+  )
+  const [offsetMinutes, setOffsetMinutes] = useState(() =>
+    Number(task?.reminder?.offsetMinutes ?? reminderDefaults?.defaultOffsetMinutes ?? 60)
+  )
+  const [channels, setChannels] = useState(() =>
+    Array.isArray(task?.reminder?.channels) && task.reminder.channels.length > 0
+      ? task.reminder.channels
+      : reminderDefaults?.defaultChannels || ['discord', 'email']
+  )
+
+  function toggleChannel(ch) {
+    setChannels(prev => {
+      const exists = prev.includes(ch)
+      if (exists && prev.length === 1) return prev
+      return exists ? prev.filter(x => x !== ch) : [...prev, ch]
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[115] modal-backdrop flex items-center justify-center p-3 sm:p-5"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Personal task reminder"
+        className="modal-panel w-full max-w-md p-5 space-y-4 fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-sm font-extrabold text-[var(--text)]">
+              <Bell size={15} className="text-[var(--blue)] shrink-0" />
+              <span>Personal Reminder</span>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+              {cleanText(task?.title)} · {dueLabel}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close reminder dialog"
+            className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold text-[var(--text)]">Remind me about this task</div>
+              <div className="text-[11px] text-[var(--text-muted)]">
+                Only sends to your connected channels
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={enabled}
+              onClick={() => setEnabled(v => !v)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border-none cursor-pointer transition-colors ${
+                enabled ? 'bg-[var(--blue)]' : 'bg-[var(--bg-subtle)]'
+              }`}
+            >
+              <span
+                className={`inline-block h-4.5 w-4.5 rounded-full bg-[var(--switch-thumb)] shadow-xs transition-transform ${
+                  enabled ? 'translate-x-5.5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {enabled && (
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                  When to remind
+                </label>
+                <select
+                  value={offsetMinutes}
+                  onChange={e => setOffsetMinutes(Number(e.target.value))}
+                  className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+                >
+                  {REMINDER_OFFSET_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                  Notify via
+                </span>
+                <div className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center gap-4">
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={channels.includes('discord')}
+                      onChange={() => toggleChannel('discord')}
+                      className="rounded accent-[var(--blue)]"
+                    />
+                    <span>Discord</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={channels.includes('email')}
+                      onChange={() => toggleChannel('email')}
+                      className="rounded accent-[var(--blue)]"
+                    />
+                    <span>Email</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={channels.includes('browser')}
+                      onChange={() => toggleChannel('browser')}
+                      className="rounded accent-[var(--blue)]"
+                    />
+                    <span>In-App</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[var(--border)]">
+          <button
+            type="button"
+            disabled={sendingNow || busy}
+            onClick={() =>
+              onSendNow({
+                ...task,
+                reminder: {
+                  ...(task?.reminder || {}),
+                  enabled: true,
+                  offsetMinutes,
+                  channels,
+                },
+              })
+            }
+            className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--blue-light)] text-xs font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
+          >
+            <Send size={12} />
+            <span>{sendingNow ? 'Sending…' : 'Send now'}</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onSave({ enabled, offsetMinutes, channels })}
+              className="px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -247,6 +513,8 @@ function ColorPickerDots({ value, onChange }) {
 export default function ClubTaskBoard({
   user = null,
   accountKey = 'guest',
+  accountEmail = '',
+  userSettings = null,
   isDemo = false,
   clubs = [],
   joinedClubIds = [],
@@ -254,11 +522,23 @@ export default function ClubTaskBoard({
   onClubJoined,
   onOpenClubsRbac,
   onBrowseClubs,
+  onOpenSettings,
   onNotify,
 }) {
   const effectiveUser = isDemo ? null : user
   const isAuthenticated = Boolean(effectiveUser?.id)
   const canUseBoard = isAuthenticated || isDemo
+  const timeFormat = userSettings?.timeFormat === '24h' ? '24h' : '12h'
+  const prefsAccountKey = isDemo ? 'demo' : accountKey || 'guest'
+
+  // Load saved Task Board preferences synchronously for the active account
+  const initialPrefs = useMemo(
+    () => readTaskBoardPrefs(prefsAccountKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const savedClubPrefRef = useRef(initialPrefs.selectedClubId || '')
+  const hydratedAccountRef = useRef(prefsAccountKey)
 
   // Strictly restrict selectable & visible clubs to clubs the user is actually a member of
   const joinedKeySet = useMemo(
@@ -286,11 +566,67 @@ export default function ClubTaskBoard({
   const defaultClubId = useMemo(() => {
     const matchedInitial = resolveMemberClubMatch(initialClubId)
     if (matchedInitial) return matchedInitial.id
+    const matchedSaved = resolveMemberClubMatch(savedClubPrefRef.current)
+    if (matchedSaved) return matchedSaved.id
     return memberClubs[0]?.id || ''
   }, [initialClubId, memberClubs, resolveMemberClubMatch])
 
   const [selectedClubId, setSelectedClubId] = useState(defaultClubId)
   const lastAppliedInitialRef = useRef(initialClubId)
+
+  // View & Filter state (initialized from persisted preferences!)
+  const [viewTiersByClub, setViewTiersByClub] = useState(
+    () => initialPrefs.viewTiersByClub || {}
+  )
+  const [focusTab, setFocusTab] = useState(() => initialPrefs.focusTab || 'all')
+  const [collapsedSections, setCollapsedSections] = useState(
+    () => initialPrefs.collapsedSections || {}
+  )
+  const [showCompletedPersonal, setShowCompletedPersonal] = useState(
+    () => initialPrefs.showCompletedPersonal || {}
+  )
+  const [searchQuery, setSearchQuery] = useState(() => initialPrefs.searchQuery || '')
+  const [onlyAssignedToMe, setOnlyAssignedToMe] = useState(() =>
+    Boolean(initialPrefs.onlyAssignedToMe)
+  )
+  const [hideDone, setHideDone] = useState(() => Boolean(initialPrefs.hideDone))
+  const [kpiQuickFilter, setKpiQuickFilter] = useState(() => initialPrefs.kpiQuickFilter || '')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(() =>
+    Boolean(initialPrefs.showAdvancedFilters)
+  )
+  const [statusFilter, setStatusFilter] = useState(() => initialPrefs.statusFilter || 'all')
+  const [priorityFilter, setPriorityFilter] = useState(
+    () => initialPrefs.priorityFilter || 'all'
+  )
+  const [groupFilter, setGroupFilter] = useState(() => initialPrefs.groupFilter || 'all')
+  const [reminderDefaults, setReminderDefaults] = useState(
+    () => initialPrefs.reminderDefaults
+  )
+
+  // Re-hydrate cleanly if `accountKey` transitions after Clerk/Supabase session loads
+  useEffect(() => {
+    if (hydratedAccountRef.current === prefsAccountKey) return
+    hydratedAccountRef.current = prefsAccountKey
+    const nextPrefs = readTaskBoardPrefs(prefsAccountKey)
+    savedClubPrefRef.current = nextPrefs.selectedClubId || ''
+    setViewTiersByClub(nextPrefs.viewTiersByClub || {})
+    setFocusTab(nextPrefs.focusTab || 'all')
+    setCollapsedSections(nextPrefs.collapsedSections || {})
+    setShowCompletedPersonal(nextPrefs.showCompletedPersonal || {})
+    setSearchQuery(nextPrefs.searchQuery || '')
+    setOnlyAssignedToMe(Boolean(nextPrefs.onlyAssignedToMe))
+    setHideDone(Boolean(nextPrefs.hideDone))
+    setKpiQuickFilter(nextPrefs.kpiQuickFilter || '')
+    setShowAdvancedFilters(Boolean(nextPrefs.showAdvancedFilters))
+    setStatusFilter(nextPrefs.statusFilter || 'all')
+    setPriorityFilter(nextPrefs.priorityFilter || 'all')
+    setGroupFilter(nextPrefs.groupFilter || 'all')
+    setReminderDefaults(nextPrefs.reminderDefaults)
+    if (!initialClubId && nextPrefs.selectedClubId) {
+      const matched = resolveMemberClubMatch(nextPrefs.selectedClubId)
+      if (matched) setSelectedClubId(matched.id)
+    }
+  }, [prefsAccountKey, initialClubId, resolveMemberClubMatch])
 
   useEffect(() => {
     if (memberClubs.length === 0) {
@@ -301,36 +637,181 @@ export default function ClubTaskBoard({
       lastAppliedInitialRef.current = initialClubId
       const matched = resolveMemberClubMatch(initialClubId)
       if (matched) {
+        savedClubPrefRef.current = matched.id
         setSelectedClubId(matched.id)
         return
       }
     }
     const stillMember = resolveMemberClubMatch(selectedClubId)
     if (!stillMember) {
-      setSelectedClubId(defaultClubId)
+      const matchedSaved = resolveMemberClubMatch(savedClubPrefRef.current)
+      const nextId = matchedSaved ? matchedSaved.id : defaultClubId
+      setSelectedClubId(nextId)
+    } else {
+      savedClubPrefRef.current = stillMember.id
     }
   }, [initialClubId, defaultClubId, selectedClubId, memberClubs, resolveMemberClubMatch])
+
+  // Persist filters, selected server, view tiers, and reminder preferences across page loads
+  useEffect(() => {
+    if (isDemo || hydratedAccountRef.current !== prefsAccountKey) return
+    writeTaskBoardPrefs(prefsAccountKey, {
+      selectedClubId: selectedClubId || savedClubPrefRef.current || '',
+      focusTab,
+      viewTiersByClub,
+      searchQuery,
+      onlyAssignedToMe,
+      hideDone,
+      kpiQuickFilter,
+      showAdvancedFilters,
+      statusFilter,
+      priorityFilter,
+      groupFilter,
+      collapsedSections,
+      showCompletedPersonal,
+      reminderDefaults,
+    })
+  }, [
+    isDemo,
+    prefsAccountKey,
+    selectedClubId,
+    focusTab,
+    viewTiersByClub,
+    searchQuery,
+    onlyAssignedToMe,
+    hideDone,
+    kpiQuickFilter,
+    showAdvancedFilters,
+    statusFilter,
+    priorityFilter,
+    groupFilter,
+    collapsedSections,
+    showCompletedPersonal,
+    reminderDefaults,
+  ])
 
   const [boardData, setBoardData] = useState(null)
   const [clubPeople, setClubPeople] = useState(null)
   const [loading, setLoading] = useState(false)
   const [notMember, setNotMember] = useState(false)
   const [offlineLocalMode, setOfflineLocalMode] = useState(false)
-  const [viewTier, setViewTier] = useState('member') // 'member' | 'board'
-  const [focusTab, setFocusTab] = useState('all') // 'all' | 'personal' | 'club'
-  const [collapsedSections, setCollapsedSections] = useState({})
-  const [showCompletedPersonal, setShowCompletedPersonal] = useState({})
   const demoBoardsRef = useRef(new Map())
 
-  // Smart filters
-  const [searchQuery, setSearchQuery] = useState('')
-  const [onlyAssignedToMe, setOnlyAssignedToMe] = useState(false)
-  const [hideDone, setHideDone] = useState(false)
-  const [kpiQuickFilter, setKpiQuickFilter] = useState('') // '' | 'stuck' | 'overdue'
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [priorityFilter, setPriorityFilter] = useState('all')
-  const [groupFilter, setGroupFilter] = useState('all')
+  // Live clock tick every 30s for time-aware badges & reminder triggers
+  const [clockNow, setClockNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setClockNow(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Discord & Email Integration Connection State + Inline Reminder Drawer
+  const [showReminderPanel, setShowReminderPanel] = useState(false)
+  const [channelWebhookDraft, setChannelWebhookDraft] = useState('')
+  const [channelEmailDraft, setChannelEmailDraft] = useState('')
+  const [serverIntegrationMeta, setServerIntegrationMeta] = useState({
+    discordServerReady: false,
+    emailServerReady: false,
+    webhookMasked: '',
+  })
+  const [remindingTaskId, setRemindingTaskId] = useState('')
+
+  const syncChannelDraftsFromPrefs = useCallback(() => {
+    const localPrefs = getLocalIntegrationPrefs(prefsAccountKey)
+    setChannelWebhookDraft(localPrefs.discordWebhookUrl || '')
+    setChannelEmailDraft(
+      localPrefs.recipientEmail || accountEmail || effectiveUser?.email || ''
+    )
+  }, [prefsAccountKey, accountEmail, effectiveUser?.email])
+
+  useEffect(() => {
+    syncChannelDraftsFromPrefs()
+    if (isDemo) return
+    let cancelled = false
+    getIntegrationsStatus({ accountKey: prefsAccountKey })
+      .then(status => {
+        if (cancelled || !status) return
+        setServerIntegrationMeta({
+          discordServerReady: Boolean(
+            status.discord?.botConfigured ||
+              status.discord?.webhookConfigured ||
+              status.subscription?.discordWebhookConfigured
+          ),
+          emailServerReady: Boolean(status.email?.outboundReady),
+          webhookMasked: status.subscription?.discordWebhookMasked || '',
+        })
+        if (status.subscription?.recipientEmail) {
+          setChannelEmailDraft(prev => prev || status.subscription.recipientEmail)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isDemo, prefsAccountKey, syncChannelDraftsFromPrefs])
+
+  const integrationSummary = useMemo(() => {
+    const localPrefs = getLocalIntegrationPrefs(prefsAccountKey)
+    const effectiveWebhook = channelWebhookDraft || localPrefs.discordWebhookUrl || ''
+    const effectiveEmail =
+      channelEmailDraft ||
+      localPrefs.recipientEmail ||
+      accountEmail ||
+      effectiveUser?.email ||
+      ''
+    return {
+      discordReady:
+        Boolean(serverIntegrationMeta.discordServerReady) ||
+        isValidDiscordWebhookUrl(effectiveWebhook),
+      emailReady:
+        Boolean(serverIntegrationMeta.emailServerReady) || effectiveEmail.includes('@'),
+      recipientEmail: effectiveEmail,
+      discordWebhookUrl: isValidDiscordWebhookUrl(effectiveWebhook) ? effectiveWebhook : '',
+      webhookMasked: serverIntegrationMeta.webhookMasked,
+    }
+  }, [
+    prefsAccountKey,
+    channelWebhookDraft,
+    channelEmailDraft,
+    accountEmail,
+    effectiveUser?.email,
+    serverIntegrationMeta,
+  ])
+
+  const handleSaveChannelPrefs = useCallback(
+    async (patch = {}) => {
+      if (isDemo) return
+      const nextWebhook =
+        patch.discordWebhookUrl !== undefined ? patch.discordWebhookUrl : channelWebhookDraft
+      const nextEmail =
+        patch.recipientEmail !== undefined ? patch.recipientEmail : channelEmailDraft
+
+      if (nextWebhook && !isValidDiscordWebhookUrl(nextWebhook)) {
+        if (onNotify) {
+          onNotify(
+            'Enter a valid Discord Incoming Webhook URL (https://discord.com/api/webhooks/...).',
+            { type: 'error' }
+          )
+        }
+        return false
+      }
+
+      const savedLocal = saveLocalIntegrationPrefs(prefsAccountKey, {
+        discordWebhookUrl: nextWebhook,
+        recipientEmail: String(nextEmail || '').trim(),
+      })
+      setChannelWebhookDraft(savedLocal.discordWebhookUrl || '')
+      setChannelEmailDraft(savedLocal.recipientEmail || '')
+
+      await saveIntegrationSubscription({
+        accountKey: prefsAccountKey,
+        discordWebhookUrl: savedLocal.discordWebhookUrl || '',
+        recipientEmail: savedLocal.recipientEmail || '',
+      }).catch(() => {})
+
+      return true
+    },
+    [isDemo, prefsAccountKey, channelWebhookDraft, channelEmailDraft, onNotify]
+  )
 
   // Contextual section creators (separate clear drawers for Personal List vs. Club Section)
   const [sectionCreatorMode, setSectionCreatorMode] = useState(null) // null | 'personal' | 'club'
@@ -338,7 +819,7 @@ export default function ClubTaskBoard({
   const [newSectionColor, setNewSectionColor] = useState('green')
   const [newSectionVis, setNewSectionVis] = useState('members')
 
-  // Quick-add state per personal section: { [sectionId]: { title, notes, showNote, priority, dueDate } }
+  // Quick-add state per personal section: { [sectionId]: { title, notes, showNote, priority, dueDate, dueTime, remind } }
   const [quickDrafts, setQuickDrafts] = useState({})
   const [quickAddBusySecId, setQuickAddBusySecId] = useState('')
 
@@ -346,11 +827,12 @@ export default function ClubTaskBoard({
   const [inlineEditingId, setInlineEditingId] = useState(null)
   const [inlineEditTitle, setInlineEditTitle] = useState('')
 
-  // Task Modal state
+  // Task Modal & Member Reminder Modal state
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPersonalOnly, setModalPersonalOnly] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
   const [modalDefaultSectionId, setModalDefaultSectionId] = useState('')
+  const [memberReminderTask, setMemberReminderTask] = useState(null)
   const [actionBusy, setActionBusy] = useState(false)
 
   const selectedClub = useMemo(
@@ -358,8 +840,32 @@ export default function ClubTaskBoard({
     [resolveMemberClubMatch, selectedClubId]
   )
 
+  const normSelectedClubId = normalizeClubId(selectedClubId)
+  const isBoard = Boolean(boardData?.permission?.isBoard)
+
+  const viewTier = useMemo(() => {
+    if (!isBoard) return 'member'
+    const saved = viewTiersByClub[normSelectedClubId]
+    return saved === 'member' || saved === 'board' ? saved : 'board'
+  }, [isBoard, viewTiersByClub, normSelectedClubId])
+
+  const setViewTierForCurrentClub = useCallback(
+    nextTier => {
+      if (!normSelectedClubId) return
+      setViewTiersByClub(prev => ({
+        ...prev,
+        [normSelectedClubId]: nextTier === 'member' ? 'member' : 'board',
+      }))
+    },
+    [normSelectedClubId]
+  )
+
+  const loadSeqRef = useRef(0)
+  const selectedClubName = selectedClub?.name || ''
+  const isLocallyMember = Boolean(selectedClub)
+
   const loadBoard = useCallback(async () => {
-    if (!selectedClubId || !selectedClub || !canUseBoard) {
+    if (!selectedClubId || !canUseBoard) {
       setBoardData(null)
       setClubPeople(null)
       setNotMember(false)
@@ -368,125 +874,132 @@ export default function ClubTaskBoard({
     }
 
     const cid = normalizeClubId(selectedClubId)
+    const seq = ++loadSeqRef.current
 
     if (isDemo) {
       if (!demoBoardsRef.current.has(cid)) {
-        demoBoardsRef.current.set(cid, createSeedDemoBoard(cid, selectedClub?.name))
+        demoBoardsRef.current.set(cid, createSeedDemoBoard(cid, selectedClubName))
       }
       setNotMember(false)
       setOfflineLocalMode(false)
       setClubPeople(null)
       setBoardData(demoBoardsRef.current.get(cid))
-      setViewTier('member')
+      setLoading(false)
       return
     }
 
     setLoading(true)
-    let [tasksRes, peopleRes] = await Promise.all([
-      getClubTasksBoard(selectedClubId),
-      getClubPeopleAndGroups(selectedClubId),
-    ])
+    try {
+      let [tasksRes, peopleRes] = await Promise.all([
+        getClubTasksBoard(selectedClubId),
+        getClubPeopleAndGroups(selectedClubId),
+      ])
 
-    // Reconcile local joinedClubIds with backend memberships if dev server restarted in-memory DB
-    if (
-      !tasksRes?.ok &&
-      tasksRes?.status === 403 &&
-      tasksRes?.code === 'NOT_CLUB_MEMBER' &&
-      Boolean(selectedClub)
-    ) {
-      const syncedJoin = await joinWorkspaceClub(selectedClubId)
-      if (syncedJoin?.ok) {
-        ;[tasksRes, peopleRes] = await Promise.all([
-          getClubTasksBoard(selectedClubId),
-          getClubPeopleAndGroups(selectedClubId),
-        ])
+      if (seq !== loadSeqRef.current) return
+
+      // Reconcile local joinedClubIds with backend memberships if dev server restarted in-memory DB
+      if (
+        !tasksRes?.ok &&
+        tasksRes?.status === 403 &&
+        tasksRes?.code === 'NOT_CLUB_MEMBER' &&
+        isLocallyMember
+      ) {
+        const syncedJoin = await joinWorkspaceClub(selectedClubId)
+        if (seq !== loadSeqRef.current) return
+        if (syncedJoin?.ok) {
+          ;[tasksRes, peopleRes] = await Promise.all([
+            getClubTasksBoard(selectedClubId),
+            getClubPeopleAndGroups(selectedClubId),
+          ])
+          if (seq !== loadSeqRef.current) return
+        }
       }
-    }
 
-    setLoading(false)
+      if (peopleRes?.ok) setClubPeople(peopleRes)
 
-    if (peopleRes?.ok) setClubPeople(peopleRes)
-
-    if (!tasksRes?.ok) {
-      if (tasksRes?.offline) {
-        const localPersonal = readOfflinePersonalBoard(accountKey, cid, effectiveUser?.id)
-        setOfflineLocalMode(true)
-        setNotMember(false)
-        setBoardData({
-          clubId: cid,
-          permission: {
+      if (!tasksRes?.ok) {
+        if (tasksRes?.offline) {
+          const localPersonal = readOfflinePersonalBoard(accountKey, cid, effectiveUser?.id)
+          setOfflineLocalMode(true)
+          setNotMember(false)
+          setBoardData({
             clubId: cid,
-            isMember: true,
-            isBoard: false,
-            tier: 'member',
-            roleTitle: 'Member',
-            groupIds: [],
-          },
-          sections: [
-            {
-              id: `sec_${cid}_general`,
+            permission: {
               clubId: cid,
-              title: 'General Club Checklist',
-              color: 'teal',
-              visibility: 'members',
+              isMember: true,
+              isBoard: false,
+              tier: 'member',
+              roleTitle: 'Member',
+              groupIds: [],
             },
-          ],
-          tasks: [],
-          personalSections: localPersonal.personalSections,
-          personalTasks: localPersonal.personalTasks,
-          groups: [],
-          shortcuts: [],
-        })
-        setViewTier('member')
-        return
-      }
-      if (tasksRes?.status === 403 && tasksRes?.code === 'NOT_CLUB_MEMBER') {
-        setNotMember(true)
+            sections: [
+              {
+                id: `sec_${cid}_general`,
+                clubId: cid,
+                title: 'General Club Checklist',
+                color: 'teal',
+                visibility: 'members',
+              },
+            ],
+            tasks: [],
+            personalSections: localPersonal.personalSections,
+            personalTasks: localPersonal.personalTasks,
+            groups: [],
+            shortcuts: [],
+          })
+          return
+        }
+        if (tasksRes?.status === 403 && tasksRes?.code === 'NOT_CLUB_MEMBER') {
+          setNotMember(true)
+          setOfflineLocalMode(false)
+          setBoardData(null)
+          return
+        }
+        setNotMember(false)
         setOfflineLocalMode(false)
         setBoardData(null)
-        setViewTier('member')
         return
       }
-      setNotMember(false)
-      setOfflineLocalMode(false)
-      setBoardData(null)
-      return
-    }
 
-    setOfflineLocalMode(false)
-    setNotMember(false)
-    const fallbackPersonal = makeDefaultPersonalSection(cid, effectiveUser?.id)
-    setBoardData({
-      ...tasksRes,
-      personalSections:
-        Array.isArray(tasksRes.personalSections) && tasksRes.personalSections.length > 0
-          ? tasksRes.personalSections
-          : [fallbackPersonal],
-      personalTasks: Array.isArray(tasksRes.personalTasks) ? tasksRes.personalTasks : [],
-    })
-    if (tasksRes.permission?.isBoard) {
-      setViewTier(prev => (prev === 'board' || prev === 'member' ? prev : 'board'))
-    } else {
-      setViewTier('member')
+      setOfflineLocalMode(false)
+      setNotMember(false)
+      const fallbackPersonal = makeDefaultPersonalSection(cid, effectiveUser?.id)
+      setBoardData({
+        ...tasksRes,
+        personalSections:
+          Array.isArray(tasksRes.personalSections) && tasksRes.personalSections.length > 0
+            ? tasksRes.personalSections
+            : [fallbackPersonal],
+        personalTasks: Array.isArray(tasksRes.personalTasks) ? tasksRes.personalTasks : [],
+      })
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setLoading(false)
+      }
     }
-  }, [selectedClubId, selectedClub, canUseBoard, isDemo, accountKey, effectiveUser?.id])
+  }, [
+    selectedClubId,
+    selectedClubName,
+    isLocallyMember,
+    canUseBoard,
+    isDemo,
+    accountKey,
+    effectiveUser?.id,
+  ])
 
   useEffect(() => {
     loadBoard()
   }, [loadBoard])
 
-  const isBoard = Boolean(boardData?.permission?.isBoard)
   useEffect(() => {
-    if (isBoard) setViewTier('board')
-    else setViewTier('member')
     setSectionCreatorMode(null)
     setInlineEditingId(null)
-    setKpiQuickFilter('')
-  }, [selectedClubId, isBoard])
+  }, [selectedClubId])
 
   useEffect(() => {
     if (isDemo) return undefined
-    return onWorkspacePermissionChange(() => {
+    return onWorkspacePermissionChange(detail => {
+      if (detail?.code === 'NOT_CLUB_MEMBER') return
       loadBoard()
     })
   }, [isDemo, loadBoard])
@@ -500,8 +1013,17 @@ export default function ClubTaskBoard({
     return m
   }, [boardData?.groups, clubPeople?.groups])
 
+  // Clear saved groupFilter automatically if that group doesn't exist on the current server
+  useEffect(() => {
+    if (groupFilter !== 'all' && boardData && !groupsMap.has(groupFilter)) {
+      setGroupFilter('all')
+    }
+  }, [groupFilter, boardData, groupsMap])
+
   const myGroupIds = boardData?.permission?.groupIds || []
-  const userEmailLower = String(effectiveUser?.email || '').trim().toLowerCase()
+  const userEmailLower = String(effectiveUser?.email || accountEmail || '')
+    .trim()
+    .toLowerCase()
 
   const isAssignedToMeOrMyGroup = useCallback(
     task => {
@@ -535,7 +1057,7 @@ export default function ClubTaskBoard({
     [boardData?.personalTasks]
   )
 
-  const todayYmd = useMemo(() => getLocalYmd(), [])
+  const todayYmd = useMemo(() => getLocalYmd(clockNow), [clockNow])
 
   const filteredPersonalTasks = useMemo(() => {
     return allPersonalTasks.filter(t => {
@@ -545,7 +1067,7 @@ export default function ClubTaskBoard({
       if (kpiQuickFilter === 'stuck' && t.status !== 'stuck' && t.priority !== 'critical') {
         return false
       }
-      if (kpiQuickFilter === 'overdue' && (!t.dueDate || t.dueDate >= todayYmd || t.status === 'done')) {
+      if (kpiQuickFilter === 'overdue' && !isTaskOverdue(t, clockNow)) {
         return false
       }
       if (searchQuery.trim()) {
@@ -555,7 +1077,15 @@ export default function ClubTaskBoard({
       }
       return true
     })
-  }, [allPersonalTasks, hideDone, statusFilter, priorityFilter, kpiQuickFilter, todayYmd, searchQuery])
+  }, [
+    allPersonalTasks,
+    hideDone,
+    statusFilter,
+    priorityFilter,
+    kpiQuickFilter,
+    clockNow,
+    searchQuery,
+  ])
 
   // Base visible shared tasks (before user filter chips) for accurate counters & Board KPIs
   const accessibleClubTasks = useMemo(() => {
@@ -591,7 +1121,7 @@ export default function ClubTaskBoard({
       if (kpiQuickFilter === 'stuck' && t.status !== 'stuck' && t.priority !== 'critical') {
         return false
       }
-      if (kpiQuickFilter === 'overdue' && (!t.dueDate || t.dueDate >= todayYmd || t.status === 'done')) {
+      if (kpiQuickFilter === 'overdue' && (!isTaskOverdue(t, clockNow) || isClubTaskDoneForViewer(t))) {
         return false
       }
       if (searchQuery.trim()) {
@@ -611,7 +1141,7 @@ export default function ClubTaskBoard({
     priorityFilter,
     groupFilter,
     kpiQuickFilter,
-    todayYmd,
+    clockNow,
     searchQuery,
   ])
 
@@ -627,6 +1157,16 @@ export default function ClubTaskBoard({
     () => accessibleClubTasks.filter(t => isAssignedToMeOrMyGroup(t)).length,
     [accessibleClubTasks, isAssignedToMeOrMyGroup]
   )
+
+  const activeReminderCount = useMemo(() => {
+    const personalActive = allPersonalTasks.filter(
+      t => t.status !== 'done' && t.dueDate && t.reminder?.enabled
+    ).length
+    const clubActive = accessibleClubTasks.filter(
+      t => !isClubTaskDoneForViewer(t) && t.dueDate && t.reminder?.enabled
+    ).length
+    return personalActive + clubActive
+  }, [allPersonalTasks, accessibleClubTasks, isClubTaskDoneForViewer])
 
   const advancedFilterCount =
     (statusFilter !== 'all' ? 1 : 0) +
@@ -655,7 +1195,7 @@ export default function ClubTaskBoard({
     const total = all.length
     const done = all.filter(t => t.status === 'done').length
     const stuck = all.filter(t => t.status === 'stuck' || t.priority === 'critical').length
-    const overdue = all.filter(t => t.dueDate && t.dueDate < todayYmd && t.status !== 'done').length
+    const overdue = all.filter(t => isTaskOverdue(t, clockNow)).length
     return {
       total,
       done,
@@ -663,7 +1203,7 @@ export default function ClubTaskBoard({
       stuck,
       overdue,
     }
-  }, [accessibleClubTasks, todayYmd])
+  }, [accessibleClubTasks, clockNow])
 
   function applyServerBoardUpdate(res) {
     setBoardData(prev => ({
@@ -690,39 +1230,260 @@ export default function ClubTaskBoard({
     })
   }
 
-  function getDraftForSection(secId) {
-    return (
-      quickDrafts[secId] || {
-        title: '',
-        notes: '',
-        showNote: false,
-        priority: 'medium',
-        dueDate: '',
+  // Dispatch a reminder (manual or automatic due-time trigger) across Discord / Email / Browser
+  const executeTaskReminderDispatch = useCallback(
+    async (task, { isAutomatic = false } = {}) => {
+      if (!task) return
+      if (isDemo) {
+        if (!isAutomatic && onNotify) {
+          onNotify('Sign in to send live Discord and Email task reminders.', { type: 'info' })
+        }
+        return
       }
-    )
+
+      const dueInfo = formatSmartDueDate(task.dueDate, task.dueTime, false, {
+        now: new Date(),
+        timeFormat,
+      })
+      const dueLabel = dueInfo?.label || task.dueDate || 'Upcoming'
+      const clubLabel = cleanText(selectedClub?.name || 'ClubHub')
+      const channels =
+        Array.isArray(task.reminder?.channels) && task.reminder.channels.length > 0
+          ? task.reminder.channels
+          : reminderDefaults.defaultChannels || ['discord', 'email']
+      const dueDt = computeTaskDueDateObj(task.dueDate, task.dueTime, 9)
+      const taskUrl = typeof window !== 'undefined' ? window.location.href : ''
+
+      // 1. In-app toast + optional Browser Notification on automatic due triggers
+      if (isAutomatic) {
+        if (onNotify) {
+          onNotify(`⏰ Reminder: "${cleanText(task.title)}" (${dueLabel})`)
+        }
+        if (
+          (channels.includes('browser') || reminderDefaults.browserAlertsEnabled) &&
+          typeof Notification !== 'undefined' &&
+          Notification.permission === 'granted'
+        ) {
+          try {
+            new Notification(`⏰ ${cleanText(task.title)}`, {
+              body: `${clubLabel} · ${dueLabel}`,
+            })
+          } catch {
+            // Ignore desktop notification errors
+          }
+        }
+      }
+
+      if (!isAutomatic) setRemindingTaskId(task.id)
+
+      const deliveredVia = []
+      let serverResults = {}
+
+      if (!offlineLocalMode && selectedClubId) {
+        const srvRes = await sendClubTaskReminder(selectedClubId, task.id, {
+          channels,
+          webhookUrl: integrationSummary.discordWebhookUrl || undefined,
+          recipientEmail: integrationSummary.recipientEmail || undefined,
+          accountKey: prefsAccountKey,
+          url: taskUrl,
+          markAutoSent: isAutomatic,
+        })
+        if (srvRes?.ok) {
+          serverResults = srvRes.results || {}
+          applyServerBoardUpdate(srvRes)
+          if (serverResults.discord?.ok) deliveredVia.push('Discord')
+          if (serverResults.email?.ok) deliveredVia.push('Email')
+        }
+      }
+
+      // Client-side fallback for Discord Webhook / Email if server wasn't configured or offline
+      const taskCardPayload = {
+        id: task.id,
+        title: task.title,
+        notes: task.notes || '',
+        priority: task.priority || 'medium',
+        dueDate: task.dueDate || '',
+        dueTime: task.dueTime || '',
+        dueAtIso: dueDt ? dueDt.toISOString() : null,
+        dueLabel,
+        visibility: task.visibility,
+        isPersonal: Boolean(task.visibility === 'personal' || task.isPersonal),
+      }
+
+      if (channels.includes('discord') && !serverResults.discord?.ok) {
+        if (integrationSummary.discordWebhookUrl) {
+          try {
+            await dispatchDiscordNotification({
+              kind: 'task_reminder',
+              accountKey: prefsAccountKey,
+              webhookUrl: integrationSummary.discordWebhookUrl,
+              clubName: clubLabel,
+              title: task.title,
+              message: task.notes || '',
+              url: taskUrl,
+              task: taskCardPayload,
+            })
+            deliveredVia.push('Discord')
+          } catch (err) {
+            if (!isAutomatic && onNotify && channels.length === 1) {
+              onNotify(err?.message || 'Discord reminder failed.', { type: 'error' })
+            }
+          }
+        }
+      }
+
+      if (channels.includes('email') && !serverResults.email?.ok) {
+        if (integrationSummary.recipientEmail) {
+          try {
+            const emailOut = await dispatchEmailNotification(
+              {
+                kind: 'task_reminder',
+                accountKey: prefsAccountKey,
+                to: integrationSummary.recipientEmail,
+                clubName: clubLabel,
+                title: task.title,
+                message: task.notes || '',
+                url: taskUrl,
+                task: taskCardPayload,
+              },
+              { allowMailtoFallback: !isAutomatic }
+            )
+            if (emailOut?.ok) {
+              deliveredVia.push(emailOut.via === 'mailto' ? 'Email draft' : 'Email')
+            }
+          } catch {
+            // Handled below if nothing delivered on manual send
+          }
+        }
+      }
+
+      if (!isAutomatic) {
+        setRemindingTaskId('')
+        if (deliveredVia.length > 0) {
+          if (onNotify) {
+            onNotify(`Sent task reminder via ${deliveredVia.join(' & ')}!`)
+          }
+        } else {
+          setShowReminderPanel(true)
+          if (onNotify) {
+            onNotify(
+              'Connect a Discord Webhook URL or Email below to send task reminders.',
+              { type: 'info' }
+            )
+          }
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      isDemo,
+      timeFormat,
+      selectedClub?.name,
+      reminderDefaults,
+      offlineLocalMode,
+      selectedClubId,
+      integrationSummary,
+      prefsAccountKey,
+      onNotify,
+    ]
+  )
+
+  // Active Due-Reminder Watcher (runs on clockNow ticks while board is open)
+  useEffect(() => {
+    if (isDemo || !boardData) return
+    const nowMs = clockNow.getTime()
+    const candidates = [
+      ...allPersonalTasks.filter(t => t.status !== 'done'),
+      ...accessibleClubTasks.filter(t => !isClubTaskDoneForViewer(t)),
+    ]
+
+    for (const task of candidates) {
+      if (!task.dueDate || !task.reminder?.enabled) continue
+      if (hasLocalReminderFired(task)) continue
+
+      let remindMs = task.reminder.remindAtIso
+        ? new Date(task.reminder.remindAtIso).getTime()
+        : NaN
+      if (Number.isNaN(remindMs)) {
+        const baseDt = computeTaskDueDateObj(task.dueDate, task.dueTime, 9)
+        if (baseDt) {
+          remindMs = baseDt.getTime() - Number(task.reminder.offsetMinutes ?? 60) * 60_000
+        }
+      }
+      if (!Number.isNaN(remindMs) && remindMs <= nowMs) {
+        markLocalReminderFired(task)
+        executeTaskReminderDispatch(task, { isAutomatic: true })
+      }
+    }
+  }, [
+    isDemo,
+    boardData,
+    clockNow,
+    allPersonalTasks,
+    accessibleClubTasks,
+    isClubTaskDoneForViewer,
+    executeTaskReminderDispatch,
+  ])
+
+  function makeBlankDraft() {
+    return {
+      title: '',
+      notes: '',
+      showSchedule: false,
+      priority: 'medium',
+      dueDate: '',
+      dueTime: '',
+      remindOffset: 'off', // 'off' | number (minutes)
+    }
+  }
+
+  function getDraftForSection(secId) {
+    return quickDrafts[secId] || makeBlankDraft()
   }
 
   function updateDraftForSection(secId, patch) {
-    setQuickDrafts(prev => ({
-      ...prev,
-      [secId]: {
-        ...(prev[secId] || {
-          title: '',
-          notes: '',
-          showNote: false,
-          priority: 'medium',
-          dueDate: '',
-        }),
-        ...patch,
-      },
-    }))
-  }
+    setQuickDrafts(prev => {
+      const curr = prev[secId] || makeBlankDraft()
+      const next = { ...curr, ...patch }
 
-  function cycleDraftPriority(secId) {
-    const order = ['medium', 'high', 'critical', 'low']
-    const cur = getDraftForSection(secId).priority || 'medium'
-    const next = order[(order.indexOf(cur) + 1) % order.length]
-    updateDraftForSection(secId, { priority: next })
+      // If user picks a time before picking a date, automatically set Date to Today so Time Selector always works!
+      if (patch.dueTime !== undefined) {
+        const cleanT = normalizeTime24h(patch.dueTime)
+        next.dueTime = cleanT
+        if (cleanT && !next.dueDate) {
+          next.dueDate = todayYmd
+        }
+        if (
+          cleanT &&
+          !curr.dueTime &&
+          reminderDefaults?.autoRemindTimedTasks &&
+          patch.remindOffset === undefined &&
+          curr.remindOffset === 'off'
+        ) {
+          next.remindOffset = Number(reminderDefaults.defaultOffsetMinutes ?? 60)
+        }
+      }
+
+      // If user turns on a reminder before picking a date, automatically default Date to Today
+      if (
+        patch.remindOffset !== undefined &&
+        patch.remindOffset !== 'off' &&
+        !next.dueDate
+      ) {
+        next.dueDate = todayYmd
+      }
+
+      // Clearing date clears time & reminder
+      if (patch.dueDate === '') {
+        next.dueTime = ''
+        next.remindOffset = 'off'
+      }
+
+      return {
+        ...prev,
+        [secId]: next,
+      }
+    })
   }
 
   async function handleQuickAddPersonalTask(e, pSec) {
@@ -731,6 +1492,23 @@ export default function ClubTaskBoard({
     const cleanTitle = String(draft.title || '').trim()
     const cleanNotes = String(draft.notes || '').trim()
     if (!cleanTitle || quickAddBusySecId) return
+
+    const cleanDate = draft.dueDate || ''
+    const cleanTime = cleanDate ? normalizeTime24h(draft.dueTime || '') : ''
+    const remindEnabled = Boolean(cleanDate && draft.remindOffset !== 'off')
+    const effectiveOffset =
+      draft.remindOffset !== 'off'
+        ? Number(draft.remindOffset)
+        : Number(reminderDefaults.defaultOffsetMinutes ?? 60)
+
+    const reminderPayload = buildClientReminderPayload({
+      enabled: remindEnabled,
+      dueDate: cleanDate,
+      dueTime: cleanTime,
+      offsetMinutes: effectiveOffset,
+      channels: reminderDefaults.defaultChannels,
+      recipientEmail: integrationSummary.recipientEmail,
+    })
 
     if (isDemo || offlineLocalMode) {
       mutateLocalOrDemoBoard((base, cid) => {
@@ -745,7 +1523,9 @@ export default function ClubTaskBoard({
           isPersonal: true,
           status: 'not_started',
           priority: draft.priority || 'medium',
-          dueDate: draft.dueDate || '',
+          dueDate: cleanDate,
+          dueTime: cleanTime,
+          reminder: reminderPayload,
           assignees: [],
           groupIds: [],
           completedBy: [],
@@ -755,7 +1535,7 @@ export default function ClubTaskBoard({
           personalTasks: [...(base.personalTasks || []), created],
         }
       })
-      updateDraftForSection(pSec.id, { title: '', notes: '', showNote: false, dueDate: '' })
+      setQuickDrafts(prev => ({ ...prev, [pSec.id]: makeBlankDraft() }))
       if (onNotify) onNotify('Added to your to-do list!')
       return
     }
@@ -769,7 +1549,9 @@ export default function ClubTaskBoard({
       sectionColor: pSec.color || 'green',
       status: 'not_started',
       priority: draft.priority || 'medium',
-      dueDate: draft.dueDate || '',
+      dueDate: cleanDate,
+      dueTime: cleanTime,
+      reminder: reminderPayload,
       visibility: 'personal',
       audience: 'personal',
       isPersonal: true,
@@ -778,11 +1560,41 @@ export default function ClubTaskBoard({
 
     if (res?.ok) {
       applyServerBoardUpdate(res)
-      updateDraftForSection(pSec.id, { title: '', notes: '', showNote: false, dueDate: '' })
-      if (onNotify) onNotify('Added to your to-do list!')
+      setQuickDrafts(prev => ({ ...prev, [pSec.id]: makeBlankDraft() }))
+      if (onNotify) {
+        onNotify(
+          reminderPayload.enabled
+            ? 'Added to-do with reminder scheduled!'
+            : 'Added to your to-do list!'
+        )
+      }
     } else {
       if (res?.status === 403) loadBoard()
       if (onNotify) onNotify(res?.error || 'Could not add personal to-do.', { type: 'error' })
+    }
+  }
+
+  async function handleSaveMemberReminder(task, { enabled, offsetMinutes, channels }) {
+    if (!task?.dueDate) return
+    const nextReminder = buildClientReminderPayload({
+      enabled,
+      dueDate: task.dueDate,
+      dueTime: task.dueTime || '',
+      offsetMinutes,
+      channels,
+      recipientEmail: integrationSummary.recipientEmail,
+    })
+    setActionBusy(true)
+    await handleInlineTaskPatch(task, { reminder: nextReminder })
+    setActionBusy(false)
+    setMemberReminderTask(null)
+    if (onNotify) {
+      onNotify(
+        enabled
+          ? `Reminder set (${formatReminderOffsetLabel(offsetMinutes, true)})`
+          : 'Reminder turned off.',
+        { type: enabled ? 'success' : 'info' }
+      )
     }
   }
 
@@ -829,6 +1641,8 @@ export default function ClubTaskBoard({
                     status: payload.status || t.status,
                     priority: payload.priority || t.priority,
                     dueDate: payload.dueDate || '',
+                    dueTime: payload.dueDate ? payload.dueTime || '' : '',
+                    reminder: payload.reminder || t.reminder,
                   }
                 : t
             ),
@@ -846,6 +1660,8 @@ export default function ClubTaskBoard({
           status: payload.status || 'not_started',
           priority: payload.priority || 'medium',
           dueDate: payload.dueDate || '',
+          dueTime: payload.dueDate ? payload.dueTime || '' : '',
+          reminder: payload.reminder || { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
           assignees: [],
           groupIds: [],
           completedBy: [],
@@ -908,6 +1724,7 @@ export default function ClubTaskBoard({
                 ...t,
                 ...(patch.title ? { title: patch.title } : {}),
                 ...(patch.priority ? { priority: patch.priority } : {}),
+                ...(patch.reminder ? { reminder: patch.reminder } : {}),
                 status: nextStatus,
               }
             }),
@@ -1080,6 +1897,41 @@ export default function ClubTaskBoard({
     }
   }
 
+  async function handleToggleBrowserDesktopAlerts() {
+    const nextVal = !reminderDefaults.browserAlertsEnabled
+    if (nextVal && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        const perm = await Notification.requestPermission()
+        if (perm !== 'granted') {
+          if (onNotify) {
+            onNotify('Browser desktop notifications were blocked by your browser settings.', {
+              type: 'info',
+            })
+          }
+          return
+        }
+      } catch {
+        // Ignore permission request errors
+      }
+    }
+    setReminderDefaults(prev => ({
+      ...prev,
+      browserAlertsEnabled: nextVal,
+    }))
+  }
+
+  function toggleDefaultReminderChannel(ch) {
+    setReminderDefaults(prev => {
+      const curr = prev.defaultChannels || ['discord', 'email']
+      const exists = curr.includes(ch)
+      if (exists && curr.length === 1) return prev
+      return {
+        ...prev,
+        defaultChannels: exists ? curr.filter(x => x !== ch) : [...curr, ch],
+      }
+    })
+  }
+
   if (!canUseBoard) {
     return (
       <Card className="p-6 text-center space-y-2">
@@ -1191,6 +2043,12 @@ export default function ClubTaskBoard({
                     size="sm"
                   />
                 )}
+                {loading && boardData && boardData.clubId === normSelectedClubId && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--blue-light)] text-[var(--blue-ink)] animate-pulse">
+                    <Loader2 size={11} className="animate-spin text-[var(--blue)]" />
+                    <span>Syncing…</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
                 {openPersonalCount === 0
@@ -1209,7 +2067,7 @@ export default function ClubTaskBoard({
               <div className="segmented-track w-full sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => setViewTier('member')}
+                  onClick={() => setViewTierForCurrentClub('member')}
                   className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                     effectiveTier === 'member'
                       ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
@@ -1221,7 +2079,7 @@ export default function ClubTaskBoard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewTier('board')}
+                  onClick={() => setViewTierForCurrentClub('board')}
                   className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
                     effectiveTier === 'board'
                       ? 'bg-[var(--purple)] text-white shadow-2xs'
@@ -1233,6 +2091,30 @@ export default function ClubTaskBoard({
                 </button>
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => setShowReminderPanel(v => !v)}
+              className={`inline-flex items-center justify-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                showReminderPanel || activeReminderCount > 0
+                  ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
+                  : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
+              }`}
+            >
+              <BellRing size={13} />
+              <span>Reminders</span>
+              {activeReminderCount > 0 && (
+                <span className="px-1.5 rounded-full bg-[var(--blue)] text-white text-[10px] font-mono-num">
+                  {activeReminderCount}
+                </span>
+              )}
+              {(integrationSummary.discordReady || integrationSummary.emailReady) && (
+                <span
+                  className="w-2 h-2 rounded-full bg-[var(--green)]"
+                  title="Discord / Email channel ready"
+                />
+              )}
+            </button>
 
             {onOpenClubsRbac && selectedClub && (
               <button
@@ -1262,6 +2144,180 @@ export default function ClubTaskBoard({
             )}
           </div>
         </div>
+
+        {/* Inline Discord & Email Reminder Settings Drawer */}
+        {showReminderPanel && (
+          <div className="content-tile p-3.5 sm:p-4 rounded-2xl space-y-3 fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-[var(--text)]">
+                  <BellRing size={13.5} className="text-[var(--blue)]" />
+                  <span>Task Reminder Notifications (Discord &amp; Email)</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Saved automatically across page loads. Enable reminders per task or set defaults for timed deadlines.
+                </p>
+              </div>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  <span>Full Discord &amp; Email Settings</span>
+                  <ExternalLink size={11} />
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
+              {/* Left: Clean Labeled Default Lead Time & Checkboxes */}
+              <div className="space-y-3 bg-[var(--bg-card)] p-3.5 rounded-xl border border-[var(--border)]">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Default Reminder Preferences
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                      Default timing
+                    </label>
+                    <select
+                      value={reminderDefaults.defaultOffsetMinutes}
+                      onChange={e =>
+                        setReminderDefaults(prev => ({
+                          ...prev,
+                          defaultOffsetMinutes: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
+                    >
+                      {REMINDER_OFFSET_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                      Default channels
+                    </span>
+                    <div className="min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center gap-3">
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(reminderDefaults.defaultChannels || []).includes('discord')}
+                          onChange={() => toggleDefaultReminderChannel('discord')}
+                          className="rounded accent-[var(--blue)]"
+                        />
+                        <span>Discord</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(reminderDefaults.defaultChannels || []).includes('email')}
+                          onChange={() => toggleDefaultReminderChannel('email')}
+                          className="rounded accent-[var(--blue)]"
+                        />
+                        <span>Email</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(reminderDefaults.browserAlertsEnabled)}
+                          onChange={handleToggleBrowserDesktopAlerts}
+                          className="rounded accent-[var(--blue)]"
+                        />
+                        <span>Desktop</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-[var(--text)] cursor-pointer pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(reminderDefaults.autoRemindTimedTasks)}
+                    onChange={e =>
+                      setReminderDefaults(prev => ({
+                        ...prev,
+                        autoRemindTimedTasks: e.target.checked,
+                      }))
+                    }
+                    className="rounded accent-[var(--blue)]"
+                  />
+                  <span>Automatically enable reminders whenever I pick a due time</span>
+                </label>
+              </div>
+
+              {/* Right: Quick Discord Webhook + Email Destination Config */}
+              <div className="space-y-2 bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border)]">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Notification Destinations
+                  </div>
+                  <span className="text-[10.5px] font-semibold text-[var(--green-ink)]">
+                    {integrationSummary.discordReady && integrationSummary.emailReady
+                      ? 'Discord & Email Ready ✓'
+                      : integrationSummary.discordReady
+                        ? 'Discord Ready ✓'
+                        : integrationSummary.emailReady
+                          ? 'Email Ready ✓'
+                          : 'Add Webhook or Email'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                      Discord Incoming Webhook URL
+                    </label>
+                    <input
+                      type="url"
+                      value={channelWebhookDraft}
+                      onChange={e => setChannelWebhookDraft(e.target.value)}
+                      placeholder={
+                        serverIntegrationMeta.discordServerReady
+                          ? serverIntegrationMeta.webhookMasked || 'Connected via server ✓'
+                          : 'https://discord.com/api/webhooks/...'
+                      }
+                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[#5865F2]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
+                      Reminder Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={channelEmailDraft}
+                      onChange={e => setChannelEmailDraft(e.target.value)}
+                      placeholder="you@ucsc.edu"
+                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await handleSaveChannelPrefs()
+                      if (ok && onNotify) {
+                        onNotify('Saved reminder Discord & Email destinations!')
+                      }
+                    }}
+                    className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                  >
+                    Save Channels
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Focus Tabs + Search + Quick Filter Chips */}
         {!notMember && boardData && (
@@ -1383,7 +2439,7 @@ export default function ClubTaskBoard({
                   )}
                 </div>
 
-                {showClubZone && assignedToMeCount > 0 && (
+                {showClubZone && (assignedToMeCount > 0 || onlyAssignedToMe) && (
                   <button
                     type="button"
                     onClick={() => setOnlyAssignedToMe(v => !v)}
@@ -1494,9 +2550,12 @@ export default function ClubTaskBoard({
       </Card>
 
       {/* Loading Skeleton */}
-      {loading && (
+      {loading && (!boardData || boardData.clubId !== normSelectedClubId) && (
         <Card className="p-6 text-center text-xs text-[var(--text-muted)]">
-          Loading {cleanText(selectedClub?.name || 'server')} tasks…
+          <div className="flex items-center justify-center gap-2">
+            <Loader2 size={14} className="animate-spin text-[var(--blue)]" />
+            <span>Loading {cleanText(selectedClub?.name || 'server')} tasks…</span>
+          </div>
         </Card>
       )}
 
@@ -1525,7 +2584,7 @@ export default function ClubTaskBoard({
       {/* ══════════════════════════════════════════════════════════════════════
           ZONE 1: YOUR PERSONAL TO-DO LISTS (Private per user, isolated per server)
          ══════════════════════════════════════════════════════════════════════ */}
-      {!notMember && !loading && boardData && showPersonalZone && (
+      {!notMember && boardData && showPersonalZone && (!loading || boardData.clubId === normSelectedClubId) && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1542,7 +2601,7 @@ export default function ClubTaskBoard({
                   </span>
                 </div>
                 <p className="text-[11.5px] text-[var(--text-muted)]">
-                  Jot down reminders &amp; action items for yourself in {cleanText(selectedClub?.name || 'this server')}
+                  Jot down timed deadlines &amp; private reminders for yourself in {cleanText(selectedClub?.name || 'this server')}
                 </p>
               </div>
             </div>
@@ -1595,13 +2654,17 @@ export default function ClubTaskBoard({
             const matchingTasks = filteredPersonalTasks.filter(t => t.sectionId === pSec.id)
             const activeItems = [...matchingTasks.filter(t => t.status !== 'done')].sort(
               (a, b) => {
-                const aOver = a.dueDate && a.dueDate < todayYmd ? 0 : 1
-                const bOver = b.dueDate && b.dueDate < todayYmd ? 0 : 1
+                const aOver = isTaskOverdue(a, clockNow) ? 0 : 1
+                const bOver = isTaskOverdue(b, clockNow) ? 0 : 1
                 if (aOver !== bOver) return aOver - bOver
                 const pDiff =
                   (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2)
                 if (pDiff !== 0) return pDiff
-                if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate)
+                if (a.dueDate && b.dueDate) {
+                  const aKey = `${a.dueDate}T${a.dueTime || '23:59'}`
+                  const bKey = `${b.dueDate}T${b.dueTime || '23:59'}`
+                  return aKey.localeCompare(bKey)
+                }
                 if (a.dueDate) return -1
                 if (b.dueDate) return 1
                 return 0
@@ -1618,14 +2681,29 @@ export default function ClubTaskBoard({
             const isCollapsed = Boolean(collapsedSections[pSec.id])
             const draft = getDraftForSection(pSec.id)
             const quickBusy = quickAddBusySecId === pSec.id
-            const draftPriorityMeta =
-              TASK_PRIORITY_META[draft.priority] || TASK_PRIORITY_META.medium
+            const draftDueSummary = draft.dueDate
+              ? formatSmartDueDate(draft.dueDate, draft.dueTime, false, {
+                  now: clockNow,
+                  timeFormat,
+                })?.label || draft.dueDate
+              : ''
+            const hasDraftExtras = Boolean(
+              draft.dueDate ||
+                draft.dueTime ||
+                draft.remindOffset !== 'off' ||
+                (draft.priority && draft.priority !== 'medium') ||
+                draft.notes
+            )
 
             return (
-              <Card key={pSec.id} className="overflow-hidden p-0" delay={2}>
+              <Card key={pSec.id} className="overflow-visible p-0" delay={2}>
                 {/* Personal List Header */}
                 <div
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border)]"
+                  className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] ${
+                    isCollapsed
+                      ? 'rounded-[var(--radius)]'
+                      : 'rounded-t-[var(--radius)] border-b border-[var(--border)]'
+                  }`}
                   style={{ borderLeft: `5px solid ${accent}` }}
                 >
                   <button
@@ -1683,162 +2761,222 @@ export default function ClubTaskBoard({
 
                 {!isCollapsed && (
                   <div>
-                    {/* Effortless 1-Line To-Do Composer + Instant Chips */}
+                    {/* Clean 1-Line To-Do Composer + Optional Structured Schedule Drawer */}
                     <form
                       onSubmit={e => handleQuickAddPersonalTask(e, pSec)}
-                      className="p-3 sm:px-4 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] space-y-2"
+                      className="p-3 sm:px-4 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] space-y-2.5"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className="w-5 h-5 rounded-md border border-dashed flex items-center justify-center shrink-0"
-                          style={{ borderColor: accent, color: accentInk }}
-                        >
-                          <Plus size={12} />
-                        </span>
-                        <input
-                          type="text"
-                          value={draft.title}
-                          onChange={e => updateDraftForSection(pSec.id, { title: e.target.value })}
-                          placeholder={`Add a to-do for ${cleanText(selectedClub?.name || 'this server')}…`}
-                          aria-label={`Add a to-do in ${cleanText(pSec.title)}`}
-                          className="flex-1 min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
-                        />
-                        <button
-                          type="submit"
-                          disabled={quickBusy || !String(draft.title || '').trim()}
-                          className="px-3.5 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-45 shrink-0 transition-opacity"
-                        >
-                          {quickBusy ? 'Adding…' : 'Add'}
-                        </button>
-                      </div>
-
-                      {/* Lightweight Optional Quick Chips (Today / Tomorrow / Priority / Note) */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pl-7">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {[
-                            { label: 'Today', val: todayYmd },
-                            { label: 'Tomorrow', val: addDaysYmd(1) },
-                            { label: 'Next Week', val: addDaysYmd(7) },
-                          ].map(chip => {
-                            const active = draft.dueDate === chip.val
-                            return (
-                              <button
-                                key={chip.label}
-                                type="button"
-                                onClick={() =>
-                                  updateDraftForSection(pSec.id, {
-                                    dueDate: active ? '' : chip.val,
-                                  })
-                                }
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border cursor-pointer transition-colors ${
-                                  active
-                                    ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                                    : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                                }`}
-                              >
-                                <Calendar size={10} />
-                                <span>{chip.label}</span>
-                              </button>
-                            )
-                          })}
-
-                          <label className="relative inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer">
-                            <Calendar size={10} />
-                            <span>
-                              {draft.dueDate &&
-                              draft.dueDate !== todayYmd &&
-                              draft.dueDate !== addDaysYmd(1) &&
-                              draft.dueDate !== addDaysYmd(7)
-                                ? formatSmartDueDate(draft.dueDate)?.label || draft.dueDate
-                                : 'Pick date'}
-                            </span>
-                            <input
-                              type="date"
-                              value={draft.dueDate}
-                              onChange={e =>
-                                updateDraftForSection(pSec.id, { dueDate: e.target.value })
-                              }
-                              aria-label="Pick custom due date"
-                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                            />
-                          </label>
-
-                          {draft.dueDate && (
-                            <button
-                              type="button"
-                              onClick={() => updateDraftForSection(pSec.id, { dueDate: '' })}
-                              aria-label="Clear due date"
-                              className="text-[11px] text-[var(--text-light)] hover:text-[var(--red-ink)] bg-transparent border-none cursor-pointer px-1"
-                            >
-                              ×
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => cycleDraftPriority(pSec.id)}
-                            title="Click to cycle priority"
-                            style={{
-                              background: draftPriorityMeta.bg,
-                              color: draftPriorityMeta.color,
-                              borderColor: `color-mix(in srgb, ${draftPriorityMeta.dot} 32%, transparent)`,
-                            }}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border cursor-pointer"
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-[200px]">
+                          <span
+                            className="w-5 h-5 rounded-md border border-dashed flex items-center justify-center shrink-0"
+                            style={{ borderColor: accent, color: accentInk }}
                           >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ background: draftPriorityMeta.dot }}
-                            />
-                            <span>{draftPriorityMeta.label}</span>
-                          </button>
+                            <Plus size={12} />
+                          </span>
+                          <input
+                            type="text"
+                            value={draft.title}
+                            onChange={e => updateDraftForSection(pSec.id, { title: e.target.value })}
+                            placeholder={`Add a to-do for ${cleanText(selectedClub?.name || 'this server')}…`}
+                            aria-label={`Add a to-do in ${cleanText(pSec.title)}`}
+                            className="flex-1 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
+                          />
+                        </div>
 
+                        <div className="flex items-center gap-2 ml-auto shrink-0">
                           <button
                             type="button"
                             onClick={() =>
-                              updateDraftForSection(pSec.id, { showNote: !draft.showNote })
+                              updateDraftForSection(pSec.id, { showSchedule: !draft.showSchedule })
                             }
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold border cursor-pointer transition-colors ${
-                              draft.showNote || draft.notes
-                                ? 'bg-[var(--teal-light)] border-[var(--teal)] text-[var(--teal-ink)]'
+                            className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                              draft.showSchedule || hasDraftExtras
+                                ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
                                 : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
                             }`}
                           >
-                            <StickyNote size={10} />
-                            <span>Note</span>
+                            {draft.dueTime ? <Clock size={13} /> : <Calendar size={13} />}
+                            <span>{draftDueSummary || 'Due date'}</span>
+                            {draft.remindOffset !== 'off' && draft.dueDate && (
+                              <Bell size={11} className="shrink-0" />
+                            )}
+                            <ChevronDown
+                              size={13}
+                              className={`transition-transform ${draft.showSchedule ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+
+                          <button
+                            type="submit"
+                            disabled={quickBusy || !String(draft.title || '').trim()}
+                            className="px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-45 shrink-0 transition-opacity"
+                          >
+                            {quickBusy ? 'Adding…' : 'Add'}
                           </button>
                         </div>
                       </div>
 
-                      {draft.showNote && (
-                        <div className="pl-7 fade-in">
-                          <input
-                            type="text"
-                            value={draft.notes}
-                            onChange={e =>
-                              updateDraftForSection(pSec.id, { notes: e.target.value })
-                            }
-                            placeholder="Optional note or link…"
-                            className="w-full min-h-[34px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--teal)]"
-                          />
+                      {/* Clean, Labeled Schedule & Options Panel (only open when user clicks "Due date") */}
+                      {draft.showSchedule && (
+                        <div className="p-3 rounded-xl bg-[var(--bg-surface)]/55 border border-[var(--border)] space-y-2.5 fade-in">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <div className="flex items-center justify-between gap-1 mb-1">
+                                <label className="text-[11px] font-semibold text-[var(--text-muted)]">
+                                  Date
+                                </label>
+                                <div className="flex items-center gap-1.5 text-[10.5px]">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateDraftForSection(pSec.id, { dueDate: todayYmd })
+                                    }
+                                    className="font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+                                  >
+                                    Today
+                                  </button>
+                                  <span className="text-[var(--border-strong)]">·</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateDraftForSection(pSec.id, {
+                                        dueDate: addDaysYmd(1, clockNow),
+                                      })
+                                    }
+                                    className="font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+                                  >
+                                    Tomorrow
+                                  </button>
+                                </div>
+                              </div>
+                              <DateInputField
+                                compact
+                                value={draft.dueDate}
+                                onChange={val => updateDraftForSection(pSec.id, { dueDate: val })}
+                                ariaLabel="Due date"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                                Time
+                              </label>
+                              <TimePickerSelect
+                                compact
+                                value={draft.dueTime}
+                                onChange={val => updateDraftForSection(pSec.id, { dueTime: val })}
+                                timeFormat={timeFormat}
+                                placeholder="All day (no time)"
+                                ariaLabel="Due time"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                                Reminder (Discord / Email)
+                              </label>
+                              <select
+                                value={String(draft.remindOffset)}
+                                onChange={e => {
+                                  const raw = e.target.value
+                                  updateDraftForSection(pSec.id, {
+                                    remindOffset: raw === 'off' ? 'off' : Number(raw),
+                                  })
+                                }}
+                                aria-label="Reminder timing"
+                                className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+                              >
+                                <option value="off">No reminder</option>
+                                {REMINDER_OFFSET_OPTIONS.map(opt => (
+                                  <option key={opt.value} value={String(opt.value)}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr_auto] gap-2.5 items-end pt-0.5">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                                Priority
+                              </label>
+                              <select
+                                value={draft.priority || 'medium'}
+                                onChange={e =>
+                                  updateDraftForSection(pSec.id, { priority: e.target.value })
+                                }
+                                aria-label="Priority"
+                                className="w-full min-h-[36px] px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+                              >
+                                {Object.entries(TASK_PRIORITY_META).map(([k, m]) => (
+                                  <option key={k} value={k}>
+                                    {m.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                                Note <span className="font-normal text-[var(--text-light)]">(Optional)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={draft.notes}
+                                onChange={e =>
+                                  updateDraftForSection(pSec.id, { notes: e.target.value })
+                                }
+                                placeholder="Add a short note or link…"
+                                className="w-full min-h-[36px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              {hasDraftExtras && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateDraftForSection(pSec.id, {
+                                      dueDate: '',
+                                      dueTime: '',
+                                      remindOffset: 'off',
+                                      priority: 'medium',
+                                      notes: '',
+                                    })
+                                  }
+                                  className="px-2.5 min-h-[34px] rounded-lg bg-transparent text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer"
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </form>
 
                     {/* Checklist Items */}
                     {matchingTasks.length === 0 ? (
-                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center">
+                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center rounded-b-[var(--radius)]">
                         {totalInSec.length === 0
                           ? `Nothing on your ${cleanText(selectedClub?.name || 'server')} to-do list yet — type above and press Enter.`
                           : 'No personal to-dos match your active filter.'}
                       </div>
                     ) : (
-                      <div className="divide-y divide-[var(--border-subtle)]">
+                      <div className="divide-y divide-[var(--border-subtle)] rounded-b-[var(--radius)] overflow-hidden">
                         {activeItems.map(task => {
                           const sMeta =
                             TASK_STATUS_META[task.status] || TASK_STATUS_META.not_started
                           const pMeta =
                             TASK_PRIORITY_META[task.priority] || TASK_PRIORITY_META.medium
                           const isInlineEditing = inlineEditingId === task.id
+                          const openPersonalEditor = () => {
+                            setEditingTask(task)
+                            setModalPersonalOnly(true)
+                            setModalOpen(true)
+                          }
 
                           return (
                             <div
@@ -1898,68 +3036,57 @@ export default function ClubTaskBoard({
                               </div>
 
                               <div className="flex flex-wrap items-center gap-1.5 pl-8 sm:pl-0 shrink-0">
-                                <DueDateBadge dueDate={task.dueDate} isDone={false} />
+                                <DueDateBadge
+                                  dueDate={task.dueDate}
+                                  dueTime={task.dueTime}
+                                  reminder={task.reminder}
+                                  isDone={false}
+                                  now={clockNow}
+                                  timeFormat={timeFormat}
+                                  onClick={openPersonalEditor}
+                                  title="Click to edit due date, time, or reminder"
+                                />
 
-                                {task.status !== 'not_started' && (
-                                  <select
-                                    value={task.status}
-                                    onChange={e =>
-                                      handleInlineTaskPatch(task, { status: e.target.value })
-                                    }
-                                    aria-label={`Status for ${cleanText(task.title)}`}
+                                {task.status && task.status !== 'not_started' && (
+                                  <span
                                     style={{
                                       background: sMeta.bg,
                                       color: sMeta.color,
                                       border: `1px solid color-mix(in srgb, ${sMeta.dot} 30%, transparent)`,
                                     }}
-                                    className="min-h-[28px] px-2 rounded-lg text-[11px] font-bold cursor-pointer"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
                                   >
-                                    {Object.entries(TASK_STATUS_META).map(([k, m]) => (
-                                      <option
-                                        key={k}
-                                        value={k}
-                                        className="bg-[var(--bg-card)] text-[var(--text)]"
-                                      >
-                                        {m.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: sMeta.dot }}
+                                    />
+                                    <span>{sMeta.label}</span>
+                                  </span>
                                 )}
 
-                                <select
-                                  value={task.priority || 'medium'}
-                                  onChange={e =>
-                                    handleInlineTaskPatch(task, { priority: e.target.value })
-                                  }
-                                  aria-label={`Priority for ${cleanText(task.title)}`}
-                                  style={{
-                                    background: pMeta.bg,
-                                    color: pMeta.color,
-                                    border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
-                                  }}
-                                  className="min-h-[28px] px-2 rounded-lg text-[11px] font-bold cursor-pointer"
-                                >
-                                  {Object.entries(TASK_PRIORITY_META).map(([k, m]) => (
-                                    <option
-                                      key={k}
-                                      value={k}
-                                      className="bg-[var(--bg-card)] text-[var(--text)]"
-                                    >
-                                      {m.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                {task.priority && task.priority !== 'medium' && (
+                                  <span
+                                    style={{
+                                      background: pMeta.bg,
+                                      color: pMeta.color,
+                                      border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: pMeta.dot }}
+                                    />
+                                    <span>{pMeta.label}</span>
+                                  </span>
+                                )}
 
-                                <div className="inline-flex items-center gap-1 sm:opacity-70 sm:group-hover:opacity-100 transition-opacity">
+                                <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setEditingTask(task)
-                                      setModalPersonalOnly(true)
-                                      setModalOpen(true)
-                                    }}
+                                    onClick={openPersonalEditor}
                                     aria-label="Edit personal to-do details"
-                                    title="Edit details, status, or notes"
+                                    title="Edit due date, time, reminder, or priority"
                                     className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
                                   >
                                     <Pencil size={12} />
@@ -2036,7 +3163,13 @@ export default function ClubTaskBoard({
                                     </div>
 
                                     <div className="flex items-center gap-1.5 shrink-0">
-                                      <DueDateBadge dueDate={task.dueDate} isDone={true} />
+                                      <DueDateBadge
+                                        dueDate={task.dueDate}
+                                        dueTime={task.dueTime}
+                                        isDone={true}
+                                        now={clockNow}
+                                        timeFormat={timeFormat}
+                                      />
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteTaskClick(task)}
@@ -2065,7 +3198,7 @@ export default function ClubTaskBoard({
       {/* ══════════════════════════════════════════════════════════════════════
           ZONE 2: SHARED CLUB TASK BOARD (General Checklists, Sub-Groups & Board)
          ══════════════════════════════════════════════════════════════════════ */}
-      {!notMember && !loading && boardData && showClubZone && (
+      {!notMember && boardData && showClubZone && (!loading || boardData.clubId === normSelectedClubId) && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -2376,26 +3509,48 @@ export default function ClubTaskBoard({
                               </div>
                             </div>
 
-                            {/* Right: Due Date + Status Control + Priority + Board Actions */}
+                            {/* Right: Clean Due Date/Time Badge + Status + Priority + Actions */}
                             <div className="flex flex-wrap items-center gap-2 pl-8 lg:pl-0 shrink-0">
-                              <DueDateBadge dueDate={task.dueDate} isDone={isDoneDisplay} />
+                              <DueDateBadge
+                                dueDate={task.dueDate}
+                                dueTime={task.dueTime}
+                                reminder={task.reminder}
+                                isDone={isDoneDisplay}
+                                now={clockNow}
+                                timeFormat={timeFormat}
+                                onClick={
+                                  effectiveTier === 'board' && isBoard
+                                    ? () => {
+                                        setEditingTask(task)
+                                        setModalPersonalOnly(false)
+                                        setModalOpen(true)
+                                      }
+                                    : !isDoneDisplay && task.dueDate
+                                      ? () => setMemberReminderTask(task)
+                                      : undefined
+                                }
+                                title={
+                                  effectiveTier === 'board' && isBoard
+                                    ? 'Edit due date, time, or reminder'
+                                    : 'Configure personal reminder'
+                                }
+                              />
 
                               {!isBoard && isGeneral ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleInlineTaskPatch(task, { toggleCompletedForSelf: true })
-                                  }
+                                <span
                                   style={{
                                     background: sMeta.bg,
                                     color: sMeta.color,
                                     border: `1px solid color-mix(in srgb, ${sMeta.dot} 32%, transparent)`,
                                   }}
-                                  className="min-h-[32px] px-3 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5"
+                                  className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg text-[11px] font-bold"
                                 >
-                                  <CheckCircle2 size={13} />
-                                  <span>{mySelfDone ? 'Done for You' : 'Check Off'}</span>
-                                </button>
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full"
+                                    style={{ background: sMeta.dot }}
+                                  />
+                                  <span>{mySelfDone ? 'Done' : 'To Do'}</span>
+                                </span>
                               ) : (
                                 <select
                                   disabled={!canMemberUpdateStatus}
@@ -2464,7 +3619,7 @@ export default function ClubTaskBoard({
                                 </span>
                               )}
 
-                              {effectiveTier === 'board' && isBoard && (
+                              {effectiveTier === 'board' && isBoard ? (
                                 <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
                                   <button
                                     type="button"
@@ -2487,6 +3642,23 @@ export default function ClubTaskBoard({
                                     <Trash2 size={12} />
                                   </button>
                                 </div>
+                              ) : (
+                                !isDoneDisplay &&
+                                task.dueDate && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setMemberReminderTask(task)}
+                                    aria-label={`Reminder settings for ${cleanText(task.title)}`}
+                                    title="Personal reminder settings"
+                                    className={`w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
+                                      task.reminder?.enabled
+                                        ? 'bg-[var(--blue-light)] border-[var(--blue)]/40 text-[var(--blue-ink)]'
+                                        : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] sm:opacity-75 sm:group-hover:opacity-100'
+                                    }`}
+                                  >
+                                    <Bell size={13} />
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -2509,13 +3681,40 @@ export default function ClubTaskBoard({
           clubPeople={clubPeople}
           initialTask={editingTask}
           defaultSectionId={modalDefaultSectionId}
+          reminderDefaults={reminderDefaults}
+          integrationSummary={integrationSummary}
+          accountEmail={accountEmail || effectiveUser?.email || ''}
+          timeFormat={timeFormat}
           busy={actionBusy}
+          sendingReminder={Boolean(editingTask?.id && remindingTaskId === editingTask.id)}
+          onSaveIntegrationChannelPrefs={handleSaveChannelPrefs}
+          onSendReminderNow={t => executeTaskReminderDispatch(t, { isAutomatic: false })}
           onClose={() => {
             setModalOpen(false)
             setEditingTask(null)
             setModalPersonalOnly(false)
           }}
           onSubmit={handleModalSave}
+        />
+      )}
+
+      {memberReminderTask && (
+        <MemberTaskReminderModal
+          task={memberReminderTask}
+          reminderDefaults={reminderDefaults}
+          dueLabel={
+            formatSmartDueDate(
+              memberReminderTask.dueDate,
+              memberReminderTask.dueTime,
+              false,
+              { now: clockNow, timeFormat }
+            )?.label || memberReminderTask.dueDate
+          }
+          busy={actionBusy}
+          sendingNow={remindingTaskId === memberReminderTask.id}
+          onSave={opts => handleSaveMemberReminder(memberReminderTask, opts)}
+          onSendNow={t => executeTaskReminderDispatch(t, { isAutomatic: false })}
+          onClose={() => setMemberReminderTask(null)}
         />
       )}
     </div>

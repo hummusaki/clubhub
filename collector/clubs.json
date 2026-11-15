@@ -82,7 +82,10 @@
     "discord": "https://discord.gg/fXkgtKzvcm",
     "discordGuildId": "701555560818016330",
     "discordServerName": "UCSC ARCA",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 214,
+    "discordOnlineCount": 11,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/701555560818016330/b40db26eb6bf88d661b0cfa260ba197f.png?size=128"
   },
   {
     "name": "Asian American Christian Fellowship (AACF)",
@@ -93,7 +96,10 @@
     "discord": "https://discord.gg/un5qPdAZJj",
     "discordGuildId": "692117895479689293",
     "discordServerName": "UCSC AACF",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 241,
+    "discordOnlineCount": 25,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/692117895479689293/839cdc89f6a3259dd93fbaa7cf161bc1.png?size=128"
   },
   {
     "name": "Asian Pacific Islander Student Alliance (APISA)",
@@ -111,7 +117,10 @@
     "discord": "https://discord.gg/mz72Fdgn9f",
     "discordGuildId": "765778907210448896",
     "discordServerName": "Aspiring Physician Assistant Association",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 216,
+    "discordOnlineCount": 5,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765778907210448896/bf2f76d04a1f17c631cee5372e194f82.png?size=128"
   },
   {
     "name": "Association for Computing Machinery – Women at UCSC (ACM-W)",
@@ -129,7 +138,10 @@
     "discord": "https://discord.gg/NykjPspf3T",
     "discordGuildId": "1151284779988308088",
     "discordServerName": "UCSC Bangladeshi Student Association",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 50,
+    "discordOnlineCount": 2,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1151284779988308088/6f942ba7d9e1a3ab6f76797afc971533.png?size=128"
   },
   {
     "name": "Bayanihan",
@@ -140,7 +152,10 @@
     "discord": "https://discord.gg/cCgYSzb",
     "discordGuildId": "688612860032581676",
     "discordServerName": "Bayanihan @ UCSC",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 332,
+    "discordOnlineCount": 25,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/688612860032581676/0c37ed11a796d92903329717a161b5f3.png?size=128"
   },
   {
     "name": "Bhakti Yoga Club (FKA BEATS)",
@@ -158,7 +173,10 @@
     "discord": "https://discord.gg/7AnuwW3hbY",
     "discordGuildId": "1431012917326647399",
     "discordServerName": "UCSC Bioethics Club",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 47,
+    "discordOnlineCount": 7,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1431012917326647399/c76da9037111d913fee7548c5c6b8006.png?size=128"
   },
   {
     "name": "Black Student Union (BSU)",
@@ -176,7 +194,10 @@
     "discord": "https://discord.gg/7ettP5XDhG",
     "discordGuildId": "1309026182364135445",
     "discordServerName": "BEA | Business Economics Academia | UCSC",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 337,
+    "discordOnlineCount": 17,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1309026182364135445/f0ea217ef1e6d4cbd7ab75bdcf05b02b.png?size=128"
   },
   {
     "name": "Central Americans For Empowerment (CAFE)",
@@ -194,7 +215,10 @@
     "discord": "https://discord.gg/hgU4WFje6Y",
     "discordGuildId": "892081729358143529",
     "discordServerName": "UCSC Chess",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 563,
+    "discordOnlineCount": 36,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/892081729358143529/522dc591949f49a8c88c8d0638118de8.png?size=128"
   },
   {
     "name": "Chicanx and Latine Educandose (ChALE)",
@@ -212,7 +236,10 @@
     "discord": "https://discord.gg/qtp8XFXgHa",
     "discordGuildId": "692971099847262208",
     "discordServerName": "CSA of UCSC",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 945,
+    "discordOnlineCount": 111,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/692971099847262208/fb775fbaabf803760a2954376f94422e.png?size=128"
   },
   {
     "name": "Chinese Students and Scholars Association",
@@ -223,7 +250,10 @@
     "discord": "https://discord.gg/6qnmHUWJQ3",
     "discordGuildId": "1166539478446383134",
     "discordServerName": "UCSC_CSSA赛博小屋",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 86,
+    "discordOnlineCount": 10,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1166539478446383134/da394376eb69d2a75667755cff9dda05.png?size=128"
   },
   {
     "name": "Chinquapin Literary Magazine",
@@ -255,7 +285,10 @@
     "discord": "https://discord.gg/Hk5pME3w64",
     "discordGuildId": "989018453568540722",
     "discordServerName": "UCSC Circle K",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 274,
+    "discordOnlineCount": 14,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/989018453568540722/b849d51421fedd20a877ef68216fe1db.png?size=128"
   },
   {
     "name": "City on a Hill Press",
@@ -287,7 +320,10 @@
     "discord": "https://discord.gg/dkrCWnd3Ve",
     "discordGuildId": "1432956354179371071",
     "discordServerName": "CYD Bay Area Region Server",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 151,
+    "discordOnlineCount": 8,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1432956354179371071/face28b0eae3703f26fcee2f02766104.png?size=128"
   },
   {
     "name": "College Panhellenic Council",
@@ -312,7 +348,10 @@
     "discord": "https://discord.gg/DQDTj9fsJj",
     "discordGuildId": "1327334964571803768",
     "discordServerName": "UCSC Community Unified Student Network (CUSN)",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 35,
+    "discordOnlineCount": 0,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1327334964571803768/1b2ba0228f4d19ea1ec4209052a3ebf9.png?size=128"
   },
   {
     "name": "Dance Club",
@@ -371,7 +410,10 @@
     "discord": "https://discord.gg/76JU6nF5kg",
     "discordGuildId": "1435718480036102276",
     "discordServerName": "EyeCandy Film Journal",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 26,
+    "discordOnlineCount": 2,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1435718480036102276/b8abb2e1d3a4b64858f9aae0f0255bd2.png?size=128"
   },
   {
     "name": "Film Production Coalition (FPC)",
@@ -403,7 +445,10 @@
     "discord": "https://discord.gg/e7BxuZh6Yp",
     "discordGuildId": "299292000467943426",
     "discordServerName": "Game Design & Art Collaboration",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 2510,
+    "discordOnlineCount": 511,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/299292000467943426/bbfa97dc4eb943f239a5b869040bf4df.png?size=128"
   },
   {
     "name": "Gamma Phi Beta (GPhi)",
@@ -419,14 +464,12 @@
     "email": "ucscgps@gmail.com",
     "description": "Global Strategy Politics (GPS) Club gives weekly geopolitical updates on the world and discusses them. Additionally we discuss ideas on government and reforming system so that we may better the systems we live in. Our organization is open to all who are interested!",
     "discord": "https://discord.gg/y9zvr6scwa",
-<<<<<<< Updated upstream
     "discordGuildId": "1551817158000910416",
     "discordServerName": "UCSC Global Politics Strategy GPS",
-    "discordFollowable": true
-=======
-    "discordServerName": "Glocal Strategy Politics Discord",
-    "discordOnlineCount": 0
->>>>>>> Stashed changes
+    "discordFollowable": true,
+    "discordMemberCount": 40,
+    "discordOnlineCount": 5,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1551817158000910416/ac4db632427ade13b6b2c3010992d5e6.png?size=128"
   },
   {
     "name": "Google Developer Group on Campus UCSC",
@@ -437,7 +480,10 @@
     "discord": "https://discord.gg/6Ac3rPt",
     "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 1680,
+    "discordOnlineCount": 177,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128"
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
@@ -469,7 +515,10 @@
     "discord": "https://discord.gg/BEWpsg8SZu",
     "discordGuildId": "1168649575419093022",
     "discordServerName": "Hermanas Unidas de UCSC",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 204,
+    "discordOnlineCount": 5,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1168649575419093022/a4c2d4105ed104f2d2e7726847fda533.png?size=128"
   },
   {
     "name": "Hermanes De UCSC",
@@ -501,7 +550,8 @@
     "discord": "https://discord.gg/MEc9UX99S4",
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordOnlineCount": 0
   },
   {
     "name": "Isang Himing (IH)",
@@ -519,7 +569,10 @@
     "discord": "https://discord.gg/2vhb7T2PPd",
     "discordGuildId": "688954214579437677",
     "discordServerName": "UCSC JSA",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordOnlineCount": 64,
+    "discordMemberCount": 574,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/688954214579437677/9883572bf9a97d9171c6f2346e07ce45.png?size=128"
   },
   {
     "name": "Jewish Student Union",
@@ -670,7 +723,10 @@
     "discord": "https://discord.gg/TnUMU6v6Jb",
     "discordGuildId": "1403379910365679717",
     "discordServerName": "Newman Catholic Club UCSC & Cabrillo",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 37,
+    "discordOnlineCount": 6,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1403379910365679717/aa0af8246493fb886d9c56ca213bae0f.png?size=128"
   },
   {
     "name": "Nigerian Student Association",
@@ -723,7 +779,10 @@
     "discord": "https://discord.gg/4EFxynYAnj",
     "discordGuildId": "902609240588439583",
     "discordServerName": "POPreKa",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 408,
+    "discordOnlineCount": 31,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/902609240588439583/cd63e5661a44bd445c9e3dfefb1d36ce.png?size=128"
   },
   {
     "name": "Pre-Dental Society",
@@ -758,14 +817,10 @@
     "instagram": "projectsmileucsc",
     "category": "service & advocacy",
     "email": "projectsmileucsc@gmail.com",
-<<<<<<< Updated upstream
-    "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students"
-=======
     "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students",
     "discord": "https://discord.gg/nC8C4X2g",
     "discordServerName": "Project Smile Discord",
     "discordOnlineCount": 0
->>>>>>> Stashed changes
   },
   {
     "name": "Pupcycled at UCSC",
@@ -776,7 +831,9 @@
     "discord": "https://discord.gg/WhTF6SDpNf",
     "discordGuildId": "1331704116769984654",
     "discordServerName": "Pupcycled at UCSC",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 47,
+    "discordOnlineCount": 5
   },
   {
     "name": "Quantum Computing",
@@ -815,7 +872,9 @@
     "discord": "https://discord.gg/dVEeUG4J9A",
     "discordGuildId": "761266183315259420",
     "discordServerName": "Shutterslug Photography",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 626,
+    "discordOnlineCount": 82
   },
   {
     "name": "Sigma Lambda Beta",
@@ -870,7 +929,9 @@
     "discord": "https://discord.gg/3HE62qJQV7",
     "discordGuildId": "964795465763815444",
     "discordServerName": "UCSC Sikh Slugs",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 47,
+    "discordOnlineCount": 2
   },
   {
     "name": "Slavic Student Association",
@@ -885,16 +946,12 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-<<<<<<< Updated upstream
-    "discord": "https://discord.gg/allstar",
-    "discordGuildId": "710745950380884009",
-    "discordServerName": "All Star",
-    "discordFollowable": true
-=======
     "discord": "https://discord.gg/aTeeAAH",
-    "discordServerName": "Slug Anime & Manga Association Discord",
-    "discordOnlineCount": 0
->>>>>>> Stashed changes
+    "discordGuildId": "710745950380884009",
+    "discordServerName": "Slug Anime & Manga Association",
+    "discordFollowable": true,
+    "discordOnlineCount": 340,
+    "discordMemberCount": 2256
   },
   {
     "name": "Slug Book Club",
@@ -912,7 +969,9 @@
     "discord": "https://discord.gg/zcm5rgkrRS",
     "discordGuildId": "629463398039683082",
     "discordServerName": "Slug Fund Investment Group",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 576,
+    "discordOnlineCount": 76
   },
   {
     "name": "Slug Gaming",
@@ -923,7 +982,10 @@
     "discord": "https://discord.gg/GKQdtHf32t",
     "discordGuildId": "97748273074302976",
     "discordServerName": "Slug Gaming",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 4000,
+    "discordOnlineCount": 755,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/97748273074302976/33ce8f61bfe89989d0d61f15bbfb31a5.png?size=128"
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
@@ -934,7 +996,9 @@
     "discord": "https://discord.gg/uj9XEkg",
     "discordGuildId": "428792565135966208",
     "discordServerName": "Slug Rhythm Game Enthusiasts",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 571,
+    "discordOnlineCount": 231
   },
   {
     "name": "Slug' n Boots",
@@ -959,7 +1023,9 @@
     "discord": "https://discord.gg/rSJYcTpt9j",
     "discordGuildId": "1272670303138615326",
     "discordServerName": "SlugSpeak",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 170,
+    "discordOnlineCount": 56
   },
   {
     "name": "Society of Asian Scientists and Engineers (SASE)",
@@ -970,7 +1036,10 @@
     "discord": "https://discord.gg/DVTcfdJpCS",
     "discordGuildId": "689561240766513209",
     "discordServerName": "SASE UCSC Chapter",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 354,
+    "discordOnlineCount": 30,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/689561240766513209/d9f03b970e27aa37ad6e5fa83cef2b83.png?size=128"
   },
   {
     "name": "Society of Physics Students",
@@ -1037,7 +1106,9 @@
     "discord": "https://discord.gg/vrNxcDKAUh",
     "discordGuildId": "1024532931173163118",
     "discordServerName": "UCSC TSA",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 283,
+    "discordOnlineCount": 74
   },
   {
     "name": "Taza Tal",
@@ -1069,7 +1140,10 @@
     "discord": "https://discord.gg/2s6m5gA5Ne",
     "discordGuildId": "1306818825328787476",
     "discordServerName": "Trans Student Union",
-    "discordFollowable": true
+    "discordFollowable": true,
+    "discordMemberCount": 115,
+    "discordOnlineCount": 22,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1306818825328787476/4c268da2f0e0979eb1688f3755e285be.png?size=128"
   },
   {
     "name": "UMOJA",
@@ -1087,7 +1161,9 @@
     "discord": "https://discord.gg/GFV5bn69gd",
     "discordGuildId": "1166886826078912602",
     "discordServerName": "UCSC Undergraduate Neuroscience Club",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordMemberCount": 200,
+    "discordOnlineCount": 22
   },
   {
     "name": "Universities Allied for Essential Medicines at UCSC (UAEM at UCSC)",
@@ -1105,7 +1181,8 @@
     "discord": "https://discord.gg/ucscvsa",
     "discordGuildId": "740648963329490997",
     "discordServerName": "UCSC VSA",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordOnlineCount": 0
   },
   {
     "name": "Women's Wellness Club",
@@ -1130,6 +1207,9 @@
     "discord": "https://discord.gg/mYCFbmMqzA",
     "discordGuildId": "1421593699053338664",
     "discordServerName": "WSB UCSC",
-    "discordFollowable": false
+    "discordFollowable": false,
+    "discordOnlineCount": 4,
+    "discordMemberCount": 27,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1421593699053338664/cc6babe946099b44c6ff2a6eea807274.png?size=128"
   }
 ]

@@ -241,13 +241,23 @@ async function canUserAccessPoll(pollRow, user, explicitById = false) {
   return true;
 }
 
-async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
+async function formatFullPoll(row, requesterUser = null, campusEvents = null, requesterClubIds = null) {
   if (!row) return null;
   const hostPerm = row.hostClubId
     ? await getClubPermission(requesterUser, row.hostClubId)
     : { isBoard: false };
   const isCreator = await isUserPollCreator(row, requesterUser);
   const canSeeEmails = Boolean(hostPerm.isBoard || isCreator);
+
+  let myClubIds = requesterClubIds;
+  if (!myClubIds) {
+    if (requesterUser) {
+      const overview = await getUserWorkspaceOverview(requesterUser);
+      myClubIds = new Set(Object.keys(overview?.permissionsByClub || {}));
+    } else {
+      myClubIds = new Set();
+    }
+  }
 
   const responseRows = await privQueryAll(
     `SELECT r.*
@@ -312,7 +322,11 @@ async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
     });
 
   const privateBookedEvents = parseJsonSafe(row.bookedEventsJson, []);
-  const sharedEvents = campusEvents ?? getCampusCalendarEvents();
+  const rawCampusEvents = myClubIds.size > 0 ? campusEvents ?? getCampusCalendarEvents() : [];
+  const sharedEvents =
+    myClubIds.size > 0
+      ? rawCampusEvents.filter(ev => ev?.clubId && myClubIds.has(normalizeClubKey(ev.clubId)))
+      : [];
 
   return {
     id: row.id,
@@ -336,7 +350,7 @@ async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
     createdAt: row.createdAt,
     invitedParticipants,
     responses,
-    calendarEvents: [...privateBookedEvents, ...sharedEvents],
+    calendarEvents: myClubIds.size > 0 ? [...privateBookedEvents, ...sharedEvents] : privateBookedEvents,
   };
 }
 
@@ -347,7 +361,7 @@ router.get('/polls', optionalAuth, async (req, res) => {
   const rows = await privQueryAll(`SELECT * FROM club_polls ORDER BY createdAt DESC LIMIT 50`);
   const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
   const myClubIds = new Set(Object.keys(overview?.permissionsByClub || {}));
-  const campusEvents = getCampusCalendarEvents();
+  const campusEvents = myClubIds.size > 0 ? getCampusCalendarEvents() : [];
 
   // Also include polls the user has already responded to
   const myRespondedPollIds = new Set();
@@ -379,10 +393,10 @@ router.get('/polls', optionalAuth, async (req, res) => {
       const isMyClub = row.hostClubId && myClubIds.has(row.hostClubId);
       const isResponded = myRespondedPollIds.has(row.id);
       if (isMine || isMyClub || isInvited || isResponded || !row.hostClubId) {
-        visiblePolls.push(await formatFullPoll(row, req.user, campusEvents));
+        visiblePolls.push(await formatFullPoll(row, req.user, campusEvents, myClubIds));
       }
     } else if (!row.hostClubId && row.visibility === 'public_link') {
-      visiblePolls.push(await formatFullPoll(row, null, campusEvents));
+      visiblePolls.push(await formatFullPoll(row, null, [], new Set()));
     }
   }
 
@@ -568,14 +582,20 @@ router.post('/polls/:id/respond', requireAuth, async (req, res) => {
 
   const {
     timezone = 'America/Los_Angeles',
-    freeSlots = [],
+    freeSlots,
+    availableSlots,
     busySlots = [],
     rawTextInput = '',
     parseText = false,
   } = req.body || {};
 
   const dates = parseJsonSafe(row.datesJson, getDefaultWeekDates());
-  let finalFree = Array.isArray(freeSlots) ? [...freeSlots] : [];
+  const effectiveFreeSlots = Array.isArray(freeSlots)
+    ? freeSlots
+    : Array.isArray(availableSlots)
+      ? availableSlots
+      : [];
+  let finalFree = [...effectiveFreeSlots];
   let finalBusy = Array.isArray(busySlots) ? [...busySlots] : [];
 
   if (parseText && rawTextInput) {

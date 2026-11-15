@@ -61,7 +61,7 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'clubId, title, and start (ISO UTC string) are required' });
   }
   const id = String(evt.id || `${clubId}_${Date.now()}`);
-  upsertCollectorData({ events: [{ ...evt, id, clubId }] });
+  upsertCollectorData({ events: [{ ...evt, id, clubId, source: evt.source || 'manual' }] });
   res.status(201).json({ id, clubId });
 });
 

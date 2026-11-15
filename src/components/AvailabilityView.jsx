@@ -519,8 +519,9 @@ export default function AvailabilityView({
           },
           effectiveUser
         )
-        if (res?.ok && res.data?.id) {
-          setPolls(prev => prev.map(p => (p.id === res.data.id ? res.data : p)))
+        const updatedPoll = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
+        if (res?.ok && updatedPoll?.id) {
+          setPolls(prev => prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p)))
         } else if (!res?.ok && onNotify) {
           onNotify(res?.error || 'Could not save poll response.', { type: 'error' })
         }
@@ -1170,18 +1171,23 @@ export default function AvailabilityView({
   async function handleApplyExistingShortcuts() {
     if (!hasActivePoll || !activePoll.hostClubId || existingInviteShortcuts.length === 0) return
     setInviteBusy(true)
-    const res = await inviteShortcutsToPoll(activePoll.id, {
-      clubId: activePoll.hostClubId,
-      shortcutTargets: existingInviteShortcuts,
-    })
+    const res = await inviteShortcutsToPoll(
+      activePoll.id,
+      {
+        clubId: activePoll.hostClubId,
+        shortcutTargets: existingInviteShortcuts,
+      },
+      effectiveUser
+    )
     setInviteBusy(false)
-    if (res?.ok && res.data?.id) {
-      setPolls(prev => prev.map(p => (p.id === res.data.id ? res.data : p)))
+    const updatedPoll = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
+    if (res?.ok && updatedPoll?.id) {
+      setPolls(prev => prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p)))
       setExistingInviteShortcuts([])
       setShowExistingInviteShortcuts(false)
       if (onNotify) {
         onNotify(
-          `Invited ${res.data.invitedParticipants?.length || 0} deduplicated club members to "${res.data.title}".`
+          `Invited ${updatedPoll.invitedParticipants?.length || 0} deduplicated club members to "${updatedPoll.title}".`
         )
       }
     } else if (onNotify) {
@@ -1309,14 +1315,14 @@ export default function AvailabilityView({
     const res = await createVerifiedPoll(payload, effectiveUser)
     setCreatePollBusy(false)
 
-    if (!res?.ok || !res.data?.id) {
+    const pollObj = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
+    if (!res?.ok || !pollObj?.id) {
       if (onNotify) {
         onNotify(res?.error || 'Could not create poll.', { type: 'error' })
       }
       return
     }
 
-    const pollObj = res.data
     setPolls(prev => [pollObj, ...prev.filter(p => p.id !== pollObj.id)])
     setSelectedPollId(pollObj.id)
     setWeekAnchorDate(startDay)

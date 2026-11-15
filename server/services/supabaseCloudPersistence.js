@@ -347,6 +347,8 @@ export async function syncSnapshotToSupabase(sqliteDb) {
       status: t.status || 'not_started',
       priority: t.priority || 'medium',
       due_date: /^\d{4}-\d{2}-\d{2}$/.test(t.dueDate || '') ? t.dueDate : null,
+      due_time: String(t.dueTime || ''),
+      reminder_config: parseJson(t.reminderConfigJson, {}),
       assigned_user_ids: assignedUuids,
       assigned_group_ids: parseJson(t.groupIdsJson, []).map(toDeterministicUuid),
       completed_by_user_ids: completedUuids,
@@ -355,7 +357,15 @@ export async function syncSnapshotToSupabase(sqliteDb) {
     };
   });
   if (taskRows.length > 0) {
-    await admin.from('tasks').upsert(taskRows, { onConflict: 'id' });
+    const { error: taskUpsertErr } = await admin
+      .from('tasks')
+      .upsert(taskRows, { onConflict: 'id' });
+    if (taskUpsertErr && /(due_time|reminder_config)/i.test(taskUpsertErr.message || '')) {
+      const legacyTaskRows = taskRows.map(
+        ({ due_time: _dt, reminder_config: _rc, ...rest }) => rest
+      );
+      await admin.from('tasks').upsert(legacyTaskRows, { onConflict: 'id' });
+    }
   }
 }
 

@@ -20,6 +20,18 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
     }
   }
 
+  const authListeners = new Set()
+
+  function notifyAuthChange(event, session) {
+    for (const listener of authListeners) {
+      try {
+        listener(event, session)
+      } catch (err) {
+        console.error('[supabaseJsShim] auth listener error:', err)
+      }
+    }
+  }
+
   function setStoredSession(session) {
     if (!storage) return
     try {
@@ -47,6 +59,21 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       return { data: { session }, error: null }
     },
 
+    onAuthStateChange(callback) {
+      if (typeof callback === 'function') {
+        authListeners.add(callback)
+      }
+      return {
+        data: {
+          subscription: {
+            unsubscribe() {
+              authListeners.delete(callback)
+            },
+          },
+        },
+      }
+    },
+
     async signInWithPassword({ email, password }) {
       try {
         const res = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
@@ -67,6 +94,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
           user: data.user || null,
         }
         setStoredSession(session)
+        notifyAuthChange('SIGNED_IN', session)
         return { data: { user: data.user || null, session }, error: null }
       } catch (err) {
         return { data: { user: null, session: null }, error: { message: err.message } }
@@ -95,7 +123,10 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         const session = data.access_token
           ? { access_token: data.access_token, refresh_token: data.refresh_token, user }
           : null
-        if (session) setStoredSession(session)
+        if (session) {
+          setStoredSession(session)
+          notifyAuthChange('SIGNED_IN', session)
+        }
         return { data: { user, session }, error: null }
       } catch (err) {
         return { data: { user: null, session: null }, error: { message: err.message } }
@@ -104,6 +135,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
 
     async signOut() {
       setStoredSession(null)
+      notifyAuthChange('SIGNED_OUT', null)
       return { error: null }
     },
 

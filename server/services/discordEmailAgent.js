@@ -452,22 +452,41 @@ export async function syncDiscordEmailAgent({
 
       // Ingest any public Discord Guild Scheduled Events returned by the invite endpoint
       for (const sev of discordMeta.scheduledEvents || []) {
-        if (!sev?.id || !sev?.name || !sev?.scheduled_start_time) continue;
+        if (!sev?.id || !sev?.name || !sev?.scheduled_start_time || sev.status === 4) continue;
         const loc =
           sev.entity_metadata?.location ||
           `Discord (${discordMeta.serverName || club.name})`;
+        const eventPermalink = discordMeta.guildId
+          ? `https://discord.com/events/${discordMeta.guildId}/${sev.id}`
+          : discordMeta.url;
         ingestResourceItem({
           id: `discord_evt_${sev.id}`,
           clubId: club.id,
           clubName: club.name,
           source: 'discord',
           postedAt: sev.scheduled_start_time,
-          permalink: discordMeta.url,
+          permalink: eventPermalink,
           title: `${sev.name} (${discordMeta.serverName || club.name})`,
           caption: `${sev.name}\n${sev.description || ''}\nLocation: ${loc}`,
-          eventStart: sev.scheduled_start_time,
-          eventEnd: sev.scheduled_end_time || null,
-          location: loc,
+          extractedInfo: {
+            type: 'event',
+            important: false,
+            title: sev.name,
+            summary: (sev.description || `${sev.name} at ${loc}`).slice(0, 280),
+            events: [
+              {
+                title: sev.name,
+                kind: 'event',
+                start: new Date(sev.scheduled_start_time).toISOString(),
+                end: sev.scheduled_end_time ? new Date(sev.scheduled_end_time).toISOString() : null,
+                allDay: false,
+                recurring: null,
+                location: loc,
+              },
+            ],
+            links: discordMeta.url ? [{ url: discordMeta.url, kind: 'discord', label: 'Discord' }] : [],
+            extractedBy: 'discord_scheduled',
+          },
         });
         discordEventsUpserted++;
       }

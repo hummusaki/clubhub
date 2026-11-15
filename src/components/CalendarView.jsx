@@ -15,7 +15,6 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { todaySchedule as defaultSchedule } from '../data/sampleData'
 import { Card, BubbleTag, IconBadge, cleanText } from './ui'
 import { ScheduleEventIcon } from './icons'
 import CalendarSyncModal, {
@@ -25,6 +24,8 @@ import CalendarSyncModal, {
 import {
   buildGoogleCalendarTemplateUrl,
   normalizeCalendarSyncSettings,
+  normalizeClubKey,
+  resolveSchedulePostLink,
 } from '../utils/calendarSync'
 import { matchesSearchQuery, parseSearchQuery } from '../utils/search'
 
@@ -84,6 +85,7 @@ function formatEventBadgeTime(item, use24h = false) {
 export default function CalendarView({
   items,
   clubs = [],
+  joinedCount = null,
   initialView = null,
   userSettings = {},
   onUpdateSettings,
@@ -92,6 +94,7 @@ export default function CalendarView({
   searchQuery = '',
   compact = false,
   onOpenCalendar,
+  onBrowseClubs,
   onAddEvent,
   onDeleteEvent,
   rsvpMap = {},
@@ -110,10 +113,19 @@ export default function CalendarView({
   const nowRef = useMemo(() => new Date(), [])
   const todayYmd = useMemo(() => toLocalYmd(nowRef), [nowRef])
 
-  const joinedClubIdSet = useMemo(
-    () => new Set(clubs.filter(c => Boolean(c.joined)).map(c => String(c.id))),
+  const memberClubs = useMemo(
+    () => clubs.filter(c => Boolean(c.joined)),
     [clubs]
   )
+
+  const joinedClubKeySet = useMemo(
+    () => new Set(memberClubs.map(c => normalizeClubKey(c.id)).filter(Boolean)),
+    [memberClubs]
+  )
+
+  const hasJoinedClubs =
+    joinedCount !== null ? joinedCount > 0 : joinedClubKeySet.size > 0
+  const handleBrowseClubs = onBrowseClubs || calendarIntegration?.onBrowseClubs
 
   const [viewMode, setViewMode] = useState(
     () => initialView || userSettings?.defaultCalendarView || 'month'
@@ -122,7 +134,6 @@ export default function CalendarView({
   useEffect(() => {
     if (initialView) setViewMode(initialView)
   }, [initialView])
-  const [clubScope, setClubScope] = useState('myclubs') // 'myclubs' | 'all'
   const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all'
   const [weekAnchor, setWeekAnchor] = useState(todayYmd)
   const [monthState, setMonthState] = useState(() => ({
@@ -141,20 +152,23 @@ export default function CalendarView({
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
   const [eventClubId, setEventClubId] = useState(
-    () => clubs.find(c => c.joined)?.id || clubs[0]?.id || 'demo_ucsc_csclub'
+    () => memberClubs[0]?.id || ''
   )
   const [eventDate, setEventDate] = useState(todayYmd)
   const [eventTime, setEventTime] = useState('17:00')
   const [eventLocation, setEventLocation] = useState('')
 
   useEffect(() => {
-    const fallbackId = clubs.find(c => c.joined)?.id || clubs[0]?.id
-    if (fallbackId && !clubs.some(c => String(c.id) === String(eventClubId))) {
-      setEventClubId(String(fallbackId))
+    const fallbackId = memberClubs[0]?.id || ''
+    if (!memberClubs.some(c => String(c.id) === String(eventClubId))) {
+      setEventClubId(fallbackId ? String(fallbackId) : '')
     }
-  }, [clubs, eventClubId])
+  }, [memberClubs, eventClubId])
 
-  const baseEvents = items && items.length > 0 ? items : defaultSchedule
+  const baseEvents = useMemo(
+    () => (hasJoinedClubs && Array.isArray(items) ? items : []),
+    [hasJoinedClubs, items]
+  )
 
   const enrichedEvents = useMemo(() => {
     const nowMs = nowRef.getTime()
@@ -184,17 +198,14 @@ export default function CalendarView({
     })
   }, [baseEvents, rsvpMap, nowRef, todayYmd])
 
-  // Events after applying Club Scope + Search
+  // Events after applying joined-club membership + search
   const clubAndSearchEvents = useMemo(() => {
+    if (!hasJoinedClubs || joinedClubKeySet.size === 0) return []
     return enrichedEvents.filter(ev => {
-      if (
-        !compact &&
-        joinedClubIdSet.size > 0 &&
-        clubScope === 'myclubs' &&
-        !ev.isCustom &&
-        !ev.isBookedCollab &&
-        (!ev.clubId || !joinedClubIdSet.has(String(ev.clubId)))
-      ) {
+      const cid = normalizeClubKey(ev.clubId)
+      if (ev.isCustom || ev.isBookedCollab) {
+        if (cid && !joinedClubKeySet.has(cid)) return false
+      } else if (!cid || !joinedClubKeySet.has(cid)) {
         return false
       }
       if (!searchQuery.trim()) return true
@@ -205,7 +216,7 @@ export default function CalendarView({
         tertiary: [ev.description, ev.notes, ev.source],
       })
     })
-  }, [enrichedEvents, joinedClubIdSet, clubScope, compact, searchQuery])
+  }, [enrichedEvents, hasJoinedClubs, joinedClubKeySet, searchQuery])
 
   const rsvpGoingCountInScope = useMemo(
     () => clubAndSearchEvents.filter(ev => ev.isGoing).length,
@@ -407,19 +418,20 @@ export default function CalendarView({
 
   async function handleSubmitNewEvent(e) {
     e.preventDefault()
-    if (!eventTitle.trim() || !eventDate) return
+    if (!eventTitle.trim() || !eventDate || !eventClubId) return
 
     const [hh, mm] = (eventTime || '17:00').split(':').map(Number)
     const [yy, mo, dd] = eventDate.split('-').map(Number)
     const startDt = new Date(yy, (mo || 1) - 1, dd || 1, hh || 17, mm || 0, 0)
     const endDt = new Date(startDt.getTime() + 60 * 60 * 1000)
 
-    const clubObj = clubs.find(c => String(c.id) === String(eventClubId))
-    const clubLabel = clubObj ? cleanText(clubObj.name) : 'Campus Club'
+    const clubObj = memberClubs.find(c => String(c.id) === String(eventClubId))
+    if (!clubObj) return
+    const clubLabel = cleanText(clubObj.name)
 
     if (onAddEvent) {
       await onAddEvent({
-        clubId: String(eventClubId || 'demo_ucsc_csclub'),
+        clubId: String(clubObj.id),
         clubName: clubLabel,
         title: eventTitle.trim(),
         start: startDt.toISOString(),
@@ -442,6 +454,7 @@ export default function CalendarView({
     const clubName = cleanText(item.club)
     const title = cleanText(item.event)
     const canRemove = Boolean(item.isBookedCollab || item.isCustom) && Boolean(onDeleteEvent)
+    const postLink = resolveSchedulePostLink(item)
 
     return (
       <div key={item.id} className={`flex items-stretch ${isCompactDensity ? 'gap-2.5' : 'gap-3'}`}>
@@ -475,7 +488,19 @@ export default function CalendarView({
                   isCompactDensity ? 'text-[13px]' : 'text-sm'
                 } text-[var(--text)] leading-snug`}
               >
-                {title}
+                {postLink ? (
+                  <a
+                    href={postLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={postLink.tooltip}
+                    className="text-inherit hover:text-[var(--blue-ink)] hover:underline no-underline transition-colors"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  title
+                )}
               </div>
             </div>
 
@@ -506,20 +531,25 @@ export default function CalendarView({
                   <span>{cleanText(item.duration)}</span>
                 </span>
               )}
-              {!compact && item.permalink && (
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              {postLink && (
                 <a
-                  href={item.permalink}
+                  href={postLink.url}
                   target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline no-underline shrink-0"
+                  rel="noopener noreferrer"
+                  title={postLink.tooltip}
+                  aria-label={`${postLink.label} for ${title}`}
+                  className={`inline-flex items-center gap-1 ${
+                    isCompactDensity ? 'px-2.5 min-h-[26px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
+                  } rounded-full bg-[var(--bg-card)] text-[var(--blue-ink)] hover:bg-[var(--blue-light)] border border-[var(--border)] hover:border-[var(--blue)] font-semibold no-underline transition-colors`}
                 >
-                  <span>Post</span>
+                  <span>{postLink.label}</span>
                   <ExternalLink size={11} />
                 </a>
               )}
-            </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
               {!compact && (
                 <a
                   href={buildGoogleCalendarTemplateUrl(item, {
@@ -636,12 +666,30 @@ export default function CalendarView({
             <div className={`flex flex-col ${isCompactDensity ? 'gap-2' : 'gap-3'}`}>
               {preview.map((item, idx) => renderEventRow(item, idx === preview.length - 1))}
             </div>
+          ) : !hasJoinedClubs ? (
+            <div className="py-7 px-3 text-center space-y-3">
+              <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+                You&apos;re not in any clubs yet. Join a club to populate your calendar with upcoming meetings and events.
+              </p>
+              {handleBrowseClubs && (
+                <button
+                  type="button"
+                  onClick={handleBrowseClubs}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none"
+                >
+                  <span>Browse Clubs</span>
+                  <ArrowRight size={13} />
+                </button>
+              )}
+            </div>
           ) : (
             <div className="py-7 text-center text-sm text-[var(--text-muted)] space-y-2">
               <div>
                 {inAppRsvpOnly
                   ? "No RSVP'd upcoming events yet."
-                  : 'No matching events found.'}
+                  : searchQuery.trim()
+                    ? 'No matching events in your joined clubs.'
+                    : 'No upcoming events scheduled across your joined clubs yet.'}
               </div>
               {inAppRsvpOnly && onUpdateSettings && (
                 <button
@@ -733,29 +781,13 @@ export default function CalendarView({
               ))}
             </div>
 
-            {joinedClubIdSet.size > 0 && (
-              <div className="segmented-track">
-                {[
-                  { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
-                  { id: 'all', label: 'All Campus' },
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setClubScope(opt.id)}
-                    className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                      clubScope === opt.id
-                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            {hasJoinedClubs && (
+              <span className="inline-flex items-center px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)]">
+                My Clubs ({memberClubs.length})
+              </span>
             )}
 
-            {onUpdateSettings && (
+            {hasJoinedClubs && onUpdateSettings && (
               <button
                 type="button"
                 onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: !inAppRsvpOnly })}
@@ -822,14 +854,27 @@ export default function CalendarView({
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => setShowAddForm(prev => !prev)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
-            >
-              {showAddForm ? <X size={15} /> : <Plus size={15} />}
-              <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
-            </button>
+            {hasJoinedClubs ? (
+              <button
+                type="button"
+                onClick={() => setShowAddForm(prev => !prev)}
+                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
+              >
+                {showAddForm ? <X size={15} /> : <Plus size={15} />}
+                <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
+              </button>
+            ) : (
+              handleBrowseClubs && (
+                <button
+                  type="button"
+                  onClick={handleBrowseClubs}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
+                >
+                  <span>Browse Clubs</span>
+                  <ArrowRight size={14} />
+                </button>
+              )
+            )}
           </div>
         </div>
 
@@ -858,8 +903,32 @@ export default function CalendarView({
         )}
       </div>
 
+      {/* Notice when user is not in any clubs yet */}
+      {!hasJoinedClubs && (
+        <div className="mb-5 p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-[var(--text)]">
+              Join a club to unlock your calendar
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+              You aren&apos;t in any clubs yet, so there are no incoming club events on your schedule. Join one or more clubs to see their meetings and workshops here.
+            </p>
+          </div>
+          {handleBrowseClubs && (
+            <button
+              type="button"
+              onClick={handleBrowseClubs}
+              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none shrink-0 self-start sm:self-auto"
+            >
+              <span>Browse Clubs</span>
+              <ArrowRight size={13} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Add Event Form (Comfortable 44px fields, clear labels, no raw IDs) */}
-      {showAddForm && (
+      {showAddForm && hasJoinedClubs && (
         <form
           onSubmit={handleSubmitNewEvent}
           className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
@@ -890,7 +959,7 @@ export default function CalendarView({
                 onChange={e => setEventClubId(e.target.value)}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
               >
-                {clubs.map(c => (
+                {memberClubs.map(c => (
                   <option key={c.id} value={c.id}>
                     {cleanText(c.name)}
                   </option>
@@ -1018,20 +1087,36 @@ export default function CalendarView({
           ) : (
             <div className="py-10 text-center space-y-2.5">
               <CalendarIcon size={28} className="mx-auto text-[var(--text-light)] mb-2" />
-              <div className="text-sm font-semibold text-[var(--text)]">No events to display</div>
+              <div className="text-sm font-semibold text-[var(--text)]">
+                {!hasJoinedClubs ? 'Join a club to see incoming events' : 'No events to display'}
+              </div>
               <p className="text-xs text-[var(--text-muted)]">
-                {inAppRsvpOnly
-                  ? 'No RSVP\'d events match this view yet.'
-                  : 'Try clearing your search or adding a new event.'}
+                {!hasJoinedClubs
+                  ? 'Your calendar shows events exclusively from clubs you have joined.'
+                  : inAppRsvpOnly
+                    ? 'No RSVP\'d events match this view yet.'
+                    : 'Try clearing your search or adding a new club event.'}
               </p>
-              {inAppRsvpOnly && onUpdateSettings && (
+              {!hasJoinedClubs && handleBrowseClubs ? (
                 <button
                   type="button"
-                  onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
-                  className="px-3.5 min-h-[32px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
+                  onClick={handleBrowseClubs}
+                  className="inline-flex items-center gap-1.5 px-4 min-h-[34px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold border-none cursor-pointer"
                 >
-                  Show all events
+                  <span>Browse Clubs</span>
+                  <ArrowRight size={13} />
                 </button>
+              ) : (
+                inAppRsvpOnly &&
+                onUpdateSettings && (
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
+                    className="px-3.5 min-h-[32px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
+                  >
+                    Show all events
+                  </button>
+                )
               )}
             </div>
           )}
@@ -1098,19 +1183,34 @@ export default function CalendarView({
             ) : (
               <div className="p-6 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-center">
                 <p className="text-xs text-[var(--text-muted)] mb-2.5">
-                  No events scheduled for {selectedDateLabel}.
+                  {hasJoinedClubs
+                    ? `No events scheduled for ${selectedDateLabel}.`
+                    : 'Join a club to see scheduled meetings and workshops here.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEventDate(selectedDate)
-                    setShowAddForm(true)
-                  }}
-                  className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer hover:border-[var(--blue)]"
-                >
-                  <Plus size={13} />
-                  <span>Add event on this day</span>
-                </button>
+                {hasJoinedClubs ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEventDate(selectedDate)
+                      setShowAddForm(true)
+                    }}
+                    className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer hover:border-[var(--blue)]"
+                  >
+                    <Plus size={13} />
+                    <span>Add event on this day</span>
+                  </button>
+                ) : (
+                  handleBrowseClubs && (
+                    <button
+                      type="button"
+                      onClick={handleBrowseClubs}
+                      className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold border-none cursor-pointer"
+                    >
+                      <span>Browse Clubs</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  )
+                )}
               </div>
             )}
           </div>
@@ -1136,6 +1236,7 @@ export default function CalendarView({
                   {dayEvs.length > 0 ? (
                     dayEvs.map(ev => {
                       const c = ev.color || 'blue'
+                      const weekPostLink = resolveSchedulePostLink(ev)
                       return (
                         <div
                           key={ev.id}
@@ -1146,25 +1247,50 @@ export default function CalendarView({
                           className="content-tile p-2 rounded-lg flex flex-col gap-1 min-w-0"
                         >
                           <span className="text-[11px] font-bold text-[var(--text)] leading-snug line-clamp-2">
-                            {cleanText(ev.event)}
+                            {weekPostLink ? (
+                              <a
+                                href={weekPostLink.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={weekPostLink.tooltip}
+                                className="text-inherit hover:text-[var(--blue-ink)] hover:underline no-underline"
+                              >
+                                {cleanText(ev.event)}
+                              </a>
+                            ) : (
+                              cleanText(ev.event)
+                            )}
                           </span>
                           <span className="text-[10px] text-[var(--text-muted)] truncate">
                             {cleanText(ev.club)}
                           </span>
-                          <BubbleTag
-                            label={
-                              ev.startIso
-                                ? new Date(ev.startIso).toLocaleTimeString('en-US', {
-                                    hour: 'numeric',
-                                    minute: '2-digit',
-                                    hour12: !use24h,
-                                  })
-                                : ev.time
-                            }
-                            color={c}
-                            size="sm"
-                            className="self-start mt-0.5"
-                          />
+                          <div className="flex flex-wrap items-center justify-between gap-1 mt-0.5">
+                            <BubbleTag
+                              label={
+                                ev.startIso
+                                  ? new Date(ev.startIso).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: !use24h,
+                                    })
+                                  : ev.time
+                              }
+                              color={c}
+                              size="sm"
+                            />
+                            {weekPostLink && (
+                              <a
+                                href={weekPostLink.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={weekPostLink.tooltip}
+                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[var(--blue-ink)] hover:underline no-underline"
+                              >
+                                <span>Post</span>
+                                <ExternalLink size={9.5} />
+                              </a>
+                            )}
+                          </div>
                         </div>
                       )
                     })
@@ -1322,17 +1448,19 @@ export default function CalendarView({
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEventDate(selectedDate)
-                  setShowAddForm(true)
-                }}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-              >
-                <Plus size={13} />
-                <span>Add event on this date</span>
-              </button>
+              {hasJoinedClubs && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEventDate(selectedDate)
+                    setShowAddForm(true)
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  <Plus size={13} />
+                  <span>Add event on this date</span>
+                </button>
+              )}
             </div>
 
             {selectedDayEvents.length > 0 ? (
@@ -1344,11 +1472,13 @@ export default function CalendarView({
             ) : (
               <div className="text-xs text-[var(--text-muted)] py-4 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  {inAppRsvpOnly
-                    ? `No RSVP'd events on ${selectedDateLabel}. Toggle off "RSVP'd Only" to browse all club meetings and mark Going.`
-                    : `No events recorded for ${selectedDateLabel}. Select another date on the calendar or switch to All Campus to explore past and upcoming club events.`}
+                  {!hasJoinedClubs
+                    ? 'Join a club to see upcoming meetings, workshops, and club events on your calendar.'
+                    : inAppRsvpOnly
+                      ? `No RSVP'd events on ${selectedDateLabel}. Toggle off "RSVP'd Only" to browse all club meetings and mark Going.`
+                      : `No club events scheduled across your joined clubs on ${selectedDateLabel}.`}
                 </span>
-                {inAppRsvpOnly && onUpdateSettings && (
+                {hasJoinedClubs && inAppRsvpOnly && onUpdateSettings && (
                   <button
                     type="button"
                     onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
