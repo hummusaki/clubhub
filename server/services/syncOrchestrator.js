@@ -7,6 +7,7 @@ import emailService from './email.js';
 import googleCalendarService from './googleCalendar.js';
 import websiteService from './website.js';
 import rosterService from './roster.js';
+import { syncDiscordEmailAgent } from './discordEmailAgent.js';
 import { getDataSources } from './resourceIngestor.js';
 
 export class SyncOrchestrator {
@@ -14,10 +15,37 @@ export class SyncOrchestrator {
     switch (platform) {
       case 'instagram':
         return instagramService.syncInstagram(options);
-      case 'discord':
-        return discordService.syncDiscord(options);
-      case 'email':
-        return emailService.syncEmail(options);
+      case 'discord': {
+        const botRes = await discordService.syncDiscord(options);
+        const agentSummary = await syncDiscordEmailAgent(options);
+        return {
+          ...botRes,
+          mode: botRes.mode === 'live' ? 'live' : 'autonomous',
+          synced: (Number(botRes.synced) || 0) + (Number(agentSummary.discord?.postsCount) || 0),
+          channelsChecked:
+            (Number(botRes.channelsChecked) || 0) +
+            (Number(agentSummary.discord?.serversIndexed) || 0),
+          scheduledEventsSynced:
+            (Number(botRes.scheduledEventsSynced) || 0) +
+            (Number(agentSummary.discord?.eventsCount) || 0),
+          agent: agentSummary.discord,
+        };
+      }
+      case 'email': {
+        const imapRes = await emailService.syncEmail(options);
+        const agentSummary = await syncDiscordEmailAgent(options);
+        return {
+          ...imapRes,
+          mode: imapRes.mode === 'live' ? 'live' : 'autonomous',
+          synced: (Number(imapRes.synced) || 0) + (Number(agentSummary.email?.postsCount) || 0),
+          messagesChecked:
+            (Number(imapRes.messagesChecked) || 0) +
+            (Number(agentSummary.email?.clubEmailsIndexed) || 0),
+          agent: agentSummary.email,
+        };
+      }
+      case 'discord_email':
+        return syncDiscordEmailAgent(options);
       case 'google_calendar':
         return googleCalendarService.syncCalendar(options);
       case 'website':
@@ -33,6 +61,7 @@ export class SyncOrchestrator {
     const instagram = await instagramService.syncInstagram(options);
     const discord = await discordService.syncDiscord(options);
     const email = await emailService.syncEmail(options);
+    const agent = await syncDiscordEmailAgent(options);
     const googleCalendar = await googleCalendarService.syncCalendar(options);
     const website = await websiteService.syncWebsite(options);
 
@@ -41,6 +70,7 @@ export class SyncOrchestrator {
       instagram,
       discord,
       email,
+      agent,
       googleCalendar,
       website,
     };

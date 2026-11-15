@@ -11,7 +11,7 @@ All-in-one campus workspace for **UC Santa Cruz** student organizations, built f
 
 ---
 ## ToDo - URGENT
-- Make the Discord and Email integration run on its own through a GitHub agent or action
+- [x] Make the Discord and Email integration run on its own through a GitHub agent or action (`.github/workflows/discord-email-sync.yml` + `npm run sync:discord-email`)
 - How to submit complete project if DB is gitignored?
 - Clean up cramped UI elements
   - Specifically settings UI & color consistency
@@ -48,6 +48,7 @@ npm run dev:full
 
 All recurring background syncs, roster checks, directory updates, and token checks run completely in **GitHub Actions** — no local cron jobs, daemons, or background processes are needed on your machine:
 
+- **`.github/workflows/discord-email-sync.yml` (Hourly at `15 * * * *` UTC + Manual Dispatch)**: Autonomous Discord & Email GitHub Agent (`npm run sync:discord-email`) that discovers and verifies UCSC club Discord servers via the public Discord Invite API v10 (member counts, online counts, guild metadata) + optional Discord Bot channels, indexes all 137 official UCSC club emails & IMAP mailing lists, updates `collector/clubs.json` and `public/clubhub-data.json`, and redeploys GitHub Pages.
 - **`.github/workflows/deploy.yml` (Every 2 Hours + Push to `main`)**: Syncs Instagram (Business Discovery + Instaloader personal-account fallback), Linktrees, Google Calendars, Discord announcements, and email newsletters into `public/clubhub-data.json` (preserving daily club rosters), builds `./dist`, and deploys to GitHub Pages.
 - **`.github/workflows/daily-roster-sync.yml` (Once Daily at `30 10 * * *` UTC)**:
   1. Checks Meta Instagram Graph API token health & remaining 60-day lifetime (`npm run ig:check-token`).
@@ -87,6 +88,7 @@ When `dist/index.html` exists, `server/index.js` serves both `/api/*` and the co
 | `npm run server` | Start Express 5 + SQLite API server on `PORT` (default `3001`) |
 | `npm run dev:full` | Run API server and Vite frontend concurrently |
 | `npm run sync:static` | Sync Instagram/Discord feeds and export `public/clubhub-data.json` |
+| `npm run sync:discord-email` | Run the autonomous Discord & Email agent and update `collector/clubs.json` + `public/clubhub-data.json` |
 | `npm run sync:rosters` | Sync official UCSC club directory + per-club rosters into SQLite & `public/clubhub-data.json` |
 | `npm run ig:check-token` | Verify Meta Instagram Graph API token health & remaining lifetime |
 | `npm run build` | Build production SPA bundle into `dist/` |
