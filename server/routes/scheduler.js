@@ -8,6 +8,7 @@ import { Router } from 'express';
 import {
   getDb,
   upsertCollectorData,
+  deleteRecord,
   setDictEntry,
   normalizeClubId,
   formatEventRow,
@@ -533,6 +534,7 @@ router.post('/parse-text', (req, res) => {
 // POST /api/scheduler/polls/:id/book — book an overlapping slot directly onto the ClubHub Calendar (`events` table)
 router.post('/polls/:id/book', (req, res) => {
   initSchedulerTables();
+  const db = getDb();
   const poll = getFullPoll(req.params.id);
   if (!poll) return res.status(404).json({ error: 'Poll not found' });
 
@@ -543,6 +545,10 @@ router.post('/polls/:id/book', (req, res) => {
     clubId = poll.hostClubId || 'demo_ucsc_csclub',
     clubName = (poll.collaboratingClubs || []).join(' × ') || 'Club Collaboration',
     location = poll.location || 'Baskin Engineering 152',
+    userId,
+    userName,
+    userClubName,
+    timezone = 'America/Los_Angeles',
   } = req.body || {};
 
   if (!start) {
@@ -552,6 +558,52 @@ router.post('/polls/:id/book', (req, res) => {
   const endIso =
     end || new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
   const eventId = `collab_evt_${poll.id}_${new Date(start).getTime()}`;
+
+  // If user info is passed, also ensure this person is recorded as available/booked for the slot range
+  if (userId && userName) {
+    const respId = `${poll.id}:${userId}`;
+    const existing = db
+      .stmt('SELECT * FROM scheduler_responses WHERE id = ?')
+      .get(respId);
+
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(endIso).getTime();
+    const bookedSlotIsos = [];
+    for (let t = startMs; t < endMs; t += 30 * 60 * 1000) {
+      bookedSlotIsos.push(new Date(t).toISOString());
+    }
+
+    const prevFree = existing ? JSON.parse(existing.freeSlots || '[]') : [];
+    const prevBusy = existing ? JSON.parse(existing.busySlots || '[]') : [];
+    const nextFree = Array.from(new Set([...prevFree, ...bookedSlotIsos]));
+    const nextBusy = prevBusy.filter(s => !bookedSlotIsos.includes(s));
+
+    db.stmt(`
+      INSERT INTO scheduler_responses (
+        id, pollId, userId, userName, clubId, clubName,
+        timezone, freeSlots, busySlots, rawTextInput, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        userName  = excluded.userName,
+        clubId    = excluded.clubId,
+        clubName  = excluded.clubName,
+        timezone  = excluded.timezone,
+        freeSlots = excluded.freeSlots,
+        busySlots = excluded.busySlots,
+        updatedAt = datetime('now')
+    `).run(
+      respId,
+      poll.id,
+      userId,
+      userName,
+      normalizeClubId(userClubName || clubId),
+      userClubName || clubName,
+      timezone,
+      JSON.stringify(nextFree),
+      JSON.stringify(nextBusy),
+      existing?.rawTextInput || ''
+    );
+  }
 
   upsertCollectorData({
     events: [
@@ -574,6 +626,74 @@ router.post('/polls/:id/book', (req, res) => {
   res.status(201).json({
     booked: true,
     eventId,
+    poll: getFullPoll(poll.id),
+  });
+});
+
+// POST /api/scheduler/polls/:id/unbook — unbook a slot / remove booked collaboration event from ClubHub Calendar
+router.post('/polls/:id/unbook', (req, res) => {
+  initSchedulerTables();
+  const db = getDb();
+  const poll = getFullPoll(req.params.id);
+  if (!poll) return res.status(404).json({ error: 'Poll not found' });
+
+  const { eventId, start, userId, removeUserAvailability = false } = req.body || {};
+  const removedIds = [];
+
+  if (eventId) {
+    const resDel = deleteRecord('events', eventId);
+    if (resDel.deleted) removedIds.push(eventId);
+  }
+
+  if (start) {
+    const slotMs = new Date(start).getTime();
+    const exactId = `collab_evt_${poll.id}_${slotMs}`;
+    const resExact = deleteRecord('events', exactId);
+    if (resExact.deleted) removedIds.push(exactId);
+
+    // Also check any collab_evt_ that spans across `start`
+    const allCollabEvents = db
+      .stmt("SELECT * FROM events WHERE id LIKE 'collab_evt_%'")
+      .all();
+    for (const ev of allCollabEvents) {
+      const sMs = new Date(ev.start).getTime();
+      const eMs = ev.end ? new Date(ev.end).getTime() : sMs + 60 * 60 * 1000;
+      if (slotMs >= sMs && slotMs < eMs) {
+        const r = deleteRecord('events', ev.id);
+        if (r.deleted) removedIds.push(ev.id);
+      }
+    }
+
+    // Optionally remove the slot from the user's freeSlots if requested
+    if (removeUserAvailability && userId) {
+      const respId = `${poll.id}:${userId}`;
+      const existing = db
+        .stmt('SELECT * FROM scheduler_responses WHERE id = ?')
+        .get(respId);
+      if (existing) {
+        const nextFree = JSON.parse(existing.freeSlots || '[]').filter(s => s !== start);
+        db.stmt(
+          "UPDATE scheduler_responses SET freeSlots = ?, updatedAt = datetime('now') WHERE id = ?"
+        ).run(JSON.stringify(nextFree), respId);
+      }
+    }
+  }
+
+  // If neither matched a specific slot but there is a booked collab event for this poll and no eventId/start matched,
+  // check if `unbookLatest` was passed
+  if (removedIds.length === 0 && req.body?.fallbackLatest) {
+    const latest = db
+      .stmt("SELECT id FROM events WHERE id LIKE ? ORDER BY start DESC LIMIT 1")
+      .get(`collab_evt_${poll.id}_%`);
+    if (latest) {
+      const r = deleteRecord('events', latest.id);
+      if (r.deleted) removedIds.push(latest.id);
+    }
+  }
+
+  res.json({
+    unbooked: true,
+    removedIds,
     poll: getFullPoll(poll.id),
   });
 });

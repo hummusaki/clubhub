@@ -96,4 +96,9 @@ export const bookSchedulerSlot = (pollId, data) =>
     method: 'POST',
     body: JSON.stringify(data),
   });
+export const unbookSchedulerSlot = (pollId, data) =>
+  fetchJSON(`/scheduler/polls/${encodeURIComponent(pollId)}/unbook`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 

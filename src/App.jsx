@@ -283,6 +283,8 @@ function MainDashboard({
             color: isBookedCollab ? 'green' : palette[i % palette.length],
             upcoming: false,
             isBookedCollab,
+            startIso: e.start,
+            endIso: e.end,
           }
         })
       )

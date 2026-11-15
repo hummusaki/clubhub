@@ -12,6 +12,9 @@ import {
   MapPin,
   CheckCircle2,
   XCircle,
+  ChevronLeft,
+  ChevronRight,
+  UserPlus,
 } from 'lucide-react'
 import { Card, BubbleTag, cleanText } from './ui'
 import {
@@ -19,7 +22,7 @@ import {
   createSchedulerPoll,
   saveSchedulerResponse,
   bookSchedulerSlot,
-  deleteEvent,
+  unbookSchedulerSlot,
 } from '../api/client'
 
 // ── Supported Timezones ─────────────────────────────────────────────
@@ -37,25 +40,73 @@ const TIMEZONES = [
   { id: 'Australia/Sydney',    label: 'Australia Eastern (AEST — Sydney)' },
 ]
 
-const DEFAULT_DATES = [
-  '2026-11-16',
-  '2026-11-17',
-  '2026-11-18',
-  '2026-11-19',
-  '2026-11-20',
-  '2026-11-21',
-  '2026-11-22',
-]
+const BASE_MONDAY = '2026-11-16'
+
+// ── Date & Calendar Navigation Helpers ──────────────────────────────
+
+function parseDateParts(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number)
+  return { y, m, d }
+}
+
+function formatYmd(dateObj) {
+  const y = dateObj.getUTCFullYear()
+  const m = String(dateObj.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(dateObj.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function addDaysToYmd(dateStr, daysDelta) {
+  const { y, m, d } = parseDateParts(dateStr)
+  const dt = new Date(Date.UTC(y, m - 1, d + daysDelta, 12, 0, 0))
+  return formatYmd(dt)
+}
+
+function getMondayOfDate(dateStr) {
+  const { y, m, d } = parseDateParts(dateStr)
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+  const day = dt.getUTCDay() // 0 = Sun, 1 = Mon, ...
+  const diffToMon = day === 0 ? -6 : 1 - day
+  dt.setUTCDate(dt.getUTCDate() + diffToMon)
+  return formatYmd(dt)
+}
+
+function getWeekDatesFromStart(mondayStr) {
+  return Array.from({ length: 7 }, (_, i) => addDaysToYmd(mondayStr, i))
+}
+
+function getMonthGridCells(year, monthIndex) {
+  // monthIndex: 0-11
+  const firstDay = new Date(Date.UTC(year, monthIndex, 1, 12, 0, 0))
+  const startDow = firstDay.getUTCDay() // 0 (Sun) .. 6 (Sat)
+  const gridStart = new Date(Date.UTC(year, monthIndex, 1 - startDow, 12, 0, 0))
+
+  const cells = []
+  for (let i = 0; i < 42; i++) {
+    const dt = new Date(Date.UTC(
+      gridStart.getUTCFullYear(),
+      gridStart.getUTCMonth(),
+      gridStart.getUTCDate() + i,
+      12,
+      0,
+      0
+    ))
+    cells.push({
+      dateStr: formatYmd(dt),
+      dayNumber: dt.getUTCDate(),
+      inCurrentMonth: dt.getUTCMonth() === monthIndex,
+    })
+  }
+  return cells
+}
+
+const DEFAULT_DATES = getWeekDatesFromStart(BASE_MONDAY)
 
 // ── Timezone Conversion Utilities ───────────────────────────────────
 
-/**
- * Convert a local date (`YYYY-MM-DD`), hour (0-23), minute (0 or 30) in `timeZone`
- * into a canonical UTC ISO timestamp string (`YYYY-MM-DDTHH:mm:00.000Z`).
- */
 export function slotToUtcIso(dateStr, hour, minute, timeZone = 'America/Los_Angeles') {
   try {
-    const [y, m, d] = dateStr.split('-').map(Number)
+    const { y, m, d } = parseDateParts(dateStr)
     const approxUtc = new Date(Date.UTC(y, m - 1, d, hour, minute, 0, 0))
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -83,7 +134,7 @@ export function slotToUtcIso(dateStr, hour, minute, timeZone = 'America/Los_Ange
     const offsetMs = tzAsUtc - approxUtc.getTime()
     return new Date(approxUtc.getTime() - offsetMs).toISOString()
   } catch {
-    const [y, m, d] = dateStr.split('-').map(Number)
+    const { y, m, d } = parseDateParts(dateStr)
     return new Date(Date.UTC(y, m - 1, d, hour + 8, minute, 0, 0)).toISOString()
   }
 }
@@ -96,9 +147,6 @@ function makeRangeSlots(dateStr, startH, endH, tz = 'America/Los_Angeles') {
   return out
 }
 
-/**
- * Format a UTC ISO string in a target timezone.
- */
 function formatSlotInTz(isoStr, timeZone, options = {}) {
   try {
     return new Intl.DateTimeFormat('en-US', {
@@ -124,9 +172,17 @@ function getTzShortName(timeZone) {
   }
 }
 
+function toUserId(name) {
+  const slug = String(name || 'user')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return `user_${slug || 'member'}`
+}
+
 /**
- * Client-side natural language availability parser so typing works instantaneously
- * even before the server round-trip completes.
+ * Client-side natural language availability parser for the currently viewed week dates.
  */
 function parseTextAvailabilityClient(text = '', dates = DEFAULT_DATES, timeZone = 'America/Los_Angeles') {
   const freeSlots = new Set()
@@ -135,7 +191,7 @@ function parseTextAvailabilityClient(text = '', dates = DEFAULT_DATES, timeZone 
 
   const dayToDate = {}
   for (const dateStr of dates) {
-    const [y, m, d] = dateStr.split('-').map(Number)
+    const { y, m, d } = parseDateParts(dateStr)
     const wk = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
       .toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
       .toLowerCase()
@@ -195,7 +251,7 @@ function parseTextAvailabilityClient(text = '', dates = DEFAULT_DATES, timeZone 
   }
 }
 
-// ── Fallback Default Poll (used before backend responds) ────────────
+// ── Fallback Default Poll ───────────────────────────────────────────
 const FALLBACK_POLL = {
   id: 'collab_ucsc_hackathon_2026',
   title: 'Cross-Club Hackathon & Fall Showcase Planning',
@@ -278,7 +334,6 @@ const FALLBACK_POLL = {
 
 export default function CollabScheduler({
   user = null,
-  clubs = [],
   events = [],
   onEventBooked,
 }) {
@@ -294,13 +349,19 @@ export default function CollabScheduler({
   const [selectedPollId, setSelectedPollId] = useState(FALLBACK_POLL.id)
   const [userTimezone, setUserTimezone] = useState(detectedLocalTz)
 
-  // Current user identity
+  // Calendar View Mode ('week' | 'month') & Navigation State (Google Calendar style)
+  const [calendarViewMode, setCalendarViewMode] = useState('week')
+  const [weekStartMonday, setWeekStartMonday] = useState(BASE_MONDAY)
+  const [monthCursor, setMonthCursor] = useState({ year: 2026, month: 10 }) // 10 = Nov (0-indexed)
+
+  // Current user identity (each unique name gets its own responder record — unlimited people!)
   const defaultUserName =
     user?.fullName ||
     user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
     'Jane Doe (You)'
   const [userName, setUserName] = useState(defaultUserName)
   const [userClubName, setUserClubName] = useState('Computer Science Club')
+  const currentUserId = useMemo(() => toUserId(userName), [userName])
 
   // Personal Free & Busy Sets (stored as canonical UTC ISO strings)
   const [myFreeSlots, setMyFreeSlots] = useState(
@@ -324,7 +385,7 @@ export default function CollabScheduler({
     'Free Mon 2pm-4:30pm, Wed 2pm-5pm; Busy Tue 2pm-3:30pm'
   )
 
-  // Selected/inspected slot on the heatmap (locked on click so moving mouse to Book button never loses selection)
+  // Selected/inspected slot on the heatmap
   const [activeSlotIso, setActiveSlotIso] = useState(null)
   const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
   const [bookingDurationMins, setBookingDurationMins] = useState(60)
@@ -334,12 +395,26 @@ export default function CollabScheduler({
   // New Collaboration Poll Modal
   const [showNewPollForm, setShowNewPollForm] = useState(false)
   const [newPollTitle, setNewPollTitle] = useState('')
-  const [newPollClubs, setNewPollClubs] = useState('Computer Science Club, Debate Society, Robotics League')
+  const [newPollClubs, setNewPollClubs] = useState(
+    'Computer Science Club, Debate Society, Robotics League'
+  )
   const [newPollLocation, setNewPollLocation] = useState('Baskin Engineering 152')
 
   const activePoll = useMemo(
     () => polls.find(p => p.id === selectedPollId) || polls[0] || FALLBACK_POLL,
     [polls, selectedPollId]
+  )
+
+  // Currently displayed 7-day week dates based on `weekStartMonday`
+  const displayedWeekDates = useMemo(
+    () => getWeekDatesFromStart(weekStartMonday),
+    [weekStartMonday]
+  )
+
+  // Currently displayed 42-day month grid cells based on `monthCursor`
+  const displayedMonthCells = useMemo(
+    () => getMonthGridCells(monthCursor.year, monthCursor.month),
+    [monthCursor.year, monthCursor.month]
   )
 
   // Load polls from SQLite database on mount
@@ -349,15 +424,6 @@ export default function CollabScheduler({
       setPolls(data)
       const current = data.find(p => p.id === selectedPollId) || data[0]
       setSelectedPollId(current.id)
-
-      // Check if current user already has a saved response in DB
-      const existingMe = (current.responses || []).find(r => r.userId === 'current_user')
-      if (existingMe) {
-        setMyFreeSlots(new Set(existingMe.freeSlots || []))
-        setMyBusySlots(new Set(existingMe.busySlots || []))
-        if (existingMe.rawTextInput) setTextInput(existingMe.rawTextInput)
-        if (existingMe.timezone) setUserTimezone(existingMe.timezone)
-      }
     }
   }, [selectedPollId])
 
@@ -365,12 +431,92 @@ export default function CollabScheduler({
     loadPolls()
   }, [loadPolls])
 
+  // Whenever currentUserId changes (user switches or types another person's name),
+  // load that person's existing slots if they already responded, or keep current selection for new person
+  function handleSwitchOrLoadPerson(targetUserObj) {
+    if (!targetUserObj) return
+    setUserName(targetUserObj.userName)
+    if (targetUserObj.clubName) setUserClubName(targetUserObj.clubName)
+    if (targetUserObj.timezone) setUserTimezone(targetUserObj.timezone)
+    setMyFreeSlots(new Set(targetUserObj.freeSlots || []))
+    setMyBusySlots(new Set(targetUserObj.busySlots || []))
+    setStatusBanner(`Switched active schedule editor to ${targetUserObj.userName}`)
+  }
+
+  function handleAddNewParticipant() {
+    const nextNum = allParticipants.length + 1
+    const newName = `Member ${nextNum}`
+    setUserName(newName)
+    setStatusBanner(
+      `👤 Added ${newName}! Paint Free/Busy slots or click Book to add ${newName}'s availability.`
+    )
+  }
+
   // Stop dragging when mouse released anywhere
   useEffect(() => {
     const handleUp = () => setIsDragging(false)
     window.addEventListener('mouseup', handleUp)
     return () => window.removeEventListener('mouseup', handleUp)
   }, [])
+
+  // ── Week / Month Navigation Handlers (Google Calendar style) ──────
+  function handlePrevPeriod() {
+    if (calendarViewMode === 'week') {
+      const nextMon = addDaysToYmd(weekStartMonday, -7)
+      setWeekStartMonday(nextMon)
+      const { y, m } = parseDateParts(nextMon)
+      setMonthCursor({ year: y, month: m - 1 })
+    } else {
+      setMonthCursor(prev => {
+        const dt = new Date(Date.UTC(prev.year, prev.month - 1, 1, 12, 0, 0))
+        const firstMon = getMondayOfDate(formatYmd(dt))
+        setWeekStartMonday(firstMon)
+        return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() }
+      })
+    }
+  }
+
+  function handleNextPeriod() {
+    if (calendarViewMode === 'week') {
+      const nextMon = addDaysToYmd(weekStartMonday, 7)
+      setWeekStartMonday(nextMon)
+      const { y, m } = parseDateParts(nextMon)
+      setMonthCursor({ year: y, month: m - 1 })
+    } else {
+      setMonthCursor(prev => {
+        const dt = new Date(Date.UTC(prev.year, prev.month + 1, 1, 12, 0, 0))
+        const firstMon = getMondayOfDate(formatYmd(dt))
+        setWeekStartMonday(firstMon)
+        return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() }
+      })
+    }
+  }
+
+  function handleJumpToDefaultWeek() {
+    setWeekStartMonday(BASE_MONDAY)
+    setMonthCursor({ year: 2026, month: 10 })
+  }
+
+  const periodHeaderLabel = useMemo(() => {
+    if (calendarViewMode === 'month') {
+      const dt = new Date(Date.UTC(monthCursor.year, monthCursor.month, 1, 12, 0, 0))
+      return dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    }
+    const first = displayedWeekDates[0]
+    const last = displayedWeekDates[6]
+    const p1 = parseDateParts(first)
+    const p2 = parseDateParts(last)
+    const d1 = new Date(Date.UTC(p1.y, p1.m - 1, p1.d, 12, 0, 0))
+    const d2 = new Date(Date.UTC(p2.y, p2.m - 1, p2.d, 12, 0, 0))
+    const s1 = d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    const s2 = d2.toLocaleDateString('en-US', {
+      month: p1.m === p2.m ? undefined : 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+    return `${s1} – ${s2}`
+  }, [calendarViewMode, monthCursor, displayedWeekDates])
 
   // Build the 30-min time rows for the active poll
   const timeRows = useMemo(() => {
@@ -385,12 +531,11 @@ export default function CollabScheduler({
     return rows
   }, [activePoll.startHour, activePoll.endHour])
 
-  // Map every (dateStr, hour, minute) cell to its canonical UTC ISO timestamp
-  // using the poll's baseTimezone so all participants share the exact same grid instants!
+  // Map every (dateStr, hour, minute) cell in the displayed week to its canonical UTC ISO timestamp
   const gridSlots = useMemo(() => {
     const baseTz = activePoll.baseTimezone || 'America/Los_Angeles'
     const matrix = {}
-    for (const d of activePoll.dates || DEFAULT_DATES) {
+    for (const d of displayedWeekDates) {
       matrix[d] = {}
       for (const r of timeRows) {
         const key = `${r.hour}:${r.minute}`
@@ -398,25 +543,29 @@ export default function CollabScheduler({
       }
     }
     return matrix
-  }, [activePoll.dates, activePoll.baseTimezone, timeRows])
+  }, [displayedWeekDates, activePoll.baseTimezone, timeRows])
 
-  // Combine other participants' responses + current user's live state
+  // Combine all saved participants + current active user (unlimited participants!)
   const allParticipants = useMemo(() => {
-    const others = (activePoll.responses || []).filter(r => r.userId !== 'current_user')
+    const others = (activePoll.responses || []).filter(
+      r => r.userId !== currentUserId && r.userName?.toLowerCase() !== userName.trim().toLowerCase()
+    )
     const me = {
-      userId: 'current_user',
-      userName: userName || 'You',
+      userId: currentUserId,
+      userName: userName.trim() || 'You',
       clubName: userClubName,
       timezone: userTimezone,
       freeSlots: Array.from(myFreeSlots),
       busySlots: Array.from(myBusySlots),
     }
     return [me, ...others]
-  }, [activePoll.responses, userName, userClubName, userTimezone, myFreeSlots, myBusySlots])
+  }, [activePoll.responses, currentUserId, userName, userClubName, userTimezone, myFreeSlots, myBusySlots])
 
-  // Index existing ClubHub Calendar events by 30-min UTC slot ISO
-  const calendarEventsBySlot = useMemo(() => {
-    const map = {}
+  // Index existing ClubHub Calendar events by 30-min UTC slot ISO AND by YYYY-MM-DD date
+  const { calendarEventsBySlot, calendarEventsByDate, bookedCollabEvents } = useMemo(() => {
+    const bySlot = {}
+    const byDate = {}
+    const collabList = []
     const allCalEvents = [
       ...(activePoll.calendarEvents || []),
       ...(Array.isArray(events) ? events : []),
@@ -426,25 +575,38 @@ export default function CollabScheduler({
     for (const ev of allCalEvents) {
       if (!ev || !ev.start || seenIds.has(ev.id)) continue
       seenIds.add(ev.id)
+
+      if (String(ev.id).startsWith('collab_evt_')) {
+        collabList.push(ev)
+      }
+
       const startMs = new Date(ev.start).getTime()
       const endMs = ev.end ? new Date(ev.end).getTime() : startMs + 60 * 60 * 1000
       if (Number.isNaN(startMs)) continue
 
+      const dateKey = new Date(startMs).toISOString().slice(0, 10)
+      if (!byDate[dateKey]) byDate[dateKey] = []
+      byDate[dateKey].push(ev)
+
       for (let t = startMs; t < endMs; t += 30 * 60 * 1000) {
         const slotIso = new Date(t).toISOString()
-        if (!map[slotIso]) map[slotIso] = []
-        map[slotIso].push(ev)
+        if (!bySlot[slotIso]) bySlot[slotIso] = []
+        bySlot[slotIso].push(ev)
       }
     }
-    return map
+
+    collabList.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+    return {
+      calendarEventsBySlot: bySlot,
+      calendarEventsByDate: byDate,
+      bookedCollabEvents: collabList,
+    }
   }, [activePoll.calendarEvents, events])
 
-  // Compute availability & busy lookup per UTC slot ISO
+  // Compute availability & busy lookup per UTC slot ISO across the displayed week
   const slotStatsMap = useMemo(() => {
     const map = {}
-    const total = allParticipants.length
-
-    for (const d of activePoll.dates || DEFAULT_DATES) {
+    for (const d of displayedWeekDates) {
       for (const r of timeRows) {
         const iso = gridSlots[d]?.[`${r.hour}:${r.minute}`]
         if (!iso) continue
@@ -459,6 +621,9 @@ export default function CollabScheduler({
           else if (isFree) availableUsers.push(p)
         }
 
+        // Visual intensity scales smoothly by headcount (no cap on participants)
+        const intensity = Math.min(1, availableUsers.length / Math.max(4, allParticipants.length))
+
         map[iso] = {
           iso,
           dateStr: d,
@@ -466,8 +631,7 @@ export default function CollabScheduler({
           busyUsers,
           availableCount: availableUsers.length,
           busyCount: busyUsers.length,
-          totalParticipants: total,
-          ratio: total > 0 ? availableUsers.length / total : 0,
+          intensity,
           userIsFree: myFreeSlots.has(iso) && !myBusySlots.has(iso),
           userIsBusy: myBusySlots.has(iso),
           calendarEvents: calendarEventsBySlot[iso] || [],
@@ -475,14 +639,14 @@ export default function CollabScheduler({
       }
     }
     return map
-  }, [activePoll.dates, timeRows, gridSlots, allParticipants, myFreeSlots, myBusySlots, calendarEventsBySlot])
+  }, [displayedWeekDates, timeRows, gridSlots, allParticipants, myFreeSlots, myBusySlots, calendarEventsBySlot])
 
-  // Top best overlapping slots where the user + most collaborating clubs are available
+  // Top best overlapping slots in the displayed week
   const bestOverlaps = useMemo(() => {
     return Object.values(slotStatsMap)
-      .filter(s => s.availableCount >= 2 && s.userIsFree)
+      .filter(s => s.availableCount >= 1)
       .sort((a, b) => b.availableCount - a.availableCount || a.iso.localeCompare(b.iso))
-      .slice(0, 5)
+      .slice(0, 6)
   }, [slotStatsMap])
 
   // Apply paint to a single slot
@@ -542,12 +706,16 @@ export default function CollabScheduler({
     applySlotPaint(iso, dragAction)
   }
 
-  // Save user's Free & Busy availability to SQLite database
-  async function handleSaveToDatabase(customFree = myFreeSlots, customBusy = myBusySlots, customText = textInput) {
-    setStatusBanner('Saving your availability & timezone to the database…')
+  // Save current user's Free & Busy availability to SQLite database
+  async function handleSaveToDatabase(
+    customFree = myFreeSlots,
+    customBusy = myBusySlots,
+    customText = textInput
+  ) {
+    setStatusBanner(`Saving ${userName}'s availability & timezone to the database…`)
     const updatedPoll = await saveSchedulerResponse(activePoll.id, {
-      userId: 'current_user',
-      userName,
+      userId: currentUserId,
+      userName: userName.trim() || 'Member',
       clubId: userClubName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
       clubName: userClubName,
       timezone: userTimezone,
@@ -559,7 +727,7 @@ export default function CollabScheduler({
     if (updatedPoll && updatedPoll.id) {
       setPolls(prev => prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p)))
       setStatusBanner(
-        `✅ Saved ${customFree.size} free slots & ${customBusy.size} busy slots (${getTzShortName(userTimezone)}) to SQLite database!`
+        `✅ Saved ${userName}'s ${customFree.size} free slots & ${customBusy.size} busy slots (${getTzShortName(userTimezone)}) to SQLite database!`
       )
     } else {
       setStatusBanner(
@@ -573,7 +741,7 @@ export default function CollabScheduler({
     if (e) e.preventDefault()
     const parsed = parseTextAvailabilityClient(
       textInput,
-      activePoll.dates || DEFAULT_DATES,
+      displayedWeekDates,
       userTimezone
     )
 
@@ -597,7 +765,7 @@ export default function CollabScheduler({
   function handleImportCalendarBusy() {
     const eventIsos = Object.keys(calendarEventsBySlot)
     if (eventIsos.length === 0) {
-      setStatusBanner('No conflicting club calendar events found in this week.')
+      setStatusBanner('No conflicting club calendar events found.')
       return
     }
     const nextBusy = new Set([...myBusySlots, ...eventIsos])
@@ -608,25 +776,7 @@ export default function CollabScheduler({
     handleSaveToDatabase(nextFree, nextBusy, textInput)
   }
 
-  // Booked collaboration events from the database
-  const bookedCollabEvents = useMemo(() => {
-    const allCalEvents = [
-      ...(activePoll.calendarEvents || []),
-      ...(Array.isArray(events) ? events : []),
-    ]
-    const seen = new Set()
-    const list = []
-    for (const ev of allCalEvents) {
-      if (!ev || !ev.id || seen.has(ev.id)) continue
-      seen.add(ev.id)
-      if (String(ev.id).startsWith('collab_evt_')) {
-        list.push(ev)
-      }
-    }
-    return list.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-  }, [activePoll.calendarEvents, events])
-
-  // Book an overlapping slot onto the ClubHub Calendar (`events` table)
+  // Book an overlapping slot onto the ClubHub Calendar (`events` table) + mark current user booked
   async function handleBookMeeting(slotIso) {
     const targetIso = slotIso || inspectedStats?.iso
     if (!targetIso) {
@@ -637,6 +787,20 @@ export default function CollabScheduler({
     const endIso = new Date(
       new Date(targetIso).getTime() + bookingDurationMins * 60 * 1000
     ).toISOString()
+
+    // Ensure current user also has these slots marked free/booked locally
+    const startMs = new Date(targetIso).getTime()
+    const endMs = new Date(endIso).getTime()
+    const nextFree = new Set(myFreeSlots)
+    const nextBusy = new Set(myBusySlots)
+    for (let t = startMs; t < endMs; t += 30 * 60 * 1000) {
+      const sIso = new Date(t).toISOString()
+      nextFree.add(sIso)
+      nextBusy.delete(sIso)
+    }
+    setMyFreeSlots(nextFree)
+    setMyBusySlots(nextBusy)
+
     setStatusBanner('Booking collaboration meeting onto ClubHub Calendar…')
     const res = await bookSchedulerSlot(activePoll.id, {
       start: targetIso,
@@ -645,6 +809,10 @@ export default function CollabScheduler({
       clubId: activePoll.hostClubId || 'demo_ucsc_csclub',
       clubName: (activePoll.collaboratingClubs || []).slice(0, 2).join(' × ') || userClubName,
       location: activePoll.location || 'Baskin Engineering 152',
+      userId: currentUserId,
+      userName: userName.trim() || 'Member',
+      userClubName,
+      timezone: userTimezone,
     })
     setBookingLoading(false)
 
@@ -658,7 +826,7 @@ export default function CollabScheduler({
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
-        })} (${bookingDurationMins} min, ${getTzShortName(detectedLocalTz)}) and added to ClubHub Schedule!`
+        })} (${bookingDurationMins} min, ${getTzShortName(detectedLocalTz)}) on ClubHub Calendar!`
       )
       if (onEventBooked) await onEventBooked()
     } else {
@@ -666,12 +834,49 @@ export default function CollabScheduler({
     }
   }
 
-  async function handleUnbookMeeting(eventId) {
-    if (!eventId) return
-    await deleteEvent(eventId)
-    await loadPolls()
-    if (onEventBooked) await onEventBooked()
-    setStatusBanner('🗑️ Removed booked collaboration meeting from the ClubHub Calendar.')
+  // Unbook a slot or specific booked event from the ClubHub Calendar (`events` table)
+  async function handleUnbookMeeting({ eventId = null, slotIso = null } = {}) {
+    const targetIso = slotIso || inspectedStats?.iso
+    setBookingLoading(true)
+    setStatusBanner('Unbooking meeting from ClubHub Calendar…')
+
+    // Also remove from local user's free slots if unbooking by slotIso
+    if (targetIso) {
+      setMyFreeSlots(prev => {
+        const next = new Set(prev)
+        next.delete(targetIso)
+        return next
+      })
+    }
+
+    const res = await unbookSchedulerSlot(activePoll.id, {
+      eventId,
+      start: targetIso,
+      userId: currentUserId,
+      removeUserAvailability: Boolean(targetIso),
+      fallbackLatest: !eventId && !targetIso,
+    })
+    setBookingLoading(false)
+
+    if (res && res.poll) {
+      setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
+      if (onEventBooked) await onEventBooked()
+      setStatusBanner(
+        `🗑️ Unbooked slot ${
+          targetIso
+            ? formatSlotInTz(targetIso, detectedLocalTz, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : ''
+        } and updated ClubHub Calendar!`
+      )
+    } else {
+      setStatusBanner('🗑️ Unbooked slot locally.')
+    }
   }
 
   // Create a new Collaboration Poll
@@ -687,7 +892,7 @@ export default function CollabScheduler({
       title: newPollTitle.trim(),
       collaboratingClubs: collabList.length ? collabList : ['Computer Science Club'],
       location: newPollLocation.trim() || 'TBD',
-      dates: DEFAULT_DATES,
+      dates: displayedWeekDates,
       baseTimezone: userTimezone,
     })
 
@@ -718,9 +923,15 @@ export default function CollabScheduler({
               When2Meet × Google Calendar — Group Collaboration Scheduler
             </h2>
             <BubbleTag label="Live DB Sync" color="green" size="sm" dot />
+            <BubbleTag
+              label={`${allParticipants.length} People Participating`}
+              color="blue"
+              size="sm"
+            />
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            Click &amp; drag or type when you are <strong>Free</strong> or <strong>Busy</strong>. Automatically translates across timezones and books directly to the ClubHub Calendar.
+            Switch weeks or months with <strong>&lt; / &gt;</strong>, paint or type when you are{' '}
+            <strong>Free</strong> or <strong>Busy</strong>, and <strong>Book / Unbook</strong> directly with the ClubHub Calendar.
           </p>
         </div>
 
@@ -752,7 +963,7 @@ export default function CollabScheduler({
             className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer hover:opacity-90 shadow-xs"
           >
             <Check size={13} />
-            Save Availability to DB
+            Save Person&apos;s Schedule
           </button>
         </div>
       </div>
@@ -793,30 +1004,42 @@ export default function CollabScheduler({
         </form>
       )}
 
-      {/* ── Collaborating Organizations + Timezone Translation Bar ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-3 mb-4">
-        {/* Identity & Collaborating Clubs */}
+      {/* ── Collaborating Organizations + Unlimited Participant Switcher + Timezone Translation ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-3 mb-4">
+        {/* Identity & Unlimited Participants */}
         <div className="p-3 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold text-[var(--text)] inline-flex items-center gap-1.5">
               <Users size={14} className="text-[var(--blue)]" />
-              Collaborating Organizations ({(activePoll.collaboratingClubs || []).length})
+              Participants ({allParticipants.length} People — Unlimited)
             </span>
-            <span className="text-[11px] text-[var(--text-muted)] inline-flex items-center gap-1">
-              <MapPin size={12} /> {activePoll.location || 'TBD'}
-            </span>
+            <button
+              type="button"
+              onClick={handleAddNewParticipant}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--border)] text-[11px] font-semibold cursor-pointer hover:opacity-90"
+            >
+              <UserPlus size={12} />
+              + Add Another Person
+            </button>
           </div>
 
+          {/* Clickable Participant Pills (Switch or Add Unlimited People) */}
           <div className="flex flex-wrap gap-1.5">
-            {(activePoll.collaboratingClubs || []).map((cName, i) => {
-              const colors = ['blue', 'red', 'purple', 'teal', 'green']
+            {allParticipants.map(p => {
+              const isCurrent = p.userId === currentUserId
               return (
-                <BubbleTag
-                  key={cName}
-                  label={cName}
-                  color={colors[i % colors.length]}
-                  size="sm"
-                />
+                <button
+                  key={p.userId}
+                  type="button"
+                  onClick={() => handleSwitchOrLoadPerson(p)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer border transition-all ${
+                    isCurrent
+                      ? 'bg-[var(--blue)] text-white border-transparent'
+                      : 'bg-[var(--bg-card)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
+                  }`}
+                >
+                  {p.userName} ({ (p.freeSlots || []).length } slots)
+                </button>
               )
             })}
           </div>
@@ -826,7 +1049,7 @@ export default function CollabScheduler({
               type="text"
               value={userName}
               onChange={e => setUserName(e.target.value)}
-              placeholder="Your Name"
+              placeholder="Type any Name to add/edit person..."
               className="px-2.5 py-1.5 rounded-lg text-xs bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)]"
             />
             <input
@@ -885,9 +1108,68 @@ export default function CollabScheduler({
         </div>
       </div>
 
+      {/* ── Google Calendar Navigation Bar: < Prev | Today | Next > + Week / Month Switcher ── */}
+      <div className="p-3 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePrevPeriod}
+            title={calendarViewMode === 'week' ? 'Previous Week' : 'Previous Month'}
+            className="w-8 h-8 rounded-full bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleJumpToDefaultWeek}
+            className="px-3 py-1.5 rounded-full bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] text-xs font-semibold cursor-pointer hover:border-[var(--blue)]"
+          >
+            Today / Default Week
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNextPeriod}
+            title={calendarViewMode === 'week' ? 'Next Week' : 'Next Month'}
+            className="w-8 h-8 rounded-full bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+          >
+            <ChevronRight size={16} />
+          </button>
+
+          <span className="text-sm sm:text-base font-bold text-[var(--text)] ml-1">
+            {periodHeaderLabel}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-[var(--bg-card)] p-1 rounded-full border border-[var(--border)]">
+          <button
+            type="button"
+            onClick={() => setCalendarViewMode('week')}
+            className={`px-3.5 py-1 rounded-full text-xs font-semibold cursor-pointer border-none transition-all ${
+              calendarViewMode === 'week'
+                ? 'bg-[var(--blue)] text-white'
+                : 'bg-transparent text-[var(--text-muted)]'
+            }`}
+          >
+            Week View
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalendarViewMode('month')}
+            className={`px-3.5 py-1 rounded-full text-xs font-semibold cursor-pointer border-none transition-all ${
+              calendarViewMode === 'month'
+                ? 'bg-[var(--blue)] text-white'
+                : 'bg-transparent text-[var(--text-muted)]'
+            }`}
+          >
+            Month View
+          </button>
+        </div>
+      </div>
+
       {/* ── Type-In Natural Language Availability Bar + Paint Mode Controls ── */}
       <div className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] mb-4 flex flex-col gap-3">
-        {/* Natural Language Input Row */}
         <form
           onSubmit={handleApplyTypedText}
           className="grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-2 items-center"
@@ -997,249 +1279,382 @@ export default function CollabScheduler({
         </div>
       )}
 
-      {/* ── Side-by-Side When2Meet Grids: Personal Input (Left) + Group Overlap & Calendar (Right) ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
-        {/* 1. LEFT GRID: Your Availability (Free vs Busy) */}
-        <div className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] overflow-x-auto">
-          <div className="flex items-center justify-between mb-2.5">
+      {/* ── MONTH VIEW (Google Calendar Style Monthly Grid with < and > switching) ── */}
+      {calendarViewMode === 'month' ? (
+        <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] mb-5">
+          <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-xs sm:text-sm font-bold text-[var(--text)]">
-                1. Your Schedule ({userName})
+              <h3 className="text-sm font-bold text-[var(--text)]">
+                Monthly Collaboration &amp; Club Events Calendar — {periodHeaderLabel}
               </h3>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Click &amp; drag cells to mark <strong>Free (Green)</strong> or <strong>Busy (Red)</strong>
+              <p className="text-xs text-[var(--text-muted)]">
+                Click any day to jump to that week&apos;s hourly grid, or click <strong>Book / Unbook</strong> directly on a day.
               </p>
-            </div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="inline-flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-xs bg-[#22c55e] inline-block" /> Free
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-xs bg-[#ef4444] inline-block" /> Busy
-              </span>
             </div>
           </div>
 
-          <table className="w-full border-collapse text-[11px]">
-            <thead>
-              <tr>
-                <th className="p-1 text-left text-[10px] text-[var(--text-muted)] font-semibold w-20">
-                  {getTzShortName(userTimezone)}
-                  {tzDiffersFromLocal ? ` / ${getTzShortName(detectedLocalTz)}` : ''}
-                </th>
-                {(activePoll.dates || DEFAULT_DATES).map(dateStr => {
-                  const [y, m, d] = dateStr.split('-').map(Number)
-                  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-                  const dayShort = dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
-                  const monthDay = dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' })
-                  return (
-                    <th key={dateStr} className="p-1 text-center font-semibold text-[var(--text)]">
-                      <div>{dayShort}</div>
-                      <div className="text-[9.5px] text-[var(--text-muted)] font-normal">{monthDay}</div>
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {timeRows.map(r => {
-                const sampleIso = gridSlots[(activePoll.dates || DEFAULT_DATES)[0]]?.[`${r.hour}:${r.minute}`]
-                const selectedTzLabel = sampleIso
-                  ? formatSlotInTz(sampleIso, userTimezone, { hour: 'numeric', minute: '2-digit' })
-                  : r.label
-                const localTzLabel =
-                  tzDiffersFromLocal && sampleIso
-                    ? formatSlotInTz(sampleIso, detectedLocalTz, { hour: 'numeric', minute: '2-digit' })
-                    : null
+          <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <div key={d} className="py-1">
+                {d}
+              </div>
+            ))}
+          </div>
 
-                return (
-                  <tr key={`${r.hour}:${r.minute}`}>
-                    <td className="pr-1.5 py-0.5 text-[10px] text-[var(--text-muted)] whitespace-nowrap font-mono-num">
-                      {r.minute === 0 ? (
-                        <div>
-                          <span>{selectedTzLabel}</span>
-                          {localTzLabel && (
-                            <span className="block text-[9px] text-[var(--blue-ink)]">
-                              ({localTzLabel} local)
-                            </span>
-                          )}
+          <div className="grid grid-cols-7 gap-1.5">
+            {displayedMonthCells.map(cell => {
+              const dayEvents = calendarEventsByDate[cell.dateStr] || []
+              const defaultSlotIso = slotToUtcIso(
+                cell.dateStr,
+                14,
+                0,
+                activePoll.baseTimezone || 'America/Los_Angeles'
+              )
+              // Count how many people have any free slot on this date
+              const peopleFreeOnDate = allParticipants.filter(p =>
+                (p.freeSlots || []).some(iso => iso.startsWith(cell.dateStr))
+              ).length
+              const hasBookedCollab = dayEvents.some(e =>
+                String(e.id || '').startsWith('collab_evt_')
+              )
+
+              return (
+                <div
+                  key={cell.dateStr}
+                  onClick={() => {
+                    const mon = getMondayOfDate(cell.dateStr)
+                    setWeekStartMonday(mon)
+                    setActiveSlotIso(defaultSlotIso)
+                  }}
+                  className={`min-h-[92px] p-2 rounded-lg border transition-all cursor-pointer flex flex-col justify-between ${
+                    cell.inCurrentMonth
+                      ? 'bg-[var(--bg-card)] border-[var(--border)] hover:border-[var(--blue)]'
+                      : 'bg-[var(--bg-surface)] opacity-50 border-[var(--border)]'
+                  } ${hasBookedCollab ? 'ring-2 ring-[var(--blue)]' : ''}`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-bold text-[var(--text)]">
+                      {cell.dayNumber}
+                    </span>
+                    {peopleFreeOnDate > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-[var(--green-light)] text-[var(--green)] text-[10px] font-bold">
+                        {peopleFreeOnDate} free
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1 my-1">
+                    {dayEvents.slice(0, 2).map(ev => {
+                      const isCollab = String(ev.id || '').startsWith('collab_evt_')
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate ${
+                            isCollab
+                              ? 'bg-[var(--blue)] text-white'
+                              : 'bg-[var(--yellow-light)] text-[var(--text)]'
+                          }`}
+                          title={ev.title}
+                        >
+                          {isCollab ? '📅 ' : ''}
+                          {cleanText(ev.title)}
                         </div>
-                      ) : (
-                        <span className="opacity-35">·</span>
-                      )}
-                    </td>
-                    {(activePoll.dates || DEFAULT_DATES).map(dateStr => {
-                      const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
-                      const isFree = myFreeSlots.has(iso)
-                      const isBusy = myBusySlots.has(iso)
-                      const calEvs = calendarEventsBySlot[iso] || []
-
-                      let cellStyle = {
-                        background: 'var(--bg-card)',
-                      }
-                      if (isBusy) {
-                        cellStyle = {
-                          background:
-                            'repeating-linear-gradient(135deg, rgba(239,68,68,0.82), rgba(239,68,68,0.82) 4px, rgba(220,38,38,0.92) 4px, rgba(220,38,38,0.92) 8px)',
-                          color: '#fff',
-                        }
-                      } else if (isFree) {
-                        cellStyle = {
-                          background: 'rgba(34, 197, 94, 0.85)',
-                          color: '#fff',
-                        }
-                      }
-
-                      return (
-                        <td
-                          key={iso}
-                          onMouseDown={() => handleCellMouseDown(iso)}
-                          onMouseEnter={() => handleCellMouseEnter(iso)}
-                          title={`${formatSlotInTz(iso, userTimezone, {
-                            weekday: 'short',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })} (${getTzShortName(userTimezone)})${
-                            calEvs.length ? ` • Club Event: ${calEvs[0].title}` : ''
-                          }`}
-                          className="border border-[var(--border)] h-5 cursor-pointer transition-colors relative"
-                          style={cellStyle}
-                        >
-                          {calEvs.length > 0 && (
-                            <span
-                              className="absolute inset-x-0.5 top-0.5 h-1.5 rounded-full bg-[var(--blue)] opacity-85"
-                              title={`Calendar Event: ${calEvs.map(e => e.title).join(', ')}`}
-                            />
-                          )}
-                        </td>
                       )
                     })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                    {dayEvents.length > 2 && (
+                      <span className="text-[9.5px] text-[var(--text-muted)]">
+                        +{dayEvents.length - 2} more
+                      </span>
+                    )}
+                  </div>
 
-        {/* 2. RIGHT GRID: Group Collaboration Availability Heatmap + Google Calendar Overlay */}
-        <div className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] overflow-x-auto">
-          <div className="flex items-center justify-between mb-2.5">
-            <div>
-              <h3 className="text-xs sm:text-sm font-bold text-[var(--text)]">
-                2. Group Overlap Heatmap &amp; Club Calendar ({allParticipants.length} Responders)
-              </h3>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Click any slot to inspect who is free/busy or book onto the ClubHub Calendar
-              </p>
-            </div>
-
-            {/* Heatmap Legend */}
-            <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
-              <span>0/{allParticipants.length}</span>
-              <span className="w-3 h-2.5 rounded-xs bg-[var(--bg-card)] border border-[var(--border)]" />
-              <span className="w-3 h-2.5 rounded-xs bg-[rgba(34,197,94,0.28)]" />
-              <span className="w-3 h-2.5 rounded-xs bg-[rgba(34,197,94,0.55)]" />
-              <span className="w-3 h-2.5 rounded-xs bg-[rgba(22,163,74,0.92)]" />
-              <span>{allParticipants.length}/{allParticipants.length}</span>
-            </div>
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleBookMeeting(defaultSlotIso)
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-[var(--blue)] text-white text-[9.5px] font-semibold border-none cursor-pointer hover:opacity-90"
+                    >
+                      Book
+                    </button>
+                    {hasBookedCollab && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          const collabEv = dayEvents.find(ev =>
+                            String(ev.id || '').startsWith('collab_evt_')
+                          )
+                          handleUnbookMeeting({ eventId: collabEv?.id, slotIso: defaultSlotIso })
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-[var(--red)] text-white text-[9.5px] font-semibold border-none cursor-pointer hover:opacity-90"
+                      >
+                        Unbook
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setWeekStartMonday(getMondayOfDate(cell.dateStr))
+                        setCalendarViewMode('week')
+                      }}
+                      className="text-[9.5px] text-[var(--blue-ink)] bg-transparent border-none cursor-pointer font-semibold hover:underline"
+                    >
+                      Hours &rarr;
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
+        </div>
+      ) : (
+        /* ── WEEK VIEW: Side-by-Side When2Meet Grids: Personal Input (Left) + Group Overlap & Calendar (Right) ── */
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
+          {/* 1. LEFT GRID: Your Availability (Free vs Busy) */}
+          <div className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] overflow-x-auto">
+            <div className="flex items-center justify-between mb-2.5">
+              <div>
+                <h3 className="text-xs sm:text-sm font-bold text-[var(--text)]">
+                  1. {userName}&apos;s Schedule ({periodHeaderLabel})
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Click &amp; drag cells to mark <strong>Free (Green)</strong> or <strong>Busy (Red)</strong>
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#22c55e] inline-block" /> Free
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#ef4444] inline-block" /> Busy
+                </span>
+              </div>
+            </div>
 
-          <table className="w-full border-collapse text-[11px]">
-            <thead>
-              <tr>
-                <th className="p-1 text-left text-[10px] text-[var(--text-muted)] font-semibold w-20">
-                  Local ({getTzShortName(detectedLocalTz)})
-                </th>
-                {(activePoll.dates || DEFAULT_DATES).map(dateStr => {
-                  const [y, m, d] = dateStr.split('-').map(Number)
-                  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-                  const dayShort = dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
-                  const monthDay = dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' })
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr>
+                  <th className="p-1 text-left text-[10px] text-[var(--text-muted)] font-semibold w-20">
+                    {getTzShortName(userTimezone)}
+                    {tzDiffersFromLocal ? ` / ${getTzShortName(detectedLocalTz)}` : ''}
+                  </th>
+                  {displayedWeekDates.map(dateStr => {
+                    const { y, m, d } = parseDateParts(dateStr)
+                    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+                    const dayShort = dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+                    const monthDay = dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' })
+                    return (
+                      <th key={dateStr} className="p-1 text-center font-semibold text-[var(--text)]">
+                        <div>{dayShort}</div>
+                        <div className="text-[9.5px] text-[var(--text-muted)] font-normal">{monthDay}</div>
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {timeRows.map(r => {
+                  const sampleIso = gridSlots[displayedWeekDates[0]]?.[`${r.hour}:${r.minute}`]
+                  const selectedTzLabel = sampleIso
+                    ? formatSlotInTz(sampleIso, userTimezone, { hour: 'numeric', minute: '2-digit' })
+                    : r.label
+                  const localTzLabel =
+                    tzDiffersFromLocal && sampleIso
+                      ? formatSlotInTz(sampleIso, detectedLocalTz, { hour: 'numeric', minute: '2-digit' })
+                      : null
+
                   return (
-                    <th key={dateStr} className="p-1 text-center font-semibold text-[var(--text)]">
-                      <div>{dayShort}</div>
-                      <div className="text-[9.5px] text-[var(--text-muted)] font-normal">{monthDay}</div>
-                    </th>
+                    <tr key={`${r.hour}:${r.minute}`}>
+                      <td className="pr-1.5 py-0.5 text-[10px] text-[var(--text-muted)] whitespace-nowrap font-mono-num">
+                        {r.minute === 0 ? (
+                          <div>
+                            <span>{selectedTzLabel}</span>
+                            {localTzLabel && (
+                              <span className="block text-[9px] text-[var(--blue-ink)]">
+                                ({localTzLabel} local)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="opacity-35">·</span>
+                        )}
+                      </td>
+                      {displayedWeekDates.map(dateStr => {
+                        const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
+                        const isFree = myFreeSlots.has(iso)
+                        const isBusy = myBusySlots.has(iso)
+                        const calEvs = calendarEventsBySlot[iso] || []
+
+                        let cellStyle = {
+                          background: 'var(--bg-card)',
+                        }
+                        if (isBusy) {
+                          cellStyle = {
+                            background:
+                              'repeating-linear-gradient(135deg, rgba(239,68,68,0.82), rgba(239,68,68,0.82) 4px, rgba(220,38,38,0.92) 4px, rgba(220,38,38,0.92) 8px)',
+                            color: '#fff',
+                          }
+                        } else if (isFree) {
+                          cellStyle = {
+                            background: 'rgba(34, 197, 94, 0.85)',
+                            color: '#fff',
+                          }
+                        }
+
+                        return (
+                          <td
+                            key={iso}
+                            onMouseDown={() => handleCellMouseDown(iso)}
+                            onMouseEnter={() => handleCellMouseEnter(iso)}
+                            title={`${formatSlotInTz(iso, userTimezone, {
+                              weekday: 'short',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })} (${getTzShortName(userTimezone)})${
+                              calEvs.length ? ` • Club Event: ${calEvs[0].title}` : ''
+                            }`}
+                            className="border border-[var(--border)] h-5 cursor-pointer transition-colors relative"
+                            style={cellStyle}
+                          >
+                            {calEvs.length > 0 && (
+                              <span
+                                className="absolute inset-x-0.5 top-0.5 h-1.5 rounded-full bg-[var(--blue)] opacity-85"
+                                title={`Calendar Event: ${calEvs.map(e => e.title).join(', ')}`}
+                              />
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
                   )
                 })}
-              </tr>
-            </thead>
-            <tbody>
-              {timeRows.map(r => {
-                const sampleIso = gridSlots[(activePoll.dates || DEFAULT_DATES)[0]]?.[`${r.hour}:${r.minute}`]
-                const localLabel = sampleIso
-                  ? formatSlotInTz(sampleIso, detectedLocalTz, { hour: 'numeric', minute: '2-digit' })
-                  : r.label
+              </tbody>
+            </table>
+          </div>
 
-                return (
-                  <tr key={`${r.hour}:${r.minute}`}>
-                    <td className="pr-1.5 py-0.5 text-[10px] text-[var(--text-muted)] whitespace-nowrap font-mono-num">
-                      {r.minute === 0 ? localLabel : <span className="opacity-35">·</span>}
-                    </td>
-                    {(activePoll.dates || DEFAULT_DATES).map(dateStr => {
-                      const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
-                      const st = slotStatsMap[iso]
-                      const count = st?.availableCount || 0
-                      const total = st?.totalParticipants || 1
-                      const ratio = count / total
-                      const isSelected = activeSlotIso === iso
-                      const calEvs = st?.calendarEvents || []
+          {/* 2. RIGHT GRID: Group Collaboration Availability Heatmap + Google Calendar Overlay */}
+          <div className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] overflow-x-auto">
+            <div className="flex items-center justify-between mb-2.5">
+              <div>
+                <h3 className="text-xs sm:text-sm font-bold text-[var(--text)]">
+                  2. Group Overlap Heatmap &amp; Club Calendar
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Shows how many people are available/booked per slot. Click any slot to Book or Unbook.
+                </p>
+              </div>
 
-                      const isBookedCollabSlot = calEvs.some(e =>
-                        String(e.id || '').startsWith('collab_evt_')
-                      )
+              {/* Heatmap Legend — Shows headcount without any /5 cap or infinity symbol */}
+              <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                <span>0</span>
+                <span className="w-3 h-2.5 rounded-xs bg-[var(--bg-card)] border border-[var(--border)]" />
+                <span className="w-3 h-2.5 rounded-xs bg-[rgba(34,197,94,0.28)]" />
+                <span className="w-3 h-2.5 rounded-xs bg-[rgba(34,197,94,0.55)]" />
+                <span className="w-3 h-2.5 rounded-xs bg-[rgba(22,163,74,0.92)]" />
+                <span>People</span>
+              </div>
+            </div>
 
-                      let bg = 'var(--bg-card)'
-                      if (isBookedCollabSlot) {
-                        bg = 'rgba(59, 130, 246, 0.88)'
-                      } else if (count > 0) {
-                        const alpha = (0.18 + ratio * 0.78).toFixed(2)
-                        bg = `rgba(22, 163, 74, ${alpha})`
-                      }
+            <table className="w-full border-collapse text-[11px]">
+              <thead>
+                <tr>
+                  <th className="p-1 text-left text-[10px] text-[var(--text-muted)] font-semibold w-20">
+                    Local ({getTzShortName(detectedLocalTz)})
+                  </th>
+                  {displayedWeekDates.map(dateStr => {
+                    const { y, m, d } = parseDateParts(dateStr)
+                    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+                    const dayShort = dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+                    const monthDay = dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' })
+                    return (
+                      <th key={dateStr} className="p-1 text-center font-semibold text-[var(--text)]">
+                        <div>{dayShort}</div>
+                        <div className="text-[9.5px] text-[var(--text-muted)] font-normal">{monthDay}</div>
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {timeRows.map(r => {
+                  const sampleIso = gridSlots[displayedWeekDates[0]]?.[`${r.hour}:${r.minute}`]
+                  const localLabel = sampleIso
+                    ? formatSlotInTz(sampleIso, detectedLocalTz, { hour: 'numeric', minute: '2-digit' })
+                    : r.label
 
-                      return (
-                        <td
-                          key={iso}
-                          onClick={() => setActiveSlotIso(iso)}
-                          onMouseEnter={() => {
-                            if (!isDragging) setHoveredSlotIso(iso)
-                          }}
-                          onMouseLeave={() => setHoveredSlotIso(null)}
-                          className={`border border-[var(--border)] h-5 cursor-pointer transition-all text-center text-[9.5px] font-semibold relative ${
-                            isSelected
-                              ? 'ring-2 ring-[var(--blue)] z-10'
-                              : hoveredSlotIso === iso
-                                ? 'ring-1 ring-[var(--text-muted)] z-10'
-                                : ''
-                          }`}
-                          style={{
-                            background: bg,
-                            color: isBookedCollabSlot || ratio > 0.5 ? '#fff' : 'var(--text)',
-                          }}
-                        >
-                          {isBookedCollabSlot ? (
-                            <span title="Booked Collaboration Meeting">📅 {count}/{total}</span>
-                          ) : (
-                            count > 0 && <span>{count}/{total}</span>
-                          )}
-                          {calEvs.length > 0 && !isBookedCollabSlot && (
-                            <span
-                              className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-[var(--yellow)]"
-                              title={`Club Event: ${calEvs.map(e => e.title).join(', ')}`}
-                            />
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                  return (
+                    <tr key={`${r.hour}:${r.minute}`}>
+                      <td className="pr-1.5 py-0.5 text-[10px] text-[var(--text-muted)] whitespace-nowrap font-mono-num">
+                        {r.minute === 0 ? localLabel : <span className="opacity-35">·</span>}
+                      </td>
+                      {displayedWeekDates.map(dateStr => {
+                        const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
+                        const st = slotStatsMap[iso]
+                        const count = st?.availableCount || 0
+                        const intensity = st?.intensity || 0
+                        const isSelected = activeSlotIso === iso
+                        const calEvs = st?.calendarEvents || []
+                        const isBookedCollabSlot = calEvs.some(e =>
+                          String(e.id || '').startsWith('collab_evt_')
+                        )
+
+                        let bg = 'var(--bg-card)'
+                        if (isBookedCollabSlot) {
+                          bg = 'rgba(59, 130, 246, 0.88)'
+                        } else if (count > 0) {
+                          const alpha = (0.2 + intensity * 0.75).toFixed(2)
+                          bg = `rgba(22, 163, 74, ${alpha})`
+                        }
+
+                        return (
+                          <td
+                            key={iso}
+                            onClick={() => setActiveSlotIso(iso)}
+                            onMouseEnter={() => {
+                              if (!isDragging) setHoveredSlotIso(iso)
+                            }}
+                            onMouseLeave={() => setHoveredSlotIso(null)}
+                            className={`border border-[var(--border)] h-5 cursor-pointer transition-all text-center text-[9.5px] font-semibold relative ${
+                              isSelected
+                                ? 'ring-2 ring-[var(--blue)] z-10'
+                                : hoveredSlotIso === iso
+                                  ? 'ring-1 ring-[var(--text-muted)] z-10'
+                                  : ''
+                            }`}
+                            style={{
+                              background: bg,
+                              color: isBookedCollabSlot || intensity > 0.45 ? '#fff' : 'var(--text)',
+                            }}
+                          >
+                            {/* Display ONLY how many people booked/are available (no /5 cap, no infinity symbol) */}
+                            {isBookedCollabSlot ? (
+                              <span title="Booked Collaboration Meeting">📅 {count}</span>
+                            ) : (
+                              count > 0 && <span>{count}</span>
+                            )}
+                            {calEvs.length > 0 && !isBookedCollabSlot && (
+                              <span
+                                className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-[var(--yellow)]"
+                                title={`Club Event: ${calEvs.map(e => e.title).join(', ')}`}
+                              />
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Bottom Section: Slot Inspector + Best Collaboration Times & One-Click Calendar Booking ── */}
+      {/* ── Bottom Section: Slot Inspector + Best Collaboration Times & Side-by-Side Book / Unbook ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Slot Inspector */}
         <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between gap-3">
@@ -1262,11 +1677,13 @@ export default function CollabScheduler({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {activeSlotIso && (
-                      <BubbleTag label="📌 Slot Selected" color="purple" size="sm" />
+                      <BubbleTag label="📌 Selected" color="purple" size="sm" />
                     )}
                     <BubbleTag
-                      label={`${inspectedStats.availableCount}/${inspectedStats.totalParticipants} Available`}
-                      color={inspectedStats.availableCount === inspectedStats.totalParticipants ? 'green' : 'blue'}
+                      label={`${inspectedStats.availableCount} ${
+                        inspectedStats.availableCount === 1 ? 'Person' : 'People'
+                      } Booked / Free`}
+                      color="green"
                       size="sm"
                     />
                   </div>
@@ -1289,10 +1706,10 @@ export default function CollabScheduler({
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-2">
-                  {/* Available Responders */}
+                  {/* Available / Booked Responders */}
                   <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
                     <div className="text-[11px] font-semibold text-[var(--green)] mb-1.5">
-                      ✅ Available ({inspectedStats.availableUsers.length})
+                      ✅ People Booked / Free ({inspectedStats.availableUsers.length})
                     </div>
                     {inspectedStats.availableUsers.length > 0 ? (
                       <ul className="m-0 p-0 list-none flex flex-col gap-1 text-[11px] text-[var(--text)]">
@@ -1306,7 +1723,7 @@ export default function CollabScheduler({
                         ))}
                       </ul>
                     ) : (
-                      <div className="text-[11px] text-[var(--text-muted)]">None selected yet</div>
+                      <div className="text-[11px] text-[var(--text-muted)]">None booked yet</div>
                     )}
                   </div>
 
@@ -1331,7 +1748,7 @@ export default function CollabScheduler({
 
                 {inspectedStats.calendarEvents.length > 0 && (
                   <div className="mt-2.5 p-2 rounded-lg bg-[var(--yellow-light)] text-xs text-[var(--text)]">
-                    📅 <strong>Existing ClubHub Calendar Event:</strong>{' '}
+                    📅 <strong>On ClubHub Calendar:</strong>{' '}
                     {inspectedStats.calendarEvents.map(e => `${e.clubName || e.clubId}: ${e.title}`).join(' · ')}
                   </div>
                 )}
@@ -1360,46 +1777,36 @@ export default function CollabScheduler({
                   </div>
                 </div>
 
-                {(() => {
-                  const existingBooked = inspectedStats.calendarEvents.find(e =>
-                    String(e.id || '').startsWith('collab_evt_')
-                  )
-                  return existingBooked ? (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleBookMeeting(inspectedStats.iso)}
-                        className="flex-1 py-2 px-4 rounded-lg bg-[var(--green)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5"
-                      >
-                        <Check size={14} />
-                        Booked on ClubHub Calendar! (Click to Update)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleUnbookMeeting(existingBooked.id)}
-                        className="py-2 px-3 rounded-lg bg-[var(--red-light)] text-[var(--red)] text-xs font-semibold border border-[var(--border)] cursor-pointer hover:opacity-90"
-                      >
-                        Unbook
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={bookingLoading}
-                      onClick={() => handleBookMeeting(inspectedStats.iso)}
-                      className="w-full py-2.5 px-4 rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5 shadow-xs"
-                    >
-                      <CalendarIcon size={13.5} />
-                      {bookingLoading
-                        ? 'Booking onto Calendar…'
-                        : `Book ${formatSlotInTz(inspectedStats.iso, detectedLocalTz, {
-                            weekday: 'short',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })} (${bookingDurationMins}m) onto ClubHub Calendar`}
-                    </button>
-                  )
-                })()}
+                {/* Always-visible side-by-side BOOK and UNBOOK buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={bookingLoading}
+                    onClick={() => handleBookMeeting(inspectedStats.iso)}
+                    className="py-2.5 px-3 rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <CalendarIcon size={13.5} />
+                    Book Slot ({bookingDurationMins}m)
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={bookingLoading}
+                    onClick={() => {
+                      const existingBooked = inspectedStats.calendarEvents.find(e =>
+                        String(e.id || '').startsWith('collab_evt_')
+                      )
+                      handleUnbookMeeting({
+                        eventId: existingBooked?.id || null,
+                        slotIso: inspectedStats.iso,
+                      })
+                    }}
+                    className="py-2.5 px-3 rounded-lg bg-[var(--red)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Trash2 size={13.5} />
+                    Unbook Slot
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -1415,7 +1822,7 @@ export default function CollabScheduler({
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs sm:text-sm font-bold text-[var(--text)] inline-flex items-center gap-1.5">
                 <Sparkles size={15} className="text-[var(--yellow)]" />
-                Best Overlapping Times (You + Collaborating Clubs)
+                Best Overlapping Times ({periodHeaderLabel})
               </span>
               <span className="text-[11px] text-[var(--text-muted)]">
                 Auto-translated to {getTzShortName(detectedLocalTz)}
@@ -1425,7 +1832,7 @@ export default function CollabScheduler({
             {bestOverlaps.length > 0 ? (
               <div className="flex flex-col gap-2">
                 {bestOverlaps.map(slot => {
-                  const isAlreadyBooked = (slot.calendarEvents || []).some(e =>
+                  const existingBooked = (slot.calendarEvents || []).find(e =>
                     String(e.id || '').startsWith('collab_evt_')
                   )
                   return (
@@ -1439,24 +1846,30 @@ export default function CollabScheduler({
                       }`}
                     >
                       <div>
-                        <div className="text-xs font-semibold text-[var(--text)]">
-                          {formatSlotInTz(slot.iso, detectedLocalTz, {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}{' '}
-                          ({getTzShortName(detectedLocalTz)})
+                        <div className="text-xs font-semibold text-[var(--text)] flex items-center gap-1.5">
+                          <span>
+                            {formatSlotInTz(slot.iso, detectedLocalTz, {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}{' '}
+                            ({getTzShortName(detectedLocalTz)})
+                          </span>
+                          {existingBooked && (
+                            <BubbleTag label="Booked ✓" color="blue" size="sm" />
+                          )}
                         </div>
                         <div className="text-[11px] text-[var(--text-muted)]">
                           {slot.availableUsers.map(u => u.clubName || u.userName).join(' · ')}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      {/* Side-by-side count badge + Book + Unbook buttons */}
+                      <div className="flex items-center gap-1.5">
                         <BubbleTag
-                          label={`${slot.availableCount}/${slot.totalParticipants} Free`}
+                          label={`${slot.availableCount} Booked`}
                           color="green"
                           size="sm"
                         />
@@ -1466,11 +1879,22 @@ export default function CollabScheduler({
                             ev.stopPropagation()
                             handleBookMeeting(slot.iso)
                           }}
-                          className={`px-3 py-1 rounded-full text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90 ${
-                            isAlreadyBooked ? 'bg-[var(--green)]' : 'bg-[var(--blue)]'
-                          }`}
+                          className="px-2.5 py-1 rounded-full bg-[var(--blue)] text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90"
                         >
-                          {isAlreadyBooked ? '✓ Booked' : 'Book'}
+                          Book
+                        </button>
+                        <button
+                          type="button"
+                          onClick={ev => {
+                            ev.stopPropagation()
+                            handleUnbookMeeting({
+                              eventId: existingBooked?.id || null,
+                              slotIso: slot.iso,
+                            })
+                          }}
+                          className="px-2.5 py-1 rounded-full bg-[var(--red)] text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90"
+                        >
+                          Unbook
                         </button>
                       </div>
                     </div>
@@ -1479,7 +1903,7 @@ export default function CollabScheduler({
               </div>
             ) : (
               <div className="text-xs text-[var(--text-muted)] py-4">
-                Mark more green Free slots on your grid (or type when you are free above) to see overlapping times with collaborating clubs!
+                Paint green Free slots on the grid for this week (or click Book on any slot) to see overlapping times!
               </div>
             )}
           </div>
@@ -1519,8 +1943,8 @@ export default function CollabScheduler({
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleUnbookMeeting(ev.id)}
-                      className="text-[11px] font-semibold text-[var(--red)] bg-transparent border-none cursor-pointer hover:underline"
+                      onClick={() => handleUnbookMeeting({ eventId: ev.id, slotIso: ev.start })}
+                      className="px-2.5 py-1 rounded-full bg-[var(--red)] text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90"
                     >
                       Unbook
                     </button>
@@ -1532,7 +1956,7 @@ export default function CollabScheduler({
         </div>
       </div>
 
-      {/* Bottom Status Confirmation Toast (visible right next to the Book buttons) */}
+      {/* Bottom Status Confirmation Toast */}
       {statusBanner && (
         <div className="mt-3 px-3.5 py-2.5 rounded-lg bg-[var(--green-light)] border border-[var(--border)] text-[var(--text)] text-xs font-semibold flex items-center justify-between">
           <span>{statusBanner}</span>
