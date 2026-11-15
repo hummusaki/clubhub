@@ -19,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "deploy-pages-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
@@ -120,6 +120,9 @@ jobs:
           path: ./dist
 
   deploy:
+    concurrency:
+      group: "pages-deploy"
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

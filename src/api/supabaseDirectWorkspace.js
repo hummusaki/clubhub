@@ -7,6 +7,7 @@ import {
   supabase,
   isSupabaseConfigured,
   markClerkSupabaseJwtRejected,
+  isClerkSupabaseJwtRejected,
   isJwtSignatureError,
   bridgeClerkToSupabaseAuth,
 } from '../lib/supabaseClient.js'
@@ -291,6 +292,26 @@ async function loadDirectUserProfileInternal() {
       ) {
         await supabase.auth.signOut().catch(() => {})
         authUser = null
+      }
+
+      if (!authUser?.id && extId && typeof window !== 'undefined' && window.Clerk?.session && !isClerkSupabaseJwtRejected()) {
+        try {
+          const clerkSb = getActiveSupabaseClient()
+          if (clerkSb && clerkSb !== supabase) {
+            const resolved = await resolveUserProfileWithClient({
+              sb: clerkSb,
+              extId,
+              email: clerkEmail,
+              fullName: clerkFullName,
+            })
+            if (resolved?.id) {
+              cachedProfile = resolved
+              return resolved
+            }
+          }
+        } catch {
+          // Clerk Third-Party Auth not accepted by Supabase; fall back to Auth bridge
+        }
       }
 
       if (!authUser?.id && extId && clerkEmail) {

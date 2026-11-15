@@ -28,7 +28,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: "discord-server-discovery"
   cancel-in-progress: false
 
 jobs:
@@ -116,6 +116,9 @@ jobs:
           path: ./dist
 
   deploy:
+    concurrency:
+      group: "pages-deploy"
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

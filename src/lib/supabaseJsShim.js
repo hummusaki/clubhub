@@ -9,6 +9,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
   const apiKey = String(supabaseKey || '').trim()
   const storage = options?.auth?.storage || null
   const extraHeaders = options?.global?.headers || {}
+  const accessTokenFn = typeof options?.accessToken === 'function' ? options.accessToken : null
 
   function getStoredSession() {
     if (!storage) return null
@@ -42,9 +43,19 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
     }
   }
 
-  function buildHeaders(custom = {}) {
-    const sess = getStoredSession()
-    const token = sess?.access_token || apiKey
+  async function buildHeaders(custom = {}) {
+    let token = null
+    if (!custom.Authorization && accessTokenFn) {
+      try {
+        token = (await accessTokenFn()) || null
+      } catch {
+        token = null
+      }
+    }
+    if (!token) {
+      const sess = getStoredSession()
+      token = sess?.access_token || apiKey
+    }
     return {
       apikey: apiKey,
       Authorization: `Bearer ${token}`,
@@ -78,7 +89,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       try {
         const res = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
           method: 'POST',
-          headers: buildHeaders({ 'Content-Type': 'application/json' }),
+          headers: await buildHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ email, password }),
         })
         const data = await res.json().catch(() => ({}))
@@ -105,7 +116,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       try {
         const res = await fetch(`${baseUrl}/auth/v1/signup`, {
           method: 'POST',
-          headers: buildHeaders({ 'Content-Type': 'application/json' }),
+          headers: await buildHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             email,
             password,
@@ -143,7 +154,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       try {
         const res = await fetch(`${baseUrl}/auth/v1/user`, {
           method: 'GET',
-          headers: buildHeaders(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+          headers: await buildHeaders(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
         })
         const data = await res.json().catch(() => null)
         if (!res.ok || !data?.id) {
@@ -160,7 +171,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         try {
           const res = await fetch(`${baseUrl}/auth/v1/admin/users`, {
             method: 'POST',
-            headers: buildHeaders({ 'Content-Type': 'application/json' }),
+            headers: await buildHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(attrs),
           })
           const data = await res.json().catch(() => null)
@@ -175,7 +186,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         try {
           const res = await fetch(
             `${baseUrl}/auth/v1/admin/users?page=${page}&per_page=${perPage}`,
-            { headers: buildHeaders() }
+            { headers: await buildHeaders() }
           )
           const data = await res.json().catch(() => ({}))
           if (!res.ok) return { data: { users: [] }, error: { message: 'Failed' } }
@@ -190,7 +201,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
   const storageApi = {
     async listBuckets() {
       try {
-        const res = await fetch(`${baseUrl}/storage/v1/bucket`, { headers: buildHeaders() })
+        const res = await fetch(`${baseUrl}/storage/v1/bucket`, { headers: await buildHeaders() })
         const data = await res.json().catch(() => [])
         if (!res.ok) return { data: null, error: { message: 'Failed to list buckets' } }
         return { data: Array.isArray(data) ? data : [], error: null }
@@ -203,7 +214,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       try {
         const res = await fetch(`${baseUrl}/storage/v1/bucket`, {
           method: 'POST',
-          headers: buildHeaders({ 'Content-Type': 'application/json' }),
+          headers: await buildHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ id, name: id, public: Boolean(opts.public) }),
         })
         const data = await res.json().catch(() => null)
@@ -219,7 +230,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
           try {
             const res = await fetch(
               `${baseUrl}/storage/v1/object/${encodeURIComponent(bucketId)}/${objectPath}`,
-              { headers: buildHeaders() }
+              { headers: await buildHeaders() }
             )
             if (!res.ok) return { data: null, error: { message: `HTTP ${res.status}` } }
             const blob = await res.blob()
@@ -235,7 +246,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
               `${baseUrl}/storage/v1/object/${encodeURIComponent(bucketId)}/${objectPath}`,
               {
                 method: 'POST',
-                headers: buildHeaders({
+                headers: await buildHeaders({
                   'Content-Type': opts.contentType || 'application/octet-stream',
                   'x-upsert': opts.upsert ? 'true' : 'false',
                 }),
@@ -305,7 +316,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
 
         const res = await fetch(`${baseUrl}/rest/v1/${encodeURIComponent(table)}${qs}`, {
           method: state.method,
-          headers: buildHeaders(headers),
+          headers: await buildHeaders(headers),
           ...(state.body !== null ? { body: JSON.stringify(state.body) } : {}),
         })
 
