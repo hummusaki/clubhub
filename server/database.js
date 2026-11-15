@@ -740,7 +740,7 @@ export function getAllCollectorData({ clubId } = {}) {
   const clubWhere = cid ? 'WHERE lower(id) = lower(?)' : '';
   const params = cid ? [cid] : [];
 
-  const clubs = db.prepare(`SELECT * FROM clubs ${clubWhere} ORDER BY name ASC`).all(...params).map(formatClubRow);
+  const rawClubs = db.prepare(`SELECT * FROM clubs ${clubWhere} ORDER BY name ASC`).all(...params).map(formatClubRow);
   const posts = db.prepare(`SELECT * FROM posts ${where} ORDER BY postedAt DESC`).all(...params).map(formatPostRow);
   const events = db.prepare(`SELECT * FROM events ${where} ORDER BY start ASC`).all(...params).map(formatEventRow);
   const announcements = db.prepare(`SELECT * FROM announcements ${where} ORDER BY postedAt DESC`).all(...params).map(formatAnnouncementRow);
@@ -752,10 +752,33 @@ export function getAllCollectorData({ clubId } = {}) {
     .all(...params)
     .map(formatRosterRow);
 
+  const discordLinkByClub = new Map();
+  for (const l of links) {
+    if (String(l.kind || '').toLowerCase() === 'discord' && l.url && !discordLinkByClub.has(l.clubId)) {
+      const m = String(l.label || '').match(/^Discord\s*(?:—|-)\s*(.+?)(?:\s*\(|$)/i);
+      discordLinkByClub.set(l.clubId, {
+        url: l.url,
+        serverName: m ? m[1].trim() : null,
+      });
+    }
+  }
+
+  const clubs = rawClubs.map(c => {
+    const dLink = discordLinkByClub.get(c.id);
+    return {
+      ...c,
+      discord: c.discord || dLink?.url || null,
+      discordUrl: c.discordUrl || c.discord || dLink?.url || null,
+      discordServerName: c.discordServerName || dLink?.serverName || null,
+    };
+  });
+
   const meta = getDictEntry('meta:last_collection')?.value || {};
+  const integrations = getDictEntry('meta:integrations_sync')?.value || null;
 
   return {
     collectedAt: meta.collectedAt || new Date().toISOString(),
+    ...(integrations ? { integrations } : {}),
     clubs,
     posts,
     events,

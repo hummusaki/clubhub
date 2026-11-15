@@ -763,6 +763,23 @@ function MainDashboard({
         const catId = categorizeClub(c)
         const catMeta = getClubCategoryMeta(catId)
         const rawDesc = c.bio || c.directoryDescription || (c.posts || [])[0]?.summary || ''
+        const clubLinks = Array.isArray(c.links) ? c.links : []
+        const discordLink = clubLinks.find(
+          l =>
+            l?.url &&
+            (String(l.kind || '').toLowerCase() === 'discord' ||
+              /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
+        )
+        const resolvedDiscordUrl = c.discordUrl || c.discord || discordLink?.url || null
+        const emailLinks = clubLinks
+          .filter(
+            l =>
+              String(l?.kind || '').toLowerCase() === 'email' ||
+              /^mailto:/i.test(String(l?.url || ''))
+          )
+          .map(l => String(l.url || '').replace(/^mailto:/i, '').trim())
+          .filter(Boolean)
+        const resolvedEmail = c.email || emailLinks[0] || null
 
         return {
           id: c.id,
@@ -775,6 +792,9 @@ function MainDashboard({
             .slice(0, 2)
             .toUpperCase(),
           members: c.memberCount || c.discordMemberCount || c.followers || 0,
+          discord: resolvedDiscordUrl,
+          discordUrl: resolvedDiscordUrl,
+          discordServerName: c.discordServerName || null,
           discordMemberCount: c.discordMemberCount ?? null,
           discordOnlineCount: c.discordOnlineCount ?? null,
           rosterCount: Array.isArray(c.roster) ? c.roster.length : c.rosterCount || 0,
@@ -788,7 +808,8 @@ function MainDashboard({
           alsoKnownAs: Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : [],
           profilePictureUrl: c.profilePictureUrl || null,
           instagram: c.instagram || null,
-          email: c.email || null,
+          email: resolvedEmail,
+          extraEmails: emailLinks.filter(e => e !== resolvedEmail),
           website: c.website || null,
           tags: [
             ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
@@ -1877,6 +1898,7 @@ function MainDashboard({
                 isDemo={isDemo}
                 items={effectiveClubs}
                 clubsData={clubsData}
+                hubDict={hubDict}
                 userSettings={userSettings}
                 onToggleJoin={toggleJoinClub}
                 searchQuery={searchQuery}
@@ -1936,6 +1958,8 @@ function MainDashboard({
               items={effectiveClubs}
               clubsData={clubsData}
               hubDict={hubDict}
+              events={effectiveSchedule}
+              calendarIntegration={calendarIntegration}
               initialSection={clubsInitialSection}
               initialRbacClubId={clubsInitialRbacClubId}
               userSettings={userSettings}
