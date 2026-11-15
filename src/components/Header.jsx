@@ -104,8 +104,11 @@ export default function Header({
     ? userSettings.displayName.trim().split(' ')[0]
     : null
   const firstName =
-    customFirst || user?.firstName || (user?.fullName ? user.fullName.split(' ')[0] : null)
-  const greetingName = firstName || (isDemo ? 'Guest' : 'Jane')
+    customFirst ||
+    user?.firstName ||
+    (user?.fullName ? user.fullName.split(' ')[0] : null) ||
+    (user?.email ? user.email.split('@')[0] : null)
+  const greetingName = firstName || (isDemo ? 'Guest' : 'Student')
 
   const viewTitles = {
     overview: `Welcome back, ${greetingName}`,

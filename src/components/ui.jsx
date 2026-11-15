@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { X } from 'lucide-react'
 import { ClubEmblemSvg } from './icons'
 
@@ -18,6 +19,11 @@ export function cleanText(str) {
 
 // ── Custom ClubHub Brand Logo (SVG) ──
 export function ClubHubLogo({ size = 38, className = '' }) {
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+  const bgId = `clubhub-bg-${uid}`
+  const shineId = `clubhub-shine-${uid}`
+  const warmId = `clubhub-warm-${uid}`
+
   return (
     <svg
       width={size}
@@ -28,29 +34,29 @@ export function ClubHubLogo({ size = 38, className = '' }) {
       className={`shrink-0 select-none ${className}`}
     >
       <defs>
-        <linearGradient id="clubhub-bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+        <linearGradient id={bgId} x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#4A8AF4" />
           <stop offset="52%" stopColor="#7C65E0" />
           <stop offset="100%" stopColor="#46B8AE" />
         </linearGradient>
-        <linearGradient id="clubhub-shine" x1="12" y1="6" x2="44" y2="38" gradientUnits="userSpaceOnUse">
+        <linearGradient id={shineId} x1="12" y1="6" x2="44" y2="38" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.38" />
           <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
         </linearGradient>
-        <linearGradient id="clubhub-warm" x1="36" y1="16" x2="50" y2="28" gradientUnits="userSpaceOnUse">
+        <linearGradient id={warmId} x1="36" y1="16" x2="50" y2="28" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#FFE79E" />
           <stop offset="100%" stopColor="#FF9E9E" />
         </linearGradient>
       </defs>
 
-      <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#clubhub-bg)" />
+      <rect x="4" y="4" width="56" height="56" rx="16" fill={`url(#${bgId})`} />
       <rect
         x="4.75"
         y="4.75"
         width="54.5"
         height="54.5"
         rx="15.25"
-        stroke="url(#clubhub-shine)"
+        stroke={`url(#${shineId})`}
         strokeWidth="1.5"
       />
 
@@ -64,7 +70,7 @@ export function ClubHubLogo({ size = 38, className = '' }) {
 
       <circle cx="24" cy="22" r="5.2" fill="#FFFFFF" />
       <circle cx="24" cy="42" r="5.2" fill="#BFF7D8" />
-      <circle cx="43.5" cy="22.5" r="5.2" fill="url(#clubhub-warm)" />
+      <circle cx="43.5" cy="22.5" r="5.2" fill={`url(#${warmId})`} />
       <circle cx="43.5" cy="41.5" r="5.2" fill="#DCEAFF" />
 
       <path

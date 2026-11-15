@@ -21,10 +21,15 @@ import {
   Clock,
 } from 'lucide-react'
 import { ClubHubLogo, IconBadge } from './ui'
+import {
+  STORED_CLERK_KEY,
+  isValidClerkPublishableKey,
+  hashPasswordSha256,
+  verifyStoredAccountPassword,
+} from '../utils/authValidation'
 
 const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
 const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
-const STORED_CLERK_KEY = 'clubhub_clerk_publishable_key'
 
 // Support & Help links (e.g. Google Forms link for issue reporting)
 const SUPPORT_FORM_URL = 'https://forms.gle/ZmD1cq6mLFFLxBeB8'
@@ -195,7 +200,7 @@ function LightWaveBackground({ dark }) {
         spring: 0.0062,
         dampingRate: 0.0295,
         viscosity: 0.17,
-        lightColor: [74, 126, 232],   // Soft Cobalt
+        lightColor: [64, 112, 212],   // Muted Cobalt
         darkColor: [68, 134, 255],    // Electric Azure
       },
       {
@@ -208,7 +213,7 @@ function LightWaveBackground({ dark }) {
         spring: 0.006,
         dampingRate: 0.0282,
         viscosity: 0.165,
-        lightColor: [134, 110, 210],  // Soft Iris
+        lightColor: [118, 96, 196],   // Muted Iris
         darkColor: [162, 112, 255],   // Vivid Violet
       },
       {
@@ -221,7 +226,7 @@ function LightWaveBackground({ dark }) {
         spring: 0.0064,
         dampingRate: 0.029,
         viscosity: 0.165,
-        lightColor: [56, 166, 158],   // Soft Sea-Glass Teal
+        lightColor: [42, 148, 140],   // Muted Sea-Glass Teal
         darkColor: [25, 214, 194],    // Vivid Cyan-Teal
       },
       {
@@ -234,7 +239,7 @@ function LightWaveBackground({ dark }) {
         spring: 0.0058,
         dampingRate: 0.03,
         viscosity: 0.175,
-        lightColor: [216, 160, 58],   // Soft Honey Gold
+        lightColor: [196, 140, 42],   // Warm Ochre Gold
         darkColor: [255, 182, 42],    // Vivid Golden Amber
       },
     ]
@@ -476,13 +481,13 @@ function LightWaveBackground({ dark }) {
       // 1. Buffered Radial Light Bloom (gentle in light mode, vivid in dark mode)
       if (pointer.activation > 0.008) {
         const bloomRadius = Math.min(width, height) * 0.55
-        const bloomAlpha = (0.118 + 0.072 * darkMix) * pointer.activation
-        const r1 = Math.round(74 + (68 - 74) * darkMix)
-        const g1 = Math.round(126 + (134 - 126) * darkMix)
-        const b1 = Math.round(232 + (255 - 232) * darkMix)
-        const r2 = Math.round(134 + (162 - 134) * darkMix)
-        const g2 = Math.round(110 + (112 - 110) * darkMix)
-        const b2 = Math.round(210 + (255 - 210) * darkMix)
+        const bloomAlpha = (0.088 + 0.102 * darkMix) * pointer.activation
+        const r1 = Math.round(64 + (68 - 64) * darkMix)
+        const g1 = Math.round(112 + (134 - 112) * darkMix)
+        const b1 = Math.round(212 + (255 - 212) * darkMix)
+        const r2 = Math.round(118 + (162 - 118) * darkMix)
+        const g2 = Math.round(96 + (112 - 96) * darkMix)
+        const b2 = Math.round(196 + (255 - 196) * darkMix)
 
         const radial = ctx.createRadialGradient(
           pointer.glowX,
@@ -803,6 +808,7 @@ export default function SignInPage({
   dark,
   onToggleDark,
   hasPublishableKey,
+  initialError = '',
   onEnterDemo,
   onLocalSignIn,
 }) {
@@ -811,9 +817,13 @@ export default function SignInPage({
   const [showPassword, setShowPassword] = useState(false)
   const [verificationStep, setVerificationStep] = useState(null) // null | 'signup_code' | 'signin_code'
   const [verificationCode, setVerificationCode] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => initialError || '')
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    if (initialError) setError(initialError)
+  }, [initialError])
 
   // Shown when Clerk instance does not have oauth_google toggled on yet and no VITE_GOOGLE_CLIENT_ID is set
   const [googleConfigPromptOpen, setGoogleConfigPromptOpen] = useState(false)
@@ -989,7 +999,7 @@ export default function SignInPage({
       if (!clerk?.client?.signIn) {
         setGoogleLoading(false)
         setError(
-          'Clerk authentication is still initializing (or reload your dev server to pick up .env). Try clicking Continue with Google again.'
+          'Authentication service is still initializing. Please wait a moment and click Continue with Google again.'
         )
         return
       }
@@ -1023,7 +1033,13 @@ export default function SignInPage({
           rawMsg.includes('oauth_google') ||
           rawMsg.includes('allowed values for parameter strategy')
         ) {
-          setGoogleConfigPromptOpen(true)
+          if (import.meta.env.DEV) {
+            setGoogleConfigPromptOpen(true)
+          } else {
+            setError(
+              'Google Sign-In is not currently enabled. Please continue with your email address below or click Preview Demo.'
+            )
+          }
           return
         }
 
@@ -1033,7 +1049,13 @@ export default function SignInPage({
     }
 
     setGoogleLoading(false)
-    setGoogleConfigPromptOpen(true)
+    if (import.meta.env.DEV) {
+      setGoogleConfigPromptOpen(true)
+    } else {
+      setError(
+        'Google Sign-In is not currently configured. Please continue with your email address below or click Preview Demo.'
+      )
+    }
   }
 
   async function handleSaveOAuthKeyAndConnect(e) {
@@ -1059,8 +1081,8 @@ export default function SignInPage({
       return
     }
 
-    // Case B: Clerk Publishable Key (pk_test_... or pk_live_...) with Google SSO enabled
-    if (trimmed.startsWith('pk_test_') || trimmed.startsWith('pk_live_')) {
+    // Case B: Genuine Clerk Publishable Key (pk_test_... or pk_live_...) with Google SSO enabled
+    if (isValidClerkPublishableKey(trimmed)) {
       try {
         localStorage.setItem(STORED_CLERK_KEY, trimmed)
       } catch {
@@ -1072,7 +1094,7 @@ export default function SignInPage({
     }
 
     setOauthConfigError(
-      'Enter either a Google Client ID (*.apps.googleusercontent.com) or a Clerk Publishable Key (pk_test_...).'
+      'Enter either a valid Google Client ID (*.apps.googleusercontent.com) or a valid Clerk Publishable Key (pk_test_... / pk_live_...).'
     )
   }
 
@@ -1187,6 +1209,15 @@ export default function SignInPage({
           }
           if (code === 'form_identifier_not_found') {
             notFoundInClerk = true
+          } else if (!existingLocal) {
+            setSubmitting(false)
+            setError(
+              err?.errors?.[0]?.longMessage ||
+                err?.errors?.[0]?.message ||
+                err?.message ||
+                'Unable to sign in right now. Please try again.'
+            )
+            return
           }
         }
       }
@@ -1240,37 +1271,35 @@ export default function SignInPage({
             return
           }
         } catch (err) {
-          const code = err?.errors?.[0]?.code
-          if (
-            code === 'form_password_pwned' ||
-            code === 'form_password_length_too_short' ||
-            code === 'form_param_format_invalid'
-          ) {
-            setSubmitting(false)
-            setError(
-              err?.errors?.[0]?.longMessage ||
+          setSubmitting(false)
+          setError(
+            err?.errors?.[0]?.longMessage ||
               err?.errors?.[0]?.message ||
+              err?.message ||
               'New accounts require a stronger password (at least 8 characters).'
-            )
-            return
-          }
+          )
+          return
         }
       }
     }
 
-    // 2. Unified local account sign-in / automatic sign-up fallback
+    // 2. Unified local account sign-in / automatic sign-up fallback (passwords hashed via SHA-256)
+    const passwordHash = await hashPasswordSha256(password, cleanEmail)
+
     if (existingLocal) {
-      if (existingLocal.password && existingLocal.password !== password) {
+      const validPassword = await verifyStoredAccountPassword(existingLocal, password)
+      if (!validPassword) {
         setSubmitting(false)
         setError('Incorrect password for this account. Please try again.')
         return
       }
 
+      const { password: _legacyPlaintext, ...restExisting } = existingLocal
       const accountToSave = {
-        ...existingLocal,
+        ...restExisting,
         email: cleanEmail,
         fullName: existingLocal.fullName || formatNameFromEmail(cleanEmail),
-        password,
+        passwordHash,
         darkMode:
           typeof existingLocal.darkMode === 'boolean' ? existingLocal.darkMode : undefined,
         avatarBg:
@@ -1285,7 +1314,7 @@ export default function SignInPage({
     const newAccount = {
       email: cleanEmail,
       fullName: formatNameFromEmail(cleanEmail),
-      password,
+      passwordHash,
       darkMode: Boolean(dark),
       avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
     }

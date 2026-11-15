@@ -64,7 +64,7 @@ export default function Sidebar({
     <>
       {/* ── Desktop Fixed Sidebar (lg+): Locked to Viewport, Never Scrolls With Page ── */}
       <aside
-        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] h-dvh bg-[var(--bg-card)] border-r border-[var(--border)]
+        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] h-dvh bg-[var(--bg-sidebar)] border-r border-[var(--border)]
           flex-col px-3.5 py-5 z-40 select-none overflow-y-auto"
       >
         {/* Brand Logo */}
@@ -139,7 +139,7 @@ export default function Sidebar({
                 }}
               >
                 <div
-                  className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform duration-200
+                  className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform duration-200
                     shadow-[0_1px_3px_rgba(0,0,0,0.22)]"
                   style={{ left: 2, transform: dark ? 'translateX(20px)' : 'translateX(0)' }}
                 />

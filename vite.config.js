@@ -142,6 +142,25 @@ function clubhubCalendarFeedPlugin() {
   }
 }
 
+function githubPagesSpaFallbackPlugin() {
+  return {
+    name: 'clubhub-gh-pages-spa-fallback',
+    closeBundle() {
+      const distDir = path.resolve(__dirname, 'dist')
+      const indexHtmlPath = path.join(distDir, 'index.html')
+      const notFoundPath = path.join(distDir, '404.html')
+      if (!fs.existsSync(indexHtmlPath)) return
+
+      const html = fs.readFileSync(indexHtmlPath, 'utf8')
+      // If a deep trailing-slash URL is hit on static hosting (e.g. /clubhub/calendar/),
+      // step back to the parent app directory while preserving ?query and #hash so ./assets/* resolve cleanly.
+      const redirectGuard = `<script>(function(){var p=location.pathname;if(p.length>1&&p.endsWith('/')&&!document.querySelector('script[src]')){return;}if(/\\/[^/.]+\\/$/.test(p)){location.replace('../'+location.search+location.hash);}})();</script>`
+      const fallbackHtml = html.replace('<head>', `<head>\n    ${redirectGuard}`)
+      fs.writeFileSync(notFoundPath, fallbackHtml)
+    },
+  }
+}
+
 export default defineConfig({
   base: './',
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
@@ -149,7 +168,27 @@ export default defineConfig({
     react(),
     tailwindcss(),
     clubhubCalendarFeedPlugin(),
+    githubPagesSpaFallbackPlugin(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@clerk/')) return 'vendor-clerk'
+          if (id.includes('lucide-react')) return 'vendor-icons'
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('/scheduler/')
+          ) {
+            return 'vendor-react'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

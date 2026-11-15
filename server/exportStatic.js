@@ -13,7 +13,6 @@ import {
   closeDb,
   upsertCollectorData,
   getAllCollectorData,
-  buildClubHubDictionary,
   getDictionary,
   getStats,
 } from './database.js';
@@ -94,28 +93,34 @@ async function main() {
     `);
   }
 
+  // Prune bogus historical false-positive event dates (e.g. anniversary captions parsed as 1991/2003)
+  db.exec(`
+    DELETE FROM events WHERE start < '2024-01-01' OR start > '2030-01-01';
+  `);
+
   const collectorData = getAllCollectorData();
   collectorData.errors = (collectorData.errors || []).filter(
     e => !/rate[- ]?limit|deferred|request limit reached/i.test(e?.message || '')
   );
-  const hub = buildClubHubDictionary();
-  const dict = getDictionary();
   const stats = getStats();
   const sources = Object.values(getDictionary({ namespace: 'sources' }));
 
+  // Note: Do NOT duplicate `hub` or dump raw `dictionary_store` (`dict`) into the public static bundle:
+  // 1) `hub` is reconstructed client-side in <1ms from `{ clubs, posts, events, announcements, links }`,
+  //    saving ~11.5 MB of redundant JSON payload.
+  // 2) Omitting `dict` guarantees local `user_theme:<email>` / `user_clubs:<email>` entries in SQLite
+  //    can never leak into `public/clubhub-data.json`.
   const snapshot = {
     exportedAt: new Date().toISOString(),
     stats: {
       ...stats,
       sources: sources.length,
     },
-    hub,
-    dict,
     ...collectorData,
   };
 
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(snapshot, null, 2));
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(snapshot));
   closeDb();
 
   console.log(

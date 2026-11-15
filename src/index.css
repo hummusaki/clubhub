@@ -5,62 +5,64 @@
 }
 
 /* ═══════════════════════════════════════════════
-   ClubHub — Soft Alabaster & Vivid Midnight Palette
+   ClubHub — Warm Stone (Low-Glare Light) & Vivid Midnight Palette
    ═══════════════════════════════════════════════ */
 
 :root {
-  /* Surfaces — gentle low-glare alabaster mist & elevated content tiles */
-  --bg:                #ECEEF2;
-  --bg-card:           #F5F6F9;
-  --bg-tile:           #FCFDFE;
-  --bg-tile-hover:     #FFFFFF;
-  --bg-surface:        #E7ECF3;
-  --bg-subtle:         #DDE4EE;
-  --bg-glass:          rgba(245, 246, 249, 0.88);
+  /* Surfaces — calm, low-glare warm stone canvas & stepped ivory-stone tiles */
+  --bg:                #DFDDD5;
+  --bg-sidebar:        #E3E0D8;
+  --bg-card:           #E8E6DF;
+  --bg-tile:           #EFECE6;
+  --bg-tile-hover:     #F4F2EC;
+  --bg-surface:        #D8D5CB;
+  --bg-subtle:         #CECBC1;
+  --bg-glass:          rgba(232, 230, 223, 0.88);
+  --switch-thumb:      #F6F4EE;
 
-  --border:            #D8E0EB;
-  --border-tile:       #C9D3E1;
-  --border-subtle:     #E1E7F0;
-  --border-strong:     #B2C0D3;
+  --border:            #CECBC0;
+  --border-tile:       #C4C0B4;
+  --border-subtle:     #D7D4CB;
+  --border-strong:     #B1ACA0;
 
-  /* Text — soft deep charcoal instead of harsh black */
-  --text:              #1E293B;
-  --text-muted:        #55637A;
-  --text-light:        #8291A7;
+  /* Text — soft deep charcoal-slate with high readability and zero harshness */
+  --text:              #1F242C;
+  --text-muted:        #4E5664;
+  --text-light:        #707989;
 
-  /* Accents — calm, refined & harmonious in light mode */
-  --blue:              #4676EC;
-  --blue-ink:          #2A52B5;
-  --blue-light:        #E4ECFB;
+  /* Accents — stone-harmonized low-glare tints & high-contrast inks */
+  --blue:              #3B6BE0;
+  --blue-ink:          #2349A6;
+  --blue-light:        #D7E0F2;
 
-  --red:               #DC5B5B;
-  --red-ink:           #AB3232;
-  --red-light:         #FAE8E8;
+  --red:               #C84848;
+  --red-ink:           #9B2B2B;
+  --red-light:         #EEDADA;
 
-  --yellow:            #D8901C;
-  --yellow-ink:        #925B07;
-  --yellow-light:      #FAF0DC;
+  --yellow:            #C78214;
+  --yellow-ink:        #805004;
+  --yellow-light:      #EFE3C8;
 
-  --green:             #219A72;
-  --green-ink:         #13684B;
-  --green-light:       #E1F4EC;
+  --green:             #1A835F;
+  --green-ink:         #115E43;
+  --green-light:       #D4EAE0;
 
-  --purple:            #7B61DF;
-  --purple-ink:        #5438B2;
-  --purple-light:      #ECE8FB;
+  --purple:            #7056D4;
+  --purple-ink:        #4B32A3;
+  --purple-light:      #E1DCF2;
 
-  --teal:              #1E9B91;
-  --teal-ink:          #126760;
-  --teal-light:        #E0F4F2;
+  --teal:              #1B8E85;
+  --teal-ink:          #0F5E58;
+  --teal-light:        #D3EAE7;
 
   /* Shadows, specular highlights & radii */
-  --badge-highlight:   rgba(255, 255, 255, 0.65);
-  --shadow-xs:         0 1px 2px rgba(30, 41, 59, 0.04);
-  --shadow-tile:       0 1px 3px rgba(30, 41, 59, 0.06), 0 4px 10px -3px rgba(30, 41, 59, 0.05);
-  --shadow-tile-hover: 0 8px 18px -5px rgba(30, 41, 59, 0.11), 0 2px 5px -1px rgba(30, 41, 59, 0.05);
-  --shadow:            0 1px 3px rgba(30, 41, 59, 0.05), 0 6px 16px -4px rgba(30, 41, 59, 0.05);
-  --shadow-md:         0 10px 26px -6px rgba(30, 41, 59, 0.08), 0 3px 8px -2px rgba(30, 41, 59, 0.04);
-  --shadow-lg:         0 18px 38px -8px rgba(30, 41, 59, 0.12), 0 4px 12px -2px rgba(30, 41, 59, 0.05);
+  --badge-highlight:   rgba(255, 252, 245, 0.38);
+  --shadow-xs:         0 1px 2px rgba(28, 31, 38, 0.05);
+  --shadow-tile:       inset 0 1px 0 rgba(255, 252, 246, 0.45), 0 1px 3px rgba(28, 31, 38, 0.06), 0 4px 10px -3px rgba(28, 31, 38, 0.05);
+  --shadow-tile-hover: inset 0 1px 0 rgba(255, 252, 246, 0.6), 0 8px 18px -5px rgba(28, 31, 38, 0.11), 0 2px 5px -1px rgba(28, 31, 38, 0.05);
+  --shadow:            inset 0 1px 0 rgba(255, 252, 246, 0.32), 0 1px 3px rgba(28, 31, 38, 0.05), 0 6px 16px -4px rgba(28, 31, 38, 0.05);
+  --shadow-md:         inset 0 1px 0 rgba(255, 252, 246, 0.38), 0 10px 26px -6px rgba(28, 31, 38, 0.09), 0 3px 8px -2px rgba(28, 31, 38, 0.04);
+  --shadow-lg:         inset 0 1px 0 rgba(255, 252, 246, 0.42), 0 18px 38px -8px rgba(28, 31, 38, 0.13), 0 4px 12px -2px rgba(28, 31, 38, 0.05);
   --radius:            18px;
   --radius-sm:         13px;
   --radius-xs:         8px;
@@ -70,12 +72,14 @@
 /* ── Dark mode (vivid deep midnight with punchy jewel/electric accents & crisp stepped tiles) ── */
 .dark {
   --bg:                #080C14;
+  --bg-sidebar:        #0F1624;
   --bg-card:           #0F1624;
   --bg-tile:           #172236;
   --bg-tile-hover:     #1E2C45;
   --bg-surface:        #131D2F;
   --bg-subtle:         #1E2D47;
   --bg-glass:          rgba(15, 22, 36, 0.88);
+  --switch-thumb:      #FFFFFF;
 
   --border:            #233350;
   --border-tile:       #304770;
@@ -136,7 +140,7 @@
   body {
     font-family: 'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg);
-    background-image: radial-gradient(ellipse 90% 55% at 50% -12%, rgba(70, 118, 236, 0.05), transparent 68%);
+    background-image: radial-gradient(ellipse 90% 50% at 50% -14%, rgba(59, 107, 224, 0.032), transparent 65%);
     color: var(--text);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;

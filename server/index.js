@@ -6,10 +6,16 @@
 //   - Accepts collector webhook POSTs at `http://localhost:3001/api/webhook` (for DB_WEBHOOK_URL)
 
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { getDb, getStats } from './database.js';
 import { seedDatabase } from './seed.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DIST_DIR = path.resolve(__dirname, '../dist');
 
 // Routes
 import clubsRouter from './routes/clubs.js';
@@ -27,6 +33,13 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middleware ──
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  next();
+});
 app.use(cors());
 app.use(
   express.json({
@@ -67,10 +80,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ── Serve Production Frontend Build (`dist/`) When Present ──
+if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+  app.use(express.static(DIST_DIR, { index: false, maxAge: '1h' }));
+  app.get('/{*splat}', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path === '/api') return next();
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
+
 // ── Error handler ──
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  const message =
+    process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message || 'Internal server error';
+  res.status(500).json({ error: message });
 });
 
 // ── Initialize DB, import collector JSON + multi-source feeds, and start ──

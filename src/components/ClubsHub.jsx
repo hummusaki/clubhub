@@ -786,7 +786,7 @@ export default function ClubsHub({
                             className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs"
                             style={{ background: group.gradient }}
                           >
-                            <ClubEmblemSvg club={{ category: group.id }} size={15} />
+                            <ClubEmblemSvg category={group.id} size={15} />
                           </div>
                           <h3 className="text-sm sm:text-[15px] font-bold text-[var(--text)] truncate">
                             {group.label}

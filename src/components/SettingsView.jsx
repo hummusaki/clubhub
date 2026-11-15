@@ -246,7 +246,7 @@ export default function SettingsView({
           </label>
           <div className={`grid grid-cols-1 sm:grid-cols-3 ${isCompact ? 'gap-2' : 'gap-3'}`}>
             {[
-              { id: 'light',  label: 'Light',  desc: 'Soft alabaster', icon: Sun },
+              { id: 'light',  label: 'Light',  desc: 'Warm stone, low glare', icon: Sun },
               { id: 'dark',   label: 'Dark',   desc: 'Vivid midnight', icon: Moon },
               { id: 'system', label: 'System', desc: 'Match device OS', icon: Monitor },
             ].map(opt => {
@@ -301,7 +301,7 @@ export default function SettingsView({
               }}
             >
               <span
-                className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs"
+                className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform shadow-2xs"
                 style={{
                   left: 2,
                   transform: userSettings?.compactCards ? 'translateX(20px)' : 'translateX(0)',
@@ -329,7 +329,7 @@ export default function SettingsView({
               }}
             >
               <span
-                className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs"
+                className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform shadow-2xs"
                 style={{
                   left: 2,
                   transform: userSettings?.reduceMotion ? 'translateX(20px)' : 'translateX(0)',
@@ -493,7 +493,7 @@ export default function SettingsView({
                 }}
               >
                 <span
-                  className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs"
+                  className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform shadow-2xs"
                   style={{
                     left: 2,
                     transform: enabled ? 'translateX(20px)' : 'translateX(0)',
@@ -525,7 +525,7 @@ export default function SettingsView({
             }}
           >
             <span
-              className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs"
+              className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform shadow-2xs"
               style={{
                 left: 2,
                 transform: userSettings?.urgentOnlyBadge ? 'translateX(20px)' : 'translateX(0)',

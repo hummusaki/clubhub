@@ -178,6 +178,15 @@ export function extractEvents(caption, postedAt, { title, location }) {
 
     if (!hasTime) start.setHours(0, 0, 0, 0)
 
+    // Ignore historical anniversary mentions ("celebrated 23 years" -> 2003) or implausible dates > 400 days from post
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.getFullYear() < 2024 ||
+      (!Number.isNaN(ref.getTime()) && Math.abs(start.getTime() - ref.getTime()) > 400 * 86_400_000)
+    ) {
+      continue
+    }
+
     events.push({
       title: isDeadline ? `Deadline: ${title}` : title,
       kind: isDeadline ? 'deadline' : isMeeting ? 'meeting' : 'event',

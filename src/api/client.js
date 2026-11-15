@@ -1,32 +1,175 @@
 // ── ClubHub API & Dictionary Client ──
 // Clean frontend client for the SQLite database, Collector API & Multi-Source Sync.
+// Automatically operates in zero-error static mode on GitHub Pages when no backend API is configured.
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const EXPLICIT_API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+
+function isLocalhostHost() {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+function isStaticOnlyHost() {
+  if (EXPLICIT_API_BASE) return false;
+  if (typeof window === 'undefined') return false;
+  const { hostname, protocol } = window.location;
+  if (protocol === 'file:') return true;
+  if (hostname.endsWith('.github.io')) return true;
+  return false;
+}
+
+let resolvedApiBase = EXPLICIT_API_BASE || null;
+let apiAvailabilityState = EXPLICIT_API_BASE
+  ? 'enabled'
+  : isStaticOnlyHost()
+    ? 'disabled'
+    : 'unprobed';
+let apiProbePromise = null;
+let localRetryAfter = 0;
+
+async function resolveActiveApiBase() {
+  if (EXPLICIT_API_BASE) return EXPLICIT_API_BASE;
+  if (apiAvailabilityState === 'disabled') {
+    if (isLocalhostHost() && Date.now() >= localRetryAfter) {
+      apiAvailabilityState = 'unprobed';
+    } else {
+      return null;
+    }
+  }
+  if (apiAvailabilityState === 'enabled' && resolvedApiBase) {
+    return resolvedApiBase;
+  }
+  if (apiProbePromise) return apiProbePromise;
+
+  const candidateBase = isLocalhostHost()
+    ? window.location.port === '3001'
+      ? `${window.location.origin}/api`
+      : 'http://localhost:3001/api'
+    : `${window.location.origin}/api`;
+
+  apiProbePromise = (async () => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 1500) : null;
+    try {
+      const res = await fetch(`${candidateBase}/health`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data && data.status === 'ok') {
+          resolvedApiBase = candidateBase;
+          apiAvailabilityState = 'enabled';
+          return resolvedApiBase;
+        }
+      }
+    } catch {
+      // Backend server not running or static host — fall back silently to static snapshot mode
+    } finally {
+      if (timer) clearTimeout(timer);
+      apiProbePromise = null;
+    }
+
+    apiAvailabilityState = 'disabled';
+    if (isLocalhostHost()) {
+      localRetryAfter = Date.now() + 15_000;
+    }
+    return null;
+  })();
+
+  return apiProbePromise;
+}
 
 async function fetchJSON(path, options = {}) {
+  const activeBase = await resolveActiveApiBase();
+  if (!activeBase) return null;
+
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${activeBase}${path}`, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    console.warn(`[API] Failed to fetch ${path}:`, err.message);
+    if (!EXPLICIT_API_BASE && isLocalhostHost()) {
+      apiAvailabilityState = 'disabled';
+      localRetryAfter = Date.now() + 15_000;
+    }
+    if (import.meta.env?.DEV) {
+      console.warn(`[API] Failed to fetch ${path}:`, err.message);
+    }
     return null;
   }
 }
 
-export async function getStaticSnapshot() {
-  try {
-    const base = import.meta.env.BASE_URL || './';
-    const url = `${base.endsWith('/') ? base : `${base}/`}clubhub-data.json`;
-    const res = await fetch(url, { cache: 'no-cache' });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+export function buildHubFromSnapshot(data) {
+  if (!data || !Array.isArray(data.clubs)) return null;
+  const dict = {};
+  for (const club of data.clubs) {
+    if (!club?.id) continue;
+    dict[club.id] = {
+      ...club,
+      events: [],
+      announcements: [],
+      links: [],
+      posts: [],
+    };
   }
+  if (Array.isArray(data.events)) {
+    for (const e of data.events) dict[e?.clubId]?.events.push(e);
+  }
+  if (Array.isArray(data.announcements)) {
+    for (const a of data.announcements) dict[a?.clubId]?.announcements.push(a);
+  }
+  if (Array.isArray(data.links)) {
+    for (const l of data.links) dict[l?.clubId]?.links.push(l);
+  }
+  if (Array.isArray(data.posts)) {
+    for (const p of data.posts) dict[p?.clubId]?.posts.push(p);
+  }
+  return dict;
+}
+
+let cachedSnapshotPromise = null;
+let cachedSnapshotAt = 0;
+
+export async function getStaticSnapshot({ forceRefresh = false } = {}) {
+  if (
+    !forceRefresh &&
+    cachedSnapshotPromise &&
+    Date.now() - cachedSnapshotAt < 60_000
+  ) {
+    return cachedSnapshotPromise;
+  }
+
+  cachedSnapshotAt = Date.now();
+  cachedSnapshotPromise = (async () => {
+    try {
+      const base = import.meta.env?.BASE_URL || './';
+      const baseUri = typeof document !== 'undefined' ? document.baseURI : 'http://localhost/';
+      const resolvedBase = new URL(base.endsWith('/') ? base : `${base}/`, baseUri);
+      const url = new URL('clubhub-data.json', resolvedBase).toString();
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) {
+        cachedSnapshotPromise = null;
+        return null;
+      }
+      const data = await res.json();
+      if (data && !data.hub && Array.isArray(data.clubs)) {
+        data.hub = buildHubFromSnapshot(data);
+      }
+      return data;
+    } catch {
+      cachedSnapshotPromise = null;
+      return null;
+    }
+  })();
+
+  return cachedSnapshotPromise;
 }
 
 const withQuery = (base, params = {}) => {
@@ -131,7 +274,8 @@ export async function syncCalendarFeedProfile(token, payload = {}) {
   });
 
   if (apiRes && apiRes.ok) {
-    const baseOrigin = API_BASE.replace(/\/api\/?$/, '');
+    const activeBase = (await resolveActiveApiBase()) || EXPLICIT_API_BASE;
+    const baseOrigin = activeBase.replace(/\/api\/?$/, '');
     const feedHttpUrl = `${baseOrigin}/api/calendar/feed/${encodeURIComponent(cleanToken)}.ics`;
     return {
       ok: true,
@@ -142,8 +286,8 @@ export async function syncCalendarFeedProfile(token, payload = {}) {
     };
   }
 
-  // 2. Try Vite dev/preview server feed endpoint when running `npm run dev` without Express
-  if (typeof window !== 'undefined') {
+  // 2. Try Vite dev server feed endpoint ONLY in local development when running `npm run dev` without Express
+  if (import.meta.env?.DEV && typeof window !== 'undefined') {
     try {
       const devUrl = `${window.location.origin}/__clubhub_cal/profile/${encodeURIComponent(cleanToken)}`;
       const res = await fetch(devUrl, {

@@ -227,8 +227,38 @@ function loadStoredUserSlots(defaultUserId) {
   }
 }
 
+const CUSTOM_POLLS_STORAGE_KEY = 'clubhub_custom_polls_v1'
+const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
+
+function getInitialRequestedPollId() {
+  if (typeof window === 'undefined') return null
+  try {
+    const urlPoll = new URLSearchParams(window.location.search).get('poll')
+    if (urlPoll) return urlPoll
+    return sessionStorage.getItem(PENDING_POLL_SESSION_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+function loadStoredCustomPolls() {
+  if (typeof localStorage === 'undefined') return [FALLBACK_POLL]
+  try {
+    const raw = localStorage.getItem(CUSTOM_POLLS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const hasFallback = parsed.some(p => p?.id === FALLBACK_POLL.id)
+      return hasFallback ? parsed : [...parsed, FALLBACK_POLL]
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return [FALLBACK_POLL]
+}
+
 export default function AvailabilityView({
   user = null,
+  isDemo = false,
   userSettings = {},
   events = [],
   onEventBooked,
@@ -247,7 +277,7 @@ export default function AvailabilityView({
     user?.fullName ||
     user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
     user?.email?.split('@')[0] ||
-    'Jane Doe'
+    (isDemo ? 'Demo Guest' : 'Student')
 
   const signedInUserId = useMemo(() => toUserId(defaultUserName), [defaultUserName])
   const signedInAvatarBg =
@@ -255,8 +285,13 @@ export default function AvailabilityView({
     user?.avatarBg ||
     'linear-gradient(135deg, var(--blue), var(--purple))'
 
-  const [polls, setPolls] = useState([FALLBACK_POLL])
-  const [selectedPollId, setSelectedPollId] = useState(FALLBACK_POLL.id)
+  const [polls, setPolls] = useState(loadStoredCustomPolls)
+  const [selectedPollId, setSelectedPollId] = useState(() => {
+    const reqId = getInitialRequestedPollId()
+    const initialPolls = loadStoredCustomPolls()
+    if (reqId && initialPolls.some(p => p.id === reqId)) return reqId
+    return initialPolls[0]?.id || FALLBACK_POLL.id
+  })
   const [weekAnchorDate, setWeekAnchorDate] = useState(BASE_MONDAY)
   const [mobileDay, setMobileDay] = useState(BASE_MONDAY)
 
@@ -332,17 +367,55 @@ export default function AvailabilityView({
     [weekStartYmd]
   )
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(CUSTOM_POLLS_STORAGE_KEY, JSON.stringify(polls))
+    } catch {
+      // Ignore storage errors
+    }
+  }, [polls])
+
   const loadPolls = useCallback(async () => {
+    const requestedPollId = getInitialRequestedPollId()
+    if (requestedPollId) {
+      try {
+        sessionStorage.removeItem(PENDING_POLL_SESSION_KEY)
+      } catch {
+        // Ignore sessionStorage errors
+      }
+    }
+
     const data = await getSchedulerPolls()
     if (Array.isArray(data) && data.length > 0) {
-      setPolls(data)
-      setSelectedPollId(prev => (data.some(p => p.id === prev) ? prev : data[0].id))
+      setPolls(prev => {
+        const backendIds = new Set(data.map(p => p.id))
+        const localOnly = prev.filter(p => p?.id && !backendIds.has(p.id) && p.id !== FALLBACK_POLL.id)
+        return [...data, ...localOnly]
+      })
+      setSelectedPollId(prev => {
+        if (requestedPollId && data.some(p => p.id === requestedPollId)) return requestedPollId
+        return data.some(p => p.id === prev) ? prev : data[0].id
+      })
+    } else if (requestedPollId) {
+      setSelectedPollId(prev => {
+        const stored = loadStoredCustomPolls()
+        return stored.some(p => p.id === requestedPollId) ? requestedPollId : prev
+      })
     }
   }, [])
 
   useEffect(() => {
     loadPolls()
   }, [loadPolls])
+
+  // Sync displayed week whenever the user switches to a poll with its own target week
+  useEffect(() => {
+    const firstDate = activePoll?.dates?.[0]
+    if (firstDate) {
+      setWeekAnchorDate(firstDate)
+      setMobileDay(firstDate)
+    }
+  }, [activePoll?.id])
 
   // Persist localSlotsByUser to localStorage & auto-sync to backend after painting
   const persistAvailability = useCallback(
@@ -380,8 +453,12 @@ export default function AvailabilityView({
   useEffect(() => {
     const stopDrag = () => setIsDragging(false)
     window.addEventListener('mouseup', stopDrag)
+    window.addEventListener('pointerup', stopDrag)
+    window.addEventListener('pointercancel', stopDrag)
     return () => {
       window.removeEventListener('mouseup', stopDrag)
+      window.removeEventListener('pointerup', stopDrag)
+      window.removeEventListener('pointercancel', stopDrag)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
   }, [])
@@ -870,6 +947,7 @@ export default function AvailabilityView({
         start: slotIso,
         end: endIso,
         location: activePoll.location || 'TBD',
+        isBookedCollab: true,
       }
       setPolls(prev =>
         prev.map(p =>
@@ -1525,8 +1603,12 @@ export default function AvailabilityView({
                           return (
                             <td
                               key={iso}
-                              onMouseDown={() => handleCellMouseDown(iso)}
-                              onMouseEnter={() => handleCellMouseEnter(iso)}
+                              onPointerDown={e => {
+                                if (e.pointerType === 'mouse' && e.button !== 0) return
+                                e.currentTarget.releasePointerCapture?.(e.pointerId)
+                                handleCellMouseDown(iso)
+                              }}
+                              onPointerEnter={() => handleCellMouseEnter(iso)}
                               onClick={() => setPinnedSlotIso(iso)}
                               title={`${formatTimeFromIso(iso, use24h, {
                                 weekday: 'short',
@@ -1534,6 +1616,8 @@ export default function AvailabilityView({
                                 day: 'numeric',
                               })} — ${count}/${allParticipants.length} free${conflictNote}`}
                               className={`relative ${
+                                gridMode === 'mine' ? 'touch-none select-none' : 'select-none'
+                              } ${
                                 isCompact ? 'h-[21px]' : 'h-[26px]'
                               } ${colIdx < 6 ? 'border-r border-[var(--border)]' : ''} ${
                                 !isFirstRow

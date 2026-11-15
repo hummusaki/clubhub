@@ -149,7 +149,9 @@ export async function requestGoogleCalendarAccessToken(clientId, { prompt = '' }
         })
       },
       error_callback: err => {
-        reject(new Error(err?.message || err?.type || 'Google authorization cancelled'))
+        const error = new Error(err?.message || err?.type || 'Google authorization cancelled')
+        error.code = err?.type || 'oauth_error'
+        reject(error)
       },
     })
     tokenClient.requestAccessToken({ prompt })

@@ -1,52 +1,64 @@
-import { StrictMode } from 'react'
+import { Component, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/react'
 import './index.css'
 import App from './App'
+import {
+  resolveValidClerkPublishableKey,
+  STORED_CLERK_KEY,
+} from './utils/authValidation'
 
-function resolvePublishableKey() {
-  const envKey = (
-    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
-    import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-    ''
-  ).trim()
-
-  if (envKey.startsWith('pk_')) {
-    return envKey
+class ClerkErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { clerkFailed: false }
   }
 
-  try {
-    const customKey = localStorage.getItem('clubhub_clerk_publishable_key')
-    if (customKey && customKey.trim().startsWith('pk_')) {
-      return customKey.trim()
+  static getDerivedStateFromError() {
+    return { clerkFailed: true }
+  }
+
+  componentDidCatch(error) {
+    console.warn('[ClubHub] Clerk initialization error — falling back to standalone auth:', error?.message || error)
+    try {
+      localStorage.removeItem(STORED_CLERK_KEY)
+    } catch {
+      // Ignore storage errors
     }
-  } catch {
-    // Ignore storage errors
   }
 
-  return ''
+  render() {
+    if (this.state.clerkFailed) {
+      return <App hasClerkKey={false} />
+    }
+    return this.props.children
+  }
 }
 
-const PUBLISHABLE_KEY = resolvePublishableKey()
+const PUBLISHABLE_KEY = resolveValidClerkPublishableKey()
 
 const AFTER_SIGN_OUT_URL =
-  typeof window !== 'undefined' ? window.location.pathname || '/' : '/'
+  typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}`
+    : './'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     {PUBLISHABLE_KEY ? (
-      <ClerkProvider
-        publishableKey={PUBLISHABLE_KEY}
-        afterSignOutUrl={AFTER_SIGN_OUT_URL}
-        unsafe_disableDevelopmentModeConsoleWarning={true}
-        appearance={{
-          layout: {
-            unsafe_disableDevelopmentModeWarnings: true,
-          },
-        }}
-      >
-        <App hasClerkKey={true} />
-      </ClerkProvider>
+      <ClerkErrorBoundary>
+        <ClerkProvider
+          publishableKey={PUBLISHABLE_KEY}
+          afterSignOutUrl={AFTER_SIGN_OUT_URL}
+          unsafe_disableDevelopmentModeConsoleWarning={true}
+          appearance={{
+            layout: {
+              unsafe_disableDevelopmentModeWarnings: true,
+            },
+          }}
+        >
+          <App hasClerkKey={true} />
+        </ClerkProvider>
+      </ClerkErrorBoundary>
     ) : (
       <App hasClerkKey={false} />
     )}

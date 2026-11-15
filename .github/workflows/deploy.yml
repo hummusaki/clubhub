@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies (Node + Instaloader)
         run: |
           npm install --no-audit --no-fund
-          pip install --quiet instaloader
+          pip install --quiet instaloader requests
 
       - name: Sync Instagram (Business + Personal fallback), Linktrees & Discord
         env:
@@ -68,8 +68,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/clubhub-data.json
           if ! git diff --cached --quiet; then
+            cp public/clubhub-data.json /tmp/clubhub-data.synced.json
             git commit -m "chore: auto-sync club data snapshot [skip ci]"
-            git pull --rebase origin main || true
+            if ! git pull --rebase origin main; then
+              git rebase --abort || true
+              git fetch origin main
+              git reset --hard origin/main
+              cp /tmp/clubhub-data.synced.json public/clubhub-data.json
+              git add public/clubhub-data.json
+              git commit -m "chore: auto-sync club data snapshot [skip ci]" || true
+            fi
             git push origin HEAD:main || true
           fi
 
@@ -78,6 +86,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CLERK_UNSAFE_DISABLE_DEVELOPMENT_MODE_CONSOLE_WARNING: "true"
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || secrets.VITE_API_BASE_URL }}
         run: npm run build
 
       - name: Upload GitHub Pages artifact

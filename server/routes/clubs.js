@@ -11,10 +11,16 @@ import {
 
 const router = Router();
 
+function firstStr(val) {
+  if (Array.isArray(val)) return String(val[0] ?? '').trim();
+  return typeof val === 'string' ? val.trim() : '';
+}
+
 // GET /api/clubs — list all clubs (optionally filter by ?category= or ?q=)
 router.get('/', (req, res) => {
   const db = getDb();
-  const { category, q } = req.query;
+  const category = firstStr(req.query.category);
+  const q = firstStr(req.query.q);
 
   let sql = 'SELECT * FROM clubs WHERE 1=1';
   const params = [];

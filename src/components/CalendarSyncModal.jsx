@@ -31,7 +31,7 @@ export function GoogleCalendarLogo({ size = 18, className = '' }) {
       aria-hidden="true"
       className={`shrink-0 ${className}`}
     >
-      <rect x="3" y="3" width="18" height="18" rx="4.2" fill="#FFFFFF" stroke="#DADCE0" strokeWidth="1.2" />
+      <rect x="3" y="3" width="18" height="18" rx="4.2" fill="#F6F4EE" stroke="#D5D2C8" strokeWidth="1.2" />
       <path d="M3.6 7.5C3.6 5.35 5.35 3.6 7.5 3.6H16.5C18.65 3.6 20.4 5.35 20.4 7.5V8.4H3.6V7.5Z" fill="#4285F4" />
       <rect x="16.5" y="8.4" width="3.9" height="8.1" fill="#FBBC04" />
       <path d="M16.5 16.5H20.4L16.5 20.4V16.5Z" fill="#34A853" />
@@ -81,7 +81,7 @@ function ToggleSwitch({ checked, onChange, ariaLabel }) {
       }}
     >
       <span
-        className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs"
+        className="w-5 h-5 rounded-full bg-[var(--switch-thumb)] absolute top-0.5 transition-transform shadow-2xs"
         style={{
           left: 2,
           transform: checked ? 'translateX(20px)' : 'translateX(0)',
@@ -225,7 +225,9 @@ export default function CalendarSyncModal({
             <span className="text-[var(--text-light)]">·</span>
             <span className="text-[var(--green-ink)] inline-flex items-center gap-1">
               <Sparkles size={12} />
-              Auto-updates on club join/leave
+              {hasLiveFeedUrl || googleConnected
+                ? 'Auto-updates on club join/leave'
+                : 'Ready to export or connect Google sync'}
             </span>
           </div>
 

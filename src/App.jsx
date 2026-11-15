@@ -47,9 +47,11 @@ import {
   getStoredGoogleCalSyncMeta,
   saveStoredGoogleCalSyncMeta,
   clearStoredGoogleCalSyncMeta,
+  loadGoogleGsiSdk,
   requestGoogleCalendarAccessToken,
   pushEventsToGoogleCalendar,
 } from './utils/googleCalendarSync'
+import { isValidClerkPublishableKey } from './utils/authValidation'
 import { buildDashboardPageTitle } from './utils/pageTitle'
 
 const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
@@ -60,6 +62,30 @@ const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
 const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
 const USER_SETTINGS_STORAGE_KEY = 'clubhub_user_settings_v1'
 const JOINED_CLUBS_STORAGE_KEY = 'clubhub_joined_clubs_v1'
+const LOCAL_ADDED_EVENTS_KEY = 'clubhub_local_added_events_v1'
+const REMOVED_EVENT_IDS_KEY = 'clubhub_removed_event_ids_v1'
+const LOCAL_ADDED_LINKS_KEY = 'clubhub_local_added_links_v1'
+const PINNED_LINK_OVERRIDES_KEY = 'clubhub_pinned_link_overrides_v1'
+const LOCAL_CLUB_POSTS_KEY = 'clubhub_local_club_posts_v1'
+const CUSTOM_POLLS_STORAGE_KEY = 'clubhub_custom_polls_v1'
+const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
+
+function readLocalJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Ignore storage quota / private mode errors
+  }
+}
 
 function getJoinedClubsMap() {
   try {
@@ -139,6 +165,96 @@ function saveStoredUserSettings(nextSettings) {
   } catch {
     // Ignore storage errors
   }
+}
+
+function createDemoUserSettings(themeMode = null) {
+  return {
+    ...DEFAULT_USER_SETTINGS,
+    displayName: '',
+    major: '',
+    themeMode,
+    channels: { ...DEFAULT_USER_SETTINGS.channels },
+    calendarSync: normalizeCalendarSyncSettings(DEFAULT_USER_SETTINGS.calendarSync),
+  }
+}
+
+function randomDemoClubCount() {
+  return 2 + Math.floor(Math.random() * 4) // 2–5 clubs inclusive
+}
+
+function shuffleList(items) {
+  const arr = [...items]
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+function pickRandomDemoClubIds(
+  clubsPool = [],
+  targetCount = randomDemoClubCount(),
+  { events = [], links = [], hub = null, now = new Date() } = {}
+) {
+  const validClubs = (clubsPool || []).filter(
+    c => c && c.id && c.syncStatus !== 'unavailable'
+  )
+  if (validClubs.length === 0) return []
+
+  const desired = Math.min(Math.max(2, targetCount), Math.min(5, validClubs.length))
+
+  const upcomingClubIds = new Set()
+  const anyEventClubIds = new Set()
+  for (const ev of events || []) {
+    if (!ev?.clubId) continue
+    const cid = String(ev.clubId)
+    anyEventClubIds.add(cid)
+    if (isEventUpcoming(ev, now)) {
+      upcomingClubIds.add(cid)
+    }
+  }
+
+  const linkClubIds = new Set()
+  for (const l of links || []) {
+    if (l?.clubId) linkClubIds.add(String(l.clubId))
+  }
+
+  const postClubIds = new Set()
+  if (hub && typeof hub === 'object') {
+    for (const [cid, clubObj] of Object.entries(hub)) {
+      if (Array.isArray(clubObj?.posts) && clubObj.posts.length > 0) {
+        postClubIds.add(String(clubObj.id || cid))
+      }
+    }
+  }
+
+  const tier1 = []
+  const tier2 = []
+  const tier3 = []
+
+  for (const club of validClubs) {
+    const cid = String(club.id)
+    const hasUpcoming = upcomingClubIds.has(cid)
+    const hasAnyEvent = anyEventClubIds.has(cid)
+    const hasLinks = linkClubIds.size === 0 || linkClubIds.has(cid)
+    const hasPosts = postClubIds.size === 0 || postClubIds.has(cid)
+
+    if (hasUpcoming && hasLinks && hasPosts) {
+      tier1.push(cid)
+    } else if (hasUpcoming || (hasAnyEvent && hasLinks && hasPosts)) {
+      tier2.push(cid)
+    } else {
+      tier3.push(cid)
+    }
+  }
+
+  const ordered = [
+    ...shuffleList(tier1),
+    ...shuffleList(tier2),
+    ...shuffleList(tier3),
+  ]
+
+  return Array.from(new Set(ordered)).slice(0, desired)
 }
 
 function getStoredRsvps() {
@@ -410,30 +526,60 @@ function MainDashboard({
   onSignOut,
   hasClerkKey = false,
 }) {
+  const effectiveUser = isDemo ? null : user
   const accountEmail = (
-    user?.primaryEmailAddress?.emailAddress ||
-    user?.email ||
+    effectiveUser?.primaryEmailAddress?.emailAddress ||
+    effectiveUser?.email ||
     ''
   ).toLowerCase()
   const accountKey = useMemo(() => {
     if (isDemo) return 'demo'
-    if (hasClerkKey && user?.id) return `clerk:${user.id}`
+    if (hasClerkKey && effectiveUser?.id) return `clerk:${effectiveUser.id}`
     if (accountEmail) return `email:${accountEmail}`
     return 'guest'
-  }, [isDemo, hasClerkKey, user?.id, accountEmail])
+  }, [isDemo, hasClerkKey, effectiveUser?.id, accountEmail])
 
-  const [activeNav, setActiveNav] = useState('overview')
+  const demoTargetCountRef = useRef(randomDemoClubCount())
+  const demoLiveSeededRef = useRef(false)
+  const demoUserModifiedClubsRef = useRef(false)
+
+  const [activeNav, setActiveNav] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const urlPoll = new URLSearchParams(window.location.search).get('poll')
+        const pendingPoll = sessionStorage.getItem(PENDING_POLL_SESSION_KEY)
+        if (urlPoll || pendingPoll) return 'availability'
+      } catch {
+        // Ignore URL/sessionStorage errors
+      }
+    }
+    return 'overview'
+  })
   const [pageSubContext, setPageSubContext] = useState(null)
   const [clubsInitialSection, setClubsInitialSection] = useState(null)
   const [calendarInitialView, setCalendarInitialView] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData] = useState(initialClubs)
   const [joinedClubIds, setJoinedClubIds] = useState(() =>
-    getStoredJoinedClubIds(accountKey)
+    isDemo
+      ? pickRandomDemoClubIds(initialClubs, demoTargetCountRef.current, {
+          events: fallbackSchedule,
+          links: fallbackLinks,
+          hub: STATIC_HUB_FALLBACK,
+        })
+      : getStoredJoinedClubIds(accountKey)
   )
   const [linksCount] = useState(fallbackLinks.length)
-  const [rsvpMap, setRsvpMap] = useState(getStoredRsvps)
+  const [rsvpMap, setRsvpMap] = useState(() => (isDemo ? {} : getStoredRsvps()))
   const [resetGeneration, setResetGeneration] = useState(0)
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', Boolean(userSettings?.reduceMotion))
+  }, [userSettings?.reduceMotion])
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('compact-cards', Boolean(userSettings?.compactCards))
+  }, [userSettings?.compactCards])
 
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
@@ -443,13 +589,58 @@ function MainDashboard({
   const [liveClubs, setLiveClubs] = useState(null)
   const [liveSchedule, setLiveSchedule] = useState(null)
   const [rawEvents, setRawEvents] = useState([])
-  const [localAddedEvents, setLocalAddedEvents] = useState([])
-  const [removedEventIds, setRemovedEventIds] = useState(() => new Set())
+  const [localAddedEvents, setLocalAddedEvents] = useState(() => {
+    if (isDemo) return []
+    const saved = readLocalJson(LOCAL_ADDED_EVENTS_KEY, [])
+    return Array.isArray(saved) ? saved : []
+  })
+  const [removedEventIds, setRemovedEventIds] = useState(() => {
+    if (isDemo) return new Set()
+    const saved = readLocalJson(REMOVED_EVENT_IDS_KEY, [])
+    return new Set(Array.isArray(saved) ? saved.map(String) : [])
+  })
   const [liveLinks, setLiveLinks] = useState(null)
-  const [localAddedLinks, setLocalAddedLinks] = useState([])
-  const [pinnedLinkOverrides, setPinnedLinkOverrides] = useState({})
-  const [localClubPosts, setLocalClubPosts] = useState([])
+  const [localAddedLinks, setLocalAddedLinks] = useState(() => {
+    if (isDemo) return []
+    const saved = readLocalJson(LOCAL_ADDED_LINKS_KEY, [])
+    return Array.isArray(saved) ? saved : []
+  })
+  const [pinnedLinkOverrides, setPinnedLinkOverrides] = useState(() => {
+    if (isDemo) return {}
+    const saved = readLocalJson(PINNED_LINK_OVERRIDES_KEY, {})
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  })
+  const [localClubPosts, setLocalClubPosts] = useState(() => {
+    if (isDemo) return []
+    const saved = readLocalJson(LOCAL_CLUB_POSTS_KEY, [])
+    return Array.isArray(saved) ? saved : []
+  })
   const [liveStats, setLiveStats] = useState(null)
+
+  useEffect(() => {
+    if (isDemo) return
+    writeLocalJson(LOCAL_ADDED_EVENTS_KEY, localAddedEvents)
+  }, [isDemo, localAddedEvents])
+
+  useEffect(() => {
+    if (isDemo) return
+    writeLocalJson(REMOVED_EVENT_IDS_KEY, Array.from(removedEventIds))
+  }, [isDemo, removedEventIds])
+
+  useEffect(() => {
+    if (isDemo) return
+    writeLocalJson(LOCAL_ADDED_LINKS_KEY, localAddedLinks)
+  }, [isDemo, localAddedLinks])
+
+  useEffect(() => {
+    if (isDemo) return
+    writeLocalJson(PINNED_LINK_OVERRIDES_KEY, pinnedLinkOverrides)
+  }, [isDemo, pinnedLinkOverrides])
+
+  useEffect(() => {
+    if (isDemo) return
+    writeLocalJson(LOCAL_CLUB_POSTS_KEY, localClubPosts)
+  }, [isDemo, localClubPosts])
 
   const showToast = useCallback((text, options = {}) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -471,8 +662,9 @@ function MainDashboard({
     }
   }, [])
 
-  // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined)
+  // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined for signed-in accounts)
   useEffect(() => {
+    if (isDemo) return
     const emailKey = accountEmail ? `email:${accountEmail}` : null
     if (hasStoredJoinedClubs(accountKey)) {
       setJoinedClubIds(getStoredJoinedClubIds(accountKey))
@@ -484,8 +676,8 @@ function MainDashboard({
       saveStoredJoinedClubIds([accountKey, emailKey], stored)
       return
     }
-    if (hasClerkKey && Array.isArray(user?.unsafeMetadata?.joinedClubIds)) {
-      const metaIds = user.unsafeMetadata.joinedClubIds.map(String)
+    if (hasClerkKey && Array.isArray(effectiveUser?.unsafeMetadata?.joinedClubIds)) {
+      const metaIds = effectiveUser.unsafeMetadata.joinedClubIds.map(String)
       setJoinedClubIds(metaIds)
       saveStoredJoinedClubIds([accountKey, emailKey], metaIds)
       return
@@ -500,7 +692,7 @@ function MainDashboard({
         }
       })
     }
-  }, [accountKey, accountEmail, hasClerkKey, user?.unsafeMetadata?.joinedClubIds])
+  }, [isDemo, accountKey, accountEmail, hasClerkKey, effectiveUser?.unsafeMetadata?.joinedClubIds])
 
   const loadBackendData = useCallback(async () => {
     let [hub, anns, evts, lnks, dbStats] = await Promise.all([
@@ -596,6 +788,19 @@ function MainDashboard({
           })
 
         setLiveClubs([...mappedClubs, ...extraDiscoverClubs])
+
+        if (isDemo && !demoLiveSeededRef.current && !demoUserModifiedClubsRef.current) {
+          demoLiveSeededRef.current = true
+          const demoIds = pickRandomDemoClubIds(mappedClubs, demoTargetCountRef.current, {
+            events: evts || [],
+            links: lnks || [],
+            hub,
+            now: nowRef,
+          })
+          if (demoIds.length > 0) {
+            setJoinedClubIds(demoIds)
+          }
+        }
       }
     }
 
@@ -668,7 +873,7 @@ function MainDashboard({
         { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
       ])
     }
-  }, [])
+  }, [isDemo])
 
   useEffect(() => {
     loadBackendData()
@@ -772,20 +977,27 @@ function MainDashboard({
 
   function toggleJoinClub(clubId) {
     const targetId = String(clubId)
+    if (isDemo) {
+      demoUserModifiedClubsRef.current = true
+    }
     setJoinedClubIds(prev => {
       const exists = prev.some(id => String(id) === targetId)
       const next = exists
         ? prev.filter(id => String(id) !== targetId)
         : [...prev, targetId]
 
+      if (isDemo) {
+        return next
+      }
+
       const emailKey = accountEmail ? `email:${accountEmail}` : null
       saveStoredJoinedClubIds([accountKey, emailKey], next)
 
-      if (hasClerkKey && user?.update) {
-        user
+      if (hasClerkKey && effectiveUser?.update) {
+        effectiveUser
           .update({
             unsafeMetadata: {
-              ...(user.unsafeMetadata || {}),
+              ...(effectiveUser.unsafeMetadata || {}),
               joinedClubIds: next,
             },
           })
@@ -805,10 +1017,12 @@ function MainDashboard({
   function handleToggleRsvp(eventId, isGoing) {
     setRsvpMap(prev => {
       const next = { ...prev, [eventId]: isGoing }
-      try {
-        localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(next))
-      } catch {
-        // Ignore storage errors
+      if (!isDemo) {
+        try {
+          localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(next))
+        } catch {
+          // Ignore storage errors
+        }
       }
       return next
     })
@@ -819,6 +1033,10 @@ function MainDashboard({
 
   async function handleAddCalendarEvent(eventPayload) {
     const id = eventPayload.id || `custom_evt_${Date.now()}`
+    if (isDemo) {
+      setLocalAddedEvents(prev => [{ ...eventPayload, id, isCustom: true }, ...prev])
+      return
+    }
     const created = await createEvent({ ...eventPayload, id })
     if (created && created.id) {
       await loadBackendData()
@@ -828,10 +1046,18 @@ function MainDashboard({
   }
 
   async function handleDeleteCalendarEvent(eventId) {
-    await deleteEvent(eventId)
+    if (isDemo) {
+      setRemovedEventIds(prev => new Set(prev).add(eventId))
+      setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
+      showToast('Removed event from calendar.', { type: 'info' })
+      return
+    }
+    const res = await deleteEvent(eventId)
     setRemovedEventIds(prev => new Set(prev).add(eventId))
     setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
-    await loadBackendData()
+    if (res && res.deleted) {
+      await loadBackendData()
+    }
     showToast('Removed event from calendar.', { type: 'info' })
   }
 
@@ -891,11 +1117,39 @@ function MainDashboard({
   }
 
   function handleResetLocalData() {
+    if (isDemo) {
+      const freshCount = randomDemoClubCount()
+      demoTargetCountRef.current = freshCount
+      demoUserModifiedClubsRef.current = false
+      const pool = liveClubs && liveClubs.length > 0 ? liveClubs : clubsData
+      const freshDemoIds = pickRandomDemoClubIds(pool, freshCount, {
+        events: rawEvents.length > 0 ? rawEvents : fallbackSchedule,
+        links: liveLinks || fallbackLinks,
+        hub: hubDict,
+      })
+      setJoinedClubIds(freshDemoIds)
+      setRsvpMap({})
+      setLocalAddedEvents([])
+      setRemovedEventIds(new Set())
+      setLocalAddedLinks([])
+      setPinnedLinkOverrides({})
+      setLocalClubPosts([])
+      setResetGeneration(g => g + 1)
+      showToast('Reset demo workspace with a fresh random sample of clubs.', { type: 'info' })
+      return
+    }
+
     const emailKey = accountEmail ? `email:${accountEmail}` : null
     try {
       localStorage.removeItem(RSVP_STORAGE_KEY)
       localStorage.removeItem('clubhub_availability_user_slots_v2')
       localStorage.removeItem('clubhub_custom_roster_v1')
+      localStorage.removeItem(LOCAL_ADDED_EVENTS_KEY)
+      localStorage.removeItem(REMOVED_EVENT_IDS_KEY)
+      localStorage.removeItem(LOCAL_ADDED_LINKS_KEY)
+      localStorage.removeItem(PINNED_LINK_OVERRIDES_KEY)
+      localStorage.removeItem(LOCAL_CLUB_POSTS_KEY)
+      localStorage.removeItem(CUSTOM_POLLS_STORAGE_KEY)
       saveStoredJoinedClubIds([accountKey, emailKey], [])
     } catch {
       // Ignore storage errors
@@ -915,9 +1169,9 @@ function MainDashboard({
 
   const userDisplayName =
     userSettings?.displayName?.trim() ||
-    user?.fullName ||
-    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-    user?.email?.split('@')[0] ||
+    effectiveUser?.fullName ||
+    effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    effectiveUser?.email?.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
   // ── Calendar Integration, Live Joined-Club Sync & Browser Tab Title ──
@@ -943,6 +1197,13 @@ function MainDashboard({
     () => Boolean(getEffectiveGoogleClientId()),
     [googleClientIdVersion]
   )
+
+  // Preload Google Identity Services SDK when a Client ID is configured so OAuth popups open synchronously without Safari popup-blocking
+  useEffect(() => {
+    if (hasGoogleClientId) {
+      loadGoogleGsiSdk().catch(() => {})
+    }
+  }, [hasGoogleClientId])
 
   useEffect(() => {
     setSyncToken(getOrCreateCalendarSyncToken(accountKey))
@@ -1070,9 +1331,15 @@ function MainDashboard({
 
   const handleIntegrateGoogle = useCallback(
     async ({ forceImport = false } = {}) => {
-      const res = await flushCalendarFeedProfile()
-      const webcalUrl = res.feedWebcalUrl || feedState.feedWebcalUrl
-      const httpUrl = res.feedHttpUrl || feedState.feedHttpUrl
+      let webcalUrl = feedState.feedWebcalUrl
+      let httpUrl = feedState.feedHttpUrl
+
+      // Only await network feed flush when a live feed server is active; in static mode stay synchronous so Safari never blocks window.open()
+      if (!forceImport && feedState.mode !== 'static') {
+        const res = await flushCalendarFeedProfile()
+        webcalUrl = res.feedWebcalUrl || webcalUrl
+        httpUrl = res.feedHttpUrl || httpUrl
+      }
 
       if (!forceImport && webcalUrl && !isLocalhostUrl(httpUrl || webcalUrl)) {
         const gcalSubUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
@@ -1101,6 +1368,7 @@ function MainDashboard({
     },
     [
       flushCalendarFeedProfile,
+      feedState.mode,
       feedState.feedWebcalUrl,
       feedState.feedHttpUrl,
       syncedCalendarEvents,
@@ -1163,8 +1431,11 @@ function MainDashboard({
           )
         }
       } catch (err) {
-        if (!silent) {
-          showToast(`Google Calendar sync failed: ${err.message || 'Authorization cancelled'}`, {
+        const msg = err?.message || ''
+        const wasDismissed =
+          err?.code === 'popup_closed' || /popup_closed|closed by user/i.test(msg)
+        if (!silent && !wasDismissed) {
+          showToast(`Google Calendar sync failed: ${msg || 'Authorization cancelled'}`, {
             type: 'error',
           })
         }
@@ -1462,6 +1733,7 @@ function MainDashboard({
             <AvailabilityView
               key={`avail_${resetGeneration}`}
               user={user}
+              isDemo={isDemo}
               userSettings={userSettings}
               events={combinedRawEvents}
               onEventBooked={loadBackendData}
@@ -1604,11 +1876,20 @@ function ClerkAppWrapper({
     }
   }, [isSignedIn, user, localUser, onLocalSignOut])
 
+  const [oauthTimedOutNotice, setOauthTimedOutNotice] = useState('')
+
   useEffect(() => {
     if (isSignedIn && user && isOAuthCallback && typeof window !== 'undefined') {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [isSignedIn, user, isOAuthCallback])
+
+  useEffect(() => {
+    if (isOAuthCallback && !isSignedIn && loadTimedOut && typeof window !== 'undefined') {
+      window.history.replaceState({}, '', window.location.pathname)
+      setOauthTimedOutNotice('Google Sign-In timed out or was interrupted. Please try again.')
+    }
+  }, [isOAuthCallback, isSignedIn, loadTimedOut])
 
   const clerkEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || ''
   const localEmail = localUser?.email?.toLowerCase() || ''
@@ -1793,6 +2074,11 @@ function ClerkAppWrapper({
     }
   }
 
+  const baseUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : '/'
+
   async function handleClerkSignOut() {
     try {
       localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
@@ -1800,7 +2086,7 @@ function ClerkAppWrapper({
       // Ignore storage errors
     }
     try {
-      await signOut()
+      await signOut({ redirectUrl: baseUrl })
     } catch {
       // Ignore Clerk signOut fallback errors
     }
@@ -1808,19 +2094,14 @@ function ClerkAppWrapper({
 
   useEffect(() => {
     if (typeof document === 'undefined') return
-    if (isOAuthCallback && !isSignedIn) {
+    if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
       document.title = 'Completing Sign-In · ClubHub'
     } else if (!isSignedIn && !localUser && !isLoaded && !loadTimedOut) {
       document.title = 'Loading… · ClubHub'
     }
   }, [isOAuthCallback, isSignedIn, localUser, isLoaded, loadTimedOut])
 
-  const baseUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}`
-      : '/'
-
-  if (isOAuthCallback && !isSignedIn) {
+  if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
@@ -1901,6 +2182,7 @@ function ClerkAppWrapper({
       dark={dark}
       onToggleDark={handleToggleDark}
       hasPublishableKey={true}
+      initialError={oauthTimedOutNotice}
       onEnterDemo={() => setDemoMode(true)}
       onLocalSignIn={onLocalSignIn}
     />
@@ -2030,10 +2312,23 @@ const DEFAULT_CLERK_KEY = (
   ''
 ).trim()
 
-export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
+export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_CLERK_KEY) }) {
   const [userSettings, setUserSettings] = useState(getStoredUserSettings)
   const [dark, setDark] = useState(getInitialTheme)
   const [localUser, setLocalUser] = useState(getInitialStoredUser)
+
+  // Preserve shared `?poll=<id>` invite links across login / OAuth redirects
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const pollParam = new URLSearchParams(window.location.search).get('poll')
+      if (pollParam) {
+        sessionStorage.setItem(PENDING_POLL_SESSION_KEY, pollParam)
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [])
 
   // Synchronously apply dark & reduce-motion classes BEFORE paint so zero white flash can occur
   useLayoutEffect(() => {

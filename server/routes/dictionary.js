@@ -17,6 +17,8 @@
 //   GET  http://localhost:3001/api/hub/:clubId
 //   GET  http://localhost:3001/api/dict
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import {
   getDb,
@@ -34,10 +36,27 @@ import {
 import { searchClubs } from '../../collector/src/search.js';
 import { ingestResourceItem } from '../services/resourceIngestor.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ALLOWED_IMPORT_ROOT = path.resolve(__dirname, '../../collector');
 const router = Router();
+
+function firstStr(val) {
+  if (Array.isArray(val)) return String(val[0] ?? '').trim();
+  return typeof val === 'string' ? val.trim() : '';
+}
+
+function checkWebhookAuth(req) {
+  const expected = (process.env.WEBHOOK_SECRET || '').trim();
+  if (!expected) return true;
+  const provided = req.get('x-webhook-secret') || firstStr(req.query.secret);
+  return provided === expected;
+}
 
 // ── 1. Collector Webhook Endpoint (DB_WEBHOOK_URL) ──────────────────
 function handleWebhook(req, res) {
+  if (!checkWebhookAuth(req)) {
+    return res.status(401).json({ error: 'Invalid webhook secret' });
+  }
   const payload = req.body;
   if (!payload || typeof payload !== 'object') {
     return res.status(400).json({ error: 'Expected JSON payload from collector' });
@@ -55,7 +74,21 @@ router.post('/data', handleWebhook);
 
 // ── 2. Import collector/output/clubhub-data.json from disk ──────────
 router.post('/import-file', (req, res) => {
-  const result = importCollectorFile(req.body?.file || null);
+  if (!checkWebhookAuth(req)) {
+    return res.status(401).json({ error: 'Invalid webhook secret' });
+  }
+  let safePath = null;
+  if (typeof req.body?.file === 'string' && req.body.file.trim()) {
+    const resolved = path.resolve(ALLOWED_IMPORT_ROOT, req.body.file.trim());
+    if (
+      !resolved.startsWith(ALLOWED_IMPORT_ROOT + path.sep) ||
+      !resolved.endsWith('.json')
+    ) {
+      return res.status(400).json({ error: 'Import file must be a .json file inside collector/' });
+    }
+    safePath = resolved;
+  }
+  const result = importCollectorFile(safePath);
   if (!result.imported) {
     return res.status(404).json(result);
   }
@@ -64,12 +97,12 @@ router.post('/import-file', (req, res) => {
 
 // ── 3. Get all 5 lists in the exact Collector JSON format ───────────
 router.get('/data', (req, res) => {
-  res.json(getAllCollectorData({ clubId: req.query.clubId }));
+  res.json(getAllCollectorData({ clubId: firstStr(req.query.clubId) || undefined }));
 });
 
 // ── 4. Search clubs (uses collector/src/search.js) ──────────────────
 router.get('/search', (req, res) => {
-  const q = (req.query.q || '').trim();
+  const q = firstStr(req.query.q);
   if (!q) {
     const hub = buildClubHubDictionary();
     const now = new Date();
@@ -102,8 +135,12 @@ router.get('/hub/:clubId', (req, res) => {
 
 // ── 6. Key-Value Dictionary Store (/api/dict) ───────────────────────
 router.get('/dict', (req, res) => {
-  const { namespace, clubId, club_id, source, prefix, q } = req.query;
-  res.json(getDictionary({ namespace, clubId: clubId || club_id, source, prefix, q }));
+  const namespace = firstStr(req.query.namespace) || undefined;
+  const clubId = firstStr(req.query.clubId) || firstStr(req.query.club_id) || undefined;
+  const source = firstStr(req.query.source) || undefined;
+  const prefix = firstStr(req.query.prefix) || undefined;
+  const q = firstStr(req.query.q) || undefined;
+  res.json(getDictionary({ namespace, clubId, source, prefix, q }));
 });
 
 router.get('/dict/:key', (req, res) => {
