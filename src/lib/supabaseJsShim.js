@@ -254,62 +254,176 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
 
   function from(table) {
     const state = {
+      method: 'GET',
       selectCols: '*',
+      hasSelect: false,
       filters: [],
-      singleMode: false,
+      orders: [],
+      limitVal: null,
+      body: null,
+      upsertOpts: null,
+      singleMode: null, // 'single' | 'maybeSingle' | null
+    }
+
+    async function execute() {
+      try {
+        const params = []
+        if (state.method === 'GET' || state.hasSelect) {
+          params.push(`select=${encodeURIComponent(state.selectCols)}`)
+        }
+        params.push(...state.filters)
+        if (state.orders.length > 0) {
+          params.push(`order=${state.orders.join(',')}`)
+        }
+        if (state.limitVal != null) {
+          params.push(`limit=${state.limitVal}`)
+        } else if (state.singleMode === 'maybeSingle' && state.method === 'GET') {
+          params.push('limit=1')
+        }
+        if (state.upsertOpts?.onConflict) {
+          params.push(`on_conflict=${encodeURIComponent(state.upsertOpts.onConflict)}`)
+        }
+
+        const qs = params.length > 0 ? `?${params.join('&')}` : ''
+        const headers = {}
+        const prefers = []
+
+        if (state.method !== 'GET') {
+          headers['Content-Type'] = 'application/json'
+          if (state.upsertOpts) {
+            prefers.push(
+              state.upsertOpts.ignoreDuplicates
+                ? 'resolution=ignore-duplicates'
+                : 'resolution=merge-duplicates'
+            )
+          }
+          prefers.push(state.hasSelect ? 'return=representation' : 'return=minimal')
+        }
+        if (prefers.length > 0) {
+          headers.Prefer = prefers.join(',')
+        }
+
+        const res = await fetch(`${baseUrl}/rest/v1/${encodeURIComponent(table)}${qs}`, {
+          method: state.method,
+          headers: buildHeaders(headers),
+          ...(state.body !== null ? { body: JSON.stringify(state.body) } : {}),
+        })
+
+        const text = await res.text().catch(() => '')
+        let parsed = null
+        if (text) {
+          try {
+            parsed = JSON.parse(text)
+          } catch {
+            parsed = null
+          }
+        }
+
+        if (!res.ok) {
+          const msg = parsed?.message || parsed?.error || parsed?.hint || `HTTP ${res.status}`
+          return { data: null, error: { message: msg, code: parsed?.code, status: res.status } }
+        }
+
+        if (state.singleMode === 'single') {
+          if (Array.isArray(parsed)) {
+            if (parsed.length === 0) {
+              return { data: null, error: { message: 'Row not found', code: 'PGRST116' } }
+            }
+            return { data: parsed[0], error: null }
+          }
+          return { data: parsed, error: null }
+        }
+
+        if (state.singleMode === 'maybeSingle') {
+          const row = Array.isArray(parsed) ? parsed[0] || null : parsed
+          return { data: row, error: null }
+        }
+
+        return { data: parsed ?? (state.method === 'GET' ? [] : null), error: null }
+      } catch (err) {
+        return { data: null, error: { message: err.message } }
+      }
     }
 
     const builder = {
       select(cols = '*') {
         state.selectCols = cols
+        state.hasSelect = true
+        return builder
+      },
+      insert(values) {
+        state.method = 'POST'
+        state.body = values
+        return builder
+      },
+      update(values) {
+        state.method = 'PATCH'
+        state.body = values
+        return builder
+      },
+      upsert(values, opts = {}) {
+        state.method = 'POST'
+        state.body = values
+        state.upsertOpts = opts || {}
+        return builder
+      },
+      delete() {
+        state.method = 'DELETE'
         return builder
       },
       eq(col, val) {
         state.filters.push(`${encodeURIComponent(col)}=eq.${encodeURIComponent(val)}`)
         return builder
       },
-      async maybeSingle() {
-        try {
-          const qs = [`select=${encodeURIComponent(state.selectCols)}`, ...state.filters, 'limit=1'].join('&')
-          const res = await fetch(`${baseUrl}/rest/v1/${encodeURIComponent(table)}?${qs}`, {
-            headers: buildHeaders(),
-          })
-          const rows = await res.json().catch(() => [])
-          if (!res.ok) return { data: null, error: { message: `HTTP ${res.status}` } }
-          return { data: Array.isArray(rows) ? rows[0] || null : rows, error: null }
-        } catch (err) {
-          return { data: null, error: { message: err.message } }
-        }
+      neq(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=neq.${encodeURIComponent(val)}`)
+        return builder
       },
-      async upsert(values, opts = {}) {
-        try {
-          const qs = opts.onConflict ? `?on_conflict=${encodeURIComponent(opts.onConflict)}` : ''
-          const prefer = opts.ignoreDuplicates
-            ? 'resolution=ignore-duplicates,return=minimal'
-            : 'resolution=merge-duplicates,return=minimal'
-          const res = await fetch(`${baseUrl}/rest/v1/${encodeURIComponent(table)}${qs}`, {
-            method: 'POST',
-            headers: buildHeaders({
-              'Content-Type': 'application/json',
-              Prefer: prefer,
-            }),
-            body: JSON.stringify(values),
-          })
-          return { data: null, error: res.ok ? null : { message: `HTTP ${res.status}` } }
-        } catch (err) {
-          return { data: null, error: { message: err.message } }
-        }
+      in(col, values) {
+        const list = Array.isArray(values) ? values : []
+        const encoded = list.map(v => `"${String(v).replace(/"/g, '\\"')}"`).join(',')
+        state.filters.push(`${encodeURIComponent(col)}=in.(${encodeURIComponent(encoded)})`)
+        return builder
+      },
+      is(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=is.${encodeURIComponent(val)}`)
+        return builder
+      },
+      gt(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=gt.${encodeURIComponent(val)}`)
+        return builder
+      },
+      gte(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=gte.${encodeURIComponent(val)}`)
+        return builder
+      },
+      lt(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=lt.${encodeURIComponent(val)}`)
+        return builder
+      },
+      lte(col, val) {
+        state.filters.push(`${encodeURIComponent(col)}=lte.${encodeURIComponent(val)}`)
+        return builder
+      },
+      order(col, opts = {}) {
+        const dir = opts?.ascending === false ? 'desc' : 'asc'
+        state.orders.push(`${encodeURIComponent(col)}.${dir}`)
+        return builder
+      },
+      limit(n) {
+        state.limitVal = Number(n)
+        return builder
+      },
+      single() {
+        state.singleMode = 'single'
+        return execute()
+      },
+      maybeSingle() {
+        state.singleMode = 'maybeSingle'
+        return execute()
       },
       then(resolve, reject) {
-        const qs = [`select=${encodeURIComponent(state.selectCols)}`, ...state.filters].join('&')
-        return fetch(`${baseUrl}/rest/v1/${encodeURIComponent(table)}?${qs}`, {
-          headers: buildHeaders(),
-        })
-          .then(async res => {
-            const data = await res.json().catch(() => [])
-            return { data: res.ok ? data : null, error: res.ok ? null : { message: `HTTP ${res.status}` } }
-          })
-          .then(resolve, reject)
+        return execute().then(resolve, reject)
       },
     }
 
