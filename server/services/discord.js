@@ -1383,6 +1383,48 @@ export class DiscordService {
     };
   }
 
+  /**
+   * Programmatically follow a Discord Announcement Channel (`type: 5`) into the ClubHub
+   * aggregator server channel (`POST /channels/{announcement_channel_id}/followers`).
+   * Requires the Bot to have visibility of `sourceChannelId` and `MANAGE_WEBHOOKS` in `targetChannelId`.
+   */
+  async followAnnouncementChannel({ sourceChannelId, targetChannelId = '' } = {}) {
+    const cfg = getEffectiveDiscordConfig();
+    if (!cfg.botToken) {
+      throw new Error('DISCORD_BOT_TOKEN is required to auto-follow an announcement channel.');
+    }
+    const cleanSource = String(sourceChannelId || '').trim();
+    if (!/^\d{15,22}$/.test(cleanSource)) {
+      throw new Error('Valid source Discord Announcement Channel ID is required.');
+    }
+
+    let destChannel = String(targetChannelId || cfg.defaultChannelId || '').trim();
+    if (!destChannel) {
+      const status = await this.getStatus();
+      const aggChan =
+        status.channels.find(c => c.isAggregator && c.type === 0 && /announce|general|club/i.test(c.name || '')) ||
+        status.channels.find(c => c.isAggregator && c.type === 0) ||
+        status.channels.find(c => c.type === 0);
+      destChannel = aggChan?.id || '';
+    }
+    if (!/^\d{15,22}$/.test(destChannel)) {
+      throw new Error('No destination aggregator text channel found for following.');
+    }
+
+    const res = await discordRequest(`/channels/${cleanSource}/followers`, {
+      method: 'POST',
+      token: cfg.botToken,
+      body: { webhook_channel_id: destChannel },
+    });
+
+    return {
+      ok: true,
+      sourceChannelId: cleanSource,
+      webhookId: res?.webhook_id || null,
+      targetChannelId: destChannel,
+    };
+  }
+
   getClubMessages(clubId) {
     const db = getDb();
     return db

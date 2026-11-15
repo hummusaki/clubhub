@@ -381,5 +381,14 @@ describe('Phase 1, 4 & 5: Two-Tier Task Board, Announcements, Deletions & Cloud 
     const gitignore = fs.readFileSync(path.join(ROOT_DIR, '.gitignore'), 'utf8');
     assert.match(gitignore, /^\.env$/m);
     assert.match(gitignore, /^\.env\.local$/m);
+
+    // Ensure public/clubhub-data.json is valid JSON with zero Git conflict markers
+    const snapshotPath = path.join(ROOT_DIR, 'public/clubhub-data.json');
+    if (fs.existsSync(snapshotPath)) {
+      const rawSnap = fs.readFileSync(snapshotPath, 'utf8');
+      assert.equal(rawSnap.includes('<<<<<<<'), false, 'Git conflict marker found in public/clubhub-data.json');
+      const parsedSnap = JSON.parse(rawSnap);
+      assert.ok(Array.isArray(parsedSnap.clubs), 'public/clubhub-data.json must contain a clubs array');
+    }
   });
 });

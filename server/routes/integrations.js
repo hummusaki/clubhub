@@ -10,6 +10,10 @@ import discordService, {
   isMaskedValue,
   sanitizeDiscordWebhookUrl,
 } from '../services/discord.js';
+import {
+  getScoutedDiscordServers,
+  scoutClubDiscordServers,
+} from '../services/discordScout.js';
 import emailService, {
   verifyImapConnection,
   verifySmtpConnection,
@@ -245,6 +249,51 @@ router.post('/discord/send', async (req, res) => {
       url,
       events,
       poll,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/integrations/discord/scout — list discovered club Discord servers & followability status
+router.get('/discord/scout', async (req, res) => {
+  try {
+    const report = await getScoutedDiscordServers({ checkBotLive: true });
+    res.json({ ok: true, ...report });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/integrations/discord/scout — actively crawl club websites/Linktrees & query Discord Invite API
+router.post('/discord/scout', async (req, res) => {
+  try {
+    const {
+      crawlWebsites = true,
+      forceCrawlAll = false,
+      forceRefreshInvites = false,
+    } = req.body || {};
+    const report = await scoutClubDiscordServers({
+      crawlWebsites: Boolean(crawlWebsites),
+      forceCrawlAll: Boolean(forceCrawlAll),
+      forceRefreshInvites: Boolean(forceRefreshInvites),
+      persistCatalog: true,
+      writePublicJson: true,
+    });
+    res.json({ ok: true, ...report });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/integrations/discord/follow — programmatically follow an Announcement Channel (`type: 5`) into aggregator
+router.post('/discord/follow', async (req, res) => {
+  try {
+    const { sourceChannelId, targetChannelId } = req.body || {};
+    const result = await discordService.followAnnouncementChannel({
+      sourceChannelId,
+      targetChannelId,
     });
     res.json(result);
   } catch (err) {

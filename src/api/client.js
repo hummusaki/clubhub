@@ -303,6 +303,31 @@ export const testDiscordIntegration = payload =>
   fetchActionJSON('/integrations/discord/test', { method: 'POST', body: JSON.stringify(payload) });
 export const sendDiscordMessage = payload =>
   fetchActionJSON('/integrations/discord/send', { method: 'POST', body: JSON.stringify(payload) });
+export async function getScoutedDiscordServers() {
+  const live = await fetchJSON('/integrations/discord/scout');
+  if (live && Array.isArray(live.servers)) return { ...live, mode: 'server' };
+
+  // Static GitHub Pages fallback: read committed `public/discord-scout.json`
+  try {
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
+    const res = await fetch(`${base}discord-scout.json`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.servers)) {
+        return { ok: true, ...data, mode: 'static' };
+      }
+    }
+  } catch {
+    // ignore missing static snapshot
+  }
+  return null;
+}
+export const runDiscordServerScout = (payload = {}) =>
+  fetchActionJSON('/integrations/discord/scout', { method: 'POST', body: JSON.stringify(payload) });
+export const followDiscordAnnouncementChannel = payload =>
+  fetchActionJSON('/integrations/discord/follow', { method: 'POST', body: JSON.stringify(payload) });
 export const verifyEmailIntegration = payload =>
   fetchActionJSON('/integrations/email/verify', { method: 'POST', body: JSON.stringify(payload) });
 export const testEmailIntegration = payload =>

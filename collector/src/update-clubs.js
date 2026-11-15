@@ -181,6 +181,9 @@ export async function updateClubsCatalog({ htmlOverride = null } = {}) {
       ...(c.orgStatus && c.orgStatus !== 'active' ? { orgStatus: c.orgStatus } : prev?.orgStatus && prev.orgStatus !== 'active' ? { orgStatus: prev.orgStatus } : {}),
       ...(c.orgStatusNote || prev?.orgStatusNote ? { orgStatusNote: c.orgStatusNote || prev?.orgStatusNote } : {}),
       ...(c.discord || prev?.discord ? { discord: c.discord || prev?.discord } : {}),
+      ...(prev?.discordGuildId ? { discordGuildId: prev.discordGuildId } : {}),
+      ...(prev?.discordServerName ? { discordServerName: prev.discordServerName } : {}),
+      ...(prev?.discordFollowable !== undefined ? { discordFollowable: prev.discordFollowable } : {}),
       ...(c.website || prev?.website ? { website: c.website || prev?.website } : {}),
       ...(prev?.discordChannelId ? { discordChannelId: prev.discordChannelId } : {}),
     }

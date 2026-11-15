@@ -42,6 +42,13 @@ export function sanitizePublicSnapshot(snapshot) {
     );
   }
 
+  const officialClubEmails = new Map(
+    (Array.isArray(clean.clubs) ? clean.clubs : []).map(c => [
+      c.id,
+      String(c.email || '').trim().toLowerCase(),
+    ])
+  );
+
   if (Array.isArray(clean.roster)) {
     clean.roster = clean.roster
       .filter(r => r && !String(r.id || '').startsWith('custom_'))
@@ -51,6 +58,10 @@ export function sanitizePublicSnapshot(snapshot) {
         delete copy.claimedByEmail;
         delete copy.passwordHash;
         delete copy.tokenHash;
+        const officialEmail = officialClubEmails.get(copy.clubId) || '';
+        if (copy.email && String(copy.email).trim().toLowerCase() !== officialEmail) {
+          delete copy.email;
+        }
         return copy;
       });
   }
