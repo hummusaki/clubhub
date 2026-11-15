@@ -75,7 +75,7 @@ export default function Sidebar({
     <>
       {/* ── Desktop Fixed Sidebar (lg+): Locked to Viewport, Never Scrolls With Page ── */}
       <aside
-        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] h-dvh bg-[var(--bg-sidebar)] border-r border-[var(--border)]
+        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] bg-[var(--bg-sidebar)] border-r border-[var(--border)]
           flex-col px-3.5 py-5 z-40 select-none overflow-y-auto"
       >
         {/* Brand Logo */}
@@ -212,18 +212,12 @@ export default function Sidebar({
       {/* ── Mobile Bottom Navigation Bar (< lg): 6 Core Destinations ── */}
       <nav
         aria-label="Mobile navigation"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--border)] select-none"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-sidebar)] border-t border-[var(--border)] select-none"
+        style={{
+          paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom, 0px))',
+        }}
       >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[var(--bg-sidebar)]/94 backdrop-blur-md"
-        />
-        <div
-          className="relative z-10 px-1.5 pt-1.5 grid grid-cols-6 gap-0.5"
-          style={{
-            paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom, 0px))',
-          }}
-        >
+        <div className="px-1.5 pt-1.5 grid grid-cols-6 gap-0.5">
           {navItems.map(item => {
             const isActive = activeNav === item.id
             const mobileLabel = MOBILE_NAV_LABELS[item.id] || item.label

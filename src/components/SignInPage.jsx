@@ -289,8 +289,9 @@ function LightWaveBackground({ dark }) {
     }
 
     function resize() {
-      width = window.innerWidth || 1200
-      height = window.innerHeight || 800
+      const parent = canvas.parentElement
+      width = (parent && parent.clientWidth) || window.innerWidth || 1200
+      height = (parent && parent.clientHeight) || window.innerHeight || 800
       dpr = Math.min(window.devicePixelRatio || 1, 2)
       canvas.width = Math.floor(width * dpr)
       canvas.height = Math.floor(height * dpr)
@@ -299,6 +300,22 @@ function LightWaveBackground({ dark }) {
     }
 
     resize()
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && canvas.parentElement
+        ? new ResizeObserver(() => resize())
+        : null
+    if (resizeObserver && canvas.parentElement) {
+      resizeObserver.observe(canvas.parentElement)
+    }
+
+    function toCanvasCoords(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect()
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      }
+    }
 
     function syncEntryPosition(x, y) {
       pointer.rawX = x
@@ -338,8 +355,7 @@ function LightWaveBackground({ dark }) {
 
     function onMouseMove(e) {
       const now = performance.now()
-      const x = e.clientX
-      const y = e.clientY
+      const { x, y } = toCanvasCoords(e.clientX, e.clientY)
       if (!pointer.inside) {
         syncEntryPosition(x, y)
       } else {
@@ -350,11 +366,12 @@ function LightWaveBackground({ dark }) {
     }
 
     function onMouseDown(e) {
+      const { x, y } = toCanvasCoords(e.clientX, e.clientY)
       if (!pointer.inside) {
-        syncEntryPosition(e.clientX, e.clientY)
+        syncEntryPosition(x, y)
       }
       pointer.lastEventAt = performance.now()
-      queueBufferedDroplet(e.clientX, e.clientY, 1)
+      queueBufferedDroplet(x, y, 1)
     }
 
     function onMouseOut(e) {
@@ -370,19 +387,21 @@ function LightWaveBackground({ dark }) {
     function onTouchStart(e) {
       if (!e.touches || e.touches.length === 0) return
       const t = e.touches[0]
-      syncEntryPosition(t.clientX, t.clientY)
+      const { x, y } = toCanvasCoords(t.clientX, t.clientY)
+      syncEntryPosition(x, y)
       pointer.lastEventAt = performance.now()
-      queueBufferedDroplet(t.clientX, t.clientY, 0.85)
+      queueBufferedDroplet(x, y, 0.85)
     }
 
     function onTouchMove(e) {
       if (!e.touches || e.touches.length === 0) return
       const t = e.touches[0]
+      const { x, y } = toCanvasCoords(t.clientX, t.clientY)
       if (!pointer.inside) {
-        syncEntryPosition(t.clientX, t.clientY)
+        syncEntryPosition(x, y)
       } else {
-        pointer.rawX = t.clientX
-        pointer.rawY = t.clientY
+        pointer.rawX = x
+        pointer.rawY = y
       }
       pointer.lastEventAt = performance.now()
     }
@@ -770,6 +789,7 @@ function LightWaveBackground({ dark }) {
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
+      if (resizeObserver) resizeObserver.disconnect()
       window.removeEventListener('resize', resize)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mousedown', onMouseDown)
@@ -786,7 +806,7 @@ function LightWaveBackground({ dark }) {
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 w-full h-full z-0"
+      className="pointer-events-none absolute inset-0 w-full h-full z-0"
     />
   )
 }
@@ -1321,7 +1341,7 @@ export default function SignInPage({
   }
 
   return (
-    <div className="relative min-h-dvh w-full flex flex-col bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 overflow-x-hidden">
+    <div className="relative min-h-screen w-full flex flex-col bg-[var(--bg)] text-[var(--text)] transition-colors duration-300 overflow-hidden">
       {hasPublishableKey && (
         <ClerkAuthBridge bridgeRef={clerkBridgeRef} onReady={handleClerkReady} />
       )}

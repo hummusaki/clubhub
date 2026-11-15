@@ -2,13 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
       content="ClubHub — Discover UCSC student organizations, track live club events & announcements, coordinate group availability, and sync schedules to Google & Apple Calendar."
     />
-    <meta name="theme-color" content="#DFDDD5" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#080C14" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#DFDDD5" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ClubHub" />
     <meta property="og:title" content="ClubHub — Campus Workspace" />
@@ -23,29 +22,41 @@
       content="All your UCSC campus clubs, live events, announcements, shared links, and group scheduling in one workspace."
     />
     <style>
-      html {
-        background-color: #DFDDD5;
-        color: #1F242C;
-        color-scheme: light;
-        min-height: 100%;
-      }
-      @media (prefers-color-scheme: dark) {
-        html:not(.light) {
+      @layer base {
+        html,
+        body,
+        #root {
+          background-color: #DFDDD5;
+          color: #1F242C;
+        }
+        html {
+          color-scheme: light;
+          min-height: 100%;
+        }
+        body,
+        #root {
+          min-height: 100vh;
+        }
+        @media (prefers-color-scheme: dark) {
+          html:not(.light),
+          html:not(.light) body,
+          html:not(.light) #root {
+            background-color: #080C14;
+            color: #F4F7FF;
+          }
+          html:not(.light) {
+            color-scheme: dark;
+          }
+        }
+        html.dark,
+        html.dark body,
+        html.dark #root {
           background-color: #080C14;
           color: #F4F7FF;
+        }
+        html.dark {
           color-scheme: dark;
         }
-      }
-      html.dark {
-        background-color: #080C14;
-        color: #F4F7FF;
-        color-scheme: dark;
-      }
-      body,
-      #root {
-        background-color: inherit;
-        color: inherit;
-        min-height: 100dvh;
       }
     </style>
     <script>

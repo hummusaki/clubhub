@@ -1886,7 +1886,7 @@ function MainDashboard({
   ])
 
   return (
-    <div className="min-h-dvh bg-[var(--bg)] text-[var(--text)]">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Floating Non-Shifting Toast Notifications */}
       <ToastViewport toast={toast} onDismiss={() => setToast(null)} />
 
@@ -2599,7 +2599,7 @@ function ClerkAppWrapper({
 
   if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
         <span className="text-xs font-semibold text-[var(--text-muted)]">
           Completing Google Sign-In…
@@ -2650,7 +2650,7 @@ function ClerkAppWrapper({
 
   if (!isLoaded && !loadTimedOut) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
         <span className="text-xs font-semibold text-[var(--text-muted)]">Loading ClubHub…</span>
       </div>

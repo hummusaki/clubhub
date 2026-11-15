@@ -6,18 +6,21 @@ import {
   fetchActionJSON,
   setApiSessionToken,
   getApiSessionToken,
-} from './client'
+} from './client.js'
 import {
   isSupabaseConfigured,
   getSupabaseAccessToken,
   signInOrSignUpWithSupabase,
   signOutSupabase,
-} from '../lib/supabaseClient'
+} from '../lib/supabaseClient.js'
 import {
   handleDirectWorkspaceAction,
   clearDirectUserProfileCache,
-} from './supabaseDirectWorkspace'
-import { handleDirectTasksAction, handleDirectPollAction } from './supabaseDirectTasksAndPolls'
+} from './supabaseDirectWorkspace.js'
+import {
+  handleDirectTasksAction,
+  handleDirectPollAction,
+} from './supabaseDirectTasksAndPolls.js'
 
 const permissionRevokedListeners = new Set()
 

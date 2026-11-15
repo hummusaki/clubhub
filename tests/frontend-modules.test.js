@@ -879,4 +879,76 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
     assert.equal(merged.matches[0].club.id, 'gdacollab');
     assert.equal(merged.matches[0].nextEvent?.id, 'ev_gda_jam');
   });
+
+  it('prevents unauthenticated /auth/me 401s, refreshes stale sessions on 401, and normalizes poll creation responses', async () => {
+    const prevWindow = globalThis.window;
+    const prevFetch = globalThis.fetch;
+    const calls = [];
+
+    try {
+      globalThis.window = {
+        location: {
+          hostname: 'localhost',
+          port: '3001',
+          origin: 'http://localhost:3001',
+          protocol: 'http:',
+        },
+      };
+
+      globalThis.fetch = async (url, init = {}) => {
+        const u = String(url);
+        calls.push({ url: u, method: init.method || 'GET', auth: init.headers?.Authorization || '' });
+        const jsonRes = (status, obj) => ({
+          ok: status >= 200 && status < 300,
+          status,
+          headers: new Map([['content-type', 'application/json']]),
+          json: async () => obj,
+        });
+
+        if (u.endsWith('/api/health')) {
+          return jsonRes(200, { status: 'ok' });
+        }
+        if (u.endsWith('/api/workspace/auth/sync-external')) {
+          return jsonRes(200, { ok: true, token: 'ch_sess_refreshed_token' });
+        }
+        if (u.endsWith('/api/scheduler/polls') && (init.method || 'GET') === 'POST') {
+          if (init.headers?.Authorization !== 'Bearer ch_sess_refreshed_token') {
+            return jsonRes(401, { error: 'Authentication required.' });
+          }
+          // Express returns top-level poll object without `.data` wrapper
+          return jsonRes(201, { id: 'poll_live_1', title: 'Board Sync', dates: ['2027-05-10'] });
+        }
+        return jsonRes(404, { error: 'Not found' });
+      };
+
+      const { setApiSessionToken } = await import('../src/api/client.js');
+      const { getWorkspaceMe, createVerifiedPoll } = await import('../src/api/workspaceClient.js');
+
+      // 1. Unauthenticated guest -> zero network requests to /api/workspace/auth/me
+      setApiSessionToken('');
+      const unauthRes = await getWorkspaceMe();
+      assert.equal(unauthRes.ok, false);
+      assert.equal(unauthRes.unauthenticated, true);
+      assert.equal(
+        calls.some(c => c.url.includes('/workspace/auth/me')),
+        false,
+        'getWorkspaceMe() must not hit /api/workspace/auth/me when no session or Clerk user exists'
+      );
+
+      // 2. Stale ch_sess_ token -> auto-refreshes via Clerk fallbackUser on 401 and normalizes res.data.id
+      setApiSessionToken('ch_sess_stale_after_restart');
+      const created = await createVerifiedPoll(
+        { title: 'Board Sync', dates: ['2027-05-10'] },
+        { id: 'user_clerk_test_1', email: 'officer@ucsc.edu', fullName: 'Test Officer' }
+      );
+      assert.equal(created.ok, true);
+      assert.equal(created.id, 'poll_live_1');
+      assert.equal(created.data?.id, 'poll_live_1');
+      assert.equal(created.poll?.id, 'poll_live_1');
+      setApiSessionToken('');
+    } finally {
+      globalThis.window = prevWindow;
+      globalThis.fetch = prevFetch;
+    }
+  });
 });
