@@ -7,7 +7,7 @@
       name="description"
       content="ClubHub — Discover UCSC student organizations, track live club events & announcements, coordinate group availability, and sync schedules to Google & Apple Calendar."
     />
-    <meta name="theme-color" content="#DFDDD5" />
+    <meta name="theme-color" content="#F8FAFD" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ClubHub" />
     <meta property="og:title" content="ClubHub — Campus Workspace" />
@@ -26,8 +26,8 @@
         html,
         body,
         #root {
-          background-color: #DFDDD5;
-          color: #1F242C;
+          background-color: #F8FAFD;
+          color: #1F1F1F;
         }
         html {
           color-scheme: light;
@@ -41,8 +41,8 @@
           html:not(.light),
           html:not(.light) body,
           html:not(.light) #root {
-            background-color: #080C14;
-            color: #F4F7FF;
+            background-color: #131314;
+            color: #E3E3E3;
           }
           html:not(.light) {
             color-scheme: dark;
@@ -51,8 +51,8 @@
         html.dark,
         html.dark body,
         html.dark #root {
-          background-color: #080C14;
-          color: #F4F7FF;
+          background-color: #131314;
+          color: #E3E3E3;
         }
         html.dark {
           color-scheme: dark;
@@ -136,7 +136,7 @@
           }
           var metas = document.querySelectorAll('meta[name="theme-color"]');
           for (var i = 0; i < metas.length; i++) {
-            metas[i].setAttribute('content', isDark ? '#080C14' : '#DFDDD5');
+            metas[i].setAttribute('content', isDark ? '#131314' : '#F8FAFD');
           }
           if (reduceMotion) {
             root.classList.add('reduce-motion');
@@ -153,7 +153,7 @@
     <link rel="apple-touch-icon" href="/clubhub-logo.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Roboto+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
     <title>ClubHub — Campus Workspace</title>
   </head>
   <body>

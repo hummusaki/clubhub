@@ -7,7 +7,7 @@ export const CLUB_CATEGORIES = [
     label: 'Tech & Science',
     shortLabel: 'Tech & Science',
     color: 'blue',
-    gradient: 'linear-gradient(135deg, var(--blue), #4B7BE5)',
+    gradient: '#1A73E8',
     order: 1,
   },
   {
@@ -15,7 +15,7 @@ export const CLUB_CATEGORIES = [
     label: 'Academic & Pre-Prof',
     shortLabel: 'Academic',
     color: 'teal',
-    gradient: 'linear-gradient(135deg, var(--teal), #3E9B92)',
+    gradient: '#00796B',
     order: 2,
   },
   {
@@ -23,7 +23,7 @@ export const CLUB_CATEGORIES = [
     label: 'Cultural & Identity',
     shortLabel: 'Cultural',
     color: 'purple',
-    gradient: 'linear-gradient(135deg, var(--purple), #8565C4)',
+    gradient: '#6750A4',
     order: 3,
   },
   {
@@ -31,7 +31,7 @@ export const CLUB_CATEGORIES = [
     label: 'Performing Arts',
     shortLabel: 'Performing Arts',
     color: 'red',
-    gradient: 'linear-gradient(135deg, var(--red), #D46B6B)',
+    gradient: '#D93025',
     order: 4,
   },
   {
@@ -39,7 +39,7 @@ export const CLUB_CATEGORIES = [
     label: 'Media & Visual Arts',
     shortLabel: 'Media & Arts',
     color: 'yellow',
-    gradient: 'linear-gradient(135deg, var(--yellow), #E09F2D)',
+    gradient: '#E37400',
     order: 5,
   },
   {
@@ -47,7 +47,7 @@ export const CLUB_CATEGORIES = [
     label: 'Service & Advocacy',
     shortLabel: 'Service',
     color: 'green',
-    gradient: 'linear-gradient(135deg, var(--green), #4CA868)',
+    gradient: '#1E8E3E',
     order: 6,
   },
   {
@@ -55,7 +55,7 @@ export const CLUB_CATEGORIES = [
     label: 'Greek Life',
     shortLabel: 'Greek Life',
     color: 'purple',
-    gradient: 'linear-gradient(135deg, #7C65E0, var(--blue))',
+    gradient: '#7E57C2',
     order: 7,
   },
   {
@@ -63,7 +63,7 @@ export const CLUB_CATEGORIES = [
     label: 'Gaming & Recreation',
     shortLabel: 'Gaming & Rec',
     color: 'blue',
-    gradient: 'linear-gradient(135deg, var(--green), var(--teal))',
+    gradient: '#1967D2',
     order: 8,
   },
   {
@@ -71,7 +71,7 @@ export const CLUB_CATEGORIES = [
     label: 'Faith & Spiritual',
     shortLabel: 'Faith',
     color: 'yellow',
-    gradient: 'linear-gradient(135deg, #E09F2D, var(--purple))',
+    gradient: '#F29900',
     order: 9,
   },
   {
@@ -79,7 +79,7 @@ export const CLUB_CATEGORIES = [
     label: 'Campus Community',
     shortLabel: 'Community',
     color: 'teal',
-    gradient: 'linear-gradient(135deg, var(--blue), var(--teal))',
+    gradient: '#00897B',
     order: 10,
   },
 ]

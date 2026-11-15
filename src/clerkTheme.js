@@ -1,7 +1,7 @@
 import { dark as clerkDarkTheme } from '@clerk/themes'
 
 /**
- * Custom styling for Clerk components matching ClubHub's Vivid Midnight & Warm Stone palette.
+ * Custom styling for Clerk components matching Google Material Design 3 Light & Dark tokens.
  */
 export function getClerkAppearance(isDark = false) {
   return {
@@ -14,14 +14,15 @@ export function getClerkAppearance(isDark = false) {
       unsafe_disableDevelopmentModeWarnings: true,
     },
     variables: {
-      colorPrimary: isDark ? '#4482FF' : '#3B6BE0',
-      colorText: isDark ? '#F4F7FF' : '#1F242C',
-      colorTextSecondary: isDark ? '#9FB1CE' : '#4E5664',
-      colorBackground: isDark ? '#172236' : '#EFECE6',
-      colorInputBackground: isDark ? '#131D2F' : '#D8D5CB',
-      colorInputText: isDark ? '#F4F7FF' : '#1F242C',
-      borderRadius: '16px',
-      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      colorPrimary: isDark ? '#A8C7FA' : '#0B57D0',
+      colorTextOnPrimaryBackground: isDark ? '#062E6F' : '#FFFFFF',
+      colorText: isDark ? '#E3E3E3' : '#1F1F1F',
+      colorTextSecondary: isDark ? '#C4C7C5' : '#444746',
+      colorBackground: isDark ? '#1E1F20' : '#FFFFFF',
+      colorInputBackground: isDark ? '#282A2C' : '#FFFFFF',
+      colorInputText: isDark ? '#E3E3E3' : '#1F1F1F',
+      borderRadius: '28px',
+      fontFamily: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     },
     elements: {
       rootBox: {
@@ -29,97 +30,95 @@ export function getClerkAppearance(isDark = false) {
         maxWidth: '440px',
       },
       card: {
-        backgroundColor: isDark ? '#172236' : '#EFECE6',
-        border: `1px solid ${isDark ? '#304770' : '#C4C0B4'}`,
-        borderRadius: '24px',
-        boxShadow: isDark
-          ? '0 20px 44px rgba(2, 5, 15, 0.7)'
-          : '0 16px 38px rgba(28, 31, 38, 0.11)',
+        backgroundColor: isDark ? '#1E1F20' : '#FFFFFF',
+        border: `1px solid ${isDark ? '#444746' : '#E1E3E1'}`,
+        borderRadius: '28px',
+        boxShadow: 'none',
         padding: '2.25rem 2rem',
       },
       headerTitle: {
+        fontFamily: "'Google Sans', 'Outfit', 'Roboto', sans-serif",
         fontSize: '24px',
-        fontWeight: '700',
-        color: isDark ? '#F4F7FF' : '#1F242C',
-        letterSpacing: '-0.02em',
+        fontWeight: '400',
+        color: isDark ? '#E3E3E3' : '#1F1F1F',
+        letterSpacing: '0',
       },
       headerSubtitle: {
-        fontSize: '13px',
-        color: isDark ? '#9FB1CE' : '#4E5664',
+        fontSize: '14px',
+        color: isDark ? '#C4C7C5' : '#444746',
         marginTop: '4px',
       },
       formFieldLabel: {
         fontSize: '12px',
-        fontWeight: '600',
-        color: isDark ? '#F4F7FF' : '#1F242C',
-        marginBottom: '5px',
+        fontWeight: '500',
+        color: isDark ? '#C4C7C5' : '#444746',
+        marginBottom: '6px',
       },
       formFieldInput: {
-        borderRadius: '12px',
-        backgroundColor: isDark ? '#131D2F' : '#D8D5CB',
-        border: `1px solid ${isDark ? '#233350' : '#CECBC0'}`,
-        color: isDark ? '#F4F7FF' : '#1F242C',
+        borderRadius: '8px',
+        backgroundColor: isDark ? '#1E1F20' : '#FFFFFF',
+        border: `1px solid ${isDark ? '#8E918F' : '#747775'}`,
+        color: isDark ? '#E3E3E3' : '#1F1F1F',
         fontSize: '14px',
         padding: '0.7rem 0.9rem',
-        transition: 'all 0.2s ease',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
         '&:focus': {
-          borderColor: isDark ? '#4482FF' : '#3B6BE0',
-          boxShadow: '0 0 0 3px rgba(59, 107, 224, 0.22)',
+          borderColor: isDark ? '#A8C7FA' : '#0B57D0',
+          boxShadow: `0 0 0 1px ${isDark ? '#A8C7FA' : '#0B57D0'}`,
         },
       },
       otpCodeFieldInput: {
-        borderRadius: '12px',
-        backgroundColor: isDark ? '#131D2F' : '#D8D5CB',
-        border: `1.5px solid ${isDark ? '#233350' : '#CECBC0'}`,
-        color: isDark ? '#F4F7FF' : '#1F242C',
+        borderRadius: '8px',
+        backgroundColor: isDark ? '#1E1F20' : '#FFFFFF',
+        border: `1px solid ${isDark ? '#8E918F' : '#747775'}`,
+        color: isDark ? '#E3E3E3' : '#1F1F1F',
         fontSize: '20px',
-        fontWeight: '700',
+        fontWeight: '500',
         height: '52px',
         '&:focus': {
-          borderColor: isDark ? '#4482FF' : '#3B6BE0',
-          boxShadow: '0 0 0 3px rgba(59, 107, 224, 0.22)',
+          borderColor: isDark ? '#A8C7FA' : '#0B57D0',
+          boxShadow: `0 0 0 1px ${isDark ? '#A8C7FA' : '#0B57D0'}`,
         },
       },
       formButtonPrimary: {
-        backgroundColor: isDark ? '#4482FF' : '#3B6BE0',
+        backgroundColor: isDark ? '#A8C7FA' : '#0B57D0',
+        color: isDark ? '#062E6F' : '#FFFFFF',
         borderRadius: '9999px',
         fontSize: '14px',
-        fontWeight: '600',
-        height: '42px',
+        fontWeight: '500',
+        height: '40px',
         textTransform: 'none',
-        boxShadow: '0 3px 12px rgba(59, 107, 224, 0.34)',
-        transition: 'all 0.2s ease',
+        boxShadow: 'none',
+        transition: 'background-color 0.15s ease, box-shadow 0.15s ease',
         '&:hover': {
-          backgroundColor: isDark ? '#3574F5' : '#2F5CCA',
-          boxShadow: '0 4px 16px rgba(59, 107, 224, 0.44)',
-          transform: 'translateY(-1px)',
-        },
-        '&:active': {
-          transform: 'translateY(0)',
+          backgroundColor: isDark ? '#BDD6FC' : '#0842A0',
+          boxShadow: isDark
+            ? '0 1px 2px rgba(0, 0, 0, 0.4)'
+            : '0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15)',
         },
       },
       footerActionLink: {
-        color: isDark ? '#8AB6FF' : '#2349A6',
-        fontWeight: '600',
+        color: isDark ? '#A8C7FA' : '#0B57D0',
+        fontWeight: '500',
         '&:hover': {
           textDecoration: 'underline',
         },
       },
       footerActionText: {
-        color: isDark ? '#9FB1CE' : '#4E5664',
+        color: isDark ? '#C4C7C5' : '#444746',
         fontSize: '13px',
       },
       formResendCodeLink: {
-        color: isDark ? '#8AB6FF' : '#2349A6',
-        fontWeight: '600',
+        color: isDark ? '#A8C7FA' : '#0B57D0',
+        fontWeight: '500',
       },
       identityPreview: {
-        backgroundColor: isDark ? '#131D2F' : '#D8D5CB',
-        border: `1px solid ${isDark ? '#233350' : '#CECBC0'}`,
-        borderRadius: '14px',
+        backgroundColor: isDark ? '#282A2C' : '#F0F4F9',
+        border: `1px solid ${isDark ? '#444746' : '#E1E3E1'}`,
+        borderRadius: '9999px',
       },
       identityPreviewText: {
-        color: isDark ? '#F4F7FF' : '#1F242C',
+        color: isDark ? '#E3E3E3' : '#1F1F1F',
       },
     },
   }
@@ -135,29 +134,30 @@ export function getUserButtonAppearance(isDark = false) {
       unsafe_disableDevelopmentModeWarnings: true,
     },
     variables: {
-      colorPrimary: isDark ? '#4482FF' : '#3B6BE0',
-      colorText: isDark ? '#F4F7FF' : '#1F242C',
-      colorBackground: isDark ? '#172236' : '#EFECE6',
-      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      colorPrimary: isDark ? '#A8C7FA' : '#0B57D0',
+      colorTextOnPrimaryBackground: isDark ? '#062E6F' : '#FFFFFF',
+      colorText: isDark ? '#E3E3E3' : '#1F1F1F',
+      colorBackground: isDark ? '#282A2C' : '#F0F4F9',
+      fontFamily: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     },
     elements: {
       userButtonAvatarBox: {
-        width: '34px',
-        height: '34px',
+        width: '32px',
+        height: '32px',
         borderRadius: '50%',
       },
       userButtonTrigger: {
         '&:focus': {
-          boxShadow: '0 0 0 2px #4482FF',
+          boxShadow: `0 0 0 2px ${isDark ? '#A8C7FA' : '#0B57D0'}`,
         },
       },
       userButtonPopoverCard: {
-        backgroundColor: isDark ? '#172236' : '#EFECE6',
-        border: `1px solid ${isDark ? '#304770' : '#C4C0B4'}`,
-        borderRadius: '20px',
+        backgroundColor: isDark ? '#282A2C' : '#F0F4F9',
+        border: `1px solid ${isDark ? '#444746' : '#E1E3E1'}`,
+        borderRadius: '24px',
         boxShadow: isDark
-          ? '0 18px 42px rgba(2, 5, 15, 0.68)'
-          : '0 16px 38px rgba(28, 31, 38, 0.13)',
+          ? '0 6px 16px 4px rgba(0, 0, 0, 0.5)'
+          : '0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3)',
       },
     },
   }

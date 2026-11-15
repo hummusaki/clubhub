@@ -9,7 +9,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/yAv8gS5sF",
-    "discordServerName": "3D Animated Short Film Club Discord"
+    "discordServerName": "3D Animated Short Film Club Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "8th Rank Society",
@@ -238,7 +239,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Association for Computing Machinery (ACM) Discord"
+    "discordServerName": "Association for Computing Machinery (ACM) Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Association for Women in Mathematics: Applied Math at UCSC",
@@ -361,7 +363,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/Udsx7FhXq",
-    "discordServerName": "Bioslugs Club at UCSC Discord"
+    "discordServerName": "Bioslugs Club at UCSC Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Black Student Union (BSU)",
@@ -619,7 +622,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/yZ88GzpqN",
-    "discordServerName": "Communication Club UCSC Discord"
+    "discordServerName": "Communication Club UCSC Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Community Unified Student Network (CUSN)",
@@ -676,7 +680,8 @@
     ],
     "iconUrl": "https://scontent-sjc6-1.cdninstagram.com/v/t51.82787-19/556867939_17923930518146567_4756716453038870814_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NDkuYzIifQ&_nc_ht=scontent-sjc6-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHlddPh9f2GDqQABzaus459uxIrJnDZTqExuaLDXQPI7sp359wY3XYjp6eTQpXXqo8&_nc_ohc=lnqISAHrvCoQ7kNvwHB_ymY&_nc_gid=rM5b4Q0osXmVhBeYWp0FTA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GGMhMSEHToNHuK0-AB5Ro3BpQANCbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRzl8hfYiPEQQuZpatc0BN1-wsG3bFfNdTw-PUl0IS25Q&oe=6AFFE2CD&_nc_sid=10d13b",
     "discord": "https://discord.gg/E7DcfYP",
-    "discordServerName": "Crown College Student Senate Discord"
+    "discordServerName": "Crown College Student Senate Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "CruzHacks",
@@ -688,7 +693,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/J4b33WVTba",
-    "discordServerName": "CruzHacks Discord"
+    "discordServerName": "CruzHacks Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Dance Club",
@@ -926,7 +932,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Girls Who Code Discord"
+    "discordServerName": "Girls Who Code Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Glocal Strategy Politics",
@@ -974,7 +981,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Google Developer Student Club at UCSC Discord"
+    "discordServerName": "Google Developer Student Club at UCSC Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
@@ -1508,7 +1516,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "NeurotechSC Discord"
+    "discordServerName": "NeurotechSC Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Newman Catholic Club",
@@ -1650,7 +1659,8 @@
     "sources": [
       "college_government"
     ],
-    "discordServerName": "Porter College Senate Discord"
+    "discordServerName": "Porter College Senate Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Pre-Dental Society",
@@ -1840,7 +1850,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Santa Cruz Artificial Intelligence Club (SCAI) Discord"
+    "discordServerName": "Santa Cruz Artificial Intelligence Club (SCAI) Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Santa Cruz Fighting Game Community",
@@ -2062,7 +2073,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Slug Linux User Group Discord"
+    "discordServerName": "Slug Linux User Group Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
@@ -2094,7 +2106,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Slug Security Discord"
+    "discordServerName": "Slug Security Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Slug' n Boots",
@@ -2119,7 +2132,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/cnuWECSAHn",
-    "discordServerName": "Slugbotics Discord"
+    "discordServerName": "Slugbotics Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "SlugMUN",
@@ -2145,7 +2159,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/ntSYMR7hKR",
-    "discordServerName": "Slugs on Two Wheels (SlugWerks) Discord"
+    "discordServerName": "Slugs on Two Wheels (SlugWerks) Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "Slugs On Wheels UCSC",
@@ -2157,7 +2172,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/sqDScpu7Kn",
-    "discordServerName": "Slugs On Wheels UCSC Discord"
+    "discordServerName": "Slugs On Wheels UCSC Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "SlugSat",
@@ -2172,7 +2188,8 @@
       "baskin_engineering",
       "instagram_discovery"
     ],
-    "discordServerName": "SlugSat Discord"
+    "discordServerName": "SlugSat Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "SlugSpeak",
@@ -2276,7 +2293,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "Society of Women Engineers (SWESLUGS) Discord"
+    "discordServerName": "Society of Women Engineers (SWESLUGS) Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "SOMOS Latinx en medicina",
@@ -2608,7 +2626,8 @@
     "sources": [
       "baskin_engineering"
     ],
-    "discordServerName": "UCSC Amateur Radio Club Discord"
+    "discordServerName": "UCSC Amateur Radio Club Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "UCSC Anthro Society",
@@ -2721,7 +2740,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/wxSSzQjsKg",
-    "discordServerName": "UCSC Blueprint Discord"
+    "discordServerName": "UCSC Blueprint Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "UCSC Business Society",
@@ -2796,7 +2816,8 @@
       "baskin_engineering",
       "instagram_discovery"
     ],
-    "discordServerName": "UCSC Computer Networking Student Association (CNSA) Discord"
+    "discordServerName": "UCSC Computer Networking Student Association (CNSA) Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "UCSC Cosplay Club",
@@ -2808,7 +2829,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/gCEYape423",
-    "discordServerName": "UCSC Cosplay Club Discord"
+    "discordServerName": "UCSC Cosplay Club Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "UCSC Costco Club",
@@ -2830,7 +2852,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/jV3HGYkae5",
-    "discordServerName": "UCSC Crochet & Fiber Arts Club Discord"
+    "discordServerName": "UCSC Crochet & Fiber Arts Club Discord",
+    "discordOnlineCount": 0
   },
   {
     "name": "UCSC Cross Country Club",
@@ -2845,7 +2868,8 @@
       "instagram_discovery"
     ],
     "discord": "https://discord.gg/YHrJQ38tmN",
-    "discordServerName": "UCSC Cross Country Club Discord"
+    "discordServerName": "UCSC Cross Country Club Discord",
+    "discordOnlineCount": 0
   },
   {
     "id": "noig_ucsc_current_athletes_club",

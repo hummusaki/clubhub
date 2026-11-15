@@ -4,128 +4,193 @@
   --breakpoint-xs: 420px;
 }
 
-/* ═══════════════════════════════════════════════
-   ClubHub — Warm Stone (Low-Glare Light) & Vivid Midnight Palette
-   ═══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   ClubHub — Google Material Design 3 & Google Workspace Token System
+   Light Mode: Cool Workspace Shell (#F8FAFD) + Pure Surface (#FFFFFF)
+   Dark Mode:  Neutral Charcoal (#131314) + Tonal Surface Elevation
+   ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
   color-scheme: light;
-  /* Surfaces — calm, low-glare warm stone canvas & stepped ivory-stone tiles */
-  --bg:                #DFDDD5;
-  --bg-sidebar:        #E3E0D8;
-  --bg-card:           #E8E6DF;
-  --bg-tile:           #EFECE6;
-  --bg-tile-hover:     #F4F2EC;
-  --bg-surface:        #D8D5CB;
-  --bg-subtle:         #CECBC1;
-  --bg-glass:          rgba(232, 230, 223, 0.88);
-  --switch-thumb:      #F6F4EE;
 
-  --border:            #CECBC0;
-  --border-tile:       #C4C0B4;
-  --border-subtle:     #D7D4CB;
-  --border-strong:     #B1ACA0;
+  /* M3 Surface Hierarchy */
+  --md-surface-shell:             #F8FAFD;
+  --md-surface:                   #FFFFFF;
+  --md-surface-container-lowest:  #FFFFFF;
+  --md-surface-container-low:     #F8FAFD;
+  --md-surface-container:         #F0F4F9;
+  --md-surface-container-high:    #E9EEF6;
+  --md-surface-container-highest: #DDE3EA;
 
-  /* Text — soft deep charcoal-slate with high readability and zero harshness */
-  --text:              #1F242C;
-  --text-muted:        #4E5664;
-  --text-light:        #707989;
+  /* M3 Outlines & Ink */
+  --md-outline-variant:           #E1E3E1;
+  --md-outline:                   #747775;
+  --md-on-surface:                #1F1F1F;
+  --md-on-surface-variant:        #444746;
+  --md-outline-ink:               #5E5E5E;
 
-  /* Accents — stone-harmonized low-glare tints & high-contrast inks */
-  --blue:              #3B6BE0;
-  --blue-ink:          #2349A6;
-  --blue-light:        #D7E0F2;
+  /* M3 Inverse (Snackbars & Tooltips) */
+  --md-inverse-surface:           #303030;
+  --md-inverse-on-surface:        #F2F2F2;
+  --md-inverse-primary:           #A8C7FA;
 
-  --red:               #C84848;
-  --red-ink:           #9B2B2B;
-  --red-light:         #EEDADA;
+  /* M3 Secondary Tonal Container (Active Nav Pills, Tonal Buttons, Selected Chips) */
+  --secondary-container:          #C2E7FF;
+  --on-secondary-container:       #001D35;
 
-  --yellow:            #C78214;
-  --yellow-ink:        #805004;
-  --yellow-light:      #EFE3C8;
+  /* Backwards-Compatible Semantic Surface Aliases */
+  --bg:                var(--md-surface-shell);
+  --bg-sidebar:        var(--md-surface-shell);
+  --bg-card:           var(--md-surface);
+  --bg-tile:           #F8FAFD;
+  --bg-tile-hover:     #F0F4F9;
+  --bg-surface:        var(--md-surface-container);
+  --bg-subtle:         var(--md-surface-container-high);
+  --bg-glass:          rgba(248, 250, 253, 0.94);
+  --switch-thumb:      #FFFFFF;
 
-  --green:             #1A835F;
-  --green-ink:         #115E43;
-  --green-light:       #D4EAE0;
+  --border:            var(--md-outline-variant);
+  --border-tile:       #E1E3E1;
+  --border-subtle:     #EDF1F7;
+  --border-strong:     var(--md-outline);
 
-  --purple:            #7056D4;
-  --purple-ink:        #4B32A3;
-  --purple-light:      #E1DCF2;
+  --text:              var(--md-on-surface);
+  --text-muted:        var(--md-on-surface-variant);
+  --text-light:        var(--md-outline-ink);
 
-  --teal:              #1B8E85;
-  --teal-ink:          #0F5E58;
-  --teal-light:        #D3EAE7;
+  /* Google M3 Semantic Accents (40-tone Primary + 90-tone Container + 10-tone Container Ink) */
+  --blue:              #0B57D0;
+  --on-blue:           #FFFFFF;
+  --blue-ink:          #0842A0;
+  --blue-light:        #D3E3FD;
 
-  /* Shadows, specular highlights & radii */
-  --badge-highlight:   rgba(255, 252, 245, 0.38);
-  --shadow-xs:         0 1px 2px rgba(28, 31, 38, 0.05);
-  --shadow-tile:       inset 0 1px 0 rgba(255, 252, 246, 0.45), 0 1px 3px rgba(28, 31, 38, 0.06), 0 4px 10px -3px rgba(28, 31, 38, 0.05);
-  --shadow-tile-hover: inset 0 1px 0 rgba(255, 252, 246, 0.6), 0 8px 18px -5px rgba(28, 31, 38, 0.11), 0 2px 5px -1px rgba(28, 31, 38, 0.05);
-  --shadow:            inset 0 1px 0 rgba(255, 252, 246, 0.32), 0 1px 3px rgba(28, 31, 38, 0.05), 0 6px 16px -4px rgba(28, 31, 38, 0.05);
-  --shadow-md:         inset 0 1px 0 rgba(255, 252, 246, 0.38), 0 10px 26px -6px rgba(28, 31, 38, 0.09), 0 3px 8px -2px rgba(28, 31, 38, 0.04);
-  --shadow-lg:         inset 0 1px 0 rgba(255, 252, 246, 0.42), 0 18px 38px -8px rgba(28, 31, 38, 0.13), 0 4px 12px -2px rgba(28, 31, 38, 0.05);
-  --radius:            18px;
-  --radius-sm:         13px;
+  --red:               #B3261E;
+  --on-red:            #FFFFFF;
+  --red-ink:           #8C1D18;
+  --red-light:         #F9DEDC;
+
+  --yellow:            #B06000;
+  --on-yellow:         #FFFFFF;
+  --yellow-ink:        #753400;
+  --yellow-light:      #FFEFD1;
+
+  --green:             #146C2E;
+  --on-green:          #FFFFFF;
+  --green-ink:         #0F5223;
+  --green-light:       #C4EED0;
+
+  --purple:            #65558F;
+  --on-purple:         #FFFFFF;
+  --purple-ink:        #4F378B;
+  --purple-light:      #EADDFF;
+
+  --teal:              #006A6A;
+  --on-teal:           #FFFFFF;
+  --teal-ink:          #004F4F;
+  --teal-light:        #BCEBEB;
+
+  /* M3 Elevation Levels (Zero glossy bevels) */
+  --badge-highlight:   transparent;
+  --shadow-xs:         0 1px 2px rgba(60, 64, 67, 0.12);
+  --shadow-tile:       none;
+  --shadow-tile-hover: 0 1px 2px rgba(60, 64, 67, 0.24), 0 1px 3px 1px rgba(60, 64, 67, 0.12);
+  --shadow:            none;
+  --shadow-md:         0 1px 2px rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  --shadow-lg:         0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+  /* M3 Shape Scale */
+  --radius-xl:         28px;
+  --radius-sheet:      24px;
+  --radius:            16px;
+  --radius-sm:         12px;
   --radius-xs:         8px;
   --radius-pill:       9999px;
 }
 
-/* ── Dark mode (vivid deep midnight with punchy jewel/electric accents & crisp stepped tiles) ── */
+/* ── Dark Mode (Google M3 Neutral Charcoal + Tonal Elevation + Desaturated 80-Tone Accents) ── */
 .dark {
   color-scheme: dark;
-  --bg:                #080C14;
-  --bg-sidebar:        #0F1624;
-  --bg-card:           #0F1624;
-  --bg-tile:           #172236;
-  --bg-tile-hover:     #1E2C45;
-  --bg-surface:        #131D2F;
-  --bg-subtle:         #1E2D47;
-  --bg-glass:          rgba(15, 22, 36, 0.88);
-  --switch-thumb:      #FFFFFF;
 
-  --border:            #233350;
-  --border-tile:       #304770;
-  --border-subtle:     #1D2B44;
-  --border-strong:     #47669C;
+  --md-surface-shell:             #131314;
+  --md-surface:                   #1E1F20;
+  --md-surface-container-lowest:  #0E0E0F;
+  --md-surface-container-low:     #1E1F20;
+  --md-surface-container:         #282A2C;
+  --md-surface-container-high:    #333537;
+  --md-surface-container-highest: #37393B;
 
-  --text:              #F4F7FF;
-  --text-muted:        #9FB1CE;
-  --text-light:        #6D82A6;
+  --md-outline-variant:           #444746;
+  --md-outline:                   #8E918F;
+  --md-on-surface:                #E3E3E3;
+  --md-on-surface-variant:        #C4C7C5;
+  --md-outline-ink:               #8E918F;
 
-  --blue:              #4482FF;
-  --blue-ink:          #8AB6FF;
-  --blue-light:        rgba(68, 130, 255, 0.21);
+  --md-inverse-surface:           #E3E3E3;
+  --md-inverse-on-surface:        #1F1F1F;
+  --md-inverse-primary:           #0B57D0;
 
-  --red:               #FF5A6B;
-  --red-ink:           #FF99A4;
-  --red-light:         rgba(255, 90, 107, 0.21);
+  --secondary-container:          #004A77;
+  --on-secondary-container:       #C2E7FF;
 
-  --yellow:            #FFB224;
-  --yellow-ink:        #FFD46B;
-  --yellow-light:      rgba(255, 178, 36, 0.20);
+  --bg:                var(--md-surface-shell);
+  --bg-sidebar:        var(--md-surface-shell);
+  --bg-card:           var(--md-surface);
+  --bg-tile:           var(--md-surface-container);
+  --bg-tile-hover:     var(--md-surface-container-high);
+  --bg-surface:        var(--md-surface-container);
+  --bg-subtle:         var(--md-surface-container-highest);
+  --bg-glass:          rgba(19, 19, 20, 0.94);
+  --switch-thumb:      #062E6F;
 
-  --green:             #15C47E;
-  --green-ink:         #62F5B7;
-  --green-light:       rgba(21, 196, 126, 0.21);
+  --border:            var(--md-outline-variant);
+  --border-tile:       #444746;
+  --border-subtle:     #333537;
+  --border-strong:     var(--md-outline);
 
-  --purple:            #9D6BFF;
-  --purple-ink:        #C9ACFF;
-  --purple-light:      rgba(157, 107, 255, 0.22);
+  --text:              var(--md-on-surface);
+  --text-muted:        var(--md-on-surface-variant);
+  --text-light:        var(--md-outline-ink);
 
-  --teal:              #19D4C0;
-  --teal-ink:          #68F7E6;
-  --teal-light:        rgba(25, 212, 192, 0.20);
+  --blue:              #A8C7FA;
+  --on-blue:           #062E6F;
+  --blue-ink:          #D3E3FD;
+  --blue-light:        #0842A0;
 
-  --badge-highlight:   rgba(255, 255, 255, 0.16);
-  --shadow-xs:         0 1px 2px rgba(2, 5, 15, 0.45);
-  --shadow-tile:       inset 0 1px 0 rgba(255, 255, 255, 0.065), 0 4px 14px -2px rgba(2, 5, 15, 0.58), 0 1px 3px rgba(2, 5, 15, 0.42);
-  --shadow-tile-hover: inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 10px 24px -4px rgba(2, 5, 15, 0.72), 0 0 0 1px rgba(68, 130, 255, 0.2);
-  --shadow:            inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 4px 16px -2px rgba(2, 5, 15, 0.52), 0 1px 3px rgba(2, 5, 15, 0.36);
-  --shadow-md:         inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 30px -4px rgba(2, 5, 15, 0.66), 0 4px 10px rgba(2, 5, 15, 0.4);
-  --shadow-lg:         inset 0 1px 0 rgba(255, 255, 255, 0.075), 0 22px 48px -8px rgba(2, 5, 15, 0.78);
+  --red:               #F2B8B5;
+  --on-red:            #601410;
+  --red-ink:           #F9DEDC;
+  --red-light:         #601410;
+
+  --yellow:            #FDD663;
+  --on-yellow:         #3E2700;
+  --yellow-ink:        #FFEFD1;
+  --yellow-light:      #5B3F00;
+
+  --green:             #6DD58C;
+  --on-green:          #0A3818;
+  --green-ink:         #C4EED0;
+  --green-light:       #0F5223;
+
+  --purple:            #D0BCFF;
+  --on-purple:         #381E72;
+  --purple-ink:        #EADDFF;
+  --purple-light:      #4F378B;
+
+  --teal:              #80D5D4;
+  --on-teal:           #003737;
+  --teal-ink:          #BCEBEB;
+  --teal-light:        #004F4F;
+
+  --badge-highlight:   transparent;
+  --shadow-xs:         none;
+  --shadow-tile:       none;
+  --shadow-tile-hover: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow:            none;
+  --shadow-md:         0 2px 6px 2px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-lg:         0 6px 16px 4px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
-/* ── Base ── */
+/* ── Base Typography & Reset ── */
 @layer base {
   * {
     box-sizing: border-box;
@@ -142,7 +207,7 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background-color: var(--bg);
     background-image: none;
     color: var(--text);
@@ -151,7 +216,15 @@
     overflow-x: clip;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: 'Google Sans', 'Outfit', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: 0;
   }
 
   #root {
@@ -160,70 +233,78 @@
     min-height: 100vh;
     overflow-x: clip;
     background-color: var(--bg);
-    background-image: radial-gradient(ellipse 90% 50% at 50% -14%, rgba(59, 107, 224, 0.032), transparent 65%);
+    background-image: none;
   }
 
   html.dark #root {
-    background-image:
-      radial-gradient(ellipse 80% 48% at 18% -8%, rgba(68, 130, 255, 0.14), transparent 60%),
-      radial-gradient(ellipse 70% 44% at 84% -6%, rgba(157, 107, 255, 0.11), transparent 56%);
+    background-image: none;
   }
 
-  /* Only enable smooth color transitions AFTER initial mount so page load never flashes white */
+  /* Enable smooth color transitions ONLY after initial paint so load never flashes */
   html.theme-ready body,
   html.theme-ready #root {
-    transition: background-color 0.25s ease, color 0.25s ease;
+    transition: background-color 0.2s cubic-bezier(0.2, 0, 0, 1), color 0.2s cubic-bezier(0.2, 0, 0, 1);
   }
 
-  /* Prevent mobile form controls from stretching containers or showing unwanted scrollbars */
   input,
   select,
   textarea {
     max-width: 100%;
     min-width: 0;
+    font-family: inherit;
   }
 
   input:not([type="checkbox"]):not([type="radio"]):not(.border-none):focus-visible,
   select:not(.border-none):focus-visible,
   textarea:not(.border-none):focus-visible {
     border-color: var(--blue);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 16%, transparent);
+    box-shadow: 0 0 0 1px var(--blue);
+    outline: none;
   }
 
   button:focus-visible,
   a:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--blue) 65%, transparent);
+    outline: 2px solid var(--blue);
     outline-offset: 2px;
   }
 
   ::selection {
-    background: var(--blue-light);
-    color: var(--blue-ink);
+    background: var(--secondary-container);
+    color: var(--on-secondary-container);
   }
 }
 
 .font-mono-num {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom scrollbars ONLY on desktop pointer devices — never force scrollbars onto mobile layouts */
+/* Custom scrollbars ONLY on desktop pointer devices */
 @media (hover: hover) and (pointer: fine) {
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-corner { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-light); }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--md-on-surface-variant) 32%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--md-on-surface-variant) 54%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
 }
 
-/* ── Animations ── */
+/* ── Google M3 Standard Easing Animations ── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-in,
 .view-enter {
-  animation: fadeInUp 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  animation: fadeInUp 0.16s cubic-bezier(0.2, 0, 0, 1);
 }
 
 html.reduce-motion *,
@@ -236,72 +317,96 @@ html.reduce-motion .view-enter {
   scroll-behavior: auto !important;
 }
 
-/* ── Distinct Elevated Content Tiles ── */
+/* ── Material 3 Surface Containers, Controls & Dialogs ── */
 @layer components {
   .content-tile {
     background-color: var(--bg-tile);
     border: 1px solid var(--border-tile);
-    box-shadow: var(--shadow-tile);
+    border-radius: var(--radius-sm);
     transition:
-      background-color 0.2s ease,
-      border-color 0.2s ease,
-      box-shadow 0.2s ease;
-  }
-
-  .content-tile:hover {
-    background-color: var(--bg-tile-hover);
-    border-color: var(--border-strong);
-    box-shadow: var(--shadow-tile-hover);
+      background-color 0.15s cubic-bezier(0.2, 0, 0, 1),
+      border-color 0.15s cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 0.15s cubic-bezier(0.2, 0, 0, 1);
   }
 
   .content-tile-interactive {
     transition:
-      background-color 0.2s ease,
-      border-color 0.2s ease,
-      box-shadow 0.2s ease,
-      transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      background-color 0.15s cubic-bezier(0.2, 0, 0, 1),
+      border-color 0.15s cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 0.15s cubic-bezier(0.2, 0, 0, 1);
   }
 
   .content-tile-interactive:hover {
-    transform: translateY(-1.5px);
+    background-color: var(--bg-tile-hover);
+    border-color: color-mix(in srgb, var(--md-outline) 55%, var(--border-tile));
   }
 
-  /* Skip browser layout & paint only for below-the-fold items so initial viewport tiles never resize mid-animation */
   .feed-tile-virtual:nth-child(n + 10) {
     content-visibility: auto;
     contain-intrinsic-size: auto 180px;
   }
 
-  /* Unified Segmented Control Track & Buttons */
+  /* M3 State Layer Utility (8% hover, 12% active) */
+  .md-state-layer {
+    position: relative;
+    overflow: hidden;
+  }
+  .md-state-layer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .md-state-layer:hover:not(:disabled)::after {
+    opacity: 0.08;
+  }
+  .md-state-layer:active:not(:disabled)::after {
+    opacity: 0.12;
+  }
+
+  /* M3 Segmented Button Track */
   .segmented-track {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    border-radius: 0.75rem;
-    background-color: var(--bg-surface);
-    border: 1px solid var(--border);
+    padding: 0;
+    border-radius: var(--radius-pill);
+    background-color: transparent;
+    border: 1px solid var(--md-outline);
+    overflow: hidden;
   }
 
-  /* Unified Modal Backdrop & Panel */
+  .segmented-track > button {
+    border-radius: 0 !important;
+  }
+  .segmented-track > button + button {
+    border-left: 1px solid var(--md-outline) !important;
+  }
+
+  /* M3 Scrim & 28dp Dialog Surface */
   .modal-backdrop {
-    background-color: rgba(8, 12, 20, 0.54);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background-color: rgba(0, 0, 0, 0.32);
   }
 
   .modal-panel {
     background-color: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
+  }
+  .dark .modal-panel {
+    background-color: var(--md-surface-container-high);
+    border-color: var(--md-outline-variant);
   }
 
   /* Mobile horizontal scroll rail that wraps naturally on tablet/desktop */
   .mobile-pill-rail {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 0.5rem;
     max-width: 100%;
     min-width: 0;
     overflow-x: auto;
@@ -318,13 +423,9 @@ html.reduce-motion .view-enter {
   }
 }
 
-html.reduce-motion .content-tile-interactive:hover {
-  transform: none !important;
-}
-
 /* ── Compact Card Density Global Tokens ── */
 html.compact-cards {
-  --radius: 14px;
+  --radius: 12px;
   --radius-sm: 10px;
 }
 

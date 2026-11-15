@@ -93,6 +93,10 @@ async function main() {
       DELETE FROM dictionary_store WHERE clubId LIKE 'demo_%' OR clubId = 'media' OR key LIKE 'club:demo_%' OR key = 'club:media';
     `);
   }
+  db.exec(`
+    DELETE FROM dictionary_store WHERE clubId IN (SELECT id FROM clubs WHERE orgStatus IN ('suspended', 'interim_suspension', 'dismissed'));
+    DELETE FROM clubs WHERE orgStatus IN ('suspended', 'interim_suspension', 'dismissed');
+  `);
   db.exec(`DELETE FROM events WHERE start < '2024-01-01' OR start > '2030-01-01';`);
 
   // 5. Export updated public/clubhub-data.json snapshot

@@ -120,6 +120,10 @@ async function main() {
       DELETE FROM dictionary_store WHERE clubId LIKE 'demo_%' OR clubId = 'media' OR key LIKE 'club:demo_%' OR key = 'club:media';
     `);
   }
+  db.exec(`
+    DELETE FROM dictionary_store WHERE clubId IN (SELECT id FROM clubs WHERE orgStatus IN ('suspended', 'interim_suspension', 'dismissed'));
+    DELETE FROM clubs WHERE orgStatus IN ('suspended', 'interim_suspension', 'dismissed');
+  `);
 
   // Prune bogus historical dates, deadlines, campaigns, recaps, cancellations, and non-events on every 2-hour sync
   db.exec(`

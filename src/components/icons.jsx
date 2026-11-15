@@ -6,9 +6,9 @@
 
 // ── 1. Navigation & Section Duotone Icons ────────────────────────────
 
-export function NavIcon({ name, active = false, size = 19 }) {
-  const fillOpacity = active ? 0.24 : 0.12
-  const strokeWidth = active ? 2.1 : 1.75
+export function NavIcon({ name, active = false, size = 20 }) {
+  const fillOpacity = active ? 0.22 : 0
+  const strokeWidth = active ? 2.05 : 1.75
 
   switch (name) {
     case 'LayoutGrid':

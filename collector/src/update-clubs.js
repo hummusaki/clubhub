@@ -800,9 +800,19 @@ export async function updateClubsCatalog({
   goslugsSubpagesOverride = null,
   collegesGovHtmlOverride = null,
   igCandidatesOverride = null,
+  snapshotOverride = null,
   crawlDirectoryWebsites = null,
   clubsFilePath = CLUBS_FILE,
 } = {}) {
+  const hasAnyFixtureOverride = Boolean(
+    htmlOverride ||
+      baskinHtmlOverride ||
+      dserecJsonOverride ||
+      goslugsSubpagesOverride ||
+      collegesGovHtmlOverride ||
+      igCandidatesOverride ||
+      snapshotOverride
+  )
   const isSingleFixtureMode =
     Boolean(htmlOverride) &&
     !baskinHtmlOverride &&
@@ -969,21 +979,29 @@ export async function updateClubsCatalog({
     )
 
     // 5a. Scan cached snapshot captions & bios for @mentioned UCSC clubs
-    for (const snapPath of [
-      path.join(REPO_ROOT, 'public', 'clubhub-data.json'),
-      path.join(ROOT, 'output', 'clubhub-data.json'),
-    ]) {
-      if (fs.existsSync(snapPath)) {
-        try {
-          const snap = JSON.parse(fs.readFileSync(snapPath, 'utf8'))
-          const mentionClubs = discoverMentionsFromSnapshot(snap, knownHandles)
-          if (mentionClubs.length > 0) {
-            rawDiscovered.push(...mentionClubs)
-            for (const mc of mentionClubs) knownHandles.add(mc.instagram)
+    if (snapshotOverride && typeof snapshotOverride === 'object') {
+      const mentionClubs = discoverMentionsFromSnapshot(snapshotOverride, knownHandles)
+      if (mentionClubs.length > 0) {
+        rawDiscovered.push(...mentionClubs)
+        for (const mc of mentionClubs) knownHandles.add(mc.instagram)
+      }
+    } else if (!hasAnyFixtureOverride && clubsFilePath === CLUBS_FILE) {
+      for (const snapPath of [
+        path.join(REPO_ROOT, 'public', 'clubhub-data.json'),
+        path.join(ROOT, 'output', 'clubhub-data.json'),
+      ]) {
+        if (fs.existsSync(snapPath)) {
+          try {
+            const snap = JSON.parse(fs.readFileSync(snapPath, 'utf8'))
+            const mentionClubs = discoverMentionsFromSnapshot(snap, knownHandles)
+            if (mentionClubs.length > 0) {
+              rawDiscovered.push(...mentionClubs)
+              for (const mc of mentionClubs) knownHandles.add(mc.instagram)
+            }
+            break
+          } catch {
+            // ignore unreadable snapshot
           }
-          break
-        } catch {
-          // ignore unreadable snapshot
         }
       }
     }
