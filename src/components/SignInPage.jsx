@@ -22,6 +22,10 @@ const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
 const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
 const STORED_CLERK_KEY = 'clubhub_clerk_publishable_key'
 
+// Support & Help links (e.g. Google Forms link for issue reporting)
+const SUPPORT_FORM_URL = 'https://forms.gle/ZmD1cq6mLFFLxBeB8'
+const SUPPORT_EMAIL = 'support@clubhub.ucsc.edu'
+
 function getRegisteredEmailAccounts() {
   try {
     return JSON.parse(localStorage.getItem(EMAIL_ACCOUNTS_KEY) || '{}')
@@ -397,7 +401,7 @@ function LightWaveBackground({ dark }) {
           const harmonic =
             Math.sin(u * Math.PI * 2 * w.freq + elapsed * w.speed + w.phase) * baseAmp +
             Math.cos(u * Math.PI * 2 * (w.freq * 0.58) - elapsed * (w.speed * 0.68) + w.phase) *
-              (baseAmp * 0.38)
+            (baseAmp * 0.38)
 
           ptsX[i] = x
           ptsY[i] = baseY + harmonic + w.disp[i]
@@ -527,7 +531,7 @@ export default function SignInPage({
   useEffect(() => {
     const clientId = getEffectiveGoogleClientId()
     if (clientId) {
-      loadGoogleGsiScript().catch(() => {})
+      loadGoogleGsiScript().catch(() => { })
     }
   }, [])
 
@@ -813,8 +817,8 @@ export default function SignInPage({
       setSubmitting(false)
       setError(
         err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
-          'Invalid verification code. Please try again.'
+        err?.errors?.[0]?.message ||
+        'Invalid verification code. Please try again.'
       )
     }
   }
@@ -944,8 +948,8 @@ export default function SignInPage({
             setSubmitting(false)
             setError(
               err?.errors?.[0]?.longMessage ||
-                err?.errors?.[0]?.message ||
-                'New accounts require a stronger password (at least 8 characters).'
+              err?.errors?.[0]?.message ||
+              'New accounts require a stronger password (at least 8 characters).'
             )
             return
           }
@@ -1327,6 +1331,33 @@ export default function SignInPage({
                   </form>
                 </>
               )}
+
+              {/* Card Footer: Support Email & Issue Form Button */}
+              <div className="pt-3 border-t border-[var(--border)] text-center text-xs text-[var(--text-muted)] space-y-2">
+                <p className="text-[12px] text-[var(--text-light)]">
+                  Need help? Contact{' '}
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="font-medium text-[var(--blue-ink)] hover:underline"
+                  >
+                    {SUPPORT_EMAIL}
+                  </a>
+                </p>
+
+                <div>
+                  <a
+                    href={SUPPORT_FORM_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold
+                      bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)]
+                      hover:border-[var(--blue)] text-[var(--text)] transition-colors shadow-2xs no-underline"
+                  >
+                    <span>Submit Issue Form</span>
+                    <ExternalLink size={12} className="text-[var(--text-muted)]" />
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
