@@ -81,14 +81,14 @@ export default function AiClubAgentModal({
         onClick={() => setIsOpen(true)}
         title="Ask AI Club Matchmaker: Type interests to find clubs"
         aria-label="Open AI Club Matchmaker"
-        className="flex items-center gap-1.5 px-3 min-h-[42px] rounded-xl
-          bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)]
-          text-xs font-semibold text-[var(--text)] hover:text-[var(--blue-ink)]
+        className="flex items-center gap-1.5 px-3 sm:px-3.5 min-h-[42px] rounded-xl
+          bg-[var(--blue-light)] border border-[var(--blue)]/30 hover:border-[var(--blue)]
+          text-xs font-bold text-[var(--blue-ink)] hover:opacity-95
           transition-all shadow-2xs hover:shadow-xs cursor-pointer shrink-0"
       >
         <Sparkles size={15} className="text-[var(--blue)] animate-pulse" />
         <span className="hidden sm:inline">AI Matchmaker</span>
-        <span className="sm:hidden">AI</span>
+        <span className="sm:hidden">AI Agent</span>
       </button>
 
       {/* ── AI Club Matchmaker Modal ── */}
