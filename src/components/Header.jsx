@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, CheckCheck, Menu, Moon, Sun, ArrowLeft } from 'lucide-react'
+import { Bell, CheckCheck, Menu, Moon, Sun, ArrowLeft, LogOut } from 'lucide-react'
 import { UserButton } from '@clerk/react'
-import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, cleanText } from './ui'
+import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, Avatar, cleanText } from './ui'
 import { AnnouncementTypeIcon } from './icons'
 import { announcements as initialAnnouncements } from '../data/sampleData'
 import { getUserButtonAppearance } from '../clerkTheme'
@@ -16,6 +16,7 @@ export default function Header({
   onOpenMobileMenu,
   user = null,
   isDemo = false,
+  onSignOut,
   hasClerkKey = false,
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
@@ -84,11 +85,21 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-2">
-          {hasClerkKey && user && (
+          {hasClerkKey && user ? (
             <div className="flex items-center">
               <UserButton appearance={getUserButtonAppearance(dark)} />
             </div>
-          )}
+          ) : user && onSignOut ? (
+            <button
+              type="button"
+              onClick={onSignOut}
+              title={`Signed in as ${user.email || user.fullName} — Click to sign out`}
+              className="flex items-center gap-1.5 px-2.5 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-muted)] hover:text-[var(--red-ink)] cursor-pointer transition-colors"
+            >
+              <LogOut size={14} />
+              <span className="hidden xs:inline">Sign Out</span>
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -175,11 +186,35 @@ export default function Header({
             </button>
           </div>
 
-          {hasClerkKey && user && (
+          {hasClerkKey && user ? (
             <div className="hidden lg:flex items-center pl-1">
               <UserButton appearance={getUserButtonAppearance(dark)} />
             </div>
-          )}
+          ) : user ? (
+            <div className="hidden lg:flex items-center gap-2 pl-1">
+              <Avatar
+                initials={(user.fullName || user.email || 'ST')
+                  .split(' ')
+                  .map(w => w[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+                bg={user.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))'}
+                size={36}
+              />
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  title="Sign out"
+                  className="px-3 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
 
