@@ -31,5 +31,9 @@
     "concurrently": "^9.1.2",
     "tailwindcss": "^4.1.8",
     "vite": "^6.3.5"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "@clerk/shared@3.48.1": true
   }
 }

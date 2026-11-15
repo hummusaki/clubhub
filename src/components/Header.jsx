@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ChevronDown } from 'lucide-react'
 import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, Avatar, cleanText } from './ui'
 import { AnnouncementTypeIcon } from './icons'
+import AiClubAgentModal from './AiClubAgentModal'
 import { announcements as initialAnnouncements } from '../data/sampleData'
 
 export default function Header({
@@ -18,6 +19,9 @@ export default function Header({
   onSignOut,
   announcements = null,
   upcomingCount = 0,
+  clubs = [],
+  onToggleJoinClub,
+  onNotify,
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -215,7 +219,7 @@ export default function Header({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto shrink-0">
           {showSearch && (
             <div className="flex-1 sm:w-[250px] min-w-0">
               <SearchBox
@@ -225,6 +229,16 @@ export default function Header({
                 onChange={onSearchChange}
               />
             </div>
+          )}
+
+          {/* ── AI Agent Button on the side for interest prompting (Overview only) ── */}
+          {activeNav === 'overview' && (
+            <AiClubAgentModal
+              clubs={clubs}
+              onToggleJoinClub={onToggleJoinClub}
+              onOpenClub={opts => onNav && onNav('clubs', opts)}
+              onNotify={onNotify}
+            />
           )}
 
           <div className="hidden lg:flex items-center gap-2.5 relative">

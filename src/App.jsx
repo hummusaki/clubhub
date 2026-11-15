@@ -1613,6 +1613,9 @@ function MainDashboard({
             onSignOut={onSignOut}
             announcements={personalizedAnnouncements}
             upcomingCount={visibleOverviewUpcomingCount}
+            clubs={effectiveClubs}
+            onToggleJoinClub={toggleJoinClub}
+            onNotify={showToast}
           />
 
           {/* ── 1. OVERVIEW ── */}
