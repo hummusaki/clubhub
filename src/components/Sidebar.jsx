@@ -1,4 +1,4 @@
-import { Moon, Sun, X, LogIn } from 'lucide-react'
+import { Moon, Sun, X, LogIn, LogOut } from 'lucide-react'
 import { UserButton } from '@clerk/react'
 import { navItems } from '../data/sampleData'
 import { Avatar, ClubHubLogo } from './ui'
@@ -15,6 +15,7 @@ export default function Sidebar({
   user = null,
   isDemo = false,
   onExitDemo,
+  onSignOut,
   hasClerkKey = false,
 }) {
   function handleSelect(id) {
@@ -116,6 +117,49 @@ export default function Sidebar({
                 </div>
               </div>
             </div>
+          ) : user ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {user.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.fullName || 'User'}
+                    className="w-8 h-8 rounded-full object-cover shrink-0 border border-[var(--border)]"
+                  />
+                ) : (
+                  <Avatar
+                    initials={(user.fullName || user.email || 'ST')
+                      .split(' ')
+                      .map(w => w[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()}
+                    bg={user.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))'}
+                    size={32}
+                  />
+                )}
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                    {user.fullName ||
+                      user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+                      'Student'}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] truncate">
+                    {user.primaryEmailAddress?.emailAddress || user.email || 'Verified Member'}
+                  </div>
+                </div>
+              </div>
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  title="Sign out"
+                  className="flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] cursor-pointer bg-transparent border-none p-1 shrink-0 transition-colors"
+                >
+                  <LogOut size={14} />
+                </button>
+              )}
+            </div>
           ) : isDemo ? (
             <div className="flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -144,23 +188,7 @@ export default function Sidebar({
                 </button>
               )}
             </div>
-          ) : (
-            <div className="flex items-center gap-2.5 px-3 py-2">
-              <Avatar
-                initials="JD"
-                bg="linear-gradient(135deg, var(--teal), var(--green))"
-                size={32}
-              />
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                  Jane Doe
-                </div>
-                <div className="text-[11px] text-[var(--text-muted)] truncate">
-                  jdoe@university.edu
-                </div>
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
       </nav>
     </>
