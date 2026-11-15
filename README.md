@@ -14,7 +14,7 @@ All-in-one campus workspace for **UC Santa Cruz** student organizations, built f
 - Make the Discord and Email integration run on its own through a GitHub agent or action
 - How to submit complete project if DB is gitignored?
 - Clean up cramped UI elements
-  - Specifically settings UI
+  - Specifically settings UI & color consistency
   - Do another mobile optimization pass
     - Maybe focus on UI consistency aspect
 - Allow for more user customization
