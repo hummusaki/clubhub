@@ -8,8 +8,9 @@ import {
   isSupabaseConfigured,
   markClerkSupabaseJwtRejected,
   isJwtSignatureError,
-} from '../lib/supabaseClient'
-import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts'
+  bridgeClerkToSupabaseAuth,
+} from '../lib/supabaseClient.js'
+import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts.js'
 
 const normalizeClub = id => String(id || '').trim().replace(/^@+/, '').toLowerCase()
 const toInitials = name =>
@@ -23,9 +24,25 @@ const toInitials = name =>
     .toUpperCase() || 'MB'
 
 let cachedProfile = null
+let inflightProfilePromise = null
+let usersHasExternalAuthId = true
+
+export function isMissingExternalAuthIdError(err) {
+  if (!err) return false
+  const code = String(err.code || '')
+  if (code === '23505') return false
+  const combined = `${err.message || ''} ${err.details || ''} ${err.hint || ''}`
+  return (
+    /external_auth_id/i.test(combined) &&
+    (/schema cache|does not exist|could not find|unknown|undefined_column/i.test(combined) ||
+      code === 'PGRST204' ||
+      code === '42703')
+  )
+}
 
 export function clearDirectUserProfileCache() {
   cachedProfile = null
+  inflightProfilePromise = null
 }
 
 export async function ensureClubRow(sb, clubId, clubName = '') {
@@ -37,49 +54,271 @@ export async function ensureClubRow(sb, clubId, clubName = '') {
   )
 }
 
-export async function getDirectUserProfile() {
-  if (!isSupabaseConfigured()) return null
+export async function resolveUserProfileWithClient({
+  sb,
+  extId = '',
+  email = '',
+  fullName = 'Member',
+  authUserId = '',
+}) {
+  const cleanEmail = String(email || '').trim().toLowerCase()
+  const cleanName = String(fullName || '').trim() || cleanEmail.split('@')[0] || 'Member'
 
-  // 1. Prefer native Supabase Auth session first (works out-of-the-box without Clerk Third-Party Auth config)
+  // Path A: Native Supabase Auth session (`auth.users` UUID) — never requires `external_auth_id`
+  if (authUserId) {
+    const { data: existingById } = await sb
+      .from('users')
+      .select('*')
+      .eq('id', authUserId)
+      .maybeSingle()
+
+    if (existingById?.id) {
+      if (
+        extId &&
+        usersHasExternalAuthId &&
+        Object.prototype.hasOwnProperty.call(existingById, 'external_auth_id') &&
+        !existingById.external_auth_id
+      ) {
+        const { error: linkErr } = await sb
+          .from('users')
+          .update({ external_auth_id: extId })
+          .eq('id', existingById.id)
+        if (linkErr && isMissingExternalAuthIdError(linkErr)) {
+          usersHasExternalAuthId = false
+        }
+      }
+      return existingById
+    }
+
+    if (cleanEmail) {
+      const { data: existingByEmail } = await sb
+        .from('users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle()
+      if (existingByEmail?.id) return existingByEmail
+    }
+
+    const { data: inserted } = await sb
+      .from('users')
+      .upsert(
+        {
+          id: authUserId,
+          email: cleanEmail,
+          full_name: cleanName,
+          verified_edu: cleanEmail.endsWith('.edu'),
+        },
+        { onConflict: 'id' }
+      )
+      .select('*')
+      .single()
+
+    if (inserted?.id) return inserted
+  }
+
+  // Path B: External Auth (Clerk JWT or legacy schema without `external_auth_id` column)
+  if (!extId && !cleanEmail) return null
+
+  let existing = null
+  let selErr = null
+
+  if (extId && usersHasExternalAuthId) {
+    const byExt = await sb
+      .from('users')
+      .select('*')
+      .eq('external_auth_id', extId)
+      .maybeSingle()
+    if (byExt.error && isMissingExternalAuthIdError(byExt.error)) {
+      usersHasExternalAuthId = false
+    } else {
+      existing = byExt.data
+      selErr = byExt.error
+    }
+  }
+
+  if (!existing && !selErr && cleanEmail) {
+    const byEmail = await sb
+      .from('users')
+      .select('*')
+      .eq('email', cleanEmail)
+      .maybeSingle()
+    existing = byEmail.data
+    selErr = byEmail.error
+  }
+
+  if (selErr && (isJwtSignatureError(selErr) || /JWT|401|403|invalid/i.test(selErr.message || ''))) {
+    if (isJwtSignatureError(selErr)) {
+      markClerkSupabaseJwtRejected()
+    }
+    const authErr = new Error(
+      'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or enable Clerk under Authentication -> Third-Party Auth) so Supabase can verify your identity.'
+    )
+    authErr.status = 401
+    throw authErr
+  }
+
+  if (existing?.id) {
+    if (
+      extId &&
+      usersHasExternalAuthId &&
+      Object.prototype.hasOwnProperty.call(existing, 'external_auth_id') &&
+      !existing.external_auth_id
+    ) {
+      const { error: updErr } = await sb
+        .from('users')
+        .update({ external_auth_id: extId })
+        .eq('id', existing.id)
+      if (updErr && isMissingExternalAuthIdError(updErr)) {
+        usersHasExternalAuthId = false
+      }
+    }
+    return existing
+  }
+
+  const baseUserRow = {
+    email: cleanEmail,
+    full_name: cleanName,
+    verified_edu: cleanEmail.endsWith('.edu'),
+  }
+
+  let inserted = null
+  let insErr = null
+
+  if (extId && usersHasExternalAuthId) {
+    const res = await sb
+      .from('users')
+      .insert({
+        ...baseUserRow,
+        external_auth_id: extId,
+      })
+      .select('*')
+      .single()
+    if (res.error && isMissingExternalAuthIdError(res.error)) {
+      usersHasExternalAuthId = false
+    } else {
+      inserted = res.data
+      insErr = res.error
+    }
+  }
+
+  if (!inserted && !insErr) {
+    const retry = await sb
+      .from('users')
+      .insert(baseUserRow)
+      .select('*')
+      .single()
+    inserted = retry.data
+    insErr = retry.error
+  }
+
+  // Fallback if `public.users.id` has no `default gen_random_uuid()`
+  if (!inserted && insErr && /null value in column "id"|23502/i.test(insErr.message || '')) {
+    const generatedId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : null
+    if (generatedId) {
+      const retryWithId = await sb
+        .from('users')
+        .insert({ id: generatedId, ...baseUserRow })
+        .select('*')
+        .single()
+      inserted = retryWithId.data
+      insErr = retryWithId.error
+    }
+  }
+
+  // Concurrent insert race fallback: re-select by email
+  if (!inserted && insErr && cleanEmail && /duplicate key|23505/i.test(insErr.message || '')) {
+    const existingAfterRace = await sb
+      .from('users')
+      .select('*')
+      .eq('email', cleanEmail)
+      .maybeSingle()
+    if (existingAfterRace.data?.id) {
+      return existingAfterRace.data
+    }
+  }
+
+  if (insErr) {
+    if (
+      /row-level security|42501|users_id_fkey|23503|invalid input syntax for type uuid|22P02/i.test(
+        insErr.message || ''
+      )
+    ) {
+      const rlsErr = new Error(
+        'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or re-run supabase/schema.sql in Supabase SQL Editor) so Clerk accounts can create polls.'
+      )
+      rlsErr.status = 403
+      throw rlsErr
+    }
+    throw new Error(insErr.message)
+  }
+
+  return inserted
+}
+
+async function loadDirectUserProfileInternal() {
+  const clerkUser = typeof window !== 'undefined' ? window.Clerk?.user : null
+  const extId = clerkUser?.id ? String(clerkUser.id) : ''
+  const clerkEmail = (
+    clerkUser?.primaryEmailAddress?.emailAddress ||
+    clerkUser?.emailAddresses?.[0]?.emailAddress ||
+    ''
+  )
+    .trim()
+    .toLowerCase()
+  const clerkFullName =
+    clerkUser?.fullName ||
+    [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ') ||
+    clerkEmail.split('@')[0] ||
+    'Member'
+
+  // 1. Prefer native Supabase Auth session (and auto-bridge Clerk users into native Supabase Auth
+  //    so legacy `auth.users` FK / `auth.uid()` RLS schemas work without `external_auth_id`!)
   if (supabase) {
     try {
       const { data: sessionData } = await supabase.auth.getSession()
-      const authUser = sessionData?.session?.user
+      let authUser = sessionData?.session?.user || null
+
+      if (
+        authUser?.id &&
+        clerkEmail &&
+        authUser.email &&
+        authUser.email.toLowerCase() !== clerkEmail
+      ) {
+        await supabase.auth.signOut().catch(() => {})
+        authUser = null
+      }
+
+      if (!authUser?.id && extId && clerkEmail) {
+        const bridged = await bridgeClerkToSupabaseAuth({
+          clerkUserId: extId,
+          email: clerkEmail,
+          fullName: clerkFullName,
+        })
+        if (bridged?.session?.user?.id) {
+          authUser = bridged.session.user
+        }
+      }
+
       if (authUser?.id) {
-        const email = String(authUser.email || '').trim().toLowerCase()
+        const email = String(authUser.email || clerkEmail || '').trim().toLowerCase()
         const fullName =
+          clerkUser?.fullName ||
           authUser.user_metadata?.full_name ||
           email.split('@')[0] ||
           'Member'
-
-        const { data: existing } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', authUser.id)
-          .maybeSingle()
-
-        if (existing?.id) {
-          cachedProfile = existing
-          return existing
-        }
-
-        const { data: inserted } = await supabase
-          .from('users')
-          .upsert(
-            {
-              id: authUser.id,
-              email,
-              full_name: fullName,
-              verified_edu: email.endsWith('.edu'),
-            },
-            { onConflict: 'id' }
-          )
-          .select('*')
-          .single()
-
-        if (inserted?.id) {
-          cachedProfile = inserted
-          return inserted
+        const resolved = await resolveUserProfileWithClient({
+          sb: supabase,
+          extId,
+          email,
+          fullName,
+          authUserId: authUser.id,
+        })
+        if (resolved?.id) {
+          cachedProfile = resolved
+          return resolved
         }
       }
     } catch {
@@ -90,64 +329,29 @@ export async function getDirectUserProfile() {
   const sb = getActiveSupabaseClient()
   if (!sb) return null
 
-  const clerkUser = typeof window !== 'undefined' ? window.Clerk?.user : null
-  if (clerkUser?.id) {
-    const extId = clerkUser.id
-    const email = (
-      clerkUser.primaryEmailAddress?.emailAddress ||
-      clerkUser.emailAddresses?.[0]?.emailAddress ||
-      ''
-    )
-      .trim()
-      .toLowerCase()
-    const fullName =
-      clerkUser.fullName ||
-      [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
-      email.split('@')[0] ||
-      'Member'
-
-    const { data: existing, error: selErr } = await sb
-      .from('users')
-      .select('*')
-      .or(`external_auth_id.eq.${extId},email.eq.${email}`)
-      .maybeSingle()
-
-    if (selErr && (isJwtSignatureError(selErr) || /JWT|401|403|invalid/i.test(selErr.message || ''))) {
-      if (isJwtSignatureError(selErr)) {
-        markClerkSupabaseJwtRejected()
-      }
-      const authErr = new Error(
-        'Enable Clerk Third-Party Auth in Supabase Dashboard (Authentication -> Third-Party Auth -> Add Clerk) or sign in with email & password so Supabase can verify your identity.'
-      )
-      authErr.status = 401
-      throw authErr
+  if (extId) {
+    const resolved = await resolveUserProfileWithClient({
+      sb,
+      extId,
+      email: clerkEmail,
+      fullName: clerkFullName,
+    })
+    if (resolved?.id) {
+      cachedProfile = resolved
+      return resolved
     }
-
-    if (existing?.id) {
-      if (!existing.external_auth_id) {
-        await sb.from('users').update({ external_auth_id: extId }).eq('id', existing.id)
-      }
-      cachedProfile = existing
-      return existing
-    }
-
-    const { data: inserted, error: insErr } = await sb
-      .from('users')
-      .insert({
-        external_auth_id: extId,
-        email,
-        full_name: fullName,
-        verified_edu: email.endsWith('.edu'),
-      })
-      .select('*')
-      .single()
-
-    if (insErr) throw new Error(insErr.message)
-    cachedProfile = inserted
-    return inserted
   }
 
   return cachedProfile
+}
+
+export async function getDirectUserProfile() {
+  if (!isSupabaseConfigured()) return null
+  if (inflightProfilePromise) return inflightProfilePromise
+  inflightProfilePromise = loadDirectUserProfileInternal().finally(() => {
+    inflightProfilePromise = null
+  })
+  return inflightProfilePromise
 }
 
 async function buildDirectOverview(sb, profile) {
