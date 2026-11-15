@@ -419,9 +419,14 @@
     "email": "ucscgps@gmail.com",
     "description": "Global Strategy Politics (GPS) Club gives weekly geopolitical updates on the world and discusses them. Additionally we discuss ideas on government and reforming system so that we may better the systems we live in. Our organization is open to all who are interested!",
     "discord": "https://discord.gg/y9zvr6scwa",
+<<<<<<< Updated upstream
     "discordGuildId": "1551817158000910416",
     "discordServerName": "UCSC Global Politics Strategy GPS",
     "discordFollowable": true
+=======
+    "discordServerName": "Glocal Strategy Politics Discord",
+    "discordOnlineCount": 0
+>>>>>>> Stashed changes
   },
   {
     "name": "Google Developer Group on Campus UCSC",
@@ -753,7 +758,14 @@
     "instagram": "projectsmileucsc",
     "category": "service & advocacy",
     "email": "projectsmileucsc@gmail.com",
+<<<<<<< Updated upstream
     "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students"
+=======
+    "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students",
+    "discord": "https://discord.gg/nC8C4X2g",
+    "discordServerName": "Project Smile Discord",
+    "discordOnlineCount": 0
+>>>>>>> Stashed changes
   },
   {
     "name": "Pupcycled at UCSC",
@@ -873,10 +885,16 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
+<<<<<<< Updated upstream
     "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
     "discordServerName": "All Star",
     "discordFollowable": true
+=======
+    "discord": "https://discord.gg/aTeeAAH",
+    "discordServerName": "Slug Anime & Manga Association Discord",
+    "discordOnlineCount": 0
+>>>>>>> Stashed changes
   },
   {
     "name": "Slug Book Club",

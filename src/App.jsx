@@ -794,6 +794,7 @@ function MainDashboard({
           members: c.memberCount || c.discordMemberCount || c.followers || 0,
           discord: resolvedDiscordUrl,
           discordUrl: resolvedDiscordUrl,
+          discordIconUrl: c.discordIconUrl || null,
           discordServerName: c.discordServerName || null,
           discordMemberCount: c.discordMemberCount ?? null,
           discordOnlineCount: c.discordOnlineCount ?? null,
@@ -804,9 +805,14 @@ function MainDashboard({
           category: catId,
           categoryLabel: catMeta.label,
           description: rawDesc ? cleanText(rawDesc) : '',
+<<<<<<< Updated upstream
           directoryDescription: c.directoryDescription ? cleanText(c.directoryDescription) : '',
           alsoKnownAs: Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : [],
           profilePictureUrl: c.profilePictureUrl || null,
+=======
+          profilePictureUrl: c.discordIconUrl || c.profilePictureUrl || null,
+          logoUrl: c.discordIconUrl || c.profilePictureUrl || null,
+>>>>>>> Stashed changes
           instagram: c.instagram || null,
           email: resolvedEmail,
           extraEmails: emailLinks.filter(e => e !== resolvedEmail),
@@ -823,6 +829,7 @@ function MainDashboard({
       })
 
       if (mappedClubs.length > 0) {
+<<<<<<< Updated upstream
         const mappedNames = new Set(
           mappedClubs.map(mc => (mc.name || '').toLowerCase().trim())
         )
@@ -841,6 +848,9 @@ function MainDashboard({
           })
 
         nextClubs = [...mappedClubs, ...extraDiscoverClubs]
+=======
+        setLiveClubs(mappedClubs)
+>>>>>>> Stashed changes
 
         if (isDemo && !demoLiveSeededRef.current && !demoUserModifiedClubsRef.current) {
           demoLiveSeededRef.current = true

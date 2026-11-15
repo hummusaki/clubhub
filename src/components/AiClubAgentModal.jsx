@@ -9,7 +9,8 @@ import {
   Tag,
   Zap,
 } from 'lucide-react'
-import { BubbleTag, Avatar } from './ui'
+import { BubbleTag, ClubAvatar, cleanText } from './ui'
+import { PlatformIcon } from './icons'
 import { recommendClubsForInterests, SAMPLE_INTEREST_PROMPTS } from '../utils/aiClubAgent'
 
 export default function AiClubAgentModal({
@@ -187,11 +188,12 @@ export default function AiClubAgentModal({
                       key={p.label}
                       type="button"
                       onClick={() => handleSelectPrompt(p.query)}
-                      className="text-[11.5px] font-medium px-2.5 py-1 rounded-full bg-[var(--bg-surface)]
+                      className="inline-flex items-center gap-1.5 text-[11.5px] font-medium px-2.5 py-1 rounded-full bg-[var(--bg-surface)]
                         border border-[var(--border)] text-[var(--text)] hover:border-[var(--blue)]
                         hover:bg-[var(--blue-light)] hover:text-[var(--blue-ink)] transition-colors cursor-pointer"
                     >
-                      {p.label}
+                      <PlatformIcon type="discord" size={12} />
+                      <span>{p.label}</span>
                     </button>
                   ))}
                 </div>
@@ -214,12 +216,7 @@ export default function AiClubAgentModal({
                     <div className="space-y-2.5">
                       {aiResults.matches.map(({ club, matchScore, aiRationale, matchedTerms }) => {
                         const isJoined = Boolean(club.joined)
-                        const initials = (club.abbr || club.name || 'CH')
-                          .split(' ')
-                          .map(w => w[0])
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()
+                        const discordLink = club.discordUrl || club.discord || null
 
                         return (
                           <div
@@ -230,19 +227,30 @@ export default function AiClubAgentModal({
                             {/* Club Header & Join Button */}
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-center gap-2.5 min-w-0">
-                                <Avatar
-                                  initials={initials}
-                                  bg={club.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))'}
-                                  size={36}
-                                />
+                                <ClubAvatar club={club} size={38} />
                                 <div className="min-w-0">
                                   <div className="text-[13.5px] font-bold text-[var(--text)] truncate">
-                                    {club.name}
+                                    {cleanText(club.name)}
                                   </div>
                                   <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] truncate">
                                     <span>{club.categoryLabel || club.category}</span>
                                     <span>•</span>
                                     <span>{club.members || 0} members</span>
+                                    {discordLink && (
+                                      <>
+                                        <span>•</span>
+                                        <a
+                                          href={discordLink}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={e => e.stopPropagation()}
+                                          className="inline-flex items-center gap-1 text-[var(--blue-ink)] font-semibold hover:underline no-underline"
+                                        >
+                                          <PlatformIcon type="discord" size={11} />
+                                          <span>Discord</span>
+                                        </a>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               </div>

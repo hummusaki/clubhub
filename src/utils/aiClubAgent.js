@@ -4,6 +4,7 @@
 // multi-turn conversational refinement, and grounded AI Overview synthesis.
 
 export const SAMPLE_INTEREST_PROMPTS = [
+<<<<<<< Updated upstream
   {
     label: '💻 CS + Creative Balance',
     query: "I'm into coding and hackathons, plus something creative like design or film",
@@ -36,6 +37,16 @@ export const SAMPLE_INTEREST_PROMPTS = [
     label: '🌲 Outdoors, Chess & Games',
     query: 'Hiking redwoods, chess tournaments, tabletop RPGs, or casual esports',
   },
+=======
+  { label: 'Game Dev & Coding', query: 'game development coding hackathons' },
+  { label: 'Hiking & Outdoors', query: 'hiking camping redwoods outdoor adventure nature environment' },
+  { label: 'Art, Drawing & Zines', query: 'drawing painting zines visual art literary magazine' },
+  { label: 'Debate & Public Speaking', query: 'debate public speaking rhetoric pre-law model un' },
+  { label: 'Robotics & Hardware', query: 'robotics hardware arduino CAD 3D printing engineering' },
+  { label: 'Singing & Vocal Music', query: 'singing vocal harmonies a cappella music performance' },
+  { label: 'Investing & Economics', query: 'investing stocks finance economics business consulting' },
+  { label: 'Film & Photography', query: 'photography 35mm analog camera film cinema media' },
+>>>>>>> Stashed changes
 ]
 
 const STOP_WORDS = new Set([
@@ -67,6 +78,7 @@ const STOP_WORDS = new Set([
 export const TOPIC_CLUSTERS = [
   {
     id: 'tech_coding',
+<<<<<<< Updated upstream
     label: 'Coding, AI & Software',
     categories: ['tech & science'],
     targetClubIds: [
@@ -78,6 +90,18 @@ export const TOPIC_CLUSTERS = [
       'ucscquantum',
       'ucscsase',
       'nsbe.ucsc',
+=======
+    label: 'Coding & Tech',
+    targetClubIds: [
+      'acm_ucsc',
+      'gdgc_ucsc',
+      'gdacollab',
+      'sluggamingucsc',
+      'slugsecurity',
+      'slugdataatucsc',
+      'sluglug_ucsc',
+      'demo_ucsc_csclub',
+>>>>>>> Stashed changes
     ],
     keywords: [
       'code', 'coding', 'programmer', 'programming', 'software', 'developer',
@@ -92,6 +116,7 @@ export const TOPIC_CLUSTERS = [
       `Strong technical fit for ${terms} with hands-on coding workshops, hackathons, and project teams.`,
   },
   {
+<<<<<<< Updated upstream
     id: 'game_dev',
     label: 'Game Design & Dev',
     categories: ['tech & science', 'gaming'],
@@ -115,6 +140,17 @@ export const TOPIC_CLUSTERS = [
       'ucscsps',
       'acs_ucsc',
       'ucscquantum',
+=======
+    id: 'robotics_hardware',
+    label: 'Robotics & Hardware',
+    targetClubIds: [
+      'ucscslugbotics',
+      'slugworks_ucsc',
+      'ieee.ucsc',
+      'formulaslug',
+      'rocketry.ucsc',
+      'ucsc_robotics',
+>>>>>>> Stashed changes
     ],
     keywords: [
       'robot', 'robots', 'robotics', 'hardware', 'maker', 'makers', 'cad',
@@ -128,6 +164,7 @@ export const TOPIC_CLUSTERS = [
       `Tailored for ${terms} through hands-on hardware builds, research discussions, and STEM community mentorship.`,
   },
   {
+<<<<<<< Updated upstream
     id: 'premed_neuro',
     label: 'Pre-Med, Healthcare & Neuroscience',
     categories: ['pre-professional', 'tech & science'],
@@ -157,6 +194,94 @@ export const TOPIC_CLUSTERS = [
     label: 'Economics, Finance & Business',
     categories: ['pre-professional'],
     targetClubIds: ['ucsc_econ_society', 'ucscbea', 'ucsc.sfig', 'ucsciba'],
+=======
+    id: 'outdoors_adventure',
+    label: 'Outdoors & Adventure',
+    targetClubIds: [
+      'enviroslug',
+      'ucsc_runningclub',
+      'ucscfigure',
+      'ucscsurf',
+      'ucsc_sailing',
+      'ucsc_outdoor',
+    ],
+    keywords: [
+      'outdoor', 'outdoors', 'nature', 'hike', 'hiking', 'backpacking', 'backpack',
+      'camp', 'camping', 'trail', 'trails', 'redwoods', 'forest', 'bouldering',
+      'rock climbing', 'climbing', 'climb', 'kayak', 'kayaking', 'surf', 'surfing',
+      'ocean', 'beach', 'adventure', 'travel', 'trip', 'trips', 'wilderness', 'gear',
+      'environment', 'environmental', 'sustainability'
+    ],
+    rationaleTemplate: (terms) =>
+      `Perfect match for ${terms} — offers outdoor excursions, redwood trail hikes, environmental stewardship, and active campus trips.`
+  },
+  {
+    id: 'visual_arts',
+    label: 'Visual Arts & Design',
+    targetClubIds: [
+      'chinquapinucsc',
+      'matchboxucsc',
+      'twacanasianucsc',
+      'eyecandyfilmjournal',
+      'demo_ucsc_artcollective',
+    ],
+    keywords: [
+      'art', 'arts', 'visual art', 'draw', 'drawing', 'paint', 'painting',
+      'sketch', 'sketching', 'zine', 'zines', 'printmaking', 'print', 'gallery',
+      'design', 'graphic design', 'illustration', 'studio', 'craft', 'crafts',
+      'creative', 'ceramics', 'digital art', 'exhibition', 'sculpture', 'literary', 'magazine'
+    ],
+    rationaleTemplate: (terms) =>
+      `Matches your passion for ${terms} with open studio sessions, zine & print publications, and seasonal campus showcases.`
+  },
+  {
+    id: 'debate_speaking',
+    label: 'Debate & Public Speaking',
+    targetClubIds: [
+      'slugmun',
+      'mocktrialucsc',
+      'ucsc_pla',
+      'demo_ucsc_debate',
+    ],
+    keywords: [
+      'debate', 'debating', 'speech', 'speaking', 'public speaking', 'rhetoric',
+      'parliamentary', 'law', 'pre-law', 'politics', 'policy', 'argument',
+      'argumentation', 'discussion', 'discourse', 'rhetorical', 'moot court',
+      'government', 'model un', 'communication', 'mun'
+    ],
+    rationaleTemplate: (terms) =>
+      `Great fit for ${terms} — offers parliamentary debate & Model UN conferences, public rhetoric training, and policy analysis rounds.`
+  },
+  {
+    id: 'music_vocal',
+    label: 'Music & Vocal Performance',
+    targetClubIds: [
+      'acquireacappella',
+      'cloud9acappella',
+      'isanghimig',
+      'thegoldentones_ucsc',
+      'ucsc_acappella',
+    ],
+    keywords: [
+      'music', 'sing', 'singing', 'singer', 'vocal', 'vocals', 'vocalist',
+      'harmony', 'harmonies', 'a cappella', 'acappella', 'choir', 'band',
+      'song', 'songs', 'concert', 'performance', 'quarry', 'rehearsal',
+      'instrument', 'instruments', 'voice', 'musical', 'audio'
+    ],
+    rationaleTemplate: (terms) =>
+      `Aligns with your passion for ${terms} — features student-arranged vocal harmonies, quarry amphitheater concerts, and regional gigs.`
+  },
+  {
+    id: 'economics_finance',
+    label: 'Economics & Finance',
+    targetClubIds: [
+      'ucsc.sfig',
+      'ucscconsulting',
+      'ucsc_bfa',
+      'akpsi.ucsc',
+      'ucsc_econ_society',
+    ],
+>>>>>>> Stashed changes
     keywords: [
       'econ', 'economics', 'finance', 'invest', 'investing', 'investment',
       'stock', 'stocks', 'markets', 'business', 'banking', 'investment banking',
@@ -164,6 +289,7 @@ export const TOPIC_CLUSTERS = [
       'microeconomic', 'startup', 'entrepreneurship', 'entrepreneur', 'portfolio',
       'financial', 'accounting', 'wealth', 'quant',
     ],
+<<<<<<< Updated upstream
     rationaleTemplate: terms =>
       `Matches your interest in ${terms} via student-managed market analysis, career prep, and case competitions.`,
   },
@@ -352,6 +478,28 @@ export const TOPIC_CLUSTERS = [
     ],
     rationaleTemplate: terms =>
       `Chapter community offering Greek life leadership, social events, and philanthropy.`,
+=======
+    rationaleTemplate: (terms) =>
+      `Ideal for your interest in ${terms} — features investment workshops, finance roundtables, and real-world consulting case competitions.`
+  },
+  {
+    id: 'film_photo',
+    label: 'Film & Photography',
+    targetClubIds: [
+      'eyecandyfilmjournal',
+      'fsc.ucsc',
+      'chinquapinucsc',
+      'ucsc_film_photo',
+    ],
+    keywords: [
+      'film', 'filmmaking', 'photo', 'photography', 'camera', '35mm',
+      'darkroom', 'analog', 'cinema', 'movie', 'movies', 'screenplay',
+      'screenwriting', 'video', 'video editing', 'cinematography', 'screening',
+      'visual storytelling', 'lens', 'shutter', 'media'
+    ],
+    rationaleTemplate: (terms) =>
+      `Superb fit for ${terms} — gives you film screenings, cinema journalism, photography shoots, and creative media production.`
+>>>>>>> Stashed changes
   },
 ]
 

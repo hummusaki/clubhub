@@ -319,6 +319,7 @@ export async function syncDiscordEmailAgent({
            discordOnlineCount = COALESCE(?, discordOnlineCount),
            memberCount        = MAX(COALESCE(memberCount, 0), COALESCE(followers, 0), COALESCE(?, 0)),
            email              = COALESCE(?, email),
+           profilePictureUrl  = COALESCE(profilePictureUrl, ?),
            lastSyncedAt       = COALESCE(lastSyncedAt, ?)
      WHERE id = ?
   `);
@@ -404,6 +405,7 @@ export async function syncDiscordEmailAgent({
       discordMeta?.onlineCount ?? null,
       discordMeta?.memberCount ?? 0,
       primaryEmail,
+      discordMeta?.iconUrl ?? null,
       nowIso,
       club.id
     );

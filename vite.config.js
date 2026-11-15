@@ -164,6 +164,11 @@ function githubPagesSpaFallbackPlugin() {
 export default defineConfig({
   base: './',
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  resolve: {
+    alias: {
+      '@supabase/supabase-js': path.resolve(__dirname, 'src/lib/supabaseJsShim.js'),
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
