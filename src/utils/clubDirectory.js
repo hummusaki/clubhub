@@ -5,107 +5,8 @@
 import { cleanText } from '../components/ui'
 import { categorizeClub, getClubCategoryMeta } from './clubCategories'
 
-// Real UCSC club officers announced in public club posts (hydrated only when clubId exists in allClubs)
-const VERIFIED_CAMPUS_OFFICERS = [
-  // Alpha Epsilon Pi (aepi.ucsc)
-  { clubId: 'aepi.ucsc', name: 'Jace Kletter', role: 'President', isBoardEmail: true },
-  { clubId: 'aepi.ucsc', name: 'Tommy Mai', role: 'Vice President', email: 'tmai6@ucsc.edu', isBoardEmail: false },
-  { clubId: 'aepi.ucsc', name: 'Ewan Keller', role: 'Sentinel', isBoardEmail: true },
-  { clubId: 'aepi.ucsc', name: 'Mitch Reading', role: 'Social Chair', isBoardEmail: true },
-  { clubId: 'aepi.ucsc', name: 'Aryan Ray', role: 'Rush Chair', isBoardEmail: true },
-  { clubId: 'aepi.ucsc', name: 'Holden Perfect', role: 'Scribe', isBoardEmail: true },
-
-  // Acquire A Cappella (acquireacappella)
-  { clubId: 'acquireacappella', name: 'Analia', role: 'President', major: "4th Year · Vocal Performance", isBoardEmail: true },
-
-  // Slug Gaming (sluggamingucsc)
-  { clubId: 'sluggamingucsc', name: 'Davion Flood', role: 'President', isBoardEmail: true },
-  { clubId: 'sluggamingucsc', name: 'Cameron Donald', role: 'Vice President', isBoardEmail: true },
-  { clubId: 'sluggamingucsc', name: 'Jenalee Nguyen', role: 'PR Executive', isBoardEmail: true },
-
-  // Jewish Student Union (jsu_ucsc)
-  { clubId: 'jsu_ucsc', name: 'Danielle Ben-Israel', role: 'President', email: 'dbenisra@ucsc.edu', isBoardEmail: false },
-  { clubId: 'jsu_ucsc', name: 'Isidore Belgrade', role: 'Vice President', isBoardEmail: true },
-  { clubId: 'jsu_ucsc', name: 'Flora Last', role: 'Social Media Chair', isBoardEmail: true },
-  { clubId: 'jsu_ucsc', name: 'Lia Berkovich', role: 'Communications Chair', isBoardEmail: true },
-
-  // Phi Alpha Delta (ucscpad)
-  { clubId: 'ucscpad', name: 'Haley Balbuena', role: 'President', major: "Environmental Studies & Legal Studies '27", isBoardEmail: true },
-  { clubId: 'ucscpad', name: 'Evie Chau', role: 'Vice President', major: 'Pre-Law Track', isBoardEmail: true },
-  { clubId: 'ucscpad', name: 'Andrew Porras', role: 'Treasurer', major: "Philosophy & Anthropology '27", isBoardEmail: true },
-  { clubId: 'ucscpad', name: 'Layla Cortes', role: 'Secretary', major: "Legal Studies '29", isBoardEmail: true },
-
-  // Undergraduate Neuroscience Club (ucsc.neuroclub)
-  { clubId: 'ucsc.neuroclub', name: 'Giselle', role: 'President', major: "Neuroscience & Psychology '27", isBoardEmail: true },
-  { clubId: 'ucsc.neuroclub', name: 'Swathi', role: 'Vice President', major: "Neuroscience '28", isBoardEmail: true },
-
-  // Delta Sigma Pi (ucscdsp)
-  { clubId: 'ucscdsp', name: 'Kaleb Hall', role: 'President', isBoardEmail: true },
-  { clubId: 'ucscdsp', name: 'Lucia Lim', role: 'VP Chapter Operations', isBoardEmail: true },
-  { clubId: 'ucscdsp', name: 'Michelle Lopez', role: 'Chancellor', isBoardEmail: true },
-  { clubId: 'ucscdsp', name: 'Arjun Arora', role: 'VP Pledge Education', isBoardEmail: true },
-
-  // Slug Book Club (slugbookclub)
-  { clubId: 'slugbookclub', name: 'Alexandra Weber', role: 'President', isBoardEmail: true },
-
-  // Cloud 9 A Cappella (cloud9acappella)
-  { clubId: 'cloud9acappella', name: 'John', role: 'Music Director', major: "Computer Science '27", isBoardEmail: true },
-  { clubId: 'cloud9acappella', name: 'Mac', role: 'Assistant Music Director', major: "Global & Community Health '28", isBoardEmail: true },
-
-  // La Sociedad of Latine Pre-Law students (ucsclaso)
-  { clubId: 'ucsclaso', name: 'Sofia Donaldson Florez', role: 'Co-Chair', major: 'Pre-Law', isBoardEmail: true },
-  { clubId: 'ucsclaso', name: 'Moises Sandoval', role: 'Co-Chair', major: 'Pre-Law', isBoardEmail: true },
-  { clubId: 'ucsclaso', name: 'Evelyn Ortiz', role: 'Treasurer', isBoardEmail: true },
-
-  // Central Americans For Empowerment (cafeucsc)
-  { clubId: 'cafeucsc', name: 'Dulce', role: 'Founder & President', major: "Psychology, LALS & Education '27", isBoardEmail: true },
-
-  // Planned Parenthood: Generation Action (plannedparenthooducsc)
-  { clubId: 'plannedparenthooducsc', name: 'Briseyda', role: 'President', major: "Politics & Latin American Studies '27", isBoardEmail: true },
-  { clubId: 'plannedparenthooducsc', name: 'Molly', role: 'Executive Board', major: "MCD Biology '27", isBoardEmail: true },
-  { clubId: 'plannedparenthooducsc', name: 'Charlotte', role: 'Executive Board', major: "Cognitive Science '28", isBoardEmail: true },
-  { clubId: 'plannedparenthooducsc', name: 'Aimee', role: 'Executive Board', major: "Biochemistry & Molecular Biology '29", isBoardEmail: true },
-
-  // Sigma Omicron Pi (ucscsopi)
-  { clubId: 'ucscsopi', name: 'Isabelle Abulencia', role: 'President', isBoardEmail: true },
-  { clubId: 'ucscsopi', name: 'Cindy Fang', role: 'Treasurer', isBoardEmail: true },
-  { clubId: 'ucscsopi', name: 'Mya Reab', role: 'Secretary & Academic Chair', isBoardEmail: true },
-
-  // Kappa Kappa Gamma (ucsckkg)
-  { clubId: 'ucsckkg', name: 'Maddie Hoang', role: 'VP External Affairs', major: "Neuroscience & Psychology '27", isBoardEmail: true },
-  { clubId: 'ucsckkg', name: 'Saniya Vaidya', role: 'VP Membership', major: "Biology '27", isBoardEmail: true },
-
-  // Kappa Alpha Theta (ucsctheta)
-  { clubId: 'ucsctheta', name: 'Alondra', role: 'President', isBoardEmail: true },
-
-  // Kappa Gamma Delta (ucsckgd)
-  { clubId: 'ucsckgd', name: 'Celeste Barrett', role: 'President', isBoardEmail: true },
-  { clubId: 'ucsckgd', name: 'Cherry', role: 'Co-PNM Educator', major: "Neuroscience '27", isBoardEmail: true },
-
-  // alpha Kappa Delta Phi (ucsc_akdphi)
-  { clubId: 'ucsc_akdphi', name: 'Zoe Villaroman', role: 'Secretary', major: "Education, Democracy, & Justice '28", isBoardEmail: true },
-
-  // POPreka (poprekaucsc)
-  { clubId: 'poprekaucsc', name: 'Kira', role: 'Co-Head', major: "Merrill '28", isBoardEmail: true },
-  { clubId: 'poprekaucsc', name: 'Nathan', role: 'Co-Head', major: "Rachel Carson '27", isBoardEmail: true },
-  { clubId: 'poprekaucsc', name: 'Allisyn', role: 'Secretary', major: "Merrill '28", isBoardEmail: true },
-  { clubId: 'poprekaucsc', name: 'Benny', role: 'Treasurer', major: "College Nine '28", isBoardEmail: true },
-
-  // Estudiantes Oaxaqueños de Ahora (eodaucsc)
-  { clubId: 'eodaucsc', name: 'Romano', role: 'Co-Chair', isBoardEmail: true },
-  { clubId: 'eodaucsc', name: 'Anahi', role: 'Co-Chair', isBoardEmail: true },
-
-  // Fishrap Live! (fishraplive)
-  { clubId: 'fishraplive', name: 'Sophie', role: 'Editor-in-Chief', isBoardEmail: true },
-  { clubId: 'fishraplive', name: 'Eva', role: 'Treasurer', isBoardEmail: true },
-
-  // National Society of Black Engineers (nsbe.ucsc)
-  { clubId: 'nsbe.ucsc', name: 'Donovan', role: 'President', isBoardEmail: true },
-
-  // Inter-Greek Council (ucscigc)
-  { clubId: 'ucscigc', name: 'Lana', role: 'President', major: "Global & Community Health '27", isBoardEmail: true },
-  { clubId: 'ucscigc', name: 'Mads Bobele', role: 'Executive Vice President', isBoardEmail: true },
-]
+// Roster positions are hydrated strictly from official organization records and authenticated claims — zero hardcoded personal PII.
+const VERIFIED_CAMPUS_OFFICERS = []
 
 const DYNAMIC_ROLE_LINE_REGEX =
   /^\s*[✧⭐•\-–]*\s*(Co-Presidents?|President|Executive Vice President|Vice President|VP [A-Za-z &/]{2,26}|Treasurer|Secretary|Co-Chairs?|Editor-in-Chief|Social Chair|Rush Chair|Communications Chair|PR Executive)\s*:\s*([A-Z][A-Za-z'’-]+(?:\s+(?:["“][^"”]+["”]\s+)?[A-Z][A-Za-z'’-]+){0,3})\s*$/gm
@@ -356,7 +257,7 @@ export function buildClubDirectoryData({
     const youEmail =
       effectiveUser?.primaryEmailAddress?.emailAddress ||
       effectiveUser?.email ||
-      (isDemo ? 'guest@ucsc.edu' : 'student@ucsc.edu')
+      ''
     const youMajor = userSettings?.major?.trim() || (isDemo ? 'Exploring UCSC Clubs' : 'UCSC Member')
     const youAvatarBg =
       userSettings?.avatarBg ||

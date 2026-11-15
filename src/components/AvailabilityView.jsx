@@ -8,7 +8,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-  UserPlus,
+  Shield,
   CalendarPlus,
   Share2,
   ArrowRight,
@@ -21,11 +21,16 @@ import { Card, BubbleTag, Avatar, cleanText } from './ui'
 import { PlatformIcon } from './icons'
 import {
   getSchedulerPolls,
-  createSchedulerPoll,
-  saveSchedulerResponse,
   bookSchedulerSlot,
   unbookSchedulerSlot,
 } from '../api/client'
+import {
+  getClubPeopleAndGroups,
+  createVerifiedPoll,
+  inviteShortcutsToPoll,
+  submitVerifiedPollResponse,
+} from '../api/workspaceClient'
+import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import {
   dispatchDiscordNotification,
   dispatchEmailNotification,
@@ -33,8 +38,6 @@ import {
 
 const BASE_MONDAY = '2026-11-16'
 const DEFAULT_TZ = 'America/Los_Angeles'
-const LOCAL_SLOTS_STORAGE_KEY = 'clubhub_availability_user_slots_v2'
-const CUSTOM_POLLS_STORAGE_KEY = 'clubhub_custom_polls_v1'
 const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
 
 const RESPONDER_GRADIENTS = [
@@ -181,122 +184,21 @@ function toUserId(name) {
 
 const DEFAULT_DATES = getWeekDatesFromStart(BASE_MONDAY)
 
-const FALLBACK_POLL = {
-  id: 'collab_ucsc_hackathon_2026',
-  title: 'Fall Hackathon & Showcase Planning',
-  hostClubId: 'demo_ucsc_csclub',
+const EMPTY_POLL_TEMPLATE = {
+  id: '',
+  title: 'No Poll Selected',
+  hostClubId: '',
+  hostClubName: '',
+  visibility: 'public_link',
   dates: DEFAULT_DATES,
   startHour: 9,
   endHour: 19,
   slotMinutes: 30,
   baseTimezone: DEFAULT_TZ,
-  location: 'Baskin Engineering 152',
-  responses: [
-    {
-      userId: 'alex_cs',
-      userName: 'Alex Lee',
-      clubName: 'CS Club',
-      freeSlots: [
-        ...makeRangeSlots(DEFAULT_DATES[0], 13, 17),
-        ...makeRangeSlots(DEFAULT_DATES[2], 14, 18),
-        ...makeRangeSlots(DEFAULT_DATES[4], 10, 15),
-      ],
-    },
-    {
-      userId: 'maya_debate',
-      userName: 'Maya Rodriguez',
-      clubName: 'Debate Society',
-      freeSlots: [
-        ...makeRangeSlots(DEFAULT_DATES[0], 14, 17),
-        ...makeRangeSlots(DEFAULT_DATES[2], 14, 18),
-        ...makeRangeSlots(DEFAULT_DATES[4], 11, 15),
-      ],
-    },
-    {
-      userId: 'chloe_art',
-      userName: 'Chloe Lindqvist',
-      clubName: 'Art Collective',
-      freeSlots: [
-        ...makeRangeSlots(DEFAULT_DATES[0], 14, 16.5),
-        ...makeRangeSlots(DEFAULT_DATES[2], 14, 17),
-        ...makeRangeSlots(DEFAULT_DATES[4], 11, 14),
-      ],
-    },
-    {
-      userId: 'raj_robotics',
-      userName: 'Raj Nair',
-      clubName: 'Robotics League',
-      freeSlots: [
-        ...makeRangeSlots(DEFAULT_DATES[0], 14, 17),
-        ...makeRangeSlots(DEFAULT_DATES[2], 14, 17),
-      ],
-    },
-  ],
-}
-
-const STARTER_DEMO_SLOTS = [
-  ...makeRangeSlots(DEFAULT_DATES[0], 14, 16.5),
-  ...makeRangeSlots(DEFAULT_DATES[2], 14, 17),
-]
-
-function loadStoredSlotsByPoll(defaultUserId, isDemo = false) {
-  if (!isDemo && typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(LOCAL_SLOTS_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed === 'object') {
-          if (parsed.byPoll && typeof parsed.byPoll === 'object') {
-            const byPoll = {}
-            for (const [pollId, userMap] of Object.entries(parsed.byPoll)) {
-              if (userMap && typeof userMap === 'object') {
-                byPoll[pollId] = {}
-                for (const [uid, arr] of Object.entries(userMap)) {
-                  if (Array.isArray(arr)) byPoll[pollId][uid] = new Set(arr)
-                }
-              }
-            }
-            return { byPoll, fromStorage: true }
-          }
-
-          // Migrate legacy flat { [userId]: [...slots] } map
-          const migrated = {}
-          for (const [uid, arr] of Object.entries(parsed)) {
-            if (Array.isArray(arr)) migrated[uid] = new Set(arr)
-          }
-          if (Object.keys(migrated).length > 0) {
-            return {
-              byPoll: { [FALLBACK_POLL.id]: migrated },
-              fromStorage: true,
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore storage read errors
-    }
-  }
-
-  return {
-    byPoll: {
-      [FALLBACK_POLL.id]: {
-        [defaultUserId]: new Set(STARTER_DEMO_SLOTS),
-      },
-    },
-    fromStorage: false,
-  }
-}
-
-function serializeSlotsByPoll(byPoll) {
-  const out = {}
-  for (const [pollId, userMap] of Object.entries(byPoll || {})) {
-    if (!userMap || typeof userMap !== 'object') continue
-    out[pollId] = {}
-    for (const [uid, setVal] of Object.entries(userMap)) {
-      out[pollId][uid] = Array.from(setVal || [])
-    }
-  }
-  return { byPoll: out }
+  location: '',
+  invitedParticipants: [],
+  responses: [],
+  calendarEvents: [],
 }
 
 function getInitialRequestedPollId() {
@@ -310,26 +212,12 @@ function getInitialRequestedPollId() {
   }
 }
 
-function loadStoredCustomPolls(isDemo = false) {
-  if (isDemo || typeof localStorage === 'undefined') return [FALLBACK_POLL]
-  try {
-    const raw = localStorage.getItem(CUSTOM_POLLS_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const hasFallback = parsed.some(p => p?.id === FALLBACK_POLL.id)
-      return hasFallback ? parsed : [...parsed, FALLBACK_POLL]
-    }
-  } catch {
-    // Ignore storage errors
-  }
-  return [FALLBACK_POLL]
-}
-
 export default function AvailabilityView({
   user = null,
   accountKey = 'guest',
   isDemo = false,
   userSettings = {},
+  clubs = [],
   events = [],
   onEventBooked,
   onAddLocalEvent,
@@ -343,52 +231,37 @@ export default function AvailabilityView({
   const use24h = userSettings?.timeFormat === '24h'
   const weekStartsOn = userSettings?.weekStartsOn === 'sunday' ? 'sunday' : 'monday'
   const effectiveUser = isDemo ? null : user
+  const isAuthenticated = Boolean(effectiveUser?.id)
 
   const defaultUserName =
     userSettings?.displayName?.trim() ||
     effectiveUser?.fullName ||
     effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
     effectiveUser?.email?.split('@')[0] ||
-    (isDemo ? 'Demo Guest' : 'Student')
+    'Guest'
 
-  const signedInUserId = useMemo(() => toUserId(defaultUserName), [defaultUserName])
+  const signedInUserId = effectiveUser?.id || ''
   const signedInAvatarBg =
     userSettings?.avatarBg ||
     effectiveUser?.avatarBg ||
     'linear-gradient(135deg, var(--blue), var(--purple))'
 
-  const [polls, setPolls] = useState(() => loadStoredCustomPolls(isDemo))
-  const [selectedPollId, setSelectedPollId] = useState(() => {
-    const reqId = getInitialRequestedPollId()
-    const initialPolls = loadStoredCustomPolls(isDemo)
-    if (reqId && initialPolls.some(p => p.id === reqId)) return reqId
-    return initialPolls[0]?.id || FALLBACK_POLL.id
-  })
+  const [polls, setPolls] = useState([])
+  const [pollsLoading, setPollsLoading] = useState(true)
+  const [selectedPollId, setSelectedPollId] = useState(() => getInitialRequestedPollId() || '')
   const [weekAnchorDate, setWeekAnchorDate] = useState(BASE_MONDAY)
   const [mobileDay, setMobileDay] = useState(BASE_MONDAY)
 
   // 'mine' = click & drag to add or deselect free times | 'group' = view everyone's overlap
   const [gridMode, setGridMode] = useState('mine')
 
-  // Current responder identity (defaults to signed-in user; teammate/guest override optional)
-  const [guestOverrideName, setGuestOverrideName] = useState('')
-  const [showGuestForm, setShowGuestForm] = useState(false)
-  const [guestInput, setGuestInput] = useState('')
-
-  const activePersonName = guestOverrideName || defaultUserName
-  const currentUserId = useMemo(() => toUserId(activePersonName), [activePersonName])
+  const activePersonName = defaultUserName
+  const currentUserId = signedInUserId
 
   // Spotlight filter: click a responder in the Responders card to highlight their free times
   const [spotlightUserId, setSpotlightUserId] = useState(null)
 
-  const initialSlotStore = useMemo(
-    () => loadStoredSlotsByPoll(toUserId(defaultUserName), isDemo),
-    // Only compute initial seed once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
-  const [slotsByPoll, setSlotsByPoll] = useState(() => initialSlotStore.byPoll)
-  const [hasEditedLocally, setHasEditedLocally] = useState(() => initialSlotStore.fromStorage)
+  const [slotsByPoll, setSlotsByPoll] = useState({})
 
   // Synchronous drag session ref + lightweight visual preview state
   const dragRef = useRef(null)
@@ -396,38 +269,80 @@ export default function AvailabilityView({
   const handledByPointerDownRef = useRef(false)
   const slotsByPollRef = useRef(slotsByPoll)
   slotsByPollRef.current = slotsByPoll
-  const [dragUiState, setDragUiState] = useState(null) // { mode: 'add' | 'remove', minCol, maxCol, minRow, maxRow }
-  const [autoSaveState, setAutoSaveState] = useState('saved') // 'saving' | 'saved'
+  const [dragUiState, setDragUiState] = useState(null)
+  const [autoSaveState, setAutoSaveState] = useState('saved')
 
   // Hovered or clicked slot & contiguous window range for full-block grid highlighting
   const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
-  const [hoveredWindowRange, setHoveredWindowRange] = useState(null) // { startMs, endMs }
+  const [hoveredWindowRange, setHoveredWindowRange] = useState(null)
   const [pinnedSlotIso, setPinnedSlotIso] = useState(null)
   const [durationMins, setDurationMins] = useState(60)
   const [bookingBusy, setBookingBusy] = useState(false)
 
-  // New Poll inline drawer
+  // New Poll inline drawer + Leadership Targeting Shortcuts
   const [showNewPollForm, setShowNewPollForm] = useState(false)
   const [newPollTitle, setNewPollTitle] = useState('')
   const [newPollDate, setNewPollDate] = useState(BASE_MONDAY)
   const [newPollLocation, setNewPollLocation] = useState('')
+  const [newPollClubId, setNewPollClubId] = useState('')
+  const [newPollVisibility, setNewPollVisibility] = useState('public_link')
+  const [newPollShortcuts, setNewPollShortcuts] = useState([])
+  const [createPollBusy, setCreatePollBusy] = useState(false)
+
+  // Leadership shortcut invite drawer on an existing club poll
+  const [showExistingInviteShortcuts, setShowExistingInviteShortcuts] = useState(false)
+  const [existingInviteShortcuts, setExistingInviteShortcuts] = useState([])
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [clubPeopleCache, setClubPeopleCache] = useState({})
 
   const saveTimerRef = useRef(null)
 
   const activePoll = useMemo(
-    () => polls.find(p => p.id === selectedPollId) || polls[0] || FALLBACK_POLL,
+    () => polls.find(p => p.id === selectedPollId) || polls[0] || EMPTY_POLL_TEMPLATE,
     [polls, selectedPollId]
+  )
+  const hasActivePoll = Boolean(activePoll.id)
+
+  // Load club people & sub-groups for RBAC shortcut buttons when creating or viewing a club poll
+  const ensureClubPeopleLoaded = useCallback(async clubId => {
+    if (!clubId) return
+    const res = await getClubPeopleAndGroups(clubId)
+    if (res?.ok) {
+      setClubPeopleCache(prev => ({ ...prev, [clubId]: res }))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (newPollClubId && isAuthenticated) {
+      ensureClubPeopleLoaded(newPollClubId)
+    }
+  }, [newPollClubId, isAuthenticated, ensureClubPeopleLoaded])
+
+  useEffect(() => {
+    if (activePoll.hostClubId && isAuthenticated) {
+      ensureClubPeopleLoaded(activePoll.hostClubId)
+    }
+  }, [activePoll.hostClubId, isAuthenticated, ensureClubPeopleLoaded])
+
+  const newPollClubPeople = newPollClubId ? clubPeopleCache[newPollClubId] || null : null
+  const activePollClubPeople = activePoll.hostClubId
+    ? clubPeopleCache[activePoll.hostClubId] || null
+    : null
+
+  const newPollPreviewTargets = useMemo(
+    () => resolveDeduplicatedTargets(newPollClubPeople, newPollShortcuts, []),
+    [newPollClubPeople, newPollShortcuts]
   )
 
   useEffect(() => {
     if (!onPageContextChange) return
-    const pollTitle = cleanText(activePoll?.title || '')
+    const pollTitle = hasActivePoll ? cleanText(activePoll?.title || '') : ''
     onPageContextChange({
       nav: 'availability',
       label: pollTitle ? `${pollTitle}${gridMode === 'group' ? ' (Group Overlap)' : ''}` : null,
       modal: showNewPollForm ? 'new_poll' : null,
     })
-  }, [onPageContextChange, activePoll?.title, gridMode, showNewPollForm])
+  }, [onPageContextChange, hasActivePoll, activePoll?.title, gridMode, showNewPollForm])
 
   const defaultPollWeekStart = useMemo(
     () => getWeekStartOfDate(activePoll.dates?.[0] || BASE_MONDAY, weekStartsOn),
@@ -444,16 +359,8 @@ export default function AvailabilityView({
     [weekStartYmd]
   )
 
-  useEffect(() => {
-    if (isDemo) return
-    try {
-      localStorage.setItem(CUSTOM_POLLS_STORAGE_KEY, JSON.stringify(polls))
-    } catch {
-      // Ignore storage errors
-    }
-  }, [polls, isDemo])
-
   const loadPolls = useCallback(async () => {
+    setPollsLoading(true)
     const requestedPollId = getInitialRequestedPollId()
     if (requestedPollId) {
       try {
@@ -464,29 +371,22 @@ export default function AvailabilityView({
     }
 
     const data = await getSchedulerPolls()
-    if (Array.isArray(data) && data.length > 0) {
-      setPolls(prev => {
-        const backendIds = new Set(data.map(p => p.id))
-        const localOnly = prev.filter(
-          p => p?.id && !backendIds.has(p.id) && p.id !== FALLBACK_POLL.id
-        )
-        return [...data, ...localOnly]
-      })
+    const list = Array.isArray(data) ? data : []
+    setPolls(list)
+    if (list.length > 0) {
       setSelectedPollId(prev => {
-        if (requestedPollId && data.some(p => p.id === requestedPollId)) return requestedPollId
-        return data.some(p => p.id === prev) ? prev : data[0].id
+        if (requestedPollId && list.some(p => p.id === requestedPollId)) return requestedPollId
+        return list.some(p => p.id === prev) ? prev : list[0].id
       })
-    } else if (requestedPollId) {
-      setSelectedPollId(prev => {
-        const stored = loadStoredCustomPolls(isDemo)
-        return stored.some(p => p.id === requestedPollId) ? requestedPollId : prev
-      })
+    } else {
+      setSelectedPollId('')
     }
-  }, [isDemo])
+    setPollsLoading(false)
+  }, [])
 
   useEffect(() => {
     loadPolls()
-  }, [loadPolls])
+  }, [loadPolls, signedInUserId])
 
   // Sync displayed week whenever the user switches to a poll with its own target week
   useEffect(() => {
@@ -496,76 +396,61 @@ export default function AvailabilityView({
       setMobileDay(firstDate)
     }
     setPinnedSlotIso(null)
+    setShowExistingInviteShortcuts(false)
+    setExistingInviteShortcuts([])
   }, [activePoll?.id])
 
   const pollLocalMap = useMemo(
-    () => slotsByPoll[activePoll.id] || {},
+    () => (activePoll.id ? slotsByPoll[activePoll.id] || {} : {}),
     [slotsByPoll, activePoll.id]
   )
 
-  // Current user's live free slots on the active poll (always stays in sync with local & backend state)
+  // Authenticated user's live free slots on the active poll (strictly bound to DB responses + in-flight edits)
   const myFreeSlots = useMemo(() => {
+    if (!currentUserId || !activePoll.id) return new Set()
     if (pollLocalMap[currentUserId]) {
       return pollLocalMap[currentUserId]
     }
-    const existingResp = (activePoll.responses || []).find(r => {
-      const cleanName = cleanText(r.userName || 'Member').replace(/\s*\([^)]*\)\s*$/, '')
-      const uid = r.userId || toUserId(cleanName)
-      return uid === currentUserId
-    })
+    const existingResp = (activePoll.responses || []).find(r => r.userId === currentUserId)
     if (existingResp && Array.isArray(existingResp.freeSlots)) {
       return new Set(existingResp.freeSlots)
     }
-    if (!hasEditedLocally && activePoll.id === FALLBACK_POLL.id && currentUserId === signedInUserId) {
-      return new Set(STARTER_DEMO_SLOTS)
-    }
     return new Set()
-  }, [
-    pollLocalMap,
-    currentUserId,
-    activePoll.responses,
-    activePoll.id,
-    hasEditedLocally,
-    signedInUserId,
-  ])
+  }, [pollLocalMap, currentUserId, activePoll.responses, activePoll.id])
 
-  // Persist slotsByPoll to localStorage & auto-sync to backend (never called inside a setState updater)
+  // Sync authenticated user's availability directly to the database (zero localStorage PII)
   const persistPollUserSlots = useCallback(
-    (nextByPoll, targetPollId, targetUserId, targetName) => {
-      if (!isDemo && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem(
-            LOCAL_SLOTS_STORAGE_KEY,
-            JSON.stringify(serializeSlotsByPoll(nextByPoll))
-          )
-        } catch {
-          // Ignore storage errors
-        }
-      }
-
+    (nextByPoll, targetPollId, targetUserId) => {
+      if (!targetPollId || !targetUserId) return
       setAutoSaveState('saving')
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(async () => {
         const freeArr = Array.from(nextByPoll?.[targetPollId]?.[targetUserId] || [])
-        const updated = await saveSchedulerResponse(targetPollId, {
-          userId: targetUserId,
-          userName: targetName,
+        const res = await submitVerifiedPollResponse(targetPollId, {
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
           freeSlots: freeArr,
           busySlots: [],
         })
-        if (updated && updated.id) {
-          setPolls(prev => prev.map(p => (p.id === updated.id ? updated : p)))
+        if (res?.ok && res.data?.id) {
+          setPolls(prev => prev.map(p => (p.id === res.data.id ? res.data : p)))
+        } else if (!res?.ok && onNotify) {
+          onNotify(res?.error || 'Could not save poll response.', { type: 'error' })
         }
         setAutoSaveState('saved')
-      }, 400)
+      }, 350)
     },
-    [isDemo]
+    [onNotify]
   )
 
   const commitUserSet = useCallback(
-    (updatedSet, targetPollId = activePoll.id, targetUserId = currentUserId, targetName = activePersonName) => {
-      setHasEditedLocally(true)
+    (updatedSet, targetPollId = activePoll.id, targetUserId = currentUserId) => {
+      if (!isAuthenticated || !targetUserId) {
+        if (onNotify) {
+          onNotify('Sign in with your account to mark availability on polls.', { type: 'info' })
+        }
+        return
+      }
+      if (!targetPollId) return
       const prev = slotsByPollRef.current
       const nextByPoll = {
         ...prev,
@@ -576,9 +461,9 @@ export default function AvailabilityView({
       }
       slotsByPollRef.current = nextByPoll
       setSlotsByPoll(nextByPoll)
-      persistPollUserSlots(nextByPoll, targetPollId, targetUserId, targetName)
+      persistPollUserSlots(nextByPoll, targetPollId, targetUserId)
     },
-    [activePoll.id, currentUserId, activePersonName, persistPollUserSlots]
+    [activePoll.id, currentUserId, isAuthenticated, onNotify, persistPollUserSlots]
   )
 
   useEffect(() => {
@@ -673,7 +558,6 @@ export default function AvailabilityView({
     if (!session || !session.active) return
     dragRef.current = null
     setDragUiState(null)
-    setHasEditedLocally(true)
 
     const prev = slotsByPollRef.current
     const nextByPoll = {
@@ -685,7 +569,7 @@ export default function AvailabilityView({
     }
     slotsByPollRef.current = nextByPoll
     setSlotsByPoll(nextByPoll)
-    persistPollUserSlots(nextByPoll, session.pollId, session.userId, session.userName)
+    persistPollUserSlots(nextByPoll, session.pollId, session.userId)
 
     setTimeout(() => {
       handledByPointerDownRef.current = false
@@ -735,89 +619,63 @@ export default function AvailabilityView({
     }
   }, [updateDragSelection, finishActiveDrag])
 
-  // Combine poll responders + current user's live slots (with "You" always listed first)
+  // Strictly real authenticated poll responders (plus live in-flight edits for the signed-in user)
   const allParticipants = useMemo(() => {
+    if (!hasActivePoll) return []
     const map = new Map()
     let colorIdx = 0
 
-    // Seed signed-in user first so "You" appears at the top of Responders
-    const signedUserLocalSet = pollLocalMap[signedInUserId]
-    const signedExistingResp = (activePoll.responses || []).find(r => {
-      const cleanName = cleanText(r.userName || 'Member').replace(/\s*\([^)]*\)\s*$/, '')
-      const uid = r.userId || toUserId(cleanName)
-      return uid === signedInUserId
-    })
+    if (isAuthenticated && signedInUserId) {
+      const signedUserLocalSet = pollLocalMap[signedInUserId]
+      const signedExistingResp = (activePoll.responses || []).find(
+        r => r.userId === signedInUserId
+      )
+      const liveSlots = signedUserLocalSet
+        ? Array.from(signedUserLocalSet)
+        : signedExistingResp?.freeSlots || []
 
-    const signedInitialFree = signedUserLocalSet
-      ? Array.from(signedUserLocalSet)
-      : signedExistingResp?.freeSlots
-        ? signedExistingResp.freeSlots
-        : !hasEditedLocally && activePoll.id === FALLBACK_POLL.id
-          ? STARTER_DEMO_SLOTS
-          : []
-
-    map.set(signedInUserId, {
-      userId: signedInUserId,
-      userName: defaultUserName,
-      initials: getInitials(defaultUserName),
-      avatarBg: signedInAvatarBg,
-      clubName: signedExistingResp?.clubName || '',
-      isGuest: false,
-      isYou: true,
-      freeSlots: signedInitialFree,
-    })
-
-    for (const r of activePoll.responses || []) {
-      const cleanName = cleanText(r.userName || 'Member').replace(/\s*\([^)]*\)\s*$/, '')
-      const uid = r.userId || toUserId(cleanName)
-      if (uid === signedInUserId) continue
-      const localOverride = pollLocalMap[uid]
-      map.set(uid, {
-        userId: uid,
-        userName: cleanName,
-        initials: getInitials(cleanName),
-        avatarBg: RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
-        clubName: cleanText(r.clubName || ''),
-        isGuest: false,
-        isYou: false,
-        freeSlots: localOverride ? Array.from(localOverride) : r.freeSlots || [],
-      })
-    }
-
-    for (const [uid, slotSet] of Object.entries(pollLocalMap)) {
-      if (!map.has(uid) && (slotSet.size > 0 || uid === currentUserId)) {
-        const prettyName =
-          uid === currentUserId && guestOverrideName
-            ? guestOverrideName
-            : uid
-                .replace(/^user_/, '')
-                .split('_')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(' ')
-        map.set(uid, {
-          userId: uid,
-          userName: prettyName,
-          initials: getInitials(prettyName),
-          avatarBg: RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
-          clubName: 'Added responder',
-          isGuest: true,
-          isYou: false,
-          freeSlots: Array.from(slotSet),
+      if (signedExistingResp || (signedUserLocalSet && signedUserLocalSet.size > 0)) {
+        map.set(signedInUserId, {
+          userId: signedInUserId,
+          userName: signedExistingResp?.userName || defaultUserName,
+          initials: getInitials(signedExistingResp?.userName || defaultUserName),
+          avatarBg: signedInAvatarBg,
+          roleTitle: signedExistingResp?.roleTitle || '',
+          clubName: signedExistingResp?.clubName || '',
+          isYou: true,
+          freeSlots: liveSlots,
         })
       }
     }
 
+    for (const r of activePoll.responses || []) {
+      if (!r?.userId) continue
+      if (r.userId === signedInUserId && map.has(signedInUserId)) continue
+      const cleanName = cleanText(r.userName || 'Member')
+      map.set(r.userId, {
+        userId: r.userId,
+        userName: cleanName,
+        initials: getInitials(cleanName),
+        avatarBg:
+          r.userId === signedInUserId
+            ? signedInAvatarBg
+            : RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
+        roleTitle: cleanText(r.roleTitle || ''),
+        clubName: cleanText(r.clubName || ''),
+        isYou: r.userId === signedInUserId,
+        freeSlots: r.freeSlots || [],
+      })
+    }
+
     return Array.from(map.values())
   }, [
+    hasActivePoll,
+    isAuthenticated,
     activePoll.responses,
-    activePoll.id,
     pollLocalMap,
     signedInUserId,
     defaultUserName,
     signedInAvatarBg,
-    currentUserId,
-    guestOverrideName,
-    hasEditedLocally,
   ])
 
   const activeParticipant = useMemo(
@@ -1073,6 +931,16 @@ export default function AvailabilityView({
       return
     }
 
+    if (!hasActivePoll) {
+      if (onNotify) onNotify('Create or select a poll first to mark your free times.', { type: 'info' })
+      return
+    }
+
+    if (!isAuthenticated || !currentUserId) {
+      if (onNotify) onNotify('Sign in with your account to mark availability.', { type: 'info' })
+      return
+    }
+
     // Prevent browser text selection and native HTML5 dragstart on '✓' cells so drag-to-deselect never stalls
     e.preventDefault()
     e.currentTarget?.releasePointerCapture?.(e.pointerId)
@@ -1177,25 +1045,37 @@ export default function AvailabilityView({
     }
   }
 
-  function handleAddGuestSubmit(e) {
-    e.preventDefault()
-    const trimmed = guestInput.trim()
-    if (!trimmed) return
-    const uid = toUserId(trimmed)
-    setSlotsByPoll(prev => ({
-      ...prev,
-      [activePoll.id]: {
-        ...(prev[activePoll.id] || {}),
-        [uid]: prev[activePoll.id]?.[uid] || new Set(),
-      },
-    }))
-    setGuestOverrideName(trimmed)
-    setGuestInput('')
-    setShowGuestForm(false)
-    setGridMode('mine')
-    setSpotlightUserId(null)
-    if (onNotify) {
-      onNotify(`Now marking availability for "${trimmed}".`)
+  function toggleNewPollShortcut(token) {
+    setNewPollShortcuts(prev =>
+      prev.includes(token) ? prev.filter(t => t !== token) : [...prev, token]
+    )
+  }
+
+  function toggleExistingPollShortcut(token) {
+    setExistingInviteShortcuts(prev =>
+      prev.includes(token) ? prev.filter(t => t !== token) : [...prev, token]
+    )
+  }
+
+  async function handleApplyExistingShortcuts() {
+    if (!hasActivePoll || !activePoll.hostClubId || existingInviteShortcuts.length === 0) return
+    setInviteBusy(true)
+    const res = await inviteShortcutsToPoll(activePoll.id, {
+      clubId: activePoll.hostClubId,
+      shortcutTargets: existingInviteShortcuts,
+    })
+    setInviteBusy(false)
+    if (res?.ok && res.data?.id) {
+      setPolls(prev => prev.map(p => (p.id === res.data.id ? res.data : p)))
+      setExistingInviteShortcuts([])
+      setShowExistingInviteShortcuts(false)
+      if (onNotify) {
+        onNotify(
+          `Invited ${res.data.invitedParticipants?.length || 0} deduplicated club members to "${res.data.title}".`
+        )
+      }
+    } else if (onNotify) {
+      onNotify(res?.error || 'Could not invite club shortcuts.', { type: 'error' })
     }
   }
 
@@ -1294,40 +1174,46 @@ export default function AvailabilityView({
 
   async function handleCreatePollSubmit(e) {
     e.preventDefault()
-    if (!newPollTitle.trim()) return
+    if (!newPollTitle.trim() || createPollBusy) return
+    if (!isAuthenticated) {
+      if (onNotify) onNotify('Sign in with your account to create an availability poll.', { type: 'info' })
+      return
+    }
 
+    setCreatePollBusy(true)
     const startDay = getWeekStartOfDate(newPollDate || BASE_MONDAY, weekStartsOn)
     const weekDates = getWeekDatesFromStart(startDay)
+    const selectedClub = clubs.find(c => c.id === newPollClubId)
     const payload = {
       title: newPollTitle.trim(),
       location: newPollLocation.trim() || 'TBD',
       dates: weekDates,
       baseTimezone: DEFAULT_TZ,
+      hostClubId: newPollClubId || '',
+      hostClubName: selectedClub?.name || '',
+      visibility: newPollClubId ? newPollVisibility : 'public_link',
+      shortcutTargets:
+        newPollClubId && newPollClubPeople?.permission?.isBoard ? newPollShortcuts : [],
     }
 
-    const created = await createSchedulerPoll(payload)
-    const pollObj =
-      created && created.id
-        ? created
-        : {
-            id: `collab_${Date.now()}`,
-            title: payload.title,
-            location: payload.location,
-            dates: weekDates,
-            startHour: 9,
-            endHour: 19,
-            slotMinutes: 30,
-            baseTimezone: DEFAULT_TZ,
-            responses: [],
-            calendarEvents: [],
-          }
+    const res = await createVerifiedPoll(payload)
+    setCreatePollBusy(false)
 
-    setPolls(prev => [pollObj, ...prev])
+    if (!res?.ok || !res.data?.id) {
+      if (onNotify) {
+        onNotify(res?.error || 'Could not create poll.', { type: 'error' })
+      }
+      return
+    }
+
+    const pollObj = res.data
+    setPolls(prev => [pollObj, ...prev.filter(p => p.id !== pollObj.id)])
     setSelectedPollId(pollObj.id)
     setWeekAnchorDate(startDay)
     setMobileDay(startDay)
     setNewPollTitle('')
     setNewPollLocation('')
+    setNewPollShortcuts([])
     setShowNewPollForm(false)
     setGridMode('mine')
     setSpotlightUserId(null)
@@ -1346,22 +1232,23 @@ export default function AvailabilityView({
       start: slotIso,
       end: endIso,
       title: activePoll.title,
-      clubId: activePoll.hostClubId || 'demo_ucsc_csclub',
-      clubName: 'Group Poll',
+      clubId: activePoll.hostClubId || 'personal_poll',
+      clubName: activePoll.hostClubName || 'Group Poll',
       location: activePoll.location || 'TBD',
-      userId: currentUserId,
-      userName: activePersonName,
     })
     setBookingBusy(false)
 
     if (res && res.booked && res.poll) {
       setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
       if (onEventBooked) await onEventBooked()
+    } else if (res?.error) {
+      if (onNotify) onNotify(res.error, { type: 'error' })
+      return
     } else {
       const localEv = {
         id: eventId,
-        clubId: activePoll.hostClubId || 'demo_ucsc_csclub',
-        clubName: 'Group Poll',
+        clubId: activePoll.hostClubId || 'personal_poll',
+        clubName: activePoll.hostClubName || 'Group Poll',
         title: activePoll.title,
         start: slotIso,
         end: endIso,
@@ -1574,6 +1461,24 @@ export default function AvailabilityView({
           </div>
         </div>
 
+        {/* Empty Polls Prompt */}
+        {!pollsLoading && polls.length === 0 && !showNewPollForm && (
+          <div className="mt-3 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-[var(--text-muted)]">
+              <strong className="text-[var(--text)] font-semibold">No availability polls yet.</strong>{' '}
+              Create a real multi-user poll for your club, board, or sub-groups — zero demo or fake responders.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowNewPollForm(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+            >
+              <Plus size={13} />
+              <span>Create First Poll</span>
+            </button>
+          </div>
+        )}
+
         {/* New Poll Drawer */}
         {showNewPollForm && (
           <form
@@ -1622,12 +1527,78 @@ export default function AvailabilityView({
               </div>
             </div>
 
+            {clubs.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Host Club (Optional)
+                  </label>
+                  <select
+                    value={newPollClubId}
+                    onChange={e => {
+                      setNewPollClubId(e.target.value)
+                      setNewPollShortcuts([])
+                      setNewPollVisibility('public_link')
+                    }}
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  >
+                    <option value="">Personal / Cross-Club Poll</option>
+                    {clubs.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {cleanText(c.name)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {newPollClubId && (
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                      Poll Access Tier
+                    </label>
+                    <select
+                      value={newPollVisibility}
+                      onChange={e => setNewPollVisibility(e.target.value)}
+                      className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    >
+                      <option value="public_link">Anyone with Invite Link</option>
+                      <option value="club_members">Club Members & Board Only</option>
+                      {newPollClubPeople?.permission?.isBoard && (
+                        <option value="board_only">Board / Leadership Only</option>
+                      )}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {newPollClubId && newPollClubPeople?.permission?.isBoard && (
+              <div className="space-y-2">
+                <LeadershipShortcutBar
+                  clubPeople={newPollClubPeople}
+                  selectedShortcuts={newPollShortcuts}
+                  onToggleShortcut={toggleNewPollShortcut}
+                  label="Leadership Poll Invite Shortcuts"
+                />
+                {newPollPreviewTargets.length > 0 && (
+                  <div className="text-xs text-[var(--text-muted)] px-1">
+                    Inviting{' '}
+                    <strong className="text-[var(--text)] font-semibold">
+                      {newPollPreviewTargets.length}
+                    </strong>{' '}
+                    unique club member{newPollPreviewTargets.length === 1 ? '' : 's'} (deduplicated across overlapping roles & sub-groups).
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <button
                 type="submit"
-                className="px-5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
+                disabled={createPollBusy}
+                className="px-5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90 disabled:opacity-60"
               >
-                Create Poll
+                {createPollBusy ? 'Creating…' : 'Create Poll'}
               </button>
             </div>
           </form>
@@ -1777,28 +1748,17 @@ export default function AvailabilityView({
           <div className="flex flex-wrap items-center justify-between gap-2 py-2.5 mb-1 text-xs text-[var(--text-muted)]">
             {gridMode === 'mine' ? (
               <div className="flex flex-wrap items-center gap-2">
-                {guestOverrideName ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] font-semibold">
-                    <Avatar
-                      initials={activeParticipant.initials}
-                      bg={activeParticipant.avatarBg}
-                      size={18}
-                    />
-                    <span>Marking as {activePersonName}</span>
-                    <button
-                      type="button"
-                      onClick={() => setGuestOverrideName('')}
-                      className="ml-1 underline bg-transparent border-none text-[var(--blue-ink)] font-bold cursor-pointer p-0 text-[11px]"
-                    >
-                      Switch to You
-                    </button>
+                {!isAuthenticated ? (
+                  <span>Sign in with your account to mark availability on real club polls.</span>
+                ) : !hasActivePoll ? (
+                  <span>Create a poll above to begin collecting verified member availability.</span>
+                ) : (
+                  <span>
+                    <strong className="font-semibold text-[var(--text)]">Click or drag</strong> empty
+                    slots to mark free, or green slots to{' '}
+                    <strong className="font-semibold text-[var(--text)]">deselect</strong>.
                   </span>
-                ) : null}
-                <span>
-                  <strong className="font-semibold text-[var(--text)]">Click or drag</strong> empty
-                  slots to mark free, or green slots to{' '}
-                  <strong className="font-semibold text-[var(--text)]">deselect</strong>.
-                </span>
+                )}
               </div>
             ) : (
               <span>
@@ -2336,7 +2296,7 @@ export default function AvailabilityView({
 
         {/* RIGHT STICKY RAIL: 1) Responders (Above) + 2) Best Meeting Windows (Below) */}
         <div className={`lg:sticky lg:top-5 ${isCompact ? 'space-y-3.5' : 'space-y-4'}`}>
-          {/* Card 1 (TOP): Team Responders */}
+          {/* Card 1 (TOP): Verified Team Responders */}
           <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={3}>
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
@@ -2346,142 +2306,138 @@ export default function AvailabilityView({
                 </h3>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowGuestForm(prev => !prev)}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-              >
-                {showGuestForm ? <X size={12} /> : <UserPlus size={12} />}
-                <span>{showGuestForm ? 'Cancel' : 'Add Person'}</span>
-              </button>
+              {hasActivePoll && activePollClubPeople?.permission?.isBoard && (
+                <button
+                  type="button"
+                  onClick={() => setShowExistingInviteShortcuts(prev => !prev)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  {showExistingInviteShortcuts ? <X size={12} /> : <Shield size={12} />}
+                  <span>{showExistingInviteShortcuts ? 'Cancel' : 'Invite Shortcuts'}</span>
+                </button>
+              )}
             </div>
 
             <p className="text-xs text-[var(--text-muted)] mb-3">
-              Click anyone to highlight their free times on the schedule.
+              Verified account responses only. Click anyone to highlight their free times.
             </p>
 
-            {showGuestForm && (
-              <form
-                onSubmit={handleAddGuestSubmit}
-                className="mb-3 p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex gap-2 fade-in"
-              >
-                <input
-                  type="text"
-                  autoFocus
-                  required
-                  value={guestInput}
-                  onChange={e => setGuestInput(e.target.value)}
-                  placeholder="Teammate name…"
-                  className="flex-1 min-h-[36px] px-3 py-1.5 rounded-lg bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+            {showExistingInviteShortcuts && activePollClubPeople?.permission?.isBoard && (
+              <div className="mb-3 space-y-2 fade-in">
+                <LeadershipShortcutBar
+                  clubPeople={activePollClubPeople}
+                  selectedShortcuts={existingInviteShortcuts}
+                  onToggleShortcut={toggleExistingPollShortcut}
+                  label="Add Roster / Sub-Groups"
+                  compact
                 />
-                <button
-                  type="submit"
-                  className="px-3 min-h-[36px] rounded-lg bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer shrink-0"
-                >
-                  Add & Mark
-                </button>
-              </form>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={inviteBusy || existingInviteShortcuts.length === 0}
+                    onClick={handleApplyExistingShortcuts}
+                    className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    {inviteBusy ? 'Adding…' : 'Apply Invites'}
+                  </button>
+                </div>
+              </div>
             )}
 
             <div className="flex flex-col gap-1.5 max-h-[252px] overflow-y-auto pr-0.5">
-              {allParticipants.map(p => {
-                const isSpotlit = spotlightUserId === p.userId
-                const isEditingThisPerson = p.userId === currentUserId
-                const weekSlotCount = (p.freeSlots || []).filter(s =>
-                  displayedWeekSlotsSet.has(s)
-                ).length
+              {allParticipants.length === 0 ? (
+                <div className="py-4 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
+                  No verified responses yet. Share the poll link or mark your free slots on the grid.
+                </div>
+              ) : (
+                allParticipants.map(p => {
+                  const isSpotlit = spotlightUserId === p.userId
+                  const weekSlotCount = (p.freeSlots || []).filter(s =>
+                    displayedWeekSlotsSet.has(s)
+                  ).length
 
-                return (
-                  <div
-                    key={p.userId}
-                    onClick={() =>
-                      setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
-                    }
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
+                  return (
+                    <div
+                      key={p.userId}
+                      onClick={() =>
                         setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
                       }
-                    }}
-                    title={`Click to ${isSpotlit ? 'clear highlight' : `highlight ${p.userName}'s free times`}`}
-                    className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border cursor-pointer transition-all ${
-                      isSpotlit
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-2xs'
-                        : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border-[var(--border)]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Avatar initials={p.initials} bg={p.avatarBg} size={26} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs font-semibold text-[var(--text)] truncate">
-                            {p.userName}
-                          </span>
-                          {p.isYou && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] text-[10px] font-bold shrink-0">
-                              You
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
+                        }
+                      }}
+                      title={`Click to ${isSpotlit ? 'clear highlight' : `highlight ${p.userName}'s free times`}`}
+                      className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border cursor-pointer transition-all ${
+                        isSpotlit
+                          ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-2xs'
+                          : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border-[var(--border)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar initials={p.initials} bg={p.avatarBg} size={26} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-[var(--text)] truncate">
+                              {p.userName}
                             </span>
-                          )}
-                          {isEditingThisPerson && !p.isYou && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-[var(--green-light)] text-[var(--green-ink)] text-[10px] font-bold shrink-0">
-                              Editing
-                            </span>
+                            {p.isYou && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] text-[10px] font-bold shrink-0">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          {(p.roleTitle || p.clubName) && (
+                            <div className="text-[10.5px] text-[var(--text-muted)] truncate">
+                              {[p.roleTitle, p.clubName].filter(Boolean).join(' · ')}
+                            </div>
                           )}
                         </div>
-                        {p.clubName && (
-                          <div className="text-[10.5px] text-[var(--text-muted)] truncate">
-                            {p.clubName}
-                          </div>
-                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono-num ${
+                            weekSlotCount > 0
+                              ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
+                              : 'bg-[var(--bg-card)] text-[var(--text-light)]'
+                          }`}
+                        >
+                          {weekSlotCount > 0 ? `${formatHoursFromSlots(weekSlotCount)} free` : 'None'}
+                        </span>
                       </div>
                     </div>
+                  )
+                })
+              )}
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {p.isGuest && !isEditingThisPerson && (
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation()
-                            setGuestOverrideName(p.userName)
-                            setGridMode('mine')
-                            setSpotlightUserId(null)
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-[var(--bg-card)] text-[10.5px] font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
-                        >
-                          Edit
-                        </button>
-                      )}
-
-                      {p.isYou && guestOverrideName && (
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation()
-                            setGuestOverrideName('')
-                            setGridMode('mine')
-                            setSpotlightUserId(null)
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-[var(--bg-card)] text-[10.5px] font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
-                        >
-                          Edit Mine
-                        </button>
-                      )}
-
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono-num ${
-                          weekSlotCount > 0
-                            ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
-                            : 'bg-[var(--bg-card)] text-[var(--text-light)]'
-                        }`}
-                      >
-                        {weekSlotCount > 0 ? `${formatHoursFromSlots(weekSlotCount)} free` : 'None'}
-                      </span>
-                    </div>
+              {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length > 0 && (
+                <div className="pt-2 mt-1 border-t border-[var(--border-subtle)] space-y-1">
+                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-light)] px-1">
+                    Awaiting Response (
+                    {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length}
+                    )
                   </div>
-                )
-              })}
+                  {(activePoll.invitedParticipants || [])
+                    .filter(inv => !inv.hasResponded)
+                    .map(inv => (
+                      <div
+                        key={inv.memberKey || inv.name}
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border)] text-xs"
+                      >
+                        <span className="font-medium text-[var(--text-muted)] truncate">
+                          {cleanText(inv.name)}
+                        </span>
+                        <span className="text-[10.5px] text-[var(--text-light)] shrink-0">
+                          {cleanText(inv.sourceShortcut || inv.roleTitle || 'Invited')}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </Card>
 

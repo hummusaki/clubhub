@@ -167,6 +167,19 @@
     min-width: 0;
   }
 
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 16%, transparent);
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--blue) 65%, transparent);
+    outline-offset: 2px;
+  }
+
   ::selection {
     background: var(--blue-light);
     color: var(--blue-ink);
@@ -228,6 +241,52 @@ html.reduce-motion .fade-in {
   .feed-tile-virtual {
     content-visibility: auto;
     contain-intrinsic-size: auto 128px;
+  }
+
+  /* Unified Segmented Control Track & Buttons */
+  .segmented-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 0.75rem;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+  }
+
+  /* Unified Modal Backdrop & Panel */
+  .modal-backdrop {
+    background-color: rgba(8, 12, 20, 0.54);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .modal-panel {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Mobile horizontal scroll rail that wraps naturally on tablet/desktop */
+  .mobile-pill-rail {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .mobile-pill-rail::-webkit-scrollbar {
+    display: none;
+  }
+  @media (min-width: 640px) {
+    .mobile-pill-rail {
+      flex-wrap: wrap;
+      overflow-x: visible;
+    }
   }
 }
 

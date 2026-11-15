@@ -655,7 +655,17 @@ export function importCollectorFile(customFilePath = null) {
     return { imported: false, reason: 'No collector output file to import' };
   }
 
-  const data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+  } catch (err) {
+    console.warn(`⚠️ Skipping malformed JSON in ${targetPath}: ${err.message}`);
+    if (targetPath !== COLLECTOR_SAMPLE_PATH && realClubCount === 0 && fs.existsSync(COLLECTOR_SAMPLE_PATH)) {
+      data = JSON.parse(fs.readFileSync(COLLECTOR_SAMPLE_PATH, 'utf8'));
+    } else {
+      return { imported: false, reason: `Invalid JSON in ${targetPath}` };
+    }
+  }
   return {
     imported: true,
     file: targetPath,

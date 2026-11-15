@@ -40,8 +40,7 @@ import {
   cleanMultilineText,
 } from './ui'
 import { PlatformIcon, ClubEmblemSvg } from './icons'
-import { ingestFromSource, syncAllSources, getStaticSnapshot } from '../api/client'
-import IntegrationsPanel from './IntegrationsPanel'
+import { ingestFromSource, syncAllSources } from '../api/client'
 import {
   getLocalIntegrationPrefs,
   dispatchDiscordNotification,
@@ -53,6 +52,7 @@ import {
   getClubCategoryMeta,
 } from '../utils/clubCategories'
 import { buildClubDirectoryData, toInitials } from '../utils/clubDirectory'
+import ClubRbacPanel from './ClubRbacPanel'
 
 const SOURCE_FILTERS = [
   { id: 'all',       label: 'All Channels', color: 'blue' },
@@ -194,17 +194,6 @@ function resolvePostLinkInfo(post, club, channel) {
           url: profileUrl,
           label: handle ? `@${handle}` : 'Club Instagram',
           expandedLabel: handle ? `Visit @${handle} on Instagram` : 'Visit club Instagram',
-          isDirectPost: false,
-        }
-      }
-    }
-    if (channel === 'discord') {
-      const discordUrl = normalizeExternalHttpUrl(club?.discordUrl || club?.discord)
-      if (discordUrl) {
-        return {
-          url: discordUrl,
-          label: 'Club Discord',
-          expandedLabel: 'Open club Discord',
           isDirectPost: false,
         }
       }
@@ -732,19 +721,7 @@ const FeedPostCard = memo(function FeedPostCard({
   )
 })
 
-const CUSTOM_ROSTER_STORAGE_KEY = 'clubhub_custom_roster_v1'
-
-function loadCustomRoster(isDemo = false) {
-  if (isDemo) return { officers: [], members: [] }
-  try {
-    const raw = localStorage.getItem(CUSTOM_ROSTER_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (parsed && Array.isArray(parsed.officers) && Array.isArray(parsed.members)) {
-      return parsed
-    }
-  } catch {
-    // Ignore storage errors
-  }
+function loadCustomRoster() {
   return { officers: [], members: [] }
 }
 
@@ -1049,12 +1026,13 @@ export default function ClubsHub({
   items,
   clubsData,
   hubDict = {},
-  events = [],
-  calendarIntegration = null,
   initialSection = null,
+  initialRbacClubId = '',
   isDemo = false,
   userSettings = {},
   onToggleJoin,
+  onOpenTasks,
+  onRefreshAnnouncements,
   searchQuery = '',
   compact = false,
   onOpenClubs,
@@ -1095,7 +1073,15 @@ export default function ClubsHub({
 
   const [section, setSection] = useState(
     () => initialSection || (joinedClubs.length === 0 ? 'discover' : 'myclubs')
-  ) // 'myclubs' | 'discover' | 'updates' | 'directory'
+  ) // 'myclubs' | 'rbac' | 'discover' | 'updates' | 'directory'
+
+  useEffect(() => {
+    if (initialSection) setSection(initialSection)
+  }, [initialSection])
+
+  useEffect(() => {
+    if (initialRbacClubId) setDirectoryClubFilter(String(initialRbacClubId))
+  }, [initialRbacClubId])
   const [category, setCategory] = useState('All')
   const [clubLayout, setClubLayout] = useState('grouped') // 'grouped' | 'grid'
   const [expandedCategories, setExpandedCategories] = useState({})
@@ -1118,11 +1104,18 @@ export default function ClubsHub({
   }, [])
 
   // Directory filters & state
+  const DIRECTORY_PAGE_SIZE = 36
+  const DIRECTORY_CLUB_GROUP_PAGE_SIZE = 16
   const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
   const [directoryScope, setDirectoryScope] = useState('all') // 'all' | 'myclubs'
   const [directoryClubFilter, setDirectoryClubFilter] = useState('all')
   const [directoryCategory, setDirectoryCategory] = useState('All')
   const [directoryGroupMode, setDirectoryGroupMode] = useState('role') // 'role' | 'club'
+  const [visibleOfficersCount, setVisibleOfficersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleMembersCount, setVisibleMembersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleClubGroupsCount, setVisibleClubGroupsCount] = useState(
+    DIRECTORY_CLUB_GROUP_PAGE_SIZE
+  )
   const [copiedEmailId, setCopiedEmailId] = useState(null)
   const [customRoster, setCustomRoster] = useState(() => loadCustomRoster(isDemo))
 
@@ -1153,8 +1146,6 @@ export default function ClubsHub({
   const [pushToEmail, setPushToEmail] = useState(false)
   const [syncingChannel, setSyncingChannel] = useState('')
   const [internalLocalPosts, setInternalLocalPosts] = useState([])
-  const [integrationChannelFilter, setIntegrationChannelFilter] = useState('all') // 'all' | 'discord' | 'email'
-  const [integrationScope, setIntegrationScope] = useState('all') // 'all' | 'myclubs'
 
   useEffect(() => {
     const fallbackId = joinedClubs[0]?.id || allClubs[0]?.id
@@ -1211,8 +1202,6 @@ export default function ClubsHub({
       label = selectedDirectoryClub
         ? `${cleanText(selectedDirectoryClub.name)} Roster`
         : 'Officers & Members'
-    } else if (section === 'integrations') {
-      label = 'Discord & Email Hub'
     }
     onPageContextChange({
       nav: 'clubs',
@@ -1532,6 +1521,20 @@ export default function ClubsHub({
     )
   }, [preCatMembers, directoryCategory, directoryClubFilter])
 
+  // Reset progressive directory slices whenever directory filters or search change
+  useEffect(() => {
+    setVisibleOfficersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleMembersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleClubGroupsCount(DIRECTORY_CLUB_GROUP_PAGE_SIZE)
+  }, [
+    directoryClubFilter,
+    directoryScope,
+    directoryCategory,
+    roleFilter,
+    directoryGroupMode,
+    searchQuery,
+  ])
+
   // Grouped-by-Club directory sections for "By Club" mode
   const groupedDirectoryByClub = useMemo(() => {
     if (directoryGroupMode !== 'club' || directoryClubFilter !== 'all') return []
@@ -1717,15 +1720,8 @@ export default function ClubsHub({
           : customRoster.members || [],
     }
     setCustomRoster(nextRoster)
-    if (!isDemo) {
-      try {
-        localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
-      } catch {
-        // Ignore storage errors
-      }
-    }
     if (onNotify) {
-      onNotify('Removed custom entry from directory.', { type: 'info' })
+      onNotify('Removed custom entry from session directory.', { type: 'info' })
     }
   }
 
@@ -1773,13 +1769,6 @@ export default function ClubsHub({
     }
 
     setCustomRoster(nextRoster)
-    if (!isDemo) {
-      try {
-        localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
-      } catch {
-        // Ignore storage errors
-      }
-    }
 
     setPersonName('')
     setPersonEmail('')
@@ -1883,7 +1872,7 @@ export default function ClubsHub({
       if (res && !res.error) {
         if (onRefresh) await onRefresh()
         if (onNotify) {
-          const count = Number(res.synced ?? res.count ?? 0)
+          const count = Number(res.result?.synced ?? res.synced ?? res.count ?? 0)
           onNotify(
             count > 0
               ? `Synced ${count} ${platform === 'discord' ? 'Discord' : 'Email'} update${count === 1 ? '' : 's'}!`
@@ -1891,34 +1880,16 @@ export default function ClubsHub({
             { type: count > 0 ? 'success' : 'info' }
           )
         }
-      } else {
-        const snap = await getStaticSnapshot({ forceRefresh: true })
-        if (onRefresh) await onRefresh()
-        if (onNotify) {
-          const dSummary = snap?.integrations?.discord
-          const eSummary = snap?.integrations?.email
-          if (platform === 'discord' && dSummary) {
-            onNotify(
-              `Refreshed GitHub Action Discord snapshot (${dSummary.serversIndexed || 26} club servers · ${dSummary.postsUpserted || 57} updates).`,
-              { type: 'success' }
-            )
-          } else if (platform === 'email' && eSummary) {
-            onNotify(
-              `Refreshed GitHub Action Email snapshot (${eSummary.emailsIndexed || 137} club emails · ${eSummary.postsUpserted || 187} bulletins).`,
-              { type: 'success' }
-            )
-          } else {
-            onNotify(
-              res?.error ||
-                `Refreshed ${platform === 'discord' ? 'Discord' : 'Email'} feed snapshot from GitHub Action sync.`,
-              {
-                type: 'info',
-                actionLabel: onOpenSettings ? 'Open Integrations' : undefined,
-                onAction: onOpenSettings,
-              }
-            )
+      } else if (onNotify) {
+        onNotify(
+          res?.error ||
+            `Connect ${platform === 'discord' ? 'Discord' : 'Email'} in Settings -> Integrations to sync live updates.`,
+          {
+            type: 'info',
+            actionLabel: onOpenSettings ? 'Open Integrations' : undefined,
+            onAction: onOpenSettings,
           }
-        }
+        )
       }
     } finally {
       setSyncingChannel('')
@@ -1936,10 +1907,7 @@ export default function ClubsHub({
         (String(l.kind || '').toLowerCase() === 'discord' ||
           /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
     )
-    const clubDiscordUrl = normalizeExternalHttpUrl(
-      club.discordUrl || club.discord || discordInvite?.url || ''
-    )
-    const clubDiscordMembers = Number(club.discordMemberCount || 0)
+    const clubDiscordUrl = normalizeExternalHttpUrl(club.discordUrl || discordInvite?.url || '')
     const clubEmailAddr = !isDemoClubId(club.id) && club.email ? String(club.email).trim() : ''
 
     return (
@@ -2009,7 +1977,7 @@ export default function ClubsHub({
             </p>
           )}
 
-          <div className="flex gap-1.5 flex-wrap items-center">
+          <div className="flex gap-1.5 flex-wrap">
             {(club.tags || []).map(tag => (
               <BubbleTag
                 key={tag.label}
@@ -2018,25 +1986,6 @@ export default function ClubsHub({
                 size="sm"
               />
             ))}
-            {clubDiscordUrl && (
-              <a
-                href={clubDiscordUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={
-                  club.discordServerName
-                    ? `Join ${club.discordServerName} on Discord`
-                    : `Join ${cleanText(club.name)} on Discord`
-                }
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-85 no-underline transition-opacity"
-              >
-                <PlatformIcon type="discord" size={11} />
-                <span>
-                  Discord
-                  {clubDiscordMembers > 0 ? ` · ${clubDiscordMembers.toLocaleString()}` : ''}
-                </span>
-              </a>
-            )}
           </div>
         </div>
 
@@ -2050,30 +1999,41 @@ export default function ClubsHub({
             <span className="truncate">{cleanText(club.schedule || 'Weekly meetings')}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {clubDiscordUrl && (
-              <a
-                href={clubDiscordUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${cleanText(club.name)} Discord`}
-                aria-label={`Open ${cleanText(club.name)} Discord`}
-                className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-85 no-underline transition-opacity"
+          {!compact && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              {clubDiscordUrl && (
+                <a
+                  href={clubDiscordUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${cleanText(club.name)} Discord`}
+                  aria-label={`Open ${cleanText(club.name)} Discord`}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-85 no-underline transition-opacity"
+                >
+                  <PlatformIcon type="discord" size={12.5} />
+                </a>
+              )}
+              {clubEmailAddr && (
+                <a
+                  href={`mailto:${clubEmailAddr}`}
+                  title={`Email ${clubEmailAddr}`}
+                  aria-label={`Email ${cleanText(club.name)}`}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border-subtle)] no-underline transition-colors"
+                >
+                  <Mail size={12} />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSection('rbac')
+                  setDirectoryClubFilter(String(club.id))
+                }}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
               >
-                <PlatformIcon type="discord" size={12.5} />
-              </a>
-            )}
-            {clubEmailAddr && (
-              <a
-                href={`mailto:${clubEmailAddr}`}
-                title={`Email ${clubEmailAddr}`}
-                aria-label={`Email ${cleanText(club.name)}`}
-                className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border-subtle)] no-underline transition-colors"
-              >
-                <Mail size={12} />
-              </a>
-            )}
-            {!compact && (
+                <Shield size={11.5} />
+                <span>Roles</span>
+              </button>
               <button
                 type="button"
                 onClick={() => handleOpenClubRoster(club.id)}
@@ -2082,8 +2042,8 @@ export default function ClubsHub({
                 <span>Roster</span>
                 <ArrowRight size={12} />
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -2185,41 +2145,10 @@ export default function ClubsHub({
         selectedDirectoryClub.instagramUrl || `https://www.instagram.com/${selectedClubHandle}/`
       )
     : null
-  const rawSelectedClubDiscord =
-    selectedDirectoryClub?.discordUrl ||
-    selectedDirectoryClub?.discord ||
-    selectedClubHub?.discordUrl ||
-    selectedClubHub?.discord ||
-    (selectedClubHub?.links || []).find(
-      l =>
-        l?.url &&
-        (String(l.kind || '').toLowerCase() === 'discord' ||
-          /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
-    )?.url ||
-    ''
-  const selectedClubDiscordUrl =
-    selectedDirectoryClub && !isDemoClubId(selectedDirectoryClub.id)
-      ? normalizeExternalHttpUrl(rawSelectedClubDiscord)
-      : null
-  const selectedClubDiscordLabel = selectedDirectoryClub?.discordServerName
-    ? `${cleanText(selectedDirectoryClub.discordServerName)}${
-        Number(selectedDirectoryClub.discordMemberCount || 0) > 0
-          ? ` (${Number(selectedDirectoryClub.discordMemberCount).toLocaleString()})`
-          : ''
-      }`
-    : Number(selectedDirectoryClub?.discordMemberCount || 0) > 0
-      ? `Discord (${Number(selectedDirectoryClub.discordMemberCount).toLocaleString()})`
-      : 'Club Discord'
   const rawSelectedClubSite =
     selectedDirectoryClub?.website ||
     selectedClubHub?.website ||
-    (selectedClubHub?.links || []).find(
-      l =>
-        l?.url &&
-        String(l.kind || '').toLowerCase() !== 'discord' &&
-        !/discord\.(?:gg|com\/invite)\//i.test(String(l.url)) &&
-        normalizeExternalHttpUrl(l?.url)
-    )?.url ||
+    (selectedClubHub?.links || []).find(l => normalizeExternalHttpUrl(l?.url))?.url ||
     ''
   const selectedClubSiteUrl =
     selectedDirectoryClub && !isDemoClubId(selectedDirectoryClub.id)
@@ -2243,7 +2172,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: `var(--${officerColor})`,
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2392,7 +2321,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: m.isYou ? 'var(--blue)' : 'var(--teal)',
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2523,16 +2452,6 @@ export default function ClubsHub({
       !isDemoClubId(cid) && club.instagram
         ? String(club.instagram).replace(/^@+/, '').trim()
         : ''
-    const clubLinks = hubDict?.[cid]?.links || []
-    const discordInvite = clubLinks.find(
-      l =>
-        l?.url &&
-        (String(l.kind || '').toLowerCase() === 'discord' ||
-          /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
-    )
-    const clubDiscordUrl = normalizeExternalHttpUrl(
-      club.discordUrl || club.discord || discordInvite?.url || ''
-    )
 
     return (
       <div
@@ -2541,7 +2460,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: `var(--${accentColor})`,
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2605,18 +2524,6 @@ export default function ClubsHub({
           </span>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {clubDiscordUrl && (
-              <a
-                href={clubDiscordUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Open ${cleanText(club.name)} Discord`}
-                aria-label={`Open ${cleanText(club.name)} Discord`}
-                className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
-              >
-                <PlatformIcon type="discord" size={13} />
-              </a>
-            )}
             <button
               type="button"
               onClick={() => handleCopyEmail(copyKey, clubEmail)}
@@ -2660,11 +2567,11 @@ export default function ClubsHub({
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
             {[
-              { id: 'myclubs',      label: `My Clubs (${joinedClubs.length})` },
-              { id: 'discover',     label: `Discover (${allClubs.length})` },
-              { id: 'updates',      label: 'Club Feed' },
-              { id: 'directory',    label: `Officers & Members (${allOfficers.length + allMembers.length})` },
-              { id: 'integrations', label: 'Discord & Email', isDiscordTab: true },
+              { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
+              { id: 'rbac',      label: 'Roles & Sub-Groups' },
+              { id: 'discover',  label: `Discover (${allClubs.length})` },
+              { id: 'updates',   label: 'Club Feed' },
+              { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
             ].map(tab => {
               const isActive = section === tab.id
               return (
@@ -2675,16 +2582,13 @@ export default function ClubsHub({
                     setSection(tab.id)
                     setCategory('All')
                   }}
-                  className={`inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
+                  className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
                     isActive
                       ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
                   }`}
                 >
-                  {tab.isDiscordTab && (
-                    <PlatformIcon type="discord" size={13.5} />
-                  )}
-                  <span>{tab.label}</span>
+                  {tab.label}
                 </button>
               )
             })}
@@ -2876,6 +2780,21 @@ export default function ClubsHub({
             </div>
           )}
         </>
+      )}
+
+      {/* ── SECTION 2B: ROLES, ROSTER CLAIMING & SUB-GROUPS (RBAC) ── */}
+      {section === 'rbac' && (
+        <ClubRbacPanel
+          clubs={allClubs}
+          selectedClubId={directoryClubFilter}
+          onSelectClub={cid => setDirectoryClubFilter(String(cid))}
+          user={user}
+          isDemo={isDemo}
+          onToggleJoin={onToggleJoin}
+          onOpenTasks={onOpenTasks}
+          onRefreshAnnouncements={onRefreshAnnouncements}
+          onNotify={onNotify}
+        />
       )}
 
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
@@ -3541,7 +3460,6 @@ export default function ClubsHub({
                   </div>
 
                   {(clubBoardEmail ||
-                    selectedClubDiscordUrl ||
                     selectedClubInstagramUrl ||
                     selectedClubSiteUrl ||
                     selectedDirectoryClub.schedule) && (
@@ -3587,21 +3505,8 @@ export default function ClubsHub({
                         )}
                       </div>
 
-                      {(selectedClubDiscordUrl || selectedClubInstagramUrl || selectedClubSiteUrl) && (
+                      {(selectedClubInstagramUrl || selectedClubSiteUrl) && (
                         <div className="flex flex-wrap items-center gap-2">
-                          {selectedClubDiscordUrl && (
-                            <a
-                              href={selectedClubDiscordUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--blue-light)] border border-[var(--blue)]/30 hover:border-[var(--blue)] text-xs font-semibold text-[var(--blue-ink)] no-underline transition-colors"
-                            >
-                              <PlatformIcon type="discord" size={12} />
-                              <span>{selectedClubDiscordLabel}</span>
-                              <ExternalLink size={11} className="opacity-75" />
-                            </a>
-                          )}
-
                           {selectedClubInstagramUrl && (
                             <a
                               href={selectedClubInstagramUrl}
@@ -3724,13 +3629,37 @@ export default function ClubsHub({
               )
             }
 
+            const visibleOfficersSlice =
+              directoryClubFilter === 'all'
+                ? filteredOfficers.slice(0, visibleOfficersCount)
+                : filteredOfficers
+            const remainingOfficersCount = Math.max(
+              0,
+              filteredOfficers.length - visibleOfficersSlice.length
+            )
+
+            const visibleMembersSlice =
+              directoryClubFilter === 'all'
+                ? filteredMembers.slice(0, visibleMembersCount)
+                : filteredMembers
+            const remainingMembersCount = Math.max(
+              0,
+              filteredMembers.length - visibleMembersSlice.length
+            )
+
+            const visibleClubGroupsSlice = groupedDirectoryByClub.slice(0, visibleClubGroupsCount)
+            const remainingClubGroupsCount = Math.max(
+              0,
+              groupedDirectoryByClub.length - visibleClubGroupsSlice.length
+            )
+
             return (
               <div className="space-y-6">
                 {directoryClubFilter === 'all' && directoryGroupMode === 'club' ? (
                   /* ── BY CLUB GROUPED VIEW ── */
                   groupedDirectoryByClub.length > 0 && (
                     <div className={isCompactDensity ? 'space-y-5' : 'space-y-6'}>
-                      {groupedDirectoryByClub.map(group => {
+                      {visibleClubGroupsSlice.map(group => {
                         const groupCatMeta = getClubCategoryMeta(group.club.category)
                         const groupColor = groupCatMeta?.color || 'blue'
                         const groupPeopleTotal = group.officers.length + group.members.length
@@ -3774,6 +3703,40 @@ export default function ClubsHub({
                           </section>
                         )
                       })}
+
+                      {remainingClubGroupsCount > 0 && (
+                        <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleClubGroupsCount(prev =>
+                                Math.min(
+                                  prev + DIRECTORY_CLUB_GROUP_PAGE_SIZE,
+                                  groupedDirectoryByClub.length
+                                )
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                          >
+                            <span>
+                              Show more club rosters ({visibleClubGroupsSlice.length} of{' '}
+                              {groupedDirectoryByClub.length} clubs)
+                            </span>
+                            <ChevronDown size={14} />
+                          </button>
+                          {remainingClubGroupsCount > DIRECTORY_CLUB_GROUP_PAGE_SIZE && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleClubGroupsCount(groupedDirectoryByClub.length)
+                              }
+                              className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                            >
+                              <span>Show all {groupedDirectoryByClub.length} clubs</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 ) : (
@@ -3797,11 +3760,40 @@ export default function ClubsHub({
 
                         <div className={directoryGridClasses}>
                           {filteredOfficers.length > 0
-                            ? filteredOfficers.map(m => renderOfficerCard(m))
+                            ? visibleOfficersSlice.map(m => renderOfficerCard(m))
                             : renderClubContactCard(selectedDirectoryClub, {
                                 isSelectedClubFallback: true,
                               })}
                         </div>
+
+                        {remainingOfficersCount > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleOfficersCount(prev =>
+                                  Math.min(prev + DIRECTORY_PAGE_SIZE, filteredOfficers.length)
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              <span>
+                                Show more officers ({visibleOfficersSlice.length.toLocaleString()} of{' '}
+                                {filteredOfficers.length.toLocaleString()})
+                              </span>
+                              <ChevronDown size={14} />
+                            </button>
+                            {remainingOfficersCount > DIRECTORY_PAGE_SIZE && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleOfficersCount(filteredOfficers.length)}
+                                className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                              >
+                                <span>Show all {filteredOfficers.length.toLocaleString()}</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3822,8 +3814,37 @@ export default function ClubsHub({
                             </div>
 
                             <div className={directoryGridClasses}>
-                              {filteredMembers.map(m => renderMemberCard(m))}
+                              {visibleMembersSlice.map(m => renderMemberCard(m))}
                             </div>
+
+                            {remainingMembersCount > 0 && (
+                              <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setVisibleMembersCount(prev =>
+                                      Math.min(prev + DIRECTORY_PAGE_SIZE, filteredMembers.length)
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                                >
+                                  <span>
+                                    Show more members ({visibleMembersSlice.length.toLocaleString()}{' '}
+                                    of {filteredMembers.length.toLocaleString()})
+                                  </span>
+                                  <ChevronDown size={14} />
+                                </button>
+                                {remainingMembersCount > DIRECTORY_PAGE_SIZE && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setVisibleMembersCount(filteredMembers.length)}
+                                    className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--teal)] cursor-pointer transition-colors"
+                                  >
+                                    <span>Show all {filteredMembers.length.toLocaleString()}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           selectedDirectoryClub &&
@@ -3895,305 +3916,6 @@ export default function ClubsHub({
           })()}
         </div>
       )}
-
-      {/* ── SECTION 5: DISCORD & EMAIL INTEGRATION HUB FOR CLUBS & ORGANIZATIONS ── */}
-      {section === 'integrations' &&
-        (() => {
-          const q = searchQuery.trim().toLowerCase()
-          const enrichedClubs = allClubs.map(club => {
-            const clubLinks = hubDict?.[club.id]?.links || []
-            const discordInvite = clubLinks.find(
-              l =>
-                l?.url &&
-                (String(l.kind || '').toLowerCase() === 'discord' ||
-                  /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
-            )
-            const discordUrl = normalizeExternalHttpUrl(
-              club.discordUrl || club.discord || discordInvite?.url || ''
-            )
-            const emailAddr = !isDemoClubId(club.id) && club.email ? String(club.email).trim() : ''
-            return {
-              ...club,
-              _discordUrl: discordUrl,
-              _emailAddr: emailAddr,
-            }
-          })
-
-          const discordClubCount = enrichedClubs.filter(c => Boolean(c._discordUrl)).length
-          const emailClubCount = enrichedClubs.filter(c => Boolean(c._emailAddr)).length
-
-          const visibleIntegrationClubs = enrichedClubs
-            .filter(club => {
-              if (integrationScope === 'myclubs' && joinedIdSet.size > 0 && !club.joined) {
-                return false
-              }
-              if (integrationChannelFilter === 'discord' && !club._discordUrl) return false
-              if (integrationChannelFilter === 'email' && !club._emailAddr) return false
-              if (integrationChannelFilter === 'all' && !club._discordUrl && !club._emailAddr) {
-                return false
-              }
-              if (q) {
-                return (
-                  club._searchText.includes(q) ||
-                  String(club.discordServerName || '').toLowerCase().includes(q) ||
-                  String(club._emailAddr || '').toLowerCase().includes(q)
-                )
-              }
-              return true
-            })
-            .sort((a, b) => {
-              const aJoined = a.joined ? 1 : 0
-              const bJoined = b.joined ? 1 : 0
-              if (aJoined !== bJoined) return bJoined - aJoined
-              const aHasDiscord = a._discordUrl ? 1 : 0
-              const bHasDiscord = b._discordUrl ? 1 : 0
-              if (aHasDiscord !== bHasDiscord) return bHasDiscord - aHasDiscord
-              return Number(b.discordMemberCount || b.members || 0) - Number(a.discordMemberCount || a.members || 0)
-            })
-
-          return (
-            <div className="space-y-6">
-              {/* Club Discord & Email Directory Card */}
-              <div className="p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-4">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <IconBadge color="blue" size={38}>
-                      <PlatformIcon type="discord" size={18} />
-                    </IconBadge>
-                    <div className="space-y-0.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
-                          Clubs &amp; Organizations · Discord &amp; Email Hub
-                        </h3>
-                        <BubbleTag label="GitHub Action Auto-Sync" color="green" size="sm" />
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                        Autonomous GitHub Action syncs {discordClubCount} UCSC club Discord servers and{' '}
-                        {emailClubCount} official club mailing lists directly into ClubHub.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={Boolean(syncingChannel)}
-                      onClick={() => handleSyncChannelNow('discord')}
-                      className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer hover:opacity-90 disabled:opacity-60"
-                    >
-                      <PlatformIcon type="discord" size={13} />
-                      <span>
-                        {syncingChannel === 'discord' ? 'Syncing Discord…' : 'Sync Discord'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(syncingChannel)}
-                      onClick={() => handleSyncChannelNow('email')}
-                      className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold cursor-pointer transition-colors disabled:opacity-60"
-                    >
-                      <Mail size={13} className="text-[var(--blue)]" />
-                      <span>{syncingChannel === 'email' ? 'Syncing Email…' : 'Sync Email'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSection('updates')
-                        setSelectedSource('discord')
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-subtle)] text-[var(--blue-ink)] border border-[var(--border)] text-xs font-semibold cursor-pointer transition-colors"
-                    >
-                      <span>Open Discord &amp; Email Feed</span>
-                      <ArrowRight size={12} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Filter Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {[
-                      {
-                        id: 'all',
-                        label: `All Connected (${enrichedClubs.filter(c => c._discordUrl || c._emailAddr).length})`,
-                      },
-                      {
-                        id: 'discord',
-                        label: `Discord Servers (${discordClubCount})`,
-                        icon: 'discord',
-                      },
-                      {
-                        id: 'email',
-                        label: `Club Emails (${emailClubCount})`,
-                        icon: 'email',
-                      },
-                    ].map(tab => {
-                      const active = integrationChannelFilter === tab.id
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setIntegrationChannelFilter(tab.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl text-xs font-semibold cursor-pointer border transition-colors ${
-                            active
-                              ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
-                              : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                          }`}
-                        >
-                          {tab.icon === 'discord' && <PlatformIcon type="discord" size={12} />}
-                          {tab.icon === 'email' && <Mail size={12} />}
-                          <span>{tab.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {joinedClubs.length > 0 && (
-                    <div className="inline-flex items-center bg-[var(--bg-card)] p-1 rounded-xl border border-[var(--border)]">
-                      {[
-                        { id: 'all', label: 'All Campus' },
-                        { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
-                      ].map(opt => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setIntegrationScope(opt.id)}
-                          className={`px-2.5 min-h-[28px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                            integrationScope === opt.id
-                              ? 'bg-[var(--blue)] text-white shadow-2xs'
-                              : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Connected Clubs Grid */}
-                <div className={clubGridClasses}>
-                  {visibleIntegrationClubs.slice(0, 36).map(club => {
-                    const catMeta = getClubCategoryMeta(club.category)
-                    const accentColor = catMeta?.color || 'blue'
-                    const copyKey = `int_email_${club.id}`
-                    const isCopied = copiedEmailId === copyKey
-                    const discordMembers = Number(club.discordMemberCount || 0)
-                    const discordOnline = Number(club.discordOnlineCount || 0)
-
-                    return (
-                      <div
-                        key={club.id}
-                        style={{
-                          borderTopWidth: '3px',
-                          borderTopColor: `var(--${accentColor})`,
-                        }}
-                        className="content-tile content-tile-interactive p-3.5 rounded-[var(--radius-sm)] flex flex-col justify-between gap-3"
-                      >
-                        <div className="space-y-2.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <ClubAvatar club={club} size={36} />
-                              <div className="min-w-0">
-                                <div className="font-bold text-xs sm:text-[13px] text-[var(--text)] truncate">
-                                  {cleanText(club.name)}
-                                </div>
-                                <div className="text-[11px] text-[var(--text-muted)] truncate">
-                                  {club.categoryLabel || catMeta.label}
-                                </div>
-                              </div>
-                            </div>
-
-                            {club._discordUrl ? (
-                              <a
-                                href={club._discordUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 min-h-[26px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11px] font-semibold no-underline hover:opacity-85 shrink-0 transition-opacity"
-                              >
-                                <PlatformIcon type="discord" size={11.5} />
-                                <span>Join Discord</span>
-                              </a>
-                            ) : (
-                              <BubbleTag label="Email Active" color="yellow" size="sm" />
-                            )}
-                          </div>
-
-                          {club._discordUrl && (
-                            <div className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-[11px]">
-                              <div className="flex items-center gap-1.5 min-w-0 text-[var(--text)] font-medium">
-                                <PlatformIcon
-                                  type="discord"
-                                  size={12}
-                                  className="text-[var(--blue)] shrink-0"
-                                />
-                                <span className="truncate">
-                                  {cleanText(club.discordServerName || `${club.name} Discord`)}
-                                </span>
-                              </div>
-                              {discordMembers > 0 && (
-                                <span className="text-[10.5px] font-mono-num text-[var(--text-muted)] shrink-0">
-                                  {discordMembers.toLocaleString()} members
-                                  {discordOnline > 0 ? ` · ${discordOnline} online` : ''}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 min-w-0">
-                          {club._emailAddr ? (
-                            <>
-                              <span className="text-[11px] font-mono-num text-[var(--text-muted)] truncate">
-                                {club._emailAddr}
-                              </span>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyEmail(copyKey, club._emailAddr)}
-                                  className="inline-flex items-center gap-1 px-2 min-h-[26px] rounded-md bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-[11px] font-semibold text-[var(--text)] cursor-pointer transition-colors"
-                                >
-                                  {isCopied ? (
-                                    <Check size={11} className="text-[var(--green)]" />
-                                  ) : (
-                                    <Copy size={11} className="text-[var(--text-muted)]" />
-                                  )}
-                                  <span>{isCopied ? 'Copied' : 'Copy'}</span>
-                                </button>
-                                <a
-                                  href={`mailto:${club._emailAddr}`}
-                                  title={`Email ${cleanText(club.name)}`}
-                                  className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline"
-                                >
-                                  <Mail size={12} />
-                                </a>
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-[11px] text-[var(--text-muted)]">
-                              Connected via Discord
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Embedded Autonomous Discord, Email & Calendar Integration Controls */}
-              <IntegrationsPanel
-                accountKey={accountKey}
-                userEmail={user?.email || userSettings?.email || ''}
-                joinedClubCount={joinedClubs.length}
-                events={events}
-                calendarIntegration={calendarIntegration}
-                onRefresh={onRefresh}
-                onNotify={onNotify}
-              />
-            </div>
-          )
-        })()}
     </Card>
   )
 }

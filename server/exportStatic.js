@@ -19,6 +19,7 @@ import {
 import { seedDatabase } from './seed.js';
 import instagramService from './services/instagram.js';
 import { syncRoster } from './services/roster.js';
+import { sanitizePublicSnapshot } from './services/publicSnapshotSanitizer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '../public');
@@ -136,7 +137,7 @@ async function main() {
   //    saving ~11.5 MB of redundant JSON payload.
   // 2) Omitting `dict` guarantees local `user_theme:<email>` / `user_clubs:<email>` entries in SQLite
   //    can never leak into `public/clubhub-data.json`.
-  const snapshot = {
+  const snapshot = sanitizePublicSnapshot({
     exportedAt: new Date().toISOString(),
     ...(prevRosterUpdatedAt ? { rosterUpdatedAt: prevRosterUpdatedAt } : {}),
     stats: {
@@ -144,7 +145,7 @@ async function main() {
       sources: sources.length,
     },
     ...collectorData,
-  };
+  });
 
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(snapshot));
