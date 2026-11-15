@@ -564,6 +564,18 @@ def main() -> int:
 
     if args.session_user and L is not None:
         try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            collector_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            auto_session_candidates = [
+                args.session_file,
+                os.path.join(repo_root, f".ig-session-{args.session_user}"),
+                os.path.join(collector_root, f".ig-session-{args.session_user}"),
+            ]
+            resolved_session_file = next(
+                (p for p in auto_session_candidates if p and os.path.isfile(p)),
+                "",
+            )
+
             session_b64 = os.environ.get("IG_SCRAPER_SESSION_B64", "").strip()
             if session_b64:
                 raw_bytes = base64.b64decode(session_b64)
@@ -571,8 +583,8 @@ def main() -> int:
                 with os.fdopen(fd, "wb") as f:
                     f.write(raw_bytes)
                 L.load_session_from_file(args.session_user, filename=temp_session_path)
-            elif args.session_file:
-                L.load_session_from_file(args.session_user, filename=args.session_file)
+            elif resolved_session_file:
+                L.load_session_from_file(args.session_user, filename=resolved_session_file)
             else:
                 L.load_session_from_file(args.session_user)
 

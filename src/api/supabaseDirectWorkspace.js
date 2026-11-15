@@ -154,6 +154,7 @@ export async function resolveUserProfileWithClient({
       'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or enable Clerk under Authentication -> Third-Party Auth) so Supabase can verify your identity.'
     )
     authErr.status = 401
+    authErr.code = 'SUPABASE_AUTH_SETUP_REQUIRED'
     throw authErr
   }
 
@@ -250,6 +251,7 @@ export async function resolveUserProfileWithClient({
         'In Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm email" (or re-run supabase/schema.sql in Supabase SQL Editor) so Clerk accounts can create polls.'
       )
       rlsErr.status = 403
+      rlsErr.code = 'SUPABASE_AUTH_SETUP_REQUIRED'
       throw rlsErr
     }
     throw new Error(insErr.message)
@@ -747,6 +749,11 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
 
     return null
   } catch (err) {
-    return { ok: false, status: err.status || 400, error: err.message || 'Supabase request failed.' }
+    return {
+      ok: false,
+      status: err.status || 400,
+      ...(err.code ? { code: err.code } : {}),
+      error: err.message || 'Supabase request failed.',
+    }
   }
 }

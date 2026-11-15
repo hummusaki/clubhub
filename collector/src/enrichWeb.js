@@ -16,11 +16,70 @@ let discordInviteCooldownUntil = 0
 let linktreeCooldownUntil = 0
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+const RESERVED_IG_SEGMENTS = new Set([
+  '_u',
+  'p',
+  'reel',
+  'reels',
+  'explore',
+  'stories',
+  'accounts',
+  'tv',
+  'media',
+  'share',
+  'ar',
+  'about',
+  'legal',
+  'developer',
+  'import',
+  'keyframes',
+  'font-face',
+  // University-wide / umbrella accounts (never an individual student club's handle)
+  'ucsc',
+  'ucsc.dsas',
+  'someca.ucsc',
+  'baskinengineering',
+  'ucsc_athletics',
+  'ucsc_sportclubs',
+  'ucsc_alumni',
+  'ucscalumniassociation',
+])
+
+export function parseInstagramProfileHandle(rawUrl = '') {
+  if (!rawUrl || typeof rawUrl !== 'string') return null
+  const m = rawUrl
+    .trim()
+    .match(/^https?:\/\/(?:www\.|m\.)?(?:instagram\.com|instagr\.am)\/(?:_u\/)?([A-Za-z0-9._]{2,30})(?:[/?#]|$)/i)
+  if (!m) return null
+  const handle = m[1].replace(/\.+$/, '').toLowerCase()
+  if (!handle || RESERVED_IG_SEGMENTS.has(handle)) return null
+  return handle
+}
+
+export function extractInstagramHandleFromHtml(html = '') {
+  if (!html) return null
+  // 1. Prefer explicit href links to instagram.com/<handle> or instagr.am/<handle>
+  const hrefRe = /href=["'](https?:\/\/(?:www\.|m\.)?(?:instagram\.com|instagr\.am)\/[^"'\s>]+)["']/gi
+  for (const m of html.matchAll(hrefRe)) {
+    const cleanHref = m[1].replace(/&amp;/gi, '&')
+    const handle = parseInstagramProfileHandle(cleanHref)
+    if (handle) return handle
+  }
+  // 2. JSON / script embedded instagram URLs (e.g. Next.js / Wix / Squarespace social icons)
+  const rawUrlRe = /https?:\\?\/\\?\/(?:www\.)?instagram\.com\\?\/(?:_u\\?\/)?([A-Za-z0-9._]{2,30})(?=[\\/"'?&\s<])/gi
+  for (const m of html.matchAll(rawUrlRe)) {
+    const handle = m[1].replace(/\.+$/, '').toLowerCase()
+    if (handle && !RESERVED_IG_SEGMENTS.has(handle)) return handle
+  }
+  return null
+}
+
 function classifyUrlKind(url = '') {
+  if (parseInstagramProfileHandle(url)) return 'instagram'
   if (/discord\.(?:gg|com\/invite)/i.test(url)) return 'discord'
   if (/forms\.gle|docs\.google\.com\/forms/i.test(url)) return 'form'
   if (/calendar\.google\.com|calendar\.app\.google/i.test(url)) return 'event'
-  if (/lu\.ma|eventbrite\.com/i.test(url)) return 'event'
+  if (/lu\.ma|eventbrite\.com|partiful\.com/i.test(url)) return 'event'
   if (/docs\.google\.com|drive\.google\.com/i.test(url)) return 'document'
   if (/linktr\.ee|beacons\.ai|bento\.me|carrd\.co/i.test(url)) return 'linktree'
   return 'website'
@@ -67,12 +126,17 @@ export async function unpackBioWebsite(websiteUrl) {
       if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return
       const cleanUrl = rawUrl.trim().replace(/&amp;/g, '&')
       if (/(?:linktr\.ee\/?$|facebook\.com\/tr|google-analytics)/i.test(cleanUrl)) return
+      if (/instagram\.com/i.test(cleanUrl) && !parseInstagramProfileHandle(cleanUrl)) return
       const key = cleanUrl.toLowerCase()
       if (!found.has(key)) {
         const kind = classifyUrlKind(cleanUrl)
+        const igHandle = kind === 'instagram' ? parseInstagramProfileHandle(cleanUrl) : null
+        const defaultLabel = igHandle
+          ? `Instagram @${igHandle}`
+          : kind[0].toUpperCase() + kind.slice(1)
         found.set(key, {
           url: cleanUrl,
-          label: (rawTitle || '').trim().slice(0, 90) || kind[0].toUpperCase() + kind.slice(1),
+          label: (rawTitle || '').trim().slice(0, 90) || defaultLabel,
           kind,
         })
       }
@@ -90,17 +154,25 @@ export async function unpackBioWebsite(websiteUrl) {
         for (const item of links) {
           if (item?.url) addLink(item.url, item.title)
         }
+        const socials =
+          nextJson?.props?.pageProps?.socialLinks ||
+          nextJson?.props?.pageProps?.account?.socialLinks ||
+          []
+        for (const s of socials) {
+          if (s?.url) addLink(s.url, s.type || '')
+        }
       } catch {
         // Ignore malformed JSON and fall back to anchor scan
       }
     }
 
-    // 2. Generic anchor scan for Discord invites, Google Forms, Google Calendars, Docs, Luma, Eventbrite
+    // 2. Generic anchor scan for Instagram profiles, Discord invites, Google Forms, Google Calendars, Docs, Luma, Eventbrite, Linktrees
     const anchorRe = /<a\b[^>]*href=["'](https?:\/\/[^"'#\s>]+)["'][^>]*>([\s\S]*?)<\/a>/gi
     for (const m of html.matchAll(anchorRe)) {
       const url = m[1]
       if (
-        /(?:discord\.gg|discord\.com\/invite|forms\.gle|docs\.google\.com|drive\.google\.com|calendar\.google\.com|lu\.ma|eventbrite\.com)/i.test(
+        parseInstagramProfileHandle(url) ||
+        /(?:discord\.gg|discord\.com\/invite|forms\.gle|docs\.google\.com|drive\.google\.com|calendar\.google\.com|lu\.ma|eventbrite\.com|partiful\.com|linktr\.ee|beacons\.ai|carrd\.co)/i.test(
           url
         )
       ) {
@@ -115,6 +187,132 @@ export async function unpackBioWebsite(websiteUrl) {
   } catch {
     return []
   }
+}
+
+const websiteSocialCache = new Map()
+const GENERIC_UNI_EMAIL_RE =
+  /^(?:someca|info|webmaster|help|registrar|admissions|opers|sportclubs|athletics|baskin|advising|dean|chancellor|titleix|police|communications)@/i
+
+/**
+ * Crawl a directory-listed club website (plus 1 hop to Linktree or /contact|/links|/join)
+ * to discover its Instagram handle, Discord invite URL, club email(s), and meta description.
+ */
+export async function discoverClubWebsiteSocials(websiteUrl) {
+  if (!websiteUrl || !/^https?:\/\//i.test(websiteUrl)) {
+    return { instagram: null, discord: null, emails: [], description: null }
+  }
+  if (/(?:facebook\.com|tiktok\.com|youtube\.com|spotify\.com|tbp\.org\/home)/i.test(websiteUrl)) {
+    return { instagram: null, discord: null, emails: [], description: null }
+  }
+  const directIg = parseInstagramProfileHandle(websiteUrl)
+  if (directIg) {
+    return { instagram: directIg, discord: null, emails: [], description: null }
+  }
+
+  const cacheKey = websiteUrl.trim().toLowerCase()
+  if (websiteSocialCache.has(cacheKey)) return websiteSocialCache.get(cacheKey)
+
+  const result = { instagram: null, discord: null, emails: [], description: null }
+  const scanHtml = (html, baseUrl) => {
+    if (!html) return []
+    if (!result.instagram) {
+      result.instagram = extractInstagramHandleFromHtml(html)
+    }
+    if (!result.discord) {
+      const dm = html.match(/https?:\/\/(?:www\.)?discord\.(?:gg|com\/invite)\/[A-Za-z0-9-]{2,36}/i)
+      if (dm) result.discord = dm[0]
+    }
+    for (const em of html.matchAll(/mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi)) {
+      const addr = em[1].trim().toLowerCase()
+      if (addr && !GENERIC_UNI_EMAIL_RE.test(addr) && !result.emails.includes(addr)) {
+        result.emails.push(addr)
+      }
+    }
+    if (!result.description) {
+      const metaDesc =
+        html.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']{20,300})["']/i)?.[1] ||
+        html.match(/<meta\b[^>]*property=["']og:description["'][^>]*content=["']([^"']{20,300})["']/i)?.[1]
+      if (metaDesc) {
+        const cleaned = metaDesc
+          .replace(/&amp;/g, '&')
+          .replace(/&#0?39;|&rsquo;/g, "'")
+          .replace(/&quot;/g, '"')
+          .replace(/\s+/g, ' ')
+          .trim()
+        if (cleaned.length >= 20 && !/university of california, santa cruz official athletics/i.test(cleaned)) {
+          result.description = cleaned
+        }
+      }
+    }
+
+    const followUps = []
+    if (baseUrl) {
+      try {
+        const baseOrigin = new URL(baseUrl).origin
+        for (const hm of html.matchAll(/href=["']([^"'#\s>]+)["']/gi)) {
+          const rawHref = hm[1].replace(/&amp;/g, '&')
+          if (/(?:linktr\.ee|beacons\.ai|bento\.me|carrd\.co)\/[A-Za-z0-9._-]+/i.test(rawHref)) {
+            if (/^https?:\/\//i.test(rawHref)) followUps.push(rawHref)
+            continue
+          }
+          const resolved = new URL(rawHref, baseUrl)
+          if (
+            resolved.origin === baseOrigin &&
+            /\/(?:contact|connect|links?|join|social|about)\b/i.test(resolved.pathname)
+          ) {
+            followUps.push(resolved.toString())
+          }
+        }
+      } catch {
+        // ignore URL resolution errors
+      }
+    }
+    return [...new Set(followUps)].slice(0, 2)
+  }
+
+  try {
+    const res = await fetch(websiteUrl, {
+      headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(7500),
+    })
+    if (res.ok) {
+      const html = await res.text()
+      const followUps = scanHtml(html, res.url || websiteUrl)
+      if (!result.instagram || !result.discord) {
+        for (const subUrl of followUps) {
+          if (/(?:linktr\.ee|beacons\.ai|bento\.me|carrd\.co)/i.test(subUrl)) {
+            const unpacked = await unpackBioWebsite(subUrl)
+            for (const l of unpacked) {
+              if (!result.instagram && l.kind === 'instagram') {
+                result.instagram = parseInstagramProfileHandle(l.url)
+              }
+              if (!result.discord && l.kind === 'discord') {
+                result.discord = l.url
+              }
+            }
+          } else {
+            try {
+              const subRes = await fetch(subUrl, {
+                headers: { 'user-agent': USER_AGENT, accept: 'text/html' },
+                redirect: 'follow',
+                signal: AbortSignal.timeout(6000),
+              })
+              if (subRes.ok) scanHtml(await subRes.text(), null)
+            } catch {
+              // ignore subpage error
+            }
+          }
+          if (result.instagram && result.discord) break
+        }
+      }
+    }
+  } catch {
+    // ignore unreachable club site
+  }
+
+  websiteSocialCache.set(cacheKey, result)
+  return result
 }
 
 /**

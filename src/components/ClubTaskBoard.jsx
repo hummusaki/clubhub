@@ -999,7 +999,13 @@ export default function ClubTaskBoard({
   useEffect(() => {
     if (isDemo) return undefined
     return onWorkspacePermissionChange(detail => {
-      if (detail?.code === 'NOT_CLUB_MEMBER') return
+      if (
+        detail?.code === 'NOT_CLUB_MEMBER' ||
+        detail?.code === 'SUPABASE_AUTH_SETUP_REQUIRED' ||
+        detail?.method === 'GET'
+      ) {
+        return
+      }
       loadBoard()
     })
   }, [isDemo, loadBoard])

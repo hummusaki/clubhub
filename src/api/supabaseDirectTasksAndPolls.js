@@ -818,6 +818,7 @@ export async function handleDirectPollAction(path, options = {}) {
     return {
       ok: false,
       status: err.status || 400,
+      ...(err.code ? { code: err.code } : {}),
       error: err.message || 'Supabase poll request failed.',
     }
   }

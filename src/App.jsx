@@ -1103,7 +1103,9 @@ function MainDashboard({
     if (isDemo) return undefined
     return onWorkspacePermissionChange(detail => {
       if (detail?.status === 403 && detail?.code !== 'NOT_CLUB_MEMBER') {
-        loadWorkspaceState()
+        if (detail?.code !== 'SUPABASE_AUTH_SETUP_REQUIRED' && detail?.method !== 'GET') {
+          loadWorkspaceState()
+        }
         showToast(detail.error || 'Your club permissions were updated.', { type: 'info' })
       } else if (detail?.sessionExpired && !hasClerkKey && onSignOut) {
         onSignOut({ silent: true })

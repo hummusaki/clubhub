@@ -142,12 +142,14 @@ async function workspaceRequest(path, options = {}) {
   }
 
   if (!res.ok && !skipAuthBootstrap) {
+    const reqMethod = String(options?.method || 'GET').toUpperCase()
     if (res.status === 403 && res.code !== 'NOT_CLUB_MEMBER') {
       notifyPermissionChange({
         status: 403,
         code: res.code || 'PERMISSION_DENIED',
         error: res.error,
         path,
+        method: reqMethod,
       })
     } else if (res.status === 401) {
       notifyPermissionChange({
@@ -156,6 +158,7 @@ async function workspaceRequest(path, options = {}) {
         code: res.code || 'UNAUTHENTICATED',
         error: res.error,
         path,
+        method: reqMethod,
       })
     }
   }
