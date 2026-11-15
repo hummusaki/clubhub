@@ -10,6 +10,17 @@ All-in-one campus workspace for **UC Santa Cruz** student organizations, built f
   - **Full-Stack Express + SQLite Mode** (`server/index.js`, Node 22+ `node:sqlite`): Adds live multi-user polls, webhooks, and persistent `webcal://` feeds, and serves `dist/` automatically when built.
 
 ---
+## ToDo - URGENT
+- Make the Discord and Email integration run on its own through a GitHub agent or action
+- How to submit complete project if DB is gitignored?
+- Clean up cramped UI elements
+  - Specifically settings UI & color consistency
+  - Do another mobile optimization pass
+    - Maybe focus on UI consistency aspect
+- Allow for more user customization
+  - Allow for user profiles?
+- Make Club profiles?
+  - Aka turn individual club roster section into its own Club profile (but keep the overall officers and members feature)
 
 ## Quick Start
 
