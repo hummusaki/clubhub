@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Card, Avatar, BubbleTag, cleanText } from './ui'
 import CalendarSyncModal from './CalendarSyncModal'
+import IntegrationsPanel from './IntegrationsPanel'
 import {
   buildIcsCalendar,
   downloadIcsFile,
@@ -32,26 +33,30 @@ const AVATAR_GRADIENTS = [
 
 export default function SettingsView({
   user = null,
+  accountKey = 'guest',
   isDemo = false,
   hasClerkKey = false,
-  dark = false,
   userSettings = {},
   onUpdateSettings,
   onSetThemeMode,
+  clubs = [],
   events = [],
   calendarIntegration = null,
+  onRefresh,
   onResetLocalData,
   onSignOut,
   onExitDemo,
   onNotify,
 }) {
-  const accountEmail =
-    user?.primaryEmailAddress?.emailAddress || user?.email || (isDemo ? 'guest@ucsc.edu' : '')
+  const effectiveUser = isDemo ? null : user
+  const realUserEmail =
+    effectiveUser?.primaryEmailAddress?.emailAddress || effectiveUser?.email || ''
+  const accountEmail = realUserEmail || (isDemo ? 'guest@ucsc.edu' : '')
 
   const defaultName =
     userSettings?.displayName ||
-    user?.fullName ||
-    accountEmail.split('@')[0] ||
+    effectiveUser?.fullName ||
+    realUserEmail.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
   const [displayName, setDisplayName] = useState(defaultName)
@@ -63,13 +68,13 @@ export default function SettingsView({
   useEffect(() => {
     setDisplayName(
       userSettings?.displayName ||
-        user?.fullName ||
-        accountEmail.split('@')[0] ||
+        effectiveUser?.fullName ||
+        realUserEmail.split('@')[0] ||
         (isDemo ? 'Demo Guest' : 'Student')
     )
     setMajor(userSettings?.major || '')
     if (userSettings?.avatarBg) setAvatarBg(userSettings.avatarBg)
-  }, [userSettings?.displayName, userSettings?.major, userSettings?.avatarBg, user?.fullName, accountEmail, isDemo])
+  }, [userSettings?.displayName, userSettings?.major, userSettings?.avatarBg, effectiveUser?.fullName, realUserEmail, isDemo])
 
   const initials = (displayName || 'ST')
     .split(' ')
@@ -79,7 +84,12 @@ export default function SettingsView({
     .slice(0, 2)
     .toUpperCase() || 'ST'
 
-  const activeThemeMode = userSettings?.themeMode || (dark ? 'dark' : 'light')
+  const activeThemeMode =
+    userSettings?.themeMode === 'light' ||
+    userSettings?.themeMode === 'dark' ||
+    userSettings?.themeMode === 'system'
+      ? userSettings.themeMode
+      : 'system'
   const channels = userSettings?.channels || {
     instagram: true,
     discord: true,
@@ -234,7 +244,7 @@ export default function SettingsView({
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">Appearance & Display</h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Synced per account with zero page-load flash
+              Follows your system theme by default — synced per account with zero page-load flash
             </p>
           </div>
         </div>
@@ -246,9 +256,9 @@ export default function SettingsView({
           </label>
           <div className={`grid grid-cols-1 sm:grid-cols-3 ${isCompact ? 'gap-2' : 'gap-3'}`}>
             {[
+              { id: 'system', label: 'System', desc: 'Match device OS', icon: Monitor },
               { id: 'light',  label: 'Light',  desc: 'Warm stone, low glare', icon: Sun },
               { id: 'dark',   label: 'Dark',   desc: 'Vivid midnight', icon: Moon },
-              { id: 'system', label: 'System', desc: 'Match device OS', icon: Monitor },
             ].map(opt => {
               const Icon = opt.icon
               const isSelected = activeThemeMode === opt.id
@@ -441,6 +451,17 @@ export default function SettingsView({
           onNotify={onNotify}
         />
       )}
+
+      {/* ── 3c. Live Discord & Email Integrations ── */}
+      <IntegrationsPanel
+        accountKey={accountKey}
+        accountEmail={accountEmail}
+        clubs={clubs}
+        syncedEvents={calendarIntegration?.syncedEvents || events}
+        isCompact={isCompact}
+        onRefresh={onRefresh}
+        onNotify={onNotify}
+      />
 
       {/* ── 4. Notifications & Feed Channels ── */}
       <Card className={`${cardPad} ${isCompact ? 'space-y-2.5' : 'space-y-3.5'}`} delay={4}>

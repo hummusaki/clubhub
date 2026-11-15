@@ -129,6 +129,14 @@ export function NavIcon({ name, active = false, size = 19 }) {
           />
         </svg>
       )
+    case 'Tasks':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <rect x="3.5" y="4" width="17" height="16" rx="3" fill="currentColor" fillOpacity={fillOpacity} stroke="currentColor" strokeWidth={strokeWidth} />
+          <path d="M7.5 9.5L9.2 11.2L12.2 8.2" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M14.2 9.8H17.2M7.5 15H16.8" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" />
+        </svg>
+      )
     case 'Link':
     default:
       return (
@@ -206,6 +214,14 @@ export function StatIcon({ name, size = 22 }) {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="8.6" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.9" />
           <path d="M12 7.4V12.2L15.4 14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    case 'Tasks':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <rect x="3.5" y="4" width="17" height="16" rx="3" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M7.5 9.5L9.2 11.2L12.2 8.2" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M14.2 9.8H17.2M7.5 15H16.8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
         </svg>
       )
     case 'Link':

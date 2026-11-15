@@ -41,6 +41,7 @@ function loadPreviousSnapshot() {
   const eventsByClubId = new Map()
   const announcementsByClubId = new Map()
   const linksByClubId = new Map()
+  const rosterByClubId = new Map()
   const postsById = new Map()
   const eventsByPostId = new Map()
   const personalClubIds = new Set()
@@ -88,6 +89,10 @@ function loadPreviousSnapshot() {
         const cid = String(l?.clubId || '').toLowerCase()
         if (cid) pushToMap(linksByClubId, cid, l)
       }
+      for (const r of prev.roster || []) {
+        const cid = String(r?.clubId || '').toLowerCase()
+        if (cid) pushToMap(rosterByClubId, cid, r)
+      }
       break // prefer the primary snapshot once loaded
     } catch {
       // ignore unreadable snapshot
@@ -100,6 +105,7 @@ function loadPreviousSnapshot() {
     eventsByClubId,
     announcementsByClubId,
     linksByClubId,
+    rosterByClubId,
     postsById,
     eventsByPostId,
     personalClubIds,
@@ -451,13 +457,56 @@ export async function collect({
   }
 
   const prevSnapshot = demo ? null : loadPreviousSnapshot()
-  const out = { collectedAt: new Date().toISOString(), clubs: [], posts: [], events: [], announcements: [], links: [], errors: [] }
+  const out = {
+    collectedAt: new Date().toISOString(),
+    clubs: [],
+    posts: [],
+    events: [],
+    announcements: [],
+    links: [],
+    roster: [],
+    errors: [],
+  }
   const seenPostIds = new Set()
   const seenEventIds = new Set()
   const seenAnnouncementIds = new Set()
   const seenLinkIds = new Set()
+  const seenRosterIds = new Set()
   let liveSyncedCount = 0
   let preservedCacheCount = 0
+
+  const preserveClubRoster = clubId => {
+    const lc = String(clubId || '').toLowerCase()
+    for (const r of prevSnapshot?.rosterByClubId?.get(lc) || []) {
+      if (r?.id && !seenRosterIds.has(r.id)) {
+        seenRosterIds.add(r.id)
+        out.roster.push(r)
+      }
+    }
+  }
+
+  const carryClubRosterFields = (catalogClub, prevClub, followersOverride = null) => {
+    const followers = followersOverride ?? prevClub?.followers ?? 0
+    const discordMemberCount = prevClub?.discordMemberCount ?? null
+    const discordOnlineCount = prevClub?.discordOnlineCount ?? null
+    const rosterCount = prevClub?.rosterCount ?? 0
+    const memberCount = Math.max(
+      prevClub?.memberCount || 0,
+      discordMemberCount || 0,
+      Number(followers) || 0,
+      rosterCount || 0
+    )
+    return {
+      memberCount: memberCount || null,
+      discordMemberCount,
+      discordOnlineCount,
+      rosterCount: rosterCount || null,
+      rosterUpdatedAt: prevClub?.rosterUpdatedAt || null,
+      orgStatus: catalogClub?.orgStatus || prevClub?.orgStatus || 'active',
+      orgStatusNote: catalogClub?.orgStatusNote || prevClub?.orgStatusNote || null,
+      directoryDescription: catalogClub?.description || prevClub?.directoryDescription || null,
+    }
+  }
 
   const source = demo
     ? demoSource()
@@ -467,7 +516,7 @@ export async function collect({
     const { club } = item
 
     // Deferred clubs (rotation batch cap, freshness TTL, or rate-limit circuit breaker):
-    // preserve cached club/posts/events/links cleanly with zero noisy error logs.
+    // preserve cached club/posts/events/links/roster cleanly with zero noisy error logs.
     if (item.deferred) {
       preservedCacheCount++
       const clubId = club.instagram.toLowerCase()
@@ -490,6 +539,7 @@ export async function collect({
           }),
           email: club.email || prevClub.email || null,
           website: prevClub.website || club.website || null,
+          ...carryClubRosterFields(club, prevClub),
         })
         for (const p of prevSnapshot.postsByClubId.get(clubId) || []) {
           if (!seenPostIds.has(p.id)) {
@@ -515,6 +565,7 @@ export async function collect({
             out.links.push(l)
           }
         }
+        preserveClubRoster(clubId)
       } else {
         out.clubs.push({
           id: clubId,
@@ -537,6 +588,7 @@ export async function collect({
           lastSyncedAt: null,
           syncStatus: 'unavailable',
           syncNote: 'Instagram was busy; this club will sync on the next run.',
+          ...carryClubRosterFields(club, null),
         })
         for (const l of contactLinks(club, clubId)) {
           const linkId = `${clubId}:${l.url}`
@@ -555,6 +607,7 @@ export async function collect({
       // Keep the club anyway, with its Instagram page and email so people can reach it manually.
       const clubId = club.instagram.toLowerCase()
       const clubName = club.name || clubId
+      const prevClub = prevSnapshot?.clubsById?.get(clubId)
       out.clubs.push({
         id: clubId,
         name: clubName,
@@ -568,15 +621,17 @@ export async function collect({
           instagram: clubId,
         }),
         email: club.email || null,
-        bio: null,
-        website: club.website || null,
-        profilePictureUrl: null,
-        followers: null,
-        lastPostAt: null,
-        lastSyncedAt: prevSnapshot?.clubsById?.get(clubId)?.lastSyncedAt || null,
+        bio: prevClub?.bio || null,
+        website: club.website || prevClub?.website || null,
+        profilePictureUrl: prevClub?.profilePictureUrl || null,
+        followers: prevClub?.followers ?? null,
+        lastPostAt: prevClub?.lastPostAt || null,
+        lastSyncedAt: prevClub?.lastSyncedAt || null,
         syncStatus: 'unavailable',
         syncNote: syncNote(item.error),
+        ...carryClubRosterFields(club, prevClub),
       })
+      preserveClubRoster(clubId)
 
       const fallbackLinks = new Map()
       for (const l of contactLinks(club, clubId)) fallbackLinks.set(l.url.toLowerCase(), l)
@@ -624,11 +679,12 @@ export async function collect({
     const { profile, posts } = item
     const clubId = profile.username
     const clubName = club.name || profile.name || profile.username
+    const prevClub = prevSnapshot?.clubsById?.get(clubId.toLowerCase())
     liveSyncedCount++
     console.log(`✓ @${clubId}: ${posts.length} posts`)
     if (club.alsoKnownAs) console.log(`    (shared account, also: ${club.alsoKnownAs.join(', ')})`)
 
-    out.clubs.push({
+    const clubRecord = {
       id: clubId,
       name: clubName,
       instagram: clubId,
@@ -642,7 +698,7 @@ export async function collect({
       }),
       alsoKnownAs: club.alsoKnownAs || [],
       bio: profile.biography,
-      website: profile.website,
+      website: profile.website || club.website || null,
       profilePictureUrl: profile.profilePictureUrl,
       followers: profile.followers,
       lastPostAt: posts[0]?.postedAt || null,
@@ -650,7 +706,10 @@ export async function collect({
       email: club.email || null,
       syncStatus: 'synced',
       syncNote: null,
-    })
+      ...carryClubRosterFields(club, prevClub, profile.followers),
+    }
+    out.clubs.push(clubRecord)
+    preserveClubRoster(clubId)
 
     const clubLinks = new Map()
     for (const l of contactLinks(club, clubId)) clubLinks.set(l.url.toLowerCase(), l)
@@ -740,6 +799,11 @@ export async function collect({
                   })`
                 : ''
             l.label = `Discord — ${inviteMeta.serverName}${stats}`
+            if (inviteMeta.memberCount != null) {
+              clubRecord.discordMemberCount = Math.max(clubRecord.discordMemberCount || 0, inviteMeta.memberCount)
+              if (inviteMeta.onlineCount != null) clubRecord.discordOnlineCount = inviteMeta.onlineCount
+              clubRecord.memberCount = Math.max(clubRecord.memberCount || 0, clubRecord.discordMemberCount)
+            }
           }
         }
       }

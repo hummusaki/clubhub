@@ -35,6 +35,8 @@ import {
 } from '../database.js';
 import { searchClubs } from '../../collector/src/search.js';
 import { ingestResourceItem } from '../services/resourceIngestor.js';
+import discordService from '../services/discord.js';
+import emailService from '../services/email.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ALLOWED_IMPORT_ROOT = path.resolve(__dirname, '../../collector');
@@ -107,15 +109,56 @@ router.get('/search', (req, res) => {
     const hub = buildClubHubDictionary();
     const now = new Date();
     return res.json(
-      Object.values(hub).map(({ events, announcements, links, posts, ...club }) => ({
+      Object.values(hub).map(({ events, announcements, links, posts, roster, ...club }) => ({
         club,
         upcomingEvents: events.filter(e => new Date(e.end || e.start) >= now),
         announcements: announcements.slice(0, 5),
         links,
+        roster,
       }))
     );
   }
   res.json(searchClubs(getAllCollectorData(), q));
+});
+
+// ── 4b. Roster directory endpoints (/api/roster) ────────────────────
+router.get('/roster', (req, res) => {
+  const clubId = firstStr(req.query.clubId) || undefined;
+  const personType = firstStr(req.query.personType) || undefined;
+  const data = getAllCollectorData(clubId ? { clubId } : {});
+  let items = data.roster || [];
+  if (personType) {
+    items = items.filter(r => String(r.personType).toLowerCase() === personType.toLowerCase());
+  }
+  res.json(items);
+});
+
+router.post('/roster', (req, res) => {
+  const body = req.body || {};
+  const clubId = normalizeClubId(body.clubId);
+  if (!clubId || !body.name) {
+    return res.status(400).json({ error: 'clubId and name are required' });
+  }
+  const id = body.id || `custom_roster_${clubId}_${Date.now()}`;
+  const entry = {
+    id,
+    clubId,
+    clubName: body.clubName || clubId,
+    name: String(body.name).trim(),
+    initials: body.initials || null,
+    role: String(body.role || 'Member').trim(),
+    personType: body.personType === 'member' ? 'member' : 'officer',
+    major: body.major || null,
+    year: body.year || null,
+    email: body.email || null,
+    office: body.office || null,
+    instagram: body.instagram || null,
+    color: body.color || 'blue',
+    source: body.source || 'manual',
+    sourceUrl: body.sourceUrl || null,
+  };
+  upsertCollectorData({ roster: [entry] });
+  res.status(201).json(entry);
 });
 
 // ── 5. ClubHub Dictionary View (/api/hub & /api/hub/:clubId) ────────
@@ -179,8 +222,8 @@ router.delete('/dict/:key', (req, res) => {
   res.json(deleteDictEntry(req.params.key));
 });
 
-// ── 7. Single-post/message ingestion (uses ingestResourceItem) ──────
-function handleSingleIngest(req, res) {
+// ── 7. Single-post/message ingestion (uses ingestResourceItem + optional outbound push) ──
+async function handleSingleIngest(req, res) {
   const source = req.params.source || req.body?.source || 'instagram';
   const {
     clubId: rawClubId,
@@ -194,6 +237,10 @@ function handleSingleIngest(req, res) {
     permalink,
     imageUrl,
     postedAt,
+    pushDiscord = false,
+    pushEmailTo = '',
+    discordWebhookUrl = '',
+    discordChannelId = '',
   } = req.body || {};
   const clubId = normalizeClubId(rawClubId || club_id);
 
@@ -218,9 +265,41 @@ function handleSingleIngest(req, res) {
     postedAt: postedAt || null,
   });
 
+  const outbound = {};
+  if (pushDiscord) {
+    try {
+      outbound.discord = await discordService.sendDiscordNotification({
+        kind: 'announcement',
+        webhookUrl: discordWebhookUrl || undefined,
+        channelId: discordChannelId || undefined,
+        clubName: clubName || clubId,
+        title: title || result.extracted?.title,
+        message: rawText,
+        url: permalink || undefined,
+      });
+    } catch (err) {
+      outbound.discord = { ok: false, error: err.message };
+    }
+  }
+  if (pushEmailTo) {
+    try {
+      outbound.email = await emailService.sendNotification({
+        kind: 'announcement',
+        to: pushEmailTo,
+        clubName: clubName || clubId,
+        title: title || result.extracted?.title,
+        message: rawText,
+        url: permalink || undefined,
+      });
+    } catch (err) {
+      outbound.email = { ok: false, error: err.message };
+    }
+  }
+
   res.status(201).json({
     success: true,
     ...result,
+    ...(Object.keys(outbound).length > 0 ? { outbound } : {}),
   });
 }
 

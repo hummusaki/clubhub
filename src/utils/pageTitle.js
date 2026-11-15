@@ -59,6 +59,11 @@ export function buildDashboardPageTitle({
       return joinedCount > 0 ? `My Clubs (${joinedCount}) · ClubHub` : 'Clubs & Community · ClubHub'
     }
 
+    case 'tasks': {
+      if (ctx?.label) return `${truncateLabel(ctx.label, 32)} — Task Board · ClubHub`
+      return 'Task Board · ClubHub'
+    }
+
     case 'links': {
       if (ctx?.modal === 'add') return 'Share Resource · ClubHub'
       if (q) return `"${q}" — Resources · ClubHub`

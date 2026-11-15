@@ -44,7 +44,7 @@ export default function Announcements({
           {onNav && (
             <button
               type="button"
-              onClick={() => onNav('clubs')}
+              onClick={() => onNav('clubs', { section: 'updates' })}
               className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
             >
               <span>All Updates</span>
@@ -59,6 +59,7 @@ export default function Announcements({
               const color = item.color || 'blue'
               const isDiscord = item.source === 'discord'
               const isStory = item.source === 'instagram_story'
+              const isEmail = item.source === 'email'
 
               return (
                 <div
@@ -81,6 +82,8 @@ export default function Announcements({
                       <PlatformIcon type="discord" size={isCompact ? 14 : 17} />
                     ) : isStory ? (
                       <PlatformIcon type="instagram" size={isCompact ? 14 : 17} />
+                    ) : isEmail ? (
+                      <PlatformIcon type="email" size={isCompact ? 14 : 17} />
                     ) : (
                       <AnnouncementTypeIcon type={item.type} size={isCompact ? 14 : 17} />
                     )}

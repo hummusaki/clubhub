@@ -3,6 +3,49 @@
 // Automatically operates in zero-error static mode on GitHub Pages when no backend API is configured.
 
 const EXPLICIT_API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const SESSION_TOKEN_STORAGE_KEY = 'clubhub_session_token_v1';
+
+let inMemorySessionToken = '';
+
+export function setApiSessionToken(token) {
+  inMemorySessionToken = String(token || '').trim();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      if (inMemorySessionToken) {
+        sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, inMemorySessionToken);
+      } else {
+        sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getApiSessionToken() {
+  if (inMemorySessionToken) return inMemorySessionToken;
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const saved = sessionStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+      if (saved) {
+        inMemorySessionToken = saved;
+        return saved;
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return '';
+}
+
+export function buildAuthHeaders(extraHeaders = {}) {
+  const token = getApiSessionToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  };
+}
 
 function isLocalhostHost() {
   if (typeof window === 'undefined') return false;
@@ -89,13 +132,13 @@ async function fetchJSON(path, options = {}) {
 
   try {
     const res = await fetch(`${activeBase}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: buildAuthHeaders(options.headers),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    if (!EXPLICIT_API_BASE && isLocalhostHost()) {
+    if (!EXPLICIT_API_BASE && isLocalhostHost() && /Failed to fetch|NetworkError/i.test(err.message || '')) {
       apiAvailabilityState = 'disabled';
       localRetryAfter = Date.now() + 15_000;
     }
@@ -103,6 +146,35 @@ async function fetchJSON(path, options = {}) {
       console.warn(`[API] Failed to fetch ${path}:`, err.message);
     }
     return null;
+  }
+}
+
+export async function fetchActionJSON(path, options = {}) {
+  const activeBase = await resolveActiveApiBase();
+  if (!activeBase) return { ok: false, offline: true, error: 'Backend API server is not reachable.' };
+
+  try {
+    const res = await fetch(`${activeBase}${path}`, {
+      ...options,
+      headers: buildAuthHeaders(options.headers),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        offline: false,
+        status: res.status,
+        ...body,
+        error: body?.error || `Request failed (HTTP ${res.status})`,
+      };
+    }
+    return { ok: true, offline: false, ...body };
+  } catch (err) {
+    if (!EXPLICIT_API_BASE && isLocalhostHost()) {
+      apiAvailabilityState = 'disabled';
+      localRetryAfter = Date.now() + 15_000;
+    }
+    return { ok: false, offline: true, error: err.message || 'Network request failed' };
   }
 }
 
@@ -117,6 +189,7 @@ export function buildHubFromSnapshot(data) {
       announcements: [],
       links: [],
       posts: [],
+      roster: [],
     };
   }
   if (Array.isArray(data.events)) {
@@ -130,6 +203,9 @@ export function buildHubFromSnapshot(data) {
   }
   if (Array.isArray(data.posts)) {
     for (const p of data.posts) dict[p?.clubId]?.posts.push(p);
+  }
+  if (Array.isArray(data.roster)) {
+    for (const r of data.roster) dict[r?.clubId]?.roster.push(r);
   }
   return dict;
 }
@@ -206,11 +282,58 @@ export const ingestFromSource = (source, payload) =>
 
 export const getSources = (params = {}) => fetchJSON(withQuery('/sources', params));
 export const registerSource = data => fetchJSON('/sources', { method: 'POST', body: JSON.stringify(data) });
+export const deleteSource = id =>
+  fetchJSON(withQuery('/sources', { id }), { method: 'DELETE' });
 export const syncAllSources = (platform = 'all', clubId = null, extra = {}) =>
   fetchJSON('/sources/sync', {
     method: 'POST',
     body: JSON.stringify({ platform, clubId, ...extra }),
   });
+
+// ── 3b. Discord & Email Integrations Management, Verification & Outbound Sharing (/api/integrations) ──
+export const getIntegrationsStatus = (params = {}) =>
+  fetchJSON(withQuery('/integrations/status', params));
+export const saveIntegrationConfig = payload =>
+  fetchActionJSON('/integrations/config', { method: 'PUT', body: JSON.stringify(payload) });
+export const getIntegrationSubscription = accountKey =>
+  fetchJSON(withQuery('/integrations/subscriptions', { accountKey }));
+export const saveIntegrationSubscription = payload =>
+  fetchActionJSON('/integrations/subscriptions', { method: 'PUT', body: JSON.stringify(payload) });
+export const testDiscordIntegration = payload =>
+  fetchActionJSON('/integrations/discord/test', { method: 'POST', body: JSON.stringify(payload) });
+export const sendDiscordMessage = payload =>
+  fetchActionJSON('/integrations/discord/send', { method: 'POST', body: JSON.stringify(payload) });
+export async function getScoutedDiscordServers() {
+  const live = await fetchJSON('/integrations/discord/scout');
+  if (live && Array.isArray(live.servers)) return { ...live, mode: 'server' };
+
+  // Static GitHub Pages fallback: read committed `public/discord-scout.json`
+  try {
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/?$/, '/');
+    const res = await fetch(`${base}discord-scout.json`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.servers)) {
+        return { ok: true, ...data, mode: 'static' };
+      }
+    }
+  } catch {
+    // ignore missing static snapshot
+  }
+  return null;
+}
+export const runDiscordServerScout = (payload = {}) =>
+  fetchActionJSON('/integrations/discord/scout', { method: 'POST', body: JSON.stringify(payload) });
+export const followDiscordAnnouncementChannel = payload =>
+  fetchActionJSON('/integrations/discord/follow', { method: 'POST', body: JSON.stringify(payload) });
+export const verifyEmailIntegration = payload =>
+  fetchActionJSON('/integrations/email/verify', { method: 'POST', body: JSON.stringify(payload) });
+export const testEmailIntegration = payload =>
+  fetchActionJSON('/integrations/email/test', { method: 'POST', body: JSON.stringify(payload) });
+export const sendEmailMessage = payload =>
+  fetchActionJSON('/integrations/email/send', { method: 'POST', body: JSON.stringify(payload) });
 
 // ── 4. Core Collector Tables (clubs, events, announcements, links, posts) ──
 export const getClubs = (params = {}) => fetchJSON(withQuery('/clubs', params));
@@ -231,6 +354,10 @@ export const createLink = data => fetchJSON('/links', { method: 'POST', body: JS
 
 export const getPosts = (params = {}) => fetchJSON(withQuery('/posts', params));
 export const createPost = data => fetchJSON('/posts', { method: 'POST', body: JSON.stringify(data) });
+
+export const getRoster = (params = {}) => fetchJSON(withQuery('/roster', params));
+export const getClubRoster = id => fetchJSON(`/clubs/${encodeURIComponent(id)}/roster`);
+export const createRosterEntry = data => fetchJSON('/roster', { method: 'POST', body: JSON.stringify(data) });
 
 export const getStats = () => fetchJSON('/stats');
 

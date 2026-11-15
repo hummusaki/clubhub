@@ -10,6 +10,8 @@ coverage/
 
 # Environment secrets; commit only sanitized example/template files
 .env
+.env.local
+.env.*.local
 .env.*
 *.env
 !.env.example
@@ -46,6 +48,7 @@ service_account*.json
 
 # Collected data, API caches, browser sessions, and network captures
 /collector/output/
+/collector/verified-rosters.json
 cookies.txt
 cookies.json
 storageState.json

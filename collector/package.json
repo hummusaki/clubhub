@@ -9,6 +9,7 @@
     "collect:hybrid": "node src/index.js --fallback-personal",
     "collect:personal": "node src/index.js --personal-only",
     "demo": "node src/index.js --demo",
+    "roster": "node src/roster.js",
     "search": "node src/search.js",
     "update-clubs": "node src/update-clubs.js"
   },

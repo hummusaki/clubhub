@@ -3,828 +3,971 @@
     "name": "8th Rank Society",
     "instagram": "8thrankchess.ucsc",
     "category": "gaming",
-    "email": "8thrankucsc@gmail.com"
+    "email": "8thrankucsc@gmail.com",
+    "description": "8th Rank Society: UC Santa Cruz Women’s Chess Club is a student-led community that supports women and allies of all levels within chess."
   },
   {
     "name": "A Counter Space",
     "instagram": "acs_ucsc",
     "category": "tech & science",
-    "email": "ucsc.women.in.physics@gmail.com"
+    "email": "ucsc.women.in.physics@gmail.com",
+    "description": "An organization dedicated to supporting gender minorities in physics. We strive to support and build community in our members."
   },
   {
     "name": "Acquire A Cappella",
     "instagram": "acquireacappella",
     "category": "performing arts",
-    "email": "acquireucs@gmail.com"
+    "email": "acquireucs@gmail.com",
+    "description": "Established in 2007, Acquire A Cappella is the punniest A cappella group on the UC Santa Cruz campus! We’re a tight-knit musical family united by harmonies, humor, and a shared love of performance."
   },
   {
     "name": "Alay",
     "instagram": "alay.ucsc",
     "category": "media & arts",
-    "email": "alay.ucsc@gmail.com"
+    "email": "alay.ucsc@gmail.com",
+    "description": "Alay is the self-expression aspect housed under Bayanihan and Student Media Organization. We foster a community welcome to students of all backgrounds to create art and explore their identities, culiminatin a puprint anthology of community artworks every year."
   },
   {
     "name": "Alpha Epsilon Pi (AEPi)",
     "instagram": "aepi.ucsc",
     "category": "greek",
-    "email": "tmai6@ucsc.edu"
+    "email": "tmai6@ucsc.edu",
+    "description": "Alpha Epsilon Pi (AEPi) is the world’s Jewish college fraternity, operating chapters on more than 150 college campuses in four countries. We are a social fraternity that aims to uplift and develop young men into future leaders through brotherhood, philanthropy, and community service.",
+    "orgStatus": "probation",
+    "orgStatusNote": "Alpha Epsilon Pi is currently on probation through Spring 2027."
   },
   {
     "name": "alpha Kappa Delta Phi (aKDPhi)",
     "instagram": "ucsc_akdphi",
     "category": "greek",
-    "email": "akdphideltapresident@gmail.com"
+    "email": "akdphideltapresident@gmail.com",
+    "description": "alpha Kappa Delta Phi is an international Asian-interest sorority with 60+ chapters. We have dedicated ourselves to upholding and exemplifying our pillars of scholarship, leadership, service, asian awareness, and sisterhood"
   },
   {
     "name": "Alpha Kappa Psi",
     "instagram": "ucscakpsi",
     "category": "greek",
-    "email": "ucsc.akpsi@gmail.com"
+    "email": "ucsc.akpsi@gmail.com",
+    "description": "The oldest and largest professional business fraternity in the world, open to all majors."
   },
   {
     "name": "Alpha Phi Omega",
     "instagram": "apo_ucsc",
     "category": "greek",
-    "email": "agn.apo.vpm@gmail.com"
+    "email": "agn.apo.vpm@gmail.com",
+    "description": "This organization is a group of community service, leadership and friendship where members provide most nonprofits and other organizations with support and help in societally contributing efforts.",
+    "orgStatus": "probation",
+    "orgStatusNote": "Alpha Phi Omega is currently on probation through Spring 2028."
   },
   {
     "name": "Alpha Psi",
     "instagram": "ucscalphapsi",
     "category": "greek",
-    "email": "alphapsi1988@gmail.com"
+    "email": "alphapsi1988@gmail.com",
+    "description": "We are a sorority/fraternity"
   },
   {
     "name": "American Medical Student Association (AMSA)",
     "instagram": "amsaucsc",
     "category": "pre-professional",
-    "email": "amsa.ucsc@gmail.com"
+    "email": "amsa.ucsc@gmail.com",
+    "description": "Professional club for pre-med and pre-health students at UCSC"
   },
   {
     "name": "American Red Cross Association at UCSC (ARCA)",
     "instagram": "ucscredcross",
     "category": "service & advocacy",
-    "email": "ucscredcross@gmail.com"
+    "email": "ucscredcross@gmail.com",
+    "description": "We are here to assist the school and the American Red Cross in instituting, encouraging, unifying, and executing projects and services in cooperation with the Santa Cruz Region Chapter."
   },
   {
     "name": "Asian American Christian Fellowship (AACF)",
     "instagram": "aacfucsc",
     "category": "cultural",
-    "email": "aacf.ucsc@aacf.org"
+    "email": "aacf.ucsc@aacf.org",
+    "description": "We are a Christian fellowship at UC Santa Cruz dedicated to reaching our campus with the life-changing message of Jesus Christ. Our ministry includes Large Group Gatherings with messages from guest pastors, Small Group Discussions, Discipleship, Worship, Prayer."
   },
   {
     "name": "Asian Pacific Islander Student Alliance (APISA)",
     "instagram": "apisa.slugs",
     "category": "cultural",
-    "email": "apisa.slugs@gmail.com"
+    "email": "apisa.slugs@gmail.com",
+    "description": "The Asian Pacific Islander Student Alliance (APISA) emphasizes unity and empowerment through celebrating the diverse cultures and customs of the AA/PI (Asian/Pacific Islander) communities in higher education and beyond."
   },
   {
     "name": "Aspiring Physician Assistant's Association",
     "instagram": "ucsc_apaa",
     "category": "pre-professional",
-    "email": "ucsc.apaa@gmail.com"
+    "email": "ucsc.apaa@gmail.com",
+    "description": "Committed to educating pre-PA students about their future health profession by organizing activities and providing mentorship support."
   },
   {
     "name": "Association for Computing Machinery – Women at UCSC (ACM-W)",
     "instagram": "acmw.ucsc",
     "category": "tech & science",
-    "email": "acmw.ucsc@gmail.com"
+    "email": "acmw.ucsc@gmail.com",
+    "description": "ACM-W is a community for women and non-binary individuals interested/passionate about computing to learn new skills and network with like-minded people."
   },
   {
     "name": "Bangladeshi Student Association",
     "instagram": "bsacruz",
     "category": "cultural",
-    "email": "bsasantacruz@gmail.com"
+    "email": "bsasantacruz@gmail.com",
+    "description": "A club to celebrate and share the culture of Bangladesh."
   },
   {
     "name": "Bayanihan",
     "instagram": "bayanihan.santacruz",
     "category": "cultural",
-    "email": "bayanihan.ucsc@gmail.com"
+    "email": "bayanihan.ucsc@gmail.com",
+    "description": "Bayanihan is the Filipino Student Association on campus, housing 12 different aspects: Activities, Alay, A Step Forward, Digital & Social Media, Haluan Hip Hop Dance Troupe, Isang Himig, Itayo, Kuya-Ate Mentorship Program, Kasama Ballroom Dance Troupe, People Power, and Pipinx Historical Diaglogue"
   },
   {
     "name": "Bhakti Yoga Club (FKA BEATS)",
     "instagram": "bhaktiyogaucsc",
     "category": "faith",
-    "email": "bhaktiucsc@gmail.com"
+    "email": "bhaktiucsc@gmail.com",
+    "description": "A community that shares and deepens the understanding of spirituality through the timeless wisdom found in the literature."
   },
   {
     "name": "Bioethics Club",
     "instagram": "ucscbioethics",
     "category": "pre-professional",
-    "email": "bioethics-team-group@ucsc.edu"
+    "email": "bioethics-team-group@ucsc.edu",
+    "description": "UCSC Bioethics is the premier club at UCSC that bridges STEM and humanities, building ethical frameworks, debating cutting-edge science, and competing nationally. We lead students in exploring bioethical pathways through multiple interdisciplinary facets."
   },
   {
     "name": "Black Student Union (BSU)",
     "instagram": "ucscbsu",
     "category": "cultural",
-    "email": "bsu.slugs@gmail.com"
+    "email": "bsu.slugs@gmail.com",
+    "description": "The Black Student Union (BSU) serves as a unifying body for all Black organizations on campus, as well as the Black student body. The BSU also welcomes all individuals who are committed to advancing, supporting, and meaningfully engaging with issues affecting the Black community."
   },
   {
     "name": "Business Economics Academia (BEA)",
     "instagram": "ucscbea",
     "category": "pre-professional",
-    "email": "ucscbea@ucsc.edu"
+    "email": "ucscbea@ucsc.edu",
+    "description": "Business Economics Academia (BEA) is UCSC’s oldest inclusive club for networking, study groups, social and career-focused workshops, and industry speakers, plus a welcoming community open to all majors!"
   },
   {
     "name": "Central Americans For Empowerment (CAFE)",
     "instagram": "cafeucsc",
     "category": "cultural",
-    "email": "cafeucsc3@gmail.com"
+    "email": "cafeucsc3@gmail.com",
+    "description": "C.A.F.E. (Central Americans For Empowerment) empowers Central American students and all UCSC students by connecting them with the resources they need to navigate Santa Cruz, campus life, and beyond. We create a welcoming, culturally grounded community space."
   },
   {
     "name": "Chess Club",
     "instagram": "ucscchessclub",
     "category": "gaming",
-    "email": "ucsc.chess@gmail.com"
+    "email": "ucsc.chess@gmail.com",
+    "description": "Chess. We also play variants like bughouse, and occasionally hold casual tournaments."
   },
   {
     "name": "Chicanx and Latine Educandose (ChALE)",
     "instagram": "e2.chale",
     "category": "cultural",
-    "email": "e2.chale@gmail.com"
+    "email": "e2.chale@gmail.com",
+    "description": "ChALE is a needs-based retention program that is designed to respond to the students' social, academic, and cultural needs with the goal of keeping them retained on campus working towards their path to graduation."
   },
   {
     "name": "Chinese Student Association",
     "instagram": "csa_ucsc",
     "category": "cultural",
-    "email": "csaofucsc@gmail.com"
+    "email": "csaofucsc@gmail.com",
+    "description": "The Chinese Student Association is a student organization and resource devoted to promoting unity and empowerment among UCSC students through education and recognition of Asian and Asian American culture, emphasizing Chinese and Chinese Americans."
   },
   {
     "name": "Chinese Students and Scholars Association",
     "instagram": "ucsc_cssa",
     "category": "cultural",
-    "email": "ucsccssa666@gmail.com"
+    "email": "ucsccssa666@gmail.com",
+    "description": "CSSA is a student-run organization that brings together Chinese students and scholars at UC Santa Cruz, helps new students adjust to campus life, and shares Chinese culture with the wider UCSC community."
   },
   {
     "name": "Chinquapin Literary Magazine",
     "instagram": "chinquapinucsc",
     "category": "media & arts",
-    "email": "chinquapin@gmail.com"
+    "email": "chinquapin@gmail.com",
+    "description": "Chinquapin Literary Magazine began in 1978 and has been creating yearly anthologies of student art and writing ever since. For the past 48 years, we have been run by students of UCSC. Chinquapin is a space for students to learn about the ins and outs of publishing, and to highlight student work."
   },
   {
     "name": "Christian Medical and Dental Association (CMDA)",
     "instagram": "cmda_ucsc",
     "category": "pre-professional",
-    "email": "cmdaucsc@gmail.com"
+    "email": "cmdaucsc@gmail.com",
+    "description": "CMDA educates, encourages, and equips Christian healthcare professionals to glorify God."
   },
   {
     "name": "Christians on Campus at UCSC (COC)",
     "instagram": "ucscchristians",
     "category": "faith",
-    "email": "ucscchristiansoncampus@gmail.com"
+    "email": "ucscchristiansoncampus@gmail.com",
+    "description": "A weekly bible study to get into the word of God and encourage one another!"
   },
   {
     "name": "Circle K International (CKI)",
     "instagram": "ucsccki",
     "category": "service & advocacy",
-    "email": "pres.ucsc.cki@gmail.com"
+    "email": "pres.ucsc.cki@gmail.com",
+    "description": "Circle K International(CKI) is one of the world’s largest student-led collegiate service organizations. We offer volunteering, leadership development, & fellowship opportunities to meet new friends and positively impact our community."
   },
   {
     "name": "City on a Hill Press",
     "instagram": "chpnow",
     "category": "media & arts",
-    "email": "editors@cityonahillpress.com"
+    "email": "editors@cityonahillpress.com",
+    "description": "City on a Hill Press is produced by and for UCSC students. Our primary goal is to report and analyze issues affecting the student population and the Santa Cruz community."
   },
   {
     "name": "Cloud 9 A Cappella",
     "instagram": "cloud9acappella",
     "category": "performing arts",
-    "email": "cloud9ucsc@gmail.com"
+    "email": "cloud9ucsc@gmail.com",
+    "description": "Cloud 9 is UC Santa Cruz's original and longest-running a cappella group. Established in 2001, Cloud 9 has been a proud contributor to the world of collegiate a cappella for quite some time. It is our number one goal to make music that connects everyone!"
   },
   {
     "name": "Cognitive Science Student Association (CSSA)",
     "instagram": "cssa.ucsc",
     "category": "tech & science",
-    "email": "ucsc.cogsci@gmail.com"
+    "email": "ucsc.cogsci@gmail.com",
+    "description": "The Cognitive Science Student Association (CSSA) at UC Santa Cruz connects students interested in the mind, brain, and behavior! Through social events, academic support, and professional development, we build a welcoming community for students to grow!"
   },
   {
     "name": "College Democrats",
     "instagram": "ucsccollegedems",
     "category": "service & advocacy",
-    "email": "blueslugs@gmail.com"
+    "email": "blueslugs@gmail.com",
+    "description": "We are a student organization that aims to educate students about the United States’ political system and the Democratic Party Platform, register voters on campus and in the community, participate in on and off-campus events and community service activities."
   },
   {
     "name": "College Panhellenic Council",
     "instagram": "ucscpanhellenic",
     "category": "greek",
-    "email": "collegepanhellenic@gmail.com"
+    "email": "collegepanhellenic@gmail.com",
+    "description": "Council composed of members from each of the three Panhellenic sororities on campus that oversee each organization"
   },
   {
     "name": "Comedy Joust",
     "instagram": "comedyjoust",
     "category": "performing arts",
-    "email": "comedyjoust.ucsc@gmail.com"
+    "email": "comedyjoust.ucsc@gmail.com",
+    "description": "We are a short form improv comedy student organization that attends college improv events, puts on improv shows, and practices improv skills and principles."
   },
   {
     "name": "Community Unified Student Network (CUSN)",
     "instagram": "cusn.ucsc",
     "category": "cultural",
-    "email": "cusnretentionucsc@gmail.com"
+    "email": "cusnretentionucsc@gmail.com",
+    "description": "CUSN is a peer program dedicated, but not exclusive to the Asian-American/ Pacific Islander (AA/PI) community at UC Santa Cruz."
   },
   {
     "name": "Dance Club",
     "instagram": "ucscdanceclub",
     "category": "performing arts",
-    "email": "ucscdanceclub@gmail.com"
+    "email": "ucscdanceclub@gmail.com",
+    "description": "A club where we provide weekly dance workshops in different styles, which are open to all UCSC students"
   },
   {
     "name": "Delta Sigma Pi",
     "instagram": "ucscdsp",
     "category": "greek",
-    "email": "pichipres@gmail.com"
+    "email": "pichipres@gmail.com",
+    "description": "Pre-Professional Co-ed fraternity focusing on comunity service, brotherhood, and professional development."
   },
   {
     "name": "Education for Sustainable Living Program (ESLP)",
     "instagram": "enviroslug",
     "category": "service & advocacy",
     "email": "eslp@ucsc.edu",
-    "alsoKnownAs": [
-      "Student Environmental Center (SEC)"
-    ],
     "extraEmails": [
       "sec2001@ucsc.edu"
+    ],
+    "description": "The Education for Sustainable Living Program (ESLP) is a student-led organization committed to empowering students to take action in the climate crisis. Our program creates collaborative learning environments through UCSC-accredited courses for students.",
+    "alsoKnownAs": [
+      "Student Environmental Center (SEC)"
     ]
   },
   {
     "name": "Emergency Medical Slugs (EMS)",
     "instagram": "emslugs_ucsc",
     "category": "pre-professional",
-    "email": "emergencymedicalslugs@gmail.com"
+    "email": "emergencymedicalslugs@gmail.com",
+    "description": "EMSlugs is a student-run organization focused on emergency medicine, basic life support skills, and provides clinical volunteer opportunities at no cost for any undergraduate seeking experience."
   },
   {
     "name": "End Overdose at UC Santa Cruz",
     "instagram": "endoverdose.ucsc",
     "category": "service & advocacy",
-    "email": "ucsc@endoverdose.net"
+    "email": "ucsc@endoverdose.net",
+    "description": "End Overdose at UCSC works to educate our community with the knowledge and tools needed to recognize and respond to opioid overdoses. We provide free naloxone and fentanyl test strips, helping ensure that everyone has access to the resources to save a life."
   },
   {
     "name": "Estudiantes Oaxaqueños de Ahora (EODA)",
     "instagram": "eodaucsc",
     "category": "cultural",
-    "email": "eodaucsc1@gmail.com"
+    "email": "eodaucsc1@gmail.com",
+    "description": "Our aim is to build an encouraging and supportive community for Oaxacan students and allies that promotes unity, cultural awareness, and academic success. We welcome students of all backgrounds, especially Indigenous Latine students who are interested in education."
   },
   {
     "name": "EyeCandy Film Journal",
     "instagram": "eyecandyfilmjournal",
     "category": "media & arts",
-    "email": "eyecandyfilmjournal@gmail.com"
+    "email": "eyecandyfilmjournal@gmail.com",
+    "description": "EyeCandy Film Journal is an annually released student-run publication that is devoted to highlighting students passions of film, television, and visual media."
   },
   {
     "name": "Film Production Coalition (FPC)",
     "instagram": "filmproductioncoalition",
     "category": "media & arts",
-    "email": "fpc.ucsc@gmail.com"
+    "email": "fpc.ucsc@gmail.com",
+    "description": "An organization dedicated to collaboratively making short films every quarter in small production groups, in a variety of genres. We don’t require any experience and are committed to teaching members all aspects of film production from start to finish."
   },
   {
     "name": "Fishrap Live!",
     "instagram": "fishraplive",
     "category": "media & arts",
-    "email": "fishraplive@gmail.com"
+    "email": "fishraplive@gmail.com",
+    "description": "We are UCSC’s first and only satire newspaper! We publish satire articles, funny opinion pieces and creative comic! We papers publish bi-quarterly!"
   },
   {
     "name": "Friends of Medicine",
     "instagram": "ucsc_fom",
     "category": "pre-professional",
-    "email": "ucscfriendsofmedicine@gmail.com"
+    "email": "ucscfriendsofmedicine@gmail.com",
+    "description": "Friends of Medicine is a prehealth club dedicated to creating a supportive and informational community. The club aims to educate members on prehealth careers, as well as support patients and healthcare workers alike."
   },
   {
     "name": "Game Design & Art Collaborations",
     "instagram": "gdacollab",
     "category": "tech & science",
-    "email": "gdacollab@ucsc.edu"
+    "email": "gdacollab@ucsc.edu",
+    "description": "A student-run game development club at UCSC dedicated to all things game-development! We teach several multidisciplinary workshops, host game jams, community events, career fairs, fieldtrips, and run a large studio simulation to develop one large game each year."
   },
   {
     "name": "Gamma Phi Beta (GPhi)",
     "instagram": "ucscgammaphibeta",
     "category": "greek",
-    "email": "eopres@gmail.com"
+    "email": "eopres@gmail.com",
+    "description": "The UCSC Chapter of Gamma Phi Beta builds confident women of character. Our mission is to inspire the highest type of womanhood, guided by our symbols, the crescent moon and pinkcarnation, and our core values of Love, Labor, Learning, and Loyalty."
   },
   {
     "name": "Glocal Strategy Politics",
     "instagram": "ucscgps",
     "category": "service & advocacy",
-    "email": "ucscgps@gmail.com"
+    "email": "ucscgps@gmail.com",
+    "description": "Global Strategy Politics (GPS) Club gives weekly geopolitical updates on the world and discusses them. Additionally we discuss ideas on government and reforming system so that we may better the systems we live in. Our organization is open to all who are interested!"
   },
   {
     "name": "Google Developer Group on Campus UCSC",
     "instagram": "gdgc_ucsc",
     "category": "tech & science",
-    "email": "ucsc.dsc@gmail.edu"
+    "email": "ucsc.dsc@gmail.edu",
+    "description": "Google Developer Group on Campus at UC Santa Cruz's goal is to bridge the gap between theory and practice in computer science in a supportive and inclusive environment. We provide industry relevant technical workshops, resource panels, and project experience."
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
     "instagram": "losmejicas",
     "category": "performing arts",
-    "email": "losmejicas@gmail.com"
+    "email": "losmejicas@gmail.com",
+    "description": "Grupo Folklórico Los Mejicas is a student-led cultural group. Our goal is to educate folks about Mexico's history through a variety of folklore dance repertoires. We celebrate our culture through dance, providing a positive space that fosters student retention."
   },
   {
     "name": "Haluan Hip Hop Dance Troupe",
     "instagram": "haluanhiphop",
     "category": "performing arts",
-    "email": "haluanhiphop.ucsc@gmail.com"
+    "email": "haluanhiphop.ucsc@gmail.com",
+    "description": "Haluan, translating to “of mixed nature” in Tagalog, is an audition based hip hop dance team housed under Bayanihan. We perform and host on campus events while simultaneously working to build a community where UCSC students can grow!"
   },
   {
     "name": "Han Chinese Traditional Clothing",
     "instagram": "hanchinesetraditionalclothing",
     "category": "cultural",
-    "email": "cdeng18@ucsc.edu"
+    "email": "cdeng18@ucsc.edu",
+    "description": "Han Chinese Traditional Clothing aims to promote the beauty of traditional Hanfu culture. Our organization strives to create a welcoming community where members can learn and experience Hanfu together."
   },
   {
     "name": "Hermanas Unidas (HaU)",
     "instagram": "haudeucsc",
     "category": "cultural",
-    "email": "jcarbaj4@ucsc.edu"
+    "email": "jcarbaj4@ucsc.edu",
+    "description": "The purpose of this organization shall be to provide undergraduate, graduate, and professional resources and leadership opportunities for predominantly Chicana/Latina college students and alumni by participating in and organizing community service, collegial"
   },
   {
     "name": "Hermanes De UCSC",
     "instagram": "hermanesdeucsc",
     "category": "cultural",
-    "email": "hu.ucsc@gmail.com"
+    "email": "hu.ucsc@gmail.com",
+    "description": "Hermanes De UCSC is a Latine but not latine exclusive organization based on 3 pillars believed to retain, empower and educate our members in an often unwelcoming space at UCSC. 1)Academic Excellence, 2)Community Engagement, and 3)Social networking"
   },
   {
     "name": "Indian Student Association (ISA)",
     "instagram": "ucsc_isa",
     "category": "cultural",
-    "email": "ucsc.isa@gmail.com"
+    "email": "ucsc.isa@gmail.com",
+    "description": "The UCSC Indian Student Association (ISA) is a student-led organization that celebrates Indian culture and brings together students through social, cultural, and community-building events. ISA provides a welcoming space for students to connect, celebrate traditions, and feel a sense of belonging."
   },
   {
     "name": "Inter-Greek Council (IGC)",
     "instagram": "ucscigc",
     "category": "greek",
-    "email": "igc@ucsc.edu"
+    "email": "igc@ucsc.edu",
+    "description": "A governing council that is typically comprised of five elected official officers and at least one representative from each of our Greek letter Organizations."
   },
   {
     "name": "Investment Banking Academy",
     "instagram": "ucsciba",
     "category": "pre-professional",
-    "email": "niangeor@ucsc.edu"
+    "email": "niangeor@ucsc.edu",
+    "description": "UCSC Investment Banking Academy is a high finance club for students interested in pursuing a career in a finance-related field."
   },
   {
     "name": "Isang Himing (IH)",
     "instagram": "isanghimig",
     "category": "cultural",
-    "email": "isanghimig.ucsc@gmail.com"
+    "email": "isanghimig.ucsc@gmail.com",
+    "description": "Isang Himig (\"one melody\") is a non-competitive, acapella group housed under Bayanihan, the Filipino student association on campus. We welcome students of all ethnic backgrounds and musical levels while celebrating Filipino culture."
   },
   {
     "name": "Japanese Student Association (JSA)",
     "instagram": "ucsc_jsa",
     "category": "cultural",
-    "email": "jsaucsc@gmail.com"
+    "email": "jsaucsc@gmail.com",
+    "description": "The Japanese Student Association is a student organization that creates cultural awareness, appreciation and community engagement through traditional events and celebrations."
   },
   {
     "name": "Jewish Student Union",
     "instagram": "jsu_ucsc",
     "category": "faith",
-    "email": "dbenisra@ucsc.edu"
+    "email": "dbenisra@ucsc.edu",
+    "description": "A safe and welcoming space for Jewish students at UCSC to connect and celebrate Jewish culture and traditions."
   },
   {
     "name": "JStreetUCSC",
     "instagram": "jstreetucsc",
     "category": "service & advocacy",
-    "email": "jstreetu.slugs@gmail.com"
+    "email": "jstreetu.slugs@gmail.com",
+    "description": "JStreetU is a community organization and political advocacy group which aims to bring nuance to our campus conversation on Israel and Palestine and works to change american foreign policy to encourage a just peace."
   },
   {
     "name": "Kahaani",
     "instagram": "ucsckahaani",
     "category": "cultural",
-    "email": "ucsckahaani@gmail.com"
+    "email": "ucsckahaani@gmail.com",
+    "description": "A Bollywood fusion dance team dedicated to celebrating and expressing South Asian culture and traditions through dance, storytelling, and creative performance."
   },
   {
     "name": "Kappa Alpha Theta (KAT)",
     "instagram": "ucsctheta",
     "category": "greek",
-    "email": "ucscthetapresident@gmail.com"
+    "email": "ucscthetapresident@gmail.com",
+    "description": "Theta is a sisterhood built upon support, love, and authenticity. Thetas are passionate, driven, and strong, and they stand up for what they believe in. Kappa Alpha Theta is an organization that provides opportunities for members to develop into leaders who uplift"
   },
   {
     "name": "Kappa Gamma Delta (KGD)",
     "instagram": "ucsckgd",
     "category": "greek",
-    "email": "ucsckgdpresident@gmail.com"
+    "email": "ucsckgdpresident@gmail.com",
+    "description": "A professional sorority dedicated to supporting women interested in pursing careers in healthcare."
   },
   {
     "name": "Kappa Kappa Gamma (KKG)",
     "instagram": "ucsckkg",
     "category": "greek",
-    "email": "kkgpresetamu@gmail.com"
+    "email": "kkgpresetamu@gmail.com",
+    "description": "Kappa Kappa Gamma is a women’s fraternity founded in 1870 that fosters a strong sense of sisterhood, academic excellence, and personal growth. Eta Mu chapter at UCSC is built on the values of leadership, scholarship, and service, providing members with lifelong friends"
   },
   {
     "name": "Kappa Zeta",
     "instagram": "kappazetaucsc",
     "category": "greek",
-    "email": "kzpresident.ucsc@gmail.com"
+    "email": "kzpresident.ucsc@gmail.com",
+    "description": "Kappa Zeta was founded in October 2003 at the University of California, Santa Cruz, with vision of creating an inclusive, community service-focused sorority centered on individuality, academics, and meaningful connection through sisterhood."
   },
   {
     "name": "Kasama Ballroom Dance Troupe",
     "instagram": "kasama.ucsc",
     "category": "performing arts",
-    "email": "kasamaucsc@gmail.com"
+    "email": "kasamaucsc@gmail.com",
+    "description": "The Kasama Ballroom Dance Troupe was founded in 2017 as a performing aspect housed under Bayanihan at the University of California, Santa Cruz. Kasama in Tagalog roughly translates to “together”, we — as a team — promote the idea of family, community, culture."
   },
   {
     "name": "Khmer Student Association",
     "instagram": "ksa_ucsc",
     "category": "cultural",
-    "email": "khmer.ucsc@gmail.com"
+    "email": "khmer.ucsc@gmail.com",
+    "description": "The Khmer Student Association aims to foster an empathetic, conscious, and welcoming community for members and Khmer students. We aim to promote academic success, cultural, awareness, and social engagement."
   },
   {
     "name": "Korean American Student Association (KASA)",
     "instagram": "ucsc.kasa",
     "category": "cultural",
-    "email": "ucsckasa@gmail.com"
+    "email": "ucsckasa@gmail.com",
+    "description": "KASA is a student run social and cultural organization that values equality and diversity here at UCSC. They focus on promoting and celebrating Korean culture to students of all backgrounds and provide opportunities to form relationships through their events."
   },
   {
     "name": "Kuya Ate Mentorship Program (KAMP)",
     "instagram": "kamp.ucsc",
     "category": "cultural",
-    "email": "kamp.ucsc@gmail.com"
+    "email": "kamp.ucsc@gmail.com",
+    "description": "KAMP is a student-initiated and student-led retention program that targets, but is not exclusive to, the Pilipinx community."
   },
   {
     "name": "La Sociedad of Latine Pre-Law students (LaSo)",
     "instagram": "ucsclaso",
     "category": "pre-professional",
-    "email": "ucsclpla@gmail.com"
+    "email": "ucsclpla@gmail.com",
+    "description": "LaSo is dedicated to facilitating growth, community-building, and professional/academic development for all our members. In service of these broad goals, LaSo designs programming intended to provide opportunities to meet Latine practitioners, activists, members."
   },
   {
     "name": "Leviathan",
     "instagram": "leviathanjewishjournal",
     "category": "media & arts",
-    "email": "leviathanvoice@gmail.com"
+    "email": "leviathanvoice@gmail.com",
+    "description": "Leviathan Jewish Journal is a medium through which Jewish students and their allies may freely express their voices."
   },
   {
     "name": "Mariachi Eterno",
     "instagram": "mariachieterno",
     "category": "performing arts",
-    "email": "mariachieternosc@gmail.com"
+    "email": "mariachieternosc@gmail.com",
+    "description": "Mariachi Eterno is focused on the performance and practice of traditional Mexican music in a collaborative and friendly space."
   },
   {
     "name": "Matchbox Magazine",
     "instagram": "matchboxmagazine",
     "category": "media & arts",
-    "email": "lluu2@ucsc.edu"
+    "email": "lluu2@ucsc.edu",
+    "description": "We are a student-run magazine that publishes art, literature, music, and more. Our mission is to platform undergraduate underrepresented student voices across the UC system, particularly artists with a diversity of intersectional identities, experiences, and radical vision"
   },
   {
     "name": "MECha de UCSC",
     "instagram": "mechadeucsc",
     "category": "cultural",
-    "email": "ourstorian19@gmail.com"
+    "email": "ourstorian19@gmail.com",
+    "description": "MEChA de UCSC is a Latiné organization where we uplift and embrace our cultura and historia by emphasizing higher education and advocating around issues in our communities."
   },
   {
     "name": "MEDLIFE",
     "instagram": "medlifeucsc",
     "category": "service & advocacy",
-    "email": "medlifeucsc@gmail.com"
+    "email": "medlifeucsc@gmail.com",
+    "description": "Medlife is a medical mission organization where volunteers travel to Latin America and Africa to provide free mobile clinics for communities that don't have equal acess to healthcare."
   },
   {
     "name": "Mock Trial at UCSC",
     "instagram": "mocktrialatucsc",
     "category": "pre-professional",
-    "email": "mocktrialsantacruz@gmail.com"
+    "email": "mocktrialsantacruz@gmail.com",
+    "description": "The Mock Trial program at UCSC is designed to help prepare students for law school and beyond by working on a varity of skills including writing and public speaking."
   },
   {
     "name": "Muslim Student Association (MSA)",
     "instagram": "ucsc.msa",
     "category": "cultural",
-    "email": "ucsc.msa@gmail.com"
+    "email": "ucsc.msa@gmail.com",
+    "description": "The UCSC MSA is a welcoming space where Muslims and allies come together to build and help out the community, grow in faith, and share culture."
   },
   {
     "name": "National Society of Black Engineers (NSBE)",
     "instagram": "nsbe.ucsc",
     "category": "tech & science",
-    "email": "nsbe@ucsc.edu"
+    "email": "nsbe@ucsc.edu",
+    "description": "National Society of Black Engineers is a Professional and Technical development club for ABC identifying individuals. It is also a space to network, excel academically, succeed professionally, and positively impact their communities."
   },
   {
     "name": "Newman Catholic Club",
     "instagram": "ucscnewman",
     "category": "faith",
-    "email": "ucscnewmancenter@gmail.com"
+    "email": "ucscnewmancenter@gmail.com",
+    "description": "The official Catholic student group at UCSC. We host weekly mass on Sundays evenings at our clubhouse as well as events and trips for our members."
   },
   {
     "name": "Nigerian Student Association",
     "instagram": "nsa.ucsc",
     "category": "cultural",
-    "email": "ucscnigerianstudentassociation@gmail.com"
+    "email": "ucscnigerianstudentassociation@gmail.com",
+    "description": "The purpose of this organization shall be to create an inclusive, educational, and culturally enriching space for all UCSC students who are interested in learning about, celebrating, or connecting with Nigerian cultures, histories, and communities."
   },
   {
     "name": "On The Spot (OTS)",
     "instagram": "onthespot_ucsc",
     "category": "performing arts",
-    "email": "onthespot10@gmail.com"
+    "email": "onthespot10@gmail.com",
+    "description": "On The Spot is a comedy sketch group producing scripted sketches, livestreams, segment media, and social media content. We provide a fun, collaborative space for students of all experience levels to write sketches, work with equipment, and entertain."
   },
   {
     "name": "Operation Smile",
     "instagram": "operationsmileucsc",
     "category": "service & advocacy",
-    "email": "hforcefive@gmail.com"
+    "email": "hforcefive@gmail.com",
+    "description": "We are a student-led chapter of Operation Smile, a global nonprofit providing free cleft lip and palate surgeries and care. Our members serve as ambassadors on our campus promoting awareness through education and outreach efforts."
   },
   {
     "name": "Pagkakaisa Dance Troupe (PDT)",
     "instagram": "pdt.ucsc",
     "category": "performing arts",
-    "email": "pdt.ucsc@gmail.com"
+    "email": "pdt.ucsc@gmail.com",
+    "description": "Pagkakaisa Dance Troupe, or PDT, is a Filipino dance troupe housed under Bayanihan that aims to share the Filipino culture to anyone interested through its multiple folklore dances across the many suites. The dance team is open to all students at UCSC"
   },
   {
     "name": "Phi Alpha Delta",
     "instagram": "ucscpad",
     "category": "greek",
-    "email": "ucscpad1902@gmail.com"
+    "email": "ucscpad1902@gmail.com",
+    "description": "A professional organization that focuses on uniting students pursuing law, offering professional growth and volunteer opportunities in Santa Cruz. Creating a community of support for the next generation of lawyers."
   },
   {
     "name": "Planned Parenthood: Generation Action",
     "instagram": "plannedparenthooducsc",
     "category": "service & advocacy",
-    "email": "ppga.ucsc@gmail.com"
+    "email": "ppga.ucsc@gmail.com",
+    "description": "Mobilize advocates for reproductive freedom, organize events that raise public awareness about reproductive health and rights, and educate young people about sexual health and safe sex practices."
   },
   {
     "name": "POPreka",
     "instagram": "poprekaucsc",
     "category": "performing arts",
-    "email": "poprekadance@gmail.com"
+    "email": "poprekadance@gmail.com",
+    "description": "We are a K-pop dance and social club! Open to all and non-audition based, we hold workshops every two weeks with social events in between. We have performance opportunities every quarter!"
   },
   {
     "name": "Pre-Dental Society",
     "instagram": "ucscpredental",
     "category": "pre-professional",
-    "email": "predentalslugs@gmail.com"
+    "email": "predentalslugs@gmail.com",
+    "description": "The Pre-Dental Society helps students explore careers in dentistry through hands-on activities, guest speakers, dental school guidance, networking with professionals, and opportunities for volunteering and shadowing."
   },
   {
     "name": "Pre-Med Advisory Program (PAP)",
     "instagram": "pap_ucsc",
     "category": "pre-professional",
-    "email": "pap.ucsantacruz@gmail.com"
+    "email": "pap.ucsantacruz@gmail.com",
+    "description": "PAP UCSC is a non-profit, student-led organization dedicated to guiding pre-health students at the University of California, Santa Cruz on their journey into healthcare through targeted meetings and resources."
   },
   {
     "name": "Pre-Optometry Society of UCSC",
     "instagram": "ucscpreopto",
     "category": "pre-professional",
-    "email": "ucsc.preoptometry@gmail.com"
+    "email": "ucsc.preoptometry@gmail.com",
+    "description": "To bring pre-optometry students on the UCSC campus together to network, socialize, and gain more resources during their undergraduate path towards the optometry career. We aim to educate the students on not only the application process but how to succeed."
   },
   {
     "name": "Pre-Veterinary Club at UCSC",
     "instagram": "ucscpreveterinaryclub",
     "category": "pre-professional",
-    "email": "ucscpreveterinaryclub@gmail.com"
+    "email": "ucscpreveterinaryclub@gmail.com",
+    "description": "The Pre-Veterinary Club at UCSC is a community of students interested in veterinary medicine. We focus on supporting our members by providing volunteer and research opportunities."
   },
   {
     "name": "Project Smile",
     "instagram": "projectsmileucsc",
     "category": "service & advocacy",
-    "email": "projectsmileucsc@gmail.com"
+    "email": "projectsmileucsc@gmail.com",
+    "description": "Fighting oral health disparities in Santa Cruz through non profit volunteering, donations, and teach ins to local title one elementary school students"
   },
   {
     "name": "Pupcycled at UCSC",
     "instagram": "pupcycleducsc",
     "category": "service & advocacy",
-    "email": "pupcycleducsc@gmail.com"
+    "email": "pupcycleducsc@gmail.com",
+    "description": "Pupcycled at UCSC focuses on up cycling unused clothing into dog toys to minimize clothing waste and protect the environment. As a club, we host events where volunteers craft handmade dog toys from secondhand clothes to donate to local shelters in Santa Cruz"
   },
   {
     "name": "Quantum Computing",
     "instagram": "ucscquantum",
     "category": "tech & science",
-    "email": "ucscquantum@gmail.com"
+    "email": "ucscquantum@gmail.com",
+    "description": "We are a student-led club focused on bringing awareness to the emerging field of Quantum Computing. We focus on hosting events, speakers, hackathons, and publishing research papers throughout the year. Anyone who is interested in learning is welcome to join!"
   },
   {
     "name": "Quiz Bowl",
     "instagram": "ucsc.quizbowl",
     "category": "gaming",
-    "email": "loauyeun@ucsc.edu"
+    "email": "loauyeun@ucsc.edu",
+    "description": "UCSC's Quiz Bowl team prepares for and competes in academic trivia tournaments. Players compete in teams to answer questions across science, history, literature, the arts, and other areas of study (beliefs, social science, geography, philosophy, pop culture, etc.)."
   },
   {
     "name": "Raas Rangeela",
     "instagram": "raasrangeela",
     "category": "performing arts",
-    "email": "ucsc.raas@gmail.com"
+    "email": "ucsc.raas@gmail.com",
+    "description": "Raas Rangeela is a competitive Raas/Garba dance team at the University of California, Santa Cruz."
   },
   {
     "name": "Santa Cruz Fighting Game Community",
     "instagram": "santacruzfc",
     "category": "gaming",
-    "email": "aiqle@ucsc.edu"
+    "email": "aiqle@ucsc.edu",
+    "description": "We are an organization of people who play fighting games. These include Super Smash Bros, Street Fighter, Guilty Gear and more. We host tournaments and fun gaming sessions as a community."
   },
   {
     "name": "Shutterslug",
     "instagram": "shutterslugofficial",
     "category": "media & arts",
-    "email": "eviju@ucsc.edu"
+    "email": "eviju@ucsc.edu",
+    "description": "We teach members the fundamentals of photography and help them express creativity using cameras. We promote networking amongst photographers, learning of new skills, and creative growth as a community."
   },
   {
     "name": "Sigma Lambda Beta",
     "instagram": "santacruzbetas",
     "category": "greek",
-    "email": "gejocont@ucsc.edu"
+    "email": "gejocont@ucsc.edu",
+    "description": "Sigma Lambda Beta is a Latino-based, multicultural fraternity founded in 1986 that promotes brotherhood, scholarship, service, and cultural awareness while developing multicultural leaders on campus."
   },
   {
     "name": "Sigma Lambda Gamma National Sorority Inc.",
     "instagram": "ucscgammas",
     "category": "greek",
-    "email": "ucsc.gammas@gmail.com"
+    "email": "ucsc.gammas@gmail.com",
+    "description": "Sigma Lambda Gamma National Sorority, Inc. has evolved into a multicultural sorority that continues to honor that we were originally founded to create a safe space for Latina women on a predominately white campus in the midwest."
   },
   {
     "name": "Sigma Mu Delta",
     "instagram": "ucscsmd",
     "category": "greek",
-    "email": "gammasmd@gmail.com"
+    "email": "gammasmd@gmail.com",
+    "description": "Sigma Mu Delta is a pre-medical fraternity dedicated to professional development and brotherhood."
   },
   {
     "name": "Sigma Omicron Pi",
     "instagram": "ucscsopi",
     "category": "greek",
-    "email": "president.ucscsopi@gmail.com"
+    "email": "president.ucscsopi@gmail.com",
+    "description": "Our chapter was founded at the University of California, Santa Cruz (UCSC) in 1995. We are a national Asian-interest sorority that has based our sisterhood on four objectives: Unity, Friendship, Leadership, and Service."
   },
   {
     "name": "Sigma Phi Zeta",
     "instagram": "sigmaphizeta_fraternity",
     "category": "greek",
-    "email": "ucscsigmaphizeta@gmail.com"
+    "email": "ucscsigmaphizeta@gmail.com",
+    "description": "We are an organization that commits to upholding our core pillars and supporting ouruniversity and our community. We devote ourselves to giving back to our community and fostering a safe and caring environment for young adults to prosper.",
+    "orgStatus": "interim_suspension",
+    "orgStatusNote": "Please note this organization is in Interim Suspension until further notice."
   },
   {
     "name": "Sigma Pi Alpha Sorority, Inc.",
     "instagram": "ucsantacruzellas",
     "category": "greek",
-    "email": "gammachapter.president96@gmail.com"
+    "email": "gammachapter.president96@gmail.com",
+    "description": "Sigma Pi Alpha Sorority, Inc. is a Chicana/Latina-based sorority that strives to empower women from all cultures through community service, campus involvement, and sisterhood. We hold our motto, “Mujeres con Cultura, Fuerza, y Hermandad” close to our hearts as it empower us."
   },
   {
     "name": "Sikh Student Association",
     "instagram": "ucsc_ssa",
     "category": "cultural",
-    "email": "sikhstudents@gmail.com"
+    "email": "sikhstudents@gmail.com",
+    "description": "Club made to get the Sikh Community together at UCSC."
   },
   {
     "name": "Slavic Student Association",
     "instagram": "ssa_ucsc",
     "category": "cultural",
-    "email": "mleonov@ucsc.edu"
+    "email": "mleonov@ucsc.edu",
+    "description": "We are an organization hoping to connect people of Slavic and Russian-speaking backgrounds by hosting various events that originate from our culture."
   },
   {
     "name": "Slug Anime & Manga Association",
     "instagram": "sluganimeucsc",
     "category": "media & arts",
-    "email": "sluganime@ucsc.edu"
+    "email": "sluganime@ucsc.edu",
+    "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!"
   },
   {
     "name": "Slug Book Club",
     "instagram": "slugbookclub",
     "category": "media & arts",
-    "email": "slugbookclub@gmail.com"
+    "email": "slugbookclub@gmail.com",
+    "description": "Slug Book Club brings together a community of undergraduate students at UCSC who are interested in reading and thoughtful discussion. Members are challenged to engage with a variety of different genres, themes, and authors in a fun and welcoming environment."
   },
   {
     "name": "Slug Fund Investment Group",
     "instagram": "ucsc.sfig",
     "category": "pre-professional",
-    "email": "slugsfundig@gmail.com"
+    "email": "slugsfundig@gmail.com",
+    "description": "We are an educational-student-run club that focuses on investing and finance. We present interactive material on investment philosophy, strategy, and news during our weekly meetings. We also host and facilitate research groups and guest speakers."
   },
   {
     "name": "Slug Gaming",
     "instagram": "sluggamingucsc",
     "category": "gaming",
-    "email": "ucscesportsclub@gmail.com"
+    "email": "ucscesportsclub@gmail.com",
+    "description": "Largest Gaming Club and Esports Org on Campus! Community Game nights, weekly computer labs, and other events hosted every quarter! Represents UCSC as a Collegiate force on the national stage in all the major titles!"
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
     "instagram": "ucscsrge",
     "category": "gaming",
-    "email": "srgeucsc@gmail.com"
+    "email": "srgeucsc@gmail.com",
+    "description": "Club for enthusiasts of rhythm games and the culture surrounding it."
   },
   {
     "name": "Slug' n Boots",
     "instagram": "slugnboots",
     "category": "performing arts",
-    "email": "slugnboots@gmail.com"
+    "email": "slugnboots@gmail.com",
+    "description": "Beginner friendly line dancing club"
   },
   {
     "name": "SlugMUN",
     "instagram": "ucscslugmun",
     "category": "service & advocacy",
-    "email": "ucscslugmun@gmail.com"
+    "email": "ucscslugmun@gmail.com",
+    "description": "Focusing on law and foreign policy, Model United Nations helps engage through debate and publics peaking. Currently ranked within the top 50 teams in North America, our team travels throughout the country to engage in conferences and hosts our own here at UCSC."
   },
   {
     "name": "SlugSpeak",
     "instagram": "slugspeakatucsc",
     "category": "performing arts",
-    "email": "slugspeakatucsc@gmail.com"
+    "email": "slugspeakatucsc@gmail.com",
+    "description": "A group of students exploring the art of Voice Work through student projects and an abridged series. Open to all levels of experience!"
   },
   {
     "name": "Society of Asian Scientists and Engineers (SASE)",
     "instagram": "ucscsase",
     "category": "tech & science",
-    "email": "sase.ucsc@gmail.com"
+    "email": "sase.ucsc@gmail.com",
+    "description": "SASE is a community for asian scientists and engineers to work on professional development through workshops and networking opportunities."
   },
   {
     "name": "Society of Physics Students",
     "instagram": "ucscsps",
     "category": "tech & science",
-    "email": "sps@ucsc.edu"
+    "email": "sps@ucsc.edu",
+    "description": "SPS at UCSC, for and by physics students, aims to create an academic and social physics community that is welcoming, supportive, and inclusive."
   },
   {
     "name": "SOMOS Latinx en medicina",
     "instagram": "ucsc_slm",
     "category": "pre-professional",
-    "email": "somos.ucsc@gmail.com"
+    "email": "somos.ucsc@gmail.com",
+    "description": "SOMOS Latinx en Medicina is a student-led organization at UC Santa Cruz dedicated to supporting, empowering, and uplifting Latinx students pursuing careers in healthcare. Our mission is to create accessible opportunities, build community, and increase Latinx representation."
   },
   {
     "name": "South American Student Association (SASA)",
     "instagram": "sasaucsc",
     "category": "cultural",
-    "email": "ucscsasa@gmail.com"
+    "email": "ucscsasa@gmail.com",
+    "description": "We are a group of students of South American descent looking to foster community between students at UCSC!"
   },
   {
     "name": "Student Alliance of Native American and Indigenous Peoples (SANAI)",
     "instagram": "sanaiucsc",
     "category": "cultural",
-    "email": "sanaiatucsc@gmail.com"
+    "email": "sanaiatucsc@gmail.com",
+    "description": "SANAI is here to provide a safe, inclusive space for Indigenous peoples of all backgrounds, at a University that was not designed for people like us. We host community-building events, educational teach-ins, and advocate for the interests of Indigneous students."
   },
   {
     "name": "Student Cable Television (SCTV)",
     "instagram": "sctv_media",
     "category": "media & arts",
-    "email": "studentcabletelevision@gmail.com"
+    "email": "studentcabletelevision@gmail.com",
+    "description": "Student Cable Television (SCTV) is a leadership council that represents the broadcast organizations on campus, the Film Production Coalition (FPC) and On The Spot (OTS)."
   },
   {
     "name": "Student Initiated Outreach (SIO)",
     "instagram": "e2.ucsc",
     "category": "service & advocacy",
-    "email": "engaging@ucsc.edu"
+    "email": "engaging@ucsc.edu",
+    "description": "Student initiated outreach program that is under engaging education."
   },
   {
     "name": "Student Organization Leadership (SOL) Council",
     "instagram": "solatucsc",
     "category": "service & advocacy",
-    "email": "solcouncilucsantacruz@gmail.com"
+    "email": "solcouncilucsantacruz@gmail.com",
+    "description": "Empowering students through organizing & civic engagementAdvocacy • Education • Student Voice"
   },
   {
     "name": "Tabletop Games Association",
     "instagram": "ucsc.tga",
     "category": "gaming",
-    "email": "ucsc.tga@gmail.com"
+    "email": "ucsc.tga@gmail.com",
+    "description": "The Tabletop Games Association is dedicated to providing a safe and accessible place for UCSC students to meet and play tabletop games."
   },
   {
     "name": "Taiwanese Student Association (TSA)",
     "instagram": "ucsc_tsa",
     "category": "cultural",
-    "email": "ucsctsa@gmail.com"
+    "email": "ucsctsa@gmail.com",
+    "description": "The Taiwanese Student Association (TSA) is an organization run by students that seeks to share and promote Taiwanese culture to our campus community. Dedicated to creating a space for both Taiwanese and non-Taiwanese students to learn more about Taiwan."
   },
   {
     "name": "Taza Tal",
     "instagram": "officialtazatal",
     "category": "performing arts",
-    "email": "ucsctazatal@gmail.com"
+    "email": "ucsctazatal@gmail.com",
+    "description": "Taza Tal is UCSC’s premier award-winning South Asian a cappella team. We compete nationally in the ASA circuit and perform at campus events throughout the year, showcasing a blend of South Asian and Western music through vocal arrangements."
   },
   {
     "name": "The Historical Society at UC Santa Cruz",
     "instagram": "historicalsociety_ucsc",
     "category": "pre-professional",
-    "email": "ucschistoricalsociety@gmail.com"
+    "email": "ucschistoricalsociety@gmail.com",
+    "description": "The Historical Society at UCSC is a place for students interested in history to come together socially and academically. All majors welcome."
   },
   {
     "name": "The Slug Collective",
     "instagram": "slugcollective",
     "category": "community",
-    "email": "theslugcollective@gmail.com"
+    "email": "theslugcollective@gmail.com",
+    "description": "UCSC’s official music production club! Connect and collaborate with creative minds across campus at our weekly meetings!"
   },
   {
     "name": "Transgender Student Union",
     "instagram": "tsu.ucsc",
     "category": "service & advocacy",
-    "email": "tsu.ucsc@gmail.com"
+    "email": "tsu.ucsc@gmail.com",
+    "description": "A club dedicated to the advocacy and well being of Trans students at UCSC"
   },
   {
     "name": "UMOJA",
     "instagram": "umoja.ucsc",
     "category": "cultural",
-    "email": "ucsantacruz.umoja@gmail.com"
+    "email": "ucsantacruz.umoja@gmail.com",
+    "description": "UMOJA is a student-initiated and student-run retention program dedicated to keeping African/Black identified students here at UC Santa Cruz. Meaning “Unity” in Swahili, UMOJA’s goal is to support the ABC community on campus."
   },
   {
     "name": "Undergraduate Neuroscience Club",
     "instagram": "ucsc.neuroclub",
     "category": "tech & science",
-    "email": "ucscneuroscienceclub@gmail.com"
+    "email": "ucscneuroscienceclub@gmail.com",
+    "description": "An educational club motivated to foster an environment of like-minded individuals interested in the field of neuroscience, healthcare, and research. We continue to serve as an established community capable of supporting and inspiring students."
   },
   {
     "name": "Universities Allied for Essential Medicines at UCSC (UAEM at UCSC)",
     "instagram": "uaem_ucsc",
     "category": "pre-professional",
-    "email": "ucsc.uaem@gmail.com"
+    "email": "ucsc.uaem@gmail.com",
+    "description": "UAEM is a student-led international nonprofit organization that advocates for global health equity, affordable access to life-saving medicines, and responsible licensing of publicly funded university research."
   },
   {
     "name": "Vietnamese Student Association (VSA)",
     "instagram": "ucscvsa",
     "category": "cultural",
-    "email": "vsa.ucsc@gmail.com"
+    "email": "vsa.ucsc@gmail.com",
+    "description": "Founded in 1999, the Vietnamese Student Association at UCSC is a student-led, non-profit organization dedicated to promoting cultural awareness and diversity. VSA aims to develop an appreciation for our own identities, value the diversity of our campus, & find similarities."
   },
   {
     "name": "Women's Wellness Club",
     "instagram": "wwc.ucsc",
     "category": "service & advocacy",
-    "email": "wwc.ucsc@gmail.com"
+    "email": "wwc.ucsc@gmail.com",
+    "description": "WWC takes an interdisciplinary approach to discussing women's overall well-being. We meet twice a month to discuss women's wellness news from different disciplines, including research, current events, culture, and politics."
   },
   {
     "name": "Womens and Allies in Law",
     "instagram": "ucscwomeninlaw",
     "category": "pre-professional",
-    "email": "navarroarvizuangela@gmail.com"
+    "email": "navarroarvizuangela@gmail.com",
+    "description": "We are a pre-law club that empowers women to pursue their passion in law, regardless of its specification. We offer workshops, guest speakers and discussion nights to create a space where students can learn more about law within UCSC and different law schools."
   },
   {
     "name": "World System Builder at UCSC",
     "instagram": "wsb_ucsc",
     "category": "pre-professional",
-    "email": "wbucsc@gmail.com"
+    "email": "wbucsc@gmail.com",
+    "description": "WSB Financial Literacy Club brings Wall Street to Main Street by making personal finance practical and accessible through workshops on saving, budgeting, credit, investing, financial planning, and opportunities to learn about financial services licensing."
   }
 ]

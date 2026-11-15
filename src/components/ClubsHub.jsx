@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import {
   Calendar,
   Check,
@@ -15,20 +15,44 @@ import {
   LayoutGrid,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  MapPin,
+  Building2,
+  Search,
+  GraduationCap,
+  Trash2,
+  RotateCcw,
+  RefreshCw,
+  Settings,
 } from 'lucide-react'
 import {
   clubs as defaultClubs,
   boardMembers as initialOfficers,
   memberActivity as initialMembers,
 } from '../data/sampleData'
-import { Card, ClubAvatar, Avatar, BubbleTag, IconBadge, cleanText } from './ui'
+import {
+  Card,
+  ClubAvatar,
+  Avatar,
+  BubbleTag,
+  IconBadge,
+  cleanText,
+  cleanMultilineText,
+} from './ui'
 import { PlatformIcon, ClubEmblemSvg } from './icons'
-import { ingestFromSource } from '../api/client'
+import { ingestFromSource, syncAllSources } from '../api/client'
+import {
+  getLocalIntegrationPrefs,
+  dispatchDiscordNotification,
+  dispatchEmailNotification,
+} from '../utils/directIntegrations'
 import {
   CLUB_CATEGORIES,
   categorizeClub,
   getClubCategoryMeta,
 } from '../utils/clubCategories'
+import { buildClubDirectoryData, toInitials } from '../utils/clubDirectory'
+import ClubRbacPanel from './ClubRbacPanel'
 
 const SOURCE_FILTERS = [
   { id: 'all',       label: 'All Channels', color: 'blue' },
@@ -39,24 +63,665 @@ const SOURCE_FILTERS = [
 
 const SOURCE_META = {
   instagram:       { label: 'Instagram', color: 'purple' },
+  instagram_story: { label: 'Instagram', color: 'purple' },
   discord:         { label: 'Discord',   color: 'blue' },
   email:           { label: 'Email',     color: 'yellow' },
   google_calendar: { label: 'Calendar',  color: 'green' },
   website:         { label: 'Website',   color: 'teal' },
 }
 
-const CUSTOM_ROSTER_STORAGE_KEY = 'clubhub_custom_roster_v1'
+const FEED_PAGE_SIZE = 24
+const FEED_DATE_FMT =
+  typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+const FEED_EVENT_DATE_FMT =
+  typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    : null
+
+const INLINE_URL_TOKEN_RE =
+  /((?:https?:\/\/|www\.)[^\s<>()]+|(?:linktr\.ee|discord\.gg|discord\.com\/invite|forms\.gle|bit\.ly|tinyurl\.com|docs\.google\.com|drive\.google\.com|calendar\.app\.google|lu\.ma|eventbrite\.com|partiful\.com|give\.ucsc\.edu)\/[^\s<>()]+)/gi
+
+function normalizeSourceChannel(rawSource) {
+  const s = String(rawSource || 'instagram').toLowerCase()
+  if (s.includes('instagram')) return 'instagram'
+  if (s.includes('discord')) return 'discord'
+  if (s.includes('email')) return 'email'
+  return s
+}
+
+function parsePostTimestamp(raw) {
+  if (!raw) return 0
+  const normalized = String(raw).trim().replace(/([+-]\d{2})(\d{2})$/, '$1:$2')
+  const ms = Date.parse(normalized)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+function normalizeExternalHttpUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  let trimmed = raw.trim()
+  if (!trimmed || trimmed === '#') return null
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    if (
+      /^(?:www\.|instagram\.com\/|discord\.(?:gg|com)\/|linktr\.ee\/|forms\.gle\/|bit\.ly\/|tinyurl\.com\/|docs\.google\.com\/|drive\.google\.com\/|calendar\.app\.google\/|lu\.ma\/|eventbrite\.com\/|partiful\.com\/|give\.ucsc\.edu\/)/i.test(
+        trimmed
+      )
+    ) {
+      trimmed = `https://${trimmed}`
+    } else {
+      return null
+    }
+  }
+
+  try {
+    let parsed = new URL(trimmed)
+    // Unwrap Instagram link-shim redirects (https://l.instagram.com/?u=...)
+    if (/^(?:l|lm)\.instagram\.com$/i.test(parsed.hostname)) {
+      let target = parsed.searchParams.get('u') || ''
+      for (let i = 0; i < 2; i += 1) {
+        if (/^https?%3A/i.test(target)) {
+          try {
+            target = decodeURIComponent(target)
+          } catch {
+            break
+          }
+        }
+      }
+      if (target) parsed = new URL(target)
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
+function isDemoClubId(clubId) {
+  const id = String(clubId || '').trim().toLowerCase()
+  return !id || id.startsWith('demo_')
+}
+
+function resolvePostLinkInfo(post, club, channel) {
+  const clubId = post.clubId || club?.id || ''
+  const isDemoClub = isDemoClubId(clubId)
+  const directUrl = normalizeExternalHttpUrl(post.permalink || post.url || post.sourceUrl)
+
+  if (directUrl && !(isDemoClub && /demo/i.test(directUrl))) {
+    if (/instagram\.com\/(?:p|reel|reels|tv|stories)\//i.test(directUrl)) {
+      const isReel = /instagram\.com\/reels?\//i.test(directUrl)
+      return {
+        url: directUrl,
+        label: 'Original post',
+        expandedLabel: isReel ? 'Watch Reel on Instagram' : 'View on Instagram',
+        isDirectPost: true,
+      }
+    }
+    if (/discord\.com\/channels\//i.test(directUrl)) {
+      return {
+        url: directUrl,
+        label: 'Original message',
+        expandedLabel: 'Jump to Discord message',
+        isDirectPost: true,
+      }
+    }
+    if (/discord\.(?:gg|com\/invite)\//i.test(directUrl)) {
+      return {
+        url: directUrl,
+        label: 'Club Discord',
+        expandedLabel: 'Open club Discord',
+        isDirectPost: false,
+      }
+    }
+    return {
+      url: directUrl,
+      label: 'Original post',
+      expandedLabel: 'Open original post',
+      isDirectPost: true,
+    }
+  }
+
+  // Fallback to official club profile/page when no per-post permalink is stored
+  if (!isDemoClub && !String(clubId).toLowerCase().startsWith('discord_')) {
+    if (channel === 'instagram') {
+      const handle = String(club?.instagram || clubId || '').replace(/^@+/, '').trim()
+      const profileUrl = normalizeExternalHttpUrl(
+        club?.instagramUrl || (handle ? `https://www.instagram.com/${handle}/` : '')
+      )
+      if (profileUrl) {
+        return {
+          url: profileUrl,
+          label: handle ? `@${handle}` : 'Club Instagram',
+          expandedLabel: handle ? `Visit @${handle} on Instagram` : 'Visit club Instagram',
+          isDirectPost: false,
+        }
+      }
+    }
+    if (channel === 'website' && club?.website) {
+      const siteUrl = normalizeExternalHttpUrl(club.website)
+      if (siteUrl) {
+        return {
+          url: siteUrl,
+          label: 'Club website',
+          expandedLabel: 'Visit club website',
+          isDirectPost: false,
+        }
+      }
+    }
+    if (channel === 'email' && club?.email) {
+      return {
+        url: `mailto:${club.email}`,
+        label: club.email,
+        expandedLabel: `Email ${club.email}`,
+        isDirectPost: false,
+      }
+    }
+  }
+
+  return null
+}
+
+function stripRedundantTitlePrefix(bodyText, cleanTitle) {
+  if (!bodyText || !cleanTitle) return bodyText || ''
+  if (!bodyText.startsWith(cleanTitle)) return bodyText
+  const remainder = bodyText.slice(cleanTitle.length)
+  if (!remainder) return ''
+  if (/^[\s\n—–\-:]+/.test(remainder)) {
+    return remainder.replace(/^[\s\n—–\-:]+/, '').trim()
+  }
+  return bodyText
+}
+
+function extractTrailingHashtags(multilineText) {
+  if (!multilineText) return { text: '', hashtags: [] }
+  const lines = multilineText.split('\n')
+  const collected = []
+
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim()
+    if (!last) {
+      lines.pop()
+      continue
+    }
+    if (/^(?:#[a-zA-Z0-9_]+\s*)+$/.test(last)) {
+      const tags = last.match(/#[a-zA-Z0-9_]+/g) || []
+      collected.unshift(...tags)
+      lines.pop()
+    } else {
+      break
+    }
+  }
+
+  const deduped = []
+  const seen = new Set()
+  for (const tag of collected) {
+    const lower = tag.toLowerCase()
+    if (!seen.has(lower)) {
+      seen.add(lower)
+      deduped.push(tag)
+    }
+  }
+
+  return {
+    text: lines.join('\n').trim(),
+    hashtags: deduped,
+  }
+}
+
+function friendlyPostResourceLabel(url, rawLabel = '') {
+  const cleanedLabel = cleanText(rawLabel)
+  if (
+    cleanedLabel &&
+    !/^(?:link|website|url|http)/i.test(cleanedLabel) &&
+    cleanedLabel.length <= 36
+  ) {
+    return cleanedLabel
+  }
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase()
+    const path = u.pathname.toLowerCase()
+    if (host === 'forms.gle' || (host.includes('docs.google.com') && path.includes('/forms'))) {
+      return 'Sign-up form'
+    }
+    if (host.includes('docs.google.com') && path.includes('/presentation')) return 'Google Slides'
+    if (host.includes('docs.google.com') && path.includes('/spreadsheets')) return 'Google Sheet'
+    if (host.includes('docs.google.com')) return 'Google Doc'
+    if (host.includes('drive.google.com')) return 'Google Drive'
+    if (host.includes('linktr.ee')) return 'Linktree'
+    if (host.includes('discord.gg') || host.includes('discord.com')) return 'Discord Invite'
+    if (host.includes('give.ucsc.edu')) return 'UCSC Giving Day'
+    if (host.includes('lu.ma') || host === 'luma.com') return 'Luma Event'
+    if (host.includes('eventbrite.com')) return 'Eventbrite'
+    if (host.includes('partiful.com')) return 'Partiful RSVP'
+    return host
+  } catch {
+    return cleanedLabel || 'Open link'
+  }
+}
+
+function cleanPostEventLocation(raw) {
+  if (!raw || typeof raw !== 'string') return ''
+  const stripped = cleanText(raw)
+    .replace(/^(?:location|where|place|room)\s*:\s*/i, '')
+    .trim()
+  if (
+    stripped.length < 3 ||
+    /^[a-z0-9._]+ucsc$/i.test(stripped) ||
+    /^(?:opers|be\s|to\s|and\s|our\s|we\s|have\s|having\s|join\s)/i.test(stripped)
+  ) {
+    return ''
+  }
+  return stripped
+}
+
+function renderLinkedText(text) {
+  if (!text) return null
+  const nodes = []
+  let lastIndex = 0
+  let keySeq = 0
+
+  for (const match of text.matchAll(INLINE_URL_TOKEN_RE)) {
+    const start = match.index ?? 0
+    if (start > lastIndex) {
+      nodes.push(text.slice(lastIndex, start))
+    }
+
+    const rawToken = match[0]
+    const trimmedToken = rawToken.replace(/[.,!?;:'")\]]+$/, '')
+    const trailingPunct = rawToken.slice(trimmedToken.length)
+    const safeHref = normalizeExternalHttpUrl(trimmedToken)
+
+    if (safeHref) {
+      nodes.push(
+        <a
+          key={`lnk_${keySeq++}`}
+          href={safeHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-[var(--blue-ink)] underline decoration-[var(--blue)]/40 hover:decoration-[var(--blue-ink)] break-all"
+        >
+          {trimmedToken}
+        </a>
+      )
+      if (trailingPunct) nodes.push(trailingPunct)
+    } else {
+      nodes.push(rawToken)
+    }
+
+    lastIndex = start + rawToken.length
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex))
+  }
+  return nodes
+}
+
+function formatExpandedTimestamp(postedAtMs, rawPostedAt, use24h = false) {
+  if (!postedAtMs) return ''
+  const dt = new Date(postedAtMs)
+  const datePart = FEED_DATE_FMT ? FEED_DATE_FMT.format(dt) : dt.toLocaleDateString()
+  // Only include clock time when the source string actually carried a time component
+  if (!rawPostedAt || !/T\d{2}:\d{2}/.test(String(rawPostedAt))) {
+    return datePart
+  }
+  const timePart = dt.toLocaleTimeString('en-US', {
+    hour: use24h ? '2-digit' : 'numeric',
+    minute: '2-digit',
+    hour12: !use24h,
+  })
+  return `${datePart} · ${timePart}`
+}
+
+function formatRelatedEventTime(evt, use24h = false) {
+  const ms = parsePostTimestamp(evt?.start)
+  if (!ms) return ''
+  const dt = new Date(ms)
+  const dayStr = FEED_EVENT_DATE_FMT ? FEED_EVENT_DATE_FMT.format(dt) : dt.toLocaleDateString()
+  if (evt.allDay) return dayStr
+  const timeStr = dt.toLocaleTimeString('en-US', {
+    hour: use24h ? '2-digit' : 'numeric',
+    minute: '2-digit',
+    hour12: !use24h,
+  })
+  return `${dayStr} · ${timeStr}`
+}
+
+function buildNormalizedFeedItem(post, context = {}) {
+  const club = typeof context === 'string' ? { name: context } : context.club || null
+  const fallbackClubName =
+    typeof context === 'string' ? context : context.fallbackClubName || club?.name || ''
+  const postLinks = Array.isArray(context.postLinks) ? context.postLinks : []
+  const postEvents = Array.isArray(context.postEvents) ? context.postEvents : []
+
+  const rawSource = post.source || 'instagram'
+  const channel = normalizeSourceChannel(rawSource)
+  const clubIdStr = post.clubId ? String(post.clubId) : club?.id ? String(club.id) : ''
+  const cleanClubName = cleanText(post.clubName || fallbackClubName || clubIdStr || '')
+  const cleanTitle = cleanText(post.title || '')
+
+  const rawFullText = post.caption || post.summary || ''
+  const multilineCleaned = cleanMultilineText(rawFullText)
+  const { text: withoutTrailingTags, hashtags } = extractTrailingHashtags(multilineCleaned)
+  const fullBody = stripRedundantTitlePrefix(withoutTrailingTags, cleanTitle)
+  const previewBody = fullBody.replace(/\s*\n+\s*/g, ' ').trim()
+
+  const titlePrefixCore =
+    cleanTitle.endsWith('...') && cleanTitle.length > 12
+      ? cleanTitle.slice(0, -3).trim()
+      : null
+  const titleIsTruncatedPrefix = Boolean(
+    titlePrefixCore && fullBody && fullBody.startsWith(titlePrefixCore)
+  )
+
+  const postedAtMs = parsePostTimestamp(post.postedAt)
+  const dateLabel =
+    postedAtMs > 0
+      ? FEED_DATE_FMT
+        ? FEED_DATE_FMT.format(postedAtMs)
+        : new Date(postedAtMs).toLocaleDateString()
+      : ''
+
+  const linkInfo = resolvePostLinkInfo(post, club, channel)
+  const primaryHrefLower = linkInfo?.url ? linkInfo.url.toLowerCase() : ''
+
+  // Gather extracted links from this post (+ club Linktree/website when caption says "link in bio")
+  const relatedLinks = []
+  const seenLinkUrls = new Set(primaryHrefLower ? [primaryHrefLower] : [])
+  const pushCandidateLink = (rawUrl, rawLabel) => {
+    const safe = normalizeExternalHttpUrl(rawUrl)
+    if (!safe) return
+    const key = safe.toLowerCase()
+    if (seenLinkUrls.has(key)) return
+    if (isDemoClubId(clubIdStr) && /demo/i.test(safe)) return
+    seenLinkUrls.add(key)
+    relatedLinks.push({
+      url: safe,
+      label: friendlyPostResourceLabel(safe, rawLabel),
+    })
+  }
+
+  for (const l of postLinks) {
+    pushCandidateLink(l?.url, l?.label)
+  }
+  if (/link in (?:our )?bio/i.test(rawFullText) && club?.website) {
+    const bioUrl = normalizeExternalHttpUrl(club.website)
+    if (bioUrl) {
+      const bioType = friendlyPostResourceLabel(bioUrl, '')
+      pushCandidateLink(
+        bioUrl,
+        bioType && bioType !== 'Open link' ? `Bio · ${bioType}` : 'Link in bio'
+      )
+    }
+  }
+
+  // Gather up to 2 valid extracted events associated with this post
+  const validEvents = postEvents
+    .filter(ev => {
+      const ms = parsePostTimestamp(ev?.start)
+      return ms > 0 && new Date(ms).getFullYear() >= 2024
+    })
+    .sort((a, b) => parsePostTimestamp(a.start) - parsePostTimestamp(b.start))
+
+  const relatedEvents = validEvents.slice(0, 2).map(ev => ({
+    id: ev.id,
+    start: ev.start,
+    allDay: Boolean(ev.allDay),
+    kind: ev.kind || 'event',
+    location: cleanPostEventLocation(ev.location),
+  }))
+  const extraEventCount = Math.max(0, validEvents.length - relatedEvents.length)
+
+  const rawHandle =
+    !isDemoClubId(clubIdStr) && !clubIdStr.toLowerCase().startsWith('discord_')
+      ? String(club?.instagram || (channel === 'instagram' ? clubIdStr : '') || '')
+          .replace(/^@+/, '')
+          .trim()
+      : ''
+
+  const hasHiddenContent =
+    previewBody.length > 155 ||
+    fullBody.includes('\n') ||
+    titleIsTruncatedPrefix ||
+    hashtags.length > 0 ||
+    relatedLinks.length > 0 ||
+    relatedEvents.length > 0
+
+  return {
+    id: post.id,
+    clubIdStr,
+    source: rawSource,
+    channel,
+    important: Boolean(post.important),
+    cleanClubName,
+    handleLabel: rawHandle,
+    cleanTitle,
+    titleIsTruncatedPrefix,
+    previewBody,
+    fullBody,
+    hashtags,
+    postedAtRaw: post.postedAt || '',
+    postedAtMs,
+    dateLabel,
+    linkInfo,
+    relatedLinks,
+    relatedEvents,
+    extraEventCount,
+    hasHiddenContent,
+    searchHaystack: `${cleanTitle} ${fullBody} ${hashtags.join(' ')} ${cleanClubName} ${rawHandle}`.toLowerCase(),
+  }
+}
+
+const FeedPostCard = memo(function FeedPostCard({
+  post,
+  isCompactDensity,
+  isExpanded,
+  use24h,
+  onToggleExpand,
+}) {
+  const meta = SOURCE_META[post.source] || SOURCE_META[post.channel] || SOURCE_META.instagram
+
+  function handleCardClick(e) {
+    if (e.target.closest('a, button')) return
+    const selection = typeof window !== 'undefined' ? window.getSelection?.() : null
+    if (selection && selection.type === 'Range' && selection.toString().trim().length > 0) {
+      return
+    }
+    onToggleExpand(post.id)
+  }
+
+  const headerDateText = isExpanded
+    ? formatExpandedTimestamp(post.postedAtMs, post.postedAtRaw, use24h) || post.dateLabel
+    : post.dateLabel
+
+  return (
+    <article
+      onClick={handleCardClick}
+      style={{
+        borderLeftWidth: '3.5px',
+        borderLeftColor: `var(--${meta.color})`,
+      }}
+      className={`${
+        isExpanded
+          ? 'border-[var(--border-strong)] shadow-[var(--shadow-tile-hover)]'
+          : 'feed-tile-virtual'
+      } content-tile content-tile-interactive ${
+        isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
+      } rounded-[var(--radius-sm)] flex items-start cursor-pointer`}
+    >
+      <IconBadge color={meta.color} size={isCompactDensity ? 32 : 36} radius={10} className="mt-0.5">
+        <PlatformIcon type={post.channel} size={isCompactDensity ? 16 : 18} />
+      </IconBadge>
+
+      <div className="flex-1 min-w-0">
+        {/* Header Metadata */}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <BubbleTag label={meta.label} color={meta.color} size="sm" />
+            {post.important && <BubbleTag label="Urgent" color="red" size="sm" />}
+            <span className="text-xs font-semibold text-[var(--blue-ink)] truncate">
+              {post.cleanClubName}
+            </span>
+            {isExpanded && post.handleLabel && (
+              <span className="text-[11px] text-[var(--text-light)] font-mono-num truncate">
+                @{post.handleLabel}
+              </span>
+            )}
+          </div>
+          {headerDateText && (
+            <span className="text-[11px] text-[var(--text-light)] shrink-0">
+              {headerDateText}
+            </span>
+          )}
+        </div>
+
+        {/* Post Title */}
+        {post.cleanTitle && !(isExpanded && post.titleIsTruncatedPrefix) && (
+          <div className="font-semibold text-sm text-[var(--text)] leading-snug break-words">
+            {post.cleanTitle}
+          </div>
+        )}
+
+        {/* Collapsed vs Expanded Body */}
+        {!isExpanded ? (
+          post.previewBody &&
+          post.previewBody !== post.cleanTitle && (
+            <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed line-clamp-3 break-words">
+              {post.previewBody}
+            </p>
+          )
+        ) : (
+          <div className="space-y-2.5">
+            {post.fullBody && (
+              <div className="text-xs sm:text-[13px] text-[var(--text)] mt-1.5 leading-relaxed whitespace-pre-line break-words">
+                {renderLinkedText(post.fullBody)}
+              </div>
+            )}
+
+            {/* Extracted Event Dates & Locations from this Post */}
+            {post.relatedEvents.length > 0 && (
+              <div className="mt-2 px-2.5 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-1">
+                {post.relatedEvents.map(ev => (
+                  <div
+                    key={ev.id}
+                    className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11.5px] text-[var(--text)]"
+                  >
+                    <span className="inline-flex items-center gap-1 font-semibold text-[var(--blue-ink)]">
+                      <Calendar size={11.5} className="shrink-0" />
+                      <span>{formatRelatedEventTime(ev, use24h)}</span>
+                    </span>
+                    {ev.location && (
+                      <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+                        <MapPin size={11.5} className="text-[var(--text-light)] shrink-0" />
+                        <span>{ev.location}</span>
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {post.extraEventCount > 0 && (
+                  <div className="text-[11px] text-[var(--text-light)]">
+                    +{post.extraEventCount} more {post.extraEventCount === 1 ? 'date' : 'dates'} in this post
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Extracted Resource Links (Forms, Linktree / Link in Bio, Docs) */}
+            {post.relatedLinks.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                {post.relatedLinks.map(lnk => (
+                  <a
+                    key={lnk.url}
+                    href={lnk.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--blue)] text-[11px] font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] no-underline transition-colors"
+                  >
+                    <span>{lnk.label}</span>
+                    <ExternalLink size={11} className="opacity-70 shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* Trailing Hashtags */}
+            {post.hashtags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {post.hashtags.map(tag => (
+                  <span
+                    key={tag}
+                    className="text-[11px] text-[var(--text-light)] font-medium"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer Actions: Expand/Collapse Toggle + Original Post Link */}
+        <div
+          className={`${
+            isCompactDensity ? 'mt-2 pt-1.5' : 'mt-2.5 pt-2'
+          } border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 flex-wrap`}
+        >
+          <button
+            type="button"
+            aria-expanded={isExpanded}
+            onClick={() => onToggleExpand(post.id)}
+            className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none p-0 cursor-pointer transition-colors"
+          >
+            <span>
+              {isExpanded
+                ? 'Show less'
+                : post.hasHiddenContent
+                  ? 'Read full post'
+                  : 'Post details'}
+            </span>
+            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+
+          {post.linkInfo &&
+            (isExpanded ? (
+              <a
+                href={post.linkInfo.url}
+                target={post.linkInfo.url.startsWith('mailto:') ? undefined : '_blank'}
+                rel={post.linkInfo.url.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 text-[11.5px] font-semibold no-underline shrink-0 transition-opacity"
+              >
+                <span>{post.linkInfo.expandedLabel}</span>
+                {post.linkInfo.url.startsWith('mailto:') ? (
+                  <Mail size={11.5} className="shrink-0" />
+                ) : (
+                  <ExternalLink size={11.5} className="shrink-0" />
+                )}
+              </a>
+            ) : (
+              <a
+                href={post.linkInfo.url}
+                target={post.linkInfo.url.startsWith('mailto:') ? undefined : '_blank'}
+                rel={post.linkInfo.url.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
+                title={post.linkInfo.expandedLabel}
+                className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--blue-ink)] hover:underline no-underline shrink-0"
+              >
+                <span>{post.linkInfo.label}</span>
+                {post.linkInfo.url.startsWith('mailto:') ? (
+                  <Mail size={11} className="shrink-0 opacity-80" />
+                ) : (
+                  <ExternalLink size={11} className="shrink-0 opacity-80" />
+                )}
+              </a>
+            ))}
+        </div>
+      </div>
+    </article>
+  )
+})
 
 function loadCustomRoster() {
-  try {
-    const raw = localStorage.getItem(CUSTOM_ROSTER_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (parsed && Array.isArray(parsed.officers) && Array.isArray(parsed.members)) {
-      return parsed
-    }
-  } catch {
-    // Ignore storage errors
-  }
   return { officers: [], members: [] }
 }
 
@@ -69,17 +734,310 @@ function clubMatchesFilter(personClubName, personClubId, selectedClubFilter) {
   return false
 }
 
+// ── Searchable Club Picker Combobox for Officers & Members Directory ──
+function DirectoryClubPicker({
+  allClubs = [],
+  joinedClubs = [],
+  clubPeopleCounts = new Map(),
+  selectedClubId = 'all',
+  onSelectClub,
+  totalListedPeople = 0,
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef(null)
+  const inputRef = useRef(null)
+
+  const selectedClub = useMemo(
+    () =>
+      selectedClubId !== 'all'
+        ? allClubs.find(c => String(c.id) === String(selectedClubId)) || null
+        : null,
+    [allClubs, selectedClubId]
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      inputRef.current?.focus()
+    }, 15)
+
+    function handleOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    function handleKey(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleOutside)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  const { joinedMatches, rosterMatches, contactMatches } = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const joinedSet = new Set(joinedClubs.map(c => String(c.id)))
+
+    const matchesQuery = c => {
+      if (!q) return true
+      const name = cleanText(c.name || '').toLowerCase()
+      const handle = String(c.instagram || c.id || '').toLowerCase()
+      const cat = String(c.categoryLabel || '').toLowerCase()
+      return name.includes(q) || handle.includes(q) || cat.includes(q)
+    }
+
+    const joinedList = joinedClubs
+      .filter(matchesQuery)
+      .sort(
+        (a, b) =>
+          (clubPeopleCounts.get(String(b.id)) || 0) - (clubPeopleCounts.get(String(a.id)) || 0) ||
+          cleanText(a.name).localeCompare(cleanText(b.name))
+      )
+
+    const rosterList = []
+    const contactList = []
+
+    for (const c of allClubs) {
+      const cid = String(c.id)
+      if (joinedSet.has(cid) || !matchesQuery(c)) continue
+      const count = clubPeopleCounts.get(cid) || 0
+      if (count > 0) rosterList.push(c)
+      else contactList.push(c)
+    }
+
+    rosterList.sort(
+      (a, b) =>
+        (clubPeopleCounts.get(String(b.id)) || 0) - (clubPeopleCounts.get(String(a.id)) || 0) ||
+        cleanText(a.name).localeCompare(cleanText(b.name))
+    )
+    contactList.sort((a, b) => cleanText(a.name).localeCompare(cleanText(b.name)))
+
+    return {
+      joinedMatches: joinedList,
+      rosterMatches: rosterList,
+      contactMatches: contactList,
+    }
+  }, [allClubs, joinedClubs, clubPeopleCounts, query])
+
+  const firstMatchClub = joinedMatches[0] || rosterMatches[0] || contactMatches[0] || null
+
+  function chooseClub(nextId) {
+    onSelectClub(nextId)
+    setOpen(false)
+    setQuery('')
+  }
+
+  function renderOptionRow(club) {
+    const cid = String(club.id)
+    const isSelected = String(selectedClubId) === cid
+    const count = clubPeopleCounts.get(cid) || 0
+
+    return (
+      <button
+        key={cid}
+        type="button"
+        onClick={() => chooseClub(cid)}
+        className={`w-full flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-xl text-left border-none cursor-pointer transition-colors ${
+          isSelected
+            ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
+            : 'bg-transparent text-[var(--text)] hover:bg-[var(--bg-surface)]'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <ClubAvatar club={club} size={24} className="!rounded-[7px]" />
+          <div className="min-w-0">
+            <div className="text-xs font-semibold truncate">{cleanText(club.name)}</div>
+            <div className="text-[10.5px] text-[var(--text-muted)] truncate">
+              {club.instagram ? `@${club.instagram}` : club.categoryLabel || 'Campus Club'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {count > 0 ? (
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10.5px] font-mono-num font-semibold ${
+                isSelected
+                  ? 'bg-[var(--bg-card)] text-[var(--blue-ink)]'
+                  : 'bg-[var(--bg-tile)] text-[var(--text-muted)] border border-[var(--border)]'
+              }`}
+            >
+              {count}
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium text-[var(--text-light)]">Contact</span>
+          )}
+          {isSelected && <Check size={13} className="text-[var(--blue-ink)]" />}
+        </div>
+      </button>
+    )
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-full sm:w-auto">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setOpen(prev => !prev)}
+          aria-expanded={open}
+          aria-label="Filter directory by club"
+          className={`w-full sm:w-auto sm:min-w-[235px] sm:max-w-[300px] min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-all ${
+            selectedClub
+              ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/40 shadow-2xs'
+              : 'bg-[var(--bg-tile)] hover:bg-[var(--bg-tile-hover)] text-[var(--text)] border-[var(--border-tile)] hover:border-[var(--border-strong)] shadow-2xs'
+          }`}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            {selectedClub ? (
+              <ClubAvatar club={selectedClub} size={20} className="!rounded-[6px]" />
+            ) : (
+              <Building2 size={14} className="text-[var(--blue)] shrink-0" />
+            )}
+            <span className="truncate">
+              {selectedClub ? cleanText(selectedClub.name) : `Filter by Club (${allClubs.length})`}
+            </span>
+          </span>
+
+          <ChevronDown
+            size={14}
+            className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${
+              selectedClub ? 'text-[var(--blue-ink)]' : 'text-[var(--text-muted)]'
+            }`}
+          />
+        </button>
+
+        {selectedClub && (
+          <button
+            type="button"
+            onClick={() => chooseClub('all')}
+            title="Clear club filter"
+            aria-label="Clear club filter"
+            className="w-[38px] h-[38px] rounded-xl bg-[var(--bg-tile)] hover:bg-[var(--bg-tile-hover)] border border-[var(--border-tile)] hover:border-[var(--border-strong)] text-[var(--text-muted)] hover:text-[var(--text)] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute left-0 right-0 sm:left-auto sm:right-0 top-full mt-1.5 sm:w-[350px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border-strong)] shadow-[var(--shadow-lg)] p-2 z-50 fade-in">
+          {/* Instant Club Search Input */}
+          <div className="flex items-center gap-2 px-3 min-h-[38px] rounded-xl bg-[var(--bg-tile)] border border-[var(--border-tile)] focus-within:border-[var(--blue)] mb-2">
+            <Search size={14} className="text-[var(--text-light)] shrink-0" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && query.trim() && firstMatchClub) {
+                  e.preventDefault()
+                  chooseClub(String(firstMatchClub.id))
+                }
+              }}
+              placeholder={`Search ${allClubs.length} clubs or @handles…`}
+              className="w-full min-w-0 bg-transparent border-none outline-none text-base sm:text-xs text-[var(--text)] placeholder:text-[var(--text-light)]"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear club search"
+                className="p-0.5 bg-transparent border-none text-[var(--text-light)] hover:text-[var(--text)] cursor-pointer flex items-center"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-[310px] overflow-y-auto space-y-2 pr-0.5">
+            {!query.trim() && (
+              <button
+                type="button"
+                onClick={() => chooseClub('all')}
+                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-left border-none cursor-pointer transition-colors ${
+                  selectedClubId === 'all'
+                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] font-semibold'
+                    : 'bg-transparent text-[var(--text)] hover:bg-[var(--bg-surface)] font-medium'
+                }`}
+              >
+                <span className="flex items-center gap-2 text-xs">
+                  <Building2 size={14} className="text-[var(--blue)] shrink-0" />
+                  <span>All Campus Clubs</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[10.5px] font-mono-num text-[var(--text-muted)]">
+                    {totalListedPeople} people
+                  </span>
+                  {selectedClubId === 'all' && <Check size={13} className="text-[var(--blue-ink)]" />}
+                </span>
+              </button>
+            )}
+
+            {joinedMatches.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
+                  My Joined Clubs ({joinedMatches.length})
+                </div>
+                {joinedMatches.map(renderOptionRow)}
+              </div>
+            )}
+
+            {rosterMatches.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
+                  Clubs with Listed Roster ({rosterMatches.length})
+                </div>
+                {rosterMatches.map(renderOptionRow)}
+              </div>
+            )}
+
+            {contactMatches.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
+                  Official Club Contacts ({contactMatches.length})
+                </div>
+                {contactMatches.map(renderOptionRow)}
+              </div>
+            )}
+
+            {joinedMatches.length === 0 &&
+              rosterMatches.length === 0 &&
+              contactMatches.length === 0 && (
+                <div className="py-6 text-center text-xs text-[var(--text-muted)]">
+                  No clubs match &ldquo;{query.trim()}&rdquo;
+                </div>
+              )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ClubsHub({
+  user = null,
+  accountKey = 'guest',
   items,
   clubsData,
   hubDict = {},
   initialSection = null,
+  initialRbacClubId = '',
+  isDemo = false,
   userSettings = {},
   onToggleJoin,
+  onOpenTasks,
+  onRefreshAnnouncements,
   searchQuery = '',
   compact = false,
   onOpenClubs,
   onRefresh,
+  onOpenSettings,
   localPosts: externalLocalPosts,
   onAddLocalPost,
   onPageContextChange,
@@ -93,13 +1051,17 @@ export default function ClubsHub({
           ? clubsData
           : defaultClubs
     return raw.map(c => {
-      const catId = categorizeClub(c)
+      const catId = c.category || categorizeClub(c)
       const catMeta = getClubCategoryMeta(catId)
+      const categoryLabel = c.categoryLabel || catMeta.label
       return {
         ...c,
         category: catId,
-        categoryLabel: c.categoryLabel || catMeta.label,
+        categoryLabel,
         avatarBg: c.avatarBg || catMeta.gradient,
+        _searchText: `${c.name || ''} ${c.description || ''} ${categoryLabel} ${(c.tags || [])
+          .map(t => t.label)
+          .join(' ')}`.toLowerCase(),
       }
     })
   }, [items, clubsData])
@@ -111,18 +1073,51 @@ export default function ClubsHub({
 
   const [section, setSection] = useState(
     () => initialSection || (joinedClubs.length === 0 ? 'discover' : 'myclubs')
-  ) // 'myclubs' | 'discover' | 'updates' | 'directory'
+  ) // 'myclubs' | 'rbac' | 'discover' | 'updates' | 'directory'
+
+  useEffect(() => {
+    if (initialSection) setSection(initialSection)
+  }, [initialSection])
+
+  useEffect(() => {
+    if (initialRbacClubId) setDirectoryClubFilter(String(initialRbacClubId))
+  }, [initialRbacClubId])
   const [category, setCategory] = useState('All')
   const [clubLayout, setClubLayout] = useState('grouped') // 'grouped' | 'grid'
   const [expandedCategories, setExpandedCategories] = useState({})
   const [selectedSource, setSelectedSource] = useState('all')
   const [feedScope, setFeedScope] = useState('myclubs') // 'myclubs' | 'all'
+  const [visibleFeedCount, setVisibleFeedCount] = useState(FEED_PAGE_SIZE)
+  const [expandedPostIds, setExpandedPostIds] = useState({})
+  const feedSentinelRef = useRef(null)
+  const hubPostsCacheRef = useRef({ hubRef: null, items: [] })
+
+  const handleToggleFeedPost = useCallback(postId => {
+    setExpandedPostIds(prev => {
+      if (prev[postId]) {
+        const next = { ...prev }
+        delete next[postId]
+        return next
+      }
+      return { ...prev, [postId]: true }
+    })
+  }, [])
 
   // Directory filters & state
+  const DIRECTORY_PAGE_SIZE = 36
+  const DIRECTORY_CLUB_GROUP_PAGE_SIZE = 16
   const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
+  const [directoryScope, setDirectoryScope] = useState('all') // 'all' | 'myclubs'
   const [directoryClubFilter, setDirectoryClubFilter] = useState('all')
+  const [directoryCategory, setDirectoryCategory] = useState('All')
+  const [directoryGroupMode, setDirectoryGroupMode] = useState('role') // 'role' | 'club'
+  const [visibleOfficersCount, setVisibleOfficersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleMembersCount, setVisibleMembersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleClubGroupsCount, setVisibleClubGroupsCount] = useState(
+    DIRECTORY_CLUB_GROUP_PAGE_SIZE
+  )
   const [copiedEmailId, setCopiedEmailId] = useState(null)
-  const [customRoster, setCustomRoster] = useState(loadCustomRoster)
+  const [customRoster, setCustomRoster] = useState(() => loadCustomRoster(isDemo))
 
   // Add Person to Directory form
   const [showAddPersonForm, setShowAddPersonForm] = useState(false)
@@ -130,20 +1125,66 @@ export default function ClubsHub({
   const [personEmail, setPersonEmail] = useState('')
   const [personType, setPersonType] = useState('officer') // 'officer' | 'member'
   const [personRoleTitle, setPersonRoleTitle] = useState('')
-  const [personClubId, setPersonClubId] = useState('demo_ucsc_csclub')
+  const [personClubId, setPersonClubId] = useState(
+    () => joinedClubs[0]?.id || allClubs[0]?.id || 'demo_ucsc_csclub'
+  )
   const [personMajor, setPersonMajor] = useState('')
   const [personOfficeHours, setPersonOfficeHours] = useState('')
 
   // Post Update form state
   const [showPostForm, setShowPostForm] = useState(false)
-  const [postClubId, setPostClubId] = useState('demo_ucsc_csclub')
+  const [postClubId, setPostClubId] = useState(
+    () => joinedClubs[0]?.id || allClubs[0]?.id || 'demo_ucsc_csclub'
+  )
   const [postSource, setPostSource] = useState('discord')
   const [postTitle, setPostTitle] = useState('')
   const [postSummary, setPostSummary] = useState('')
+  const [postPermalink, setPostPermalink] = useState('')
+  const [pushToDiscord, setPushToDiscord] = useState(
+    () => Boolean(getLocalIntegrationPrefs(accountKey).autoPushAnnouncements)
+  )
+  const [pushToEmail, setPushToEmail] = useState(false)
+  const [syncingChannel, setSyncingChannel] = useState('')
   const [internalLocalPosts, setInternalLocalPosts] = useState([])
+
+  useEffect(() => {
+    const fallbackId = joinedClubs[0]?.id || allClubs[0]?.id
+    if (!fallbackId) return
+    if (!allClubs.some(c => String(c.id) === String(personClubId))) {
+      setPersonClubId(String(fallbackId))
+    }
+    if (!allClubs.some(c => String(c.id) === String(postClubId))) {
+      setPostClubId(String(fallbackId))
+    }
+  }, [allClubs, joinedClubs, personClubId, postClubId])
+
+  // Keep Add Form pre-synced to active club filter when filtering by a specific club
+  useEffect(() => {
+    if (
+      directoryClubFilter !== 'all' &&
+      allClubs.some(c => String(c.id) === String(directoryClubFilter))
+    ) {
+      setPersonClubId(String(directoryClubFilter))
+    }
+  }, [directoryClubFilter, allClubs])
+
+  useEffect(() => {
+    if (directoryScope === 'myclubs' && joinedClubs.length === 0) {
+      setDirectoryScope('all')
+    }
+  }, [directoryScope, joinedClubs.length])
+
+  const selectedDirectoryClub = useMemo(
+    () =>
+      directoryClubFilter !== 'all'
+        ? allClubs.find(c => String(c.id) === String(directoryClubFilter)) || null
+        : null,
+    [allClubs, directoryClubFilter]
+  )
 
   const localPosts = externalLocalPosts ?? internalLocalPosts
   const isCompactDensity = Boolean(userSettings?.compactCards)
+  const use24h = userSettings?.timeFormat === '24h'
 
   useEffect(() => {
     if (compact || !onPageContextChange) return
@@ -158,7 +1199,9 @@ export default function ClubsHub({
     } else if (section === 'updates') {
       label = 'Club Updates'
     } else if (section === 'directory') {
-      label = 'Club Directory'
+      label = selectedDirectoryClub
+        ? `${cleanText(selectedDirectoryClub.name)} Roster`
+        : 'Officers & Members'
     }
     onPageContextChange({
       nav: 'clubs',
@@ -171,6 +1214,7 @@ export default function ClubsHub({
     section,
     category,
     joinedClubs.length,
+    selectedDirectoryClub,
     showPostForm,
     showAddPersonForm,
   ])
@@ -179,7 +1223,7 @@ export default function ClubsHub({
     const pool = section === 'discover' ? allClubs : joinedClubs
     const counts = new Map()
     for (const c of pool) {
-      const key = categorizeClub(c)
+      const key = c.category
       counts.set(key, (counts.get(key) || 0) + 1)
     }
     const ordered = CLUB_CATEGORIES.filter(cat => (counts.get(cat.id) || 0) > 0).map(cat => ({
@@ -194,22 +1238,11 @@ export default function ClubsHub({
 
   const filteredClubs = useMemo(() => {
     const pool = section === 'discover' ? allClubs : joinedClubs
+    const catLower = category === 'All' ? null : category.toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
     return pool.filter(c => {
-      if (
-        category !== 'All' &&
-        categorizeClub(c) !== category.toLowerCase()
-      ) {
-        return false
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        return (
-          (c.name || '').toLowerCase().includes(q) ||
-          (c.description || '').toLowerCase().includes(q) ||
-          (c.categoryLabel || '').toLowerCase().includes(q) ||
-          (c.tags || []).some(t => t.label.toLowerCase().includes(q))
-        )
-      }
+      if (catLower && c.category !== catLower) return false
+      if (q && !c._searchText.includes(q)) return false
       return true
     })
   }, [allClubs, joinedClubs, section, category, searchQuery])
@@ -217,7 +1250,7 @@ export default function ClubsHub({
   const groupedClubs = useMemo(() => {
     const groups = new Map()
     for (const c of filteredClubs) {
-      const key = categorizeClub(c)
+      const key = c.category
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key).push(c)
     }
@@ -233,110 +1266,394 @@ export default function ClubsHub({
   )
 
   const feedPosts = useMemo(() => {
-    const channels = userSettings?.channels || {}
-    const combined = [...localPosts]
-    for (const club of Object.values(hubDict || {})) {
-      for (const post of club.posts || []) {
-        combined.push({
-          ...post,
-          source: post.source || 'instagram',
-          clubName: club.name || post.clubId,
-        })
+    if (compact || section !== 'updates') return []
+
+    // Lazily build and cache normalized, chronologically sorted hub posts once per hubDict reference
+    if (hubPostsCacheRef.current.hubRef !== hubDict) {
+      const built = []
+      for (const club of Object.values(hubDict || {})) {
+        const linksByPostId = new Map()
+        for (const lnk of club?.links || []) {
+          if (!lnk?.postId) continue
+          const pid = String(lnk.postId)
+          if (!linksByPostId.has(pid)) linksByPostId.set(pid, [])
+          linksByPostId.get(pid).push(lnk)
+        }
+
+        const eventsByPostId = new Map()
+        for (const evt of club?.events || []) {
+          if (!evt?.postId) continue
+          const pid = String(evt.postId)
+          if (!eventsByPostId.has(pid)) eventsByPostId.set(pid, [])
+          eventsByPostId.get(pid).push(evt)
+        }
+
+        for (const post of club?.posts || []) {
+          const pid = post?.id ? String(post.id) : ''
+          built.push(
+            buildNormalizedFeedItem(post, {
+              club,
+              postLinks: pid ? linksByPostId.get(pid) || [] : [],
+              postEvents: pid ? eventsByPostId.get(pid) || [] : [],
+            })
+          )
+        }
       }
+      built.sort((a, b) => b.postedAtMs - a.postedAtMs)
+      hubPostsCacheRef.current = { hubRef: hubDict, items: built }
     }
 
-    return combined.filter(post => {
-      if (
-        joinedIdSet.size > 0 &&
-        feedScope === 'myclubs' &&
-        post.clubId &&
-        !joinedIdSet.has(String(post.clubId))
-      ) {
+    const normalizedLocal = localPosts.map(p =>
+      buildNormalizedFeedItem(p, {
+        club: (p?.clubId && hubDict?.[p.clubId]) || null,
+        fallbackClubName: p.clubName,
+      })
+    )
+    const allNormalized =
+      normalizedLocal.length > 0
+        ? [...normalizedLocal, ...hubPostsCacheRef.current.items]
+        : hubPostsCacheRef.current.items
+
+    const channels = userSettings?.channels || {}
+    const scopeToMyClubs = joinedIdSet.size > 0 && feedScope === 'myclubs'
+    const q = searchQuery.trim().toLowerCase()
+
+    return allNormalized.filter(post => {
+      if (scopeToMyClubs && post.clubIdStr && !joinedIdSet.has(post.clubIdStr)) {
         return false
       }
 
-      const src = String(post.source || '').toLowerCase()
       if (selectedSource === 'all') {
-        if (src.includes('instagram') && channels.instagram === false) return false
-        if (src.includes('discord') && channels.discord === false) return false
-        if (src.includes('email') && channels.email === false) return false
-      } else if (post.source !== selectedSource) {
+        if (post.channel === 'instagram' && channels.instagram === false) return false
+        if (post.channel === 'discord' && channels.discord === false) return false
+        if (post.channel === 'email' && channels.email === false) return false
+      } else if (post.channel !== selectedSource) {
         return false
       }
 
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
-        return (
-          (post.title || '').toLowerCase().includes(q) ||
-          (post.summary || post.caption || '').toLowerCase().includes(q) ||
-          (post.clubName || '').toLowerCase().includes(q)
-        )
+      if (q && !post.searchHaystack.includes(q)) {
+        return false
       }
       return true
     })
-  }, [hubDict, localPosts, joinedIdSet, feedScope, selectedSource, searchQuery, userSettings?.channels])
+  }, [
+    compact,
+    section,
+    hubDict,
+    localPosts,
+    joinedIdSet,
+    feedScope,
+    selectedSource,
+    searchQuery,
+    userSettings?.channels,
+  ])
 
-  const allOfficers = useMemo(
-    () => [...customRoster.officers, ...initialOfficers],
-    [customRoster.officers]
+  // Reset pagination window whenever feed filters or search query change
+  useEffect(() => {
+    setVisibleFeedCount(FEED_PAGE_SIZE)
+  }, [selectedSource, feedScope, searchQuery])
+
+  const visibleFeedPosts = useMemo(
+    () => feedPosts.slice(0, visibleFeedCount),
+    [feedPosts, visibleFeedCount]
+  )
+  const hasMoreFeedPosts = visibleFeedCount < feedPosts.length
+
+  // Smooth progressive loading as the user scrolls near the bottom of Club Feed
+  useEffect(() => {
+    if (compact || section !== 'updates' || !hasMoreFeedPosts) return
+    const node = feedSentinelRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleFeedCount(prev => Math.min(prev + FEED_PAGE_SIZE, feedPosts.length))
+        }
+      },
+      { rootMargin: '480px 0px' }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [compact, section, hasMoreFeedPosts, feedPosts.length])
+
+  const directoryData = useMemo(
+    () =>
+      buildClubDirectoryData({
+        allClubs,
+        hubDict,
+        customRoster,
+        initialOfficers,
+        initialMembers,
+        user,
+        userSettings,
+        isDemo,
+      }),
+    [allClubs, hubDict, customRoster, user, userSettings, isDemo]
   )
 
-  const allMembers = useMemo(
-    () => [...customRoster.members, ...initialMembers],
-    [customRoster.members]
-  )
+  const allOfficers = directoryData.officers
+  const allMembers = directoryData.members
+  const clubPeopleCounts = directoryData.clubPeopleCounts
 
-  const filteredOfficers = useMemo(() => {
-    return allOfficers.filter(m => {
+  // Pre-category scoped lists (applies Scope + Specific Club + Search Query so category pills show live counts)
+  const { preCatOfficers, preCatMembers } = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const scopeToJoined =
+      directoryClubFilter === 'all' && directoryScope === 'myclubs' && joinedIdSet.size > 0
+
+    const nextOfficers = allOfficers.filter(m => {
       if (directoryClubFilter !== 'all') {
-        const selectedClub = allClubs.find(c => String(c.id) === String(directoryClubFilter))
         const matchById = String(m.clubId || '') === String(directoryClubFilter)
         const matchByName =
-          selectedClub &&
-          clubMatchesFilter(m.club, m.clubId, selectedClub.name)
+          selectedDirectoryClub &&
+          clubMatchesFilter(m.club, m.clubId, selectedDirectoryClub.name)
         if (!matchById && !matchByName) return false
+      } else if (scopeToJoined) {
+        if (!m.clubId || !joinedIdSet.has(String(m.clubId))) return false
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
+
+      if (q) {
         return (
           m.name.toLowerCase().includes(q) ||
           m.role.toLowerCase().includes(q) ||
           (m.club || '').toLowerCase().includes(q) ||
           (m.major || '').toLowerCase().includes(q) ||
-          m.email.toLowerCase().includes(q)
+          (m.email || '').toLowerCase().includes(q) ||
+          (m.categoryLabel || '').toLowerCase().includes(q)
         )
       }
       return true
     })
-  }, [allOfficers, directoryClubFilter, allClubs, searchQuery])
 
-  const filteredMembers = useMemo(() => {
-    return allMembers.filter(m => {
+    const nextMembers = allMembers.filter(m => {
       if (directoryClubFilter !== 'all') {
-        const selectedClub = allClubs.find(c => String(c.id) === String(directoryClubFilter))
         const inSelectedClub = (m.clubs || []).some(
           c =>
             String(c.clubId || '') === String(directoryClubFilter) ||
-            (selectedClub &&
-              clubMatchesFilter(c.label, c.clubId, selectedClub.name))
+            (selectedDirectoryClub &&
+              clubMatchesFilter(c.label, c.clubId, selectedDirectoryClub.name))
         )
         if (!inSelectedClub) return false
+      } else if (scopeToJoined) {
+        const inJoinedClub = (m.clubs || []).some(
+          c => c.clubId && joinedIdSet.has(String(c.clubId))
+        )
+        if (!inJoinedClub) return false
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
+
+      if (q) {
         return (
           m.name.toLowerCase().includes(q) ||
           (m.role || '').toLowerCase().includes(q) ||
           (m.major || '').toLowerCase().includes(q) ||
-          m.email.toLowerCase().includes(q) ||
+          (m.email || '').toLowerCase().includes(q) ||
           (m.clubs || []).some(c => c.label.toLowerCase().includes(q))
         )
       }
       return true
     })
-  }, [allMembers, directoryClubFilter, allClubs, searchQuery])
+
+    return { preCatOfficers: nextOfficers, preCatMembers: nextMembers }
+  }, [
+    allOfficers,
+    allMembers,
+    directoryClubFilter,
+    directoryScope,
+    joinedIdSet,
+    selectedDirectoryClub,
+    searchQuery,
+  ])
+
+  const directoryCategoryFilters = useMemo(() => {
+    const counts = new Map()
+    const includeOfficers = roleFilter === 'all' || roleFilter === 'officers'
+    const includeMembers = roleFilter === 'all' || roleFilter === 'members'
+
+    if (includeOfficers) {
+      for (const o of preCatOfficers) {
+        if (!o.category) continue
+        counts.set(o.category, (counts.get(o.category) || 0) + 1)
+      }
+    }
+    if (includeMembers) {
+      for (const m of preCatMembers) {
+        const memberCats = new Set((m.clubs || []).map(c => c.category).filter(Boolean))
+        for (const catId of memberCats) {
+          counts.set(catId, (counts.get(catId) || 0) + 1)
+        }
+      }
+    }
+
+    const totalCount =
+      (includeOfficers ? preCatOfficers.length : 0) +
+      (includeMembers ? preCatMembers.length : 0)
+
+    const items = CLUB_CATEGORIES.filter(cat => (counts.get(cat.id) || 0) > 0).map(cat => ({
+      value: cat.id,
+      label: cat.shortLabel || cat.label,
+      color: cat.color,
+      count: counts.get(cat.id) || 0,
+    }))
+
+    return [{ value: 'All', label: 'All Categories', color: 'blue', count: totalCount }, ...items]
+  }, [preCatOfficers, preCatMembers, roleFilter])
+
+  // Auto-reset directoryCategory if current category has 0 people after scope/role change
+  useEffect(() => {
+    if (
+      directoryCategory !== 'All' &&
+      !directoryCategoryFilters.some(f => f.value === directoryCategory)
+    ) {
+      setDirectoryCategory('All')
+    }
+  }, [directoryCategory, directoryCategoryFilters])
+
+  const filteredOfficers = useMemo(() => {
+    if (directoryCategory === 'All' || directoryClubFilter !== 'all') return preCatOfficers
+    return preCatOfficers.filter(m => m.category === directoryCategory)
+  }, [preCatOfficers, directoryCategory, directoryClubFilter])
+
+  const filteredMembers = useMemo(() => {
+    if (directoryCategory === 'All' || directoryClubFilter !== 'all') return preCatMembers
+    return preCatMembers.filter(m =>
+      (m.clubs || []).some(c => c.category === directoryCategory)
+    )
+  }, [preCatMembers, directoryCategory, directoryClubFilter])
+
+  // Reset progressive directory slices whenever directory filters or search change
+  useEffect(() => {
+    setVisibleOfficersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleMembersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleClubGroupsCount(DIRECTORY_CLUB_GROUP_PAGE_SIZE)
+  }, [
+    directoryClubFilter,
+    directoryScope,
+    directoryCategory,
+    roleFilter,
+    directoryGroupMode,
+    searchQuery,
+  ])
+
+  // Grouped-by-Club directory sections for "By Club" mode
+  const groupedDirectoryByClub = useMemo(() => {
+    if (directoryGroupMode !== 'club' || directoryClubFilter !== 'all') return []
+    const clubById = new Map(allClubs.map(c => [String(c.id), c]))
+    const groups = new Map()
+
+    function ensureGroup(clubId, fallbackName = 'Campus Club') {
+      const key = clubId ? String(clubId) : fallbackName.toLowerCase()
+      if (!groups.has(key)) {
+        const clubObj = (clubId && clubById.get(String(clubId))) || {
+          id: key,
+          name: fallbackName,
+          abbr: toInitials(fallbackName),
+          category: categorizeClub({ name: fallbackName }),
+        }
+        groups.set(key, {
+          key,
+          club: clubObj,
+          clubName: cleanText(clubObj.name || fallbackName),
+          officers: [],
+          members: [],
+        })
+      }
+      return groups.get(key)
+    }
+
+    if (roleFilter === 'all' || roleFilter === 'officers') {
+      for (const o of filteredOfficers) {
+        ensureGroup(o.clubId, o.club).officers.push(o)
+      }
+    }
+
+    if (roleFilter === 'all' || roleFilter === 'members') {
+      for (const m of filteredMembers) {
+        for (const c of m.clubs || []) {
+          if (
+            directoryScope === 'myclubs' &&
+            directoryClubFilter === 'all' &&
+            joinedIdSet.size > 0 &&
+            (!c.clubId || !joinedIdSet.has(String(c.clubId)))
+          ) {
+            continue
+          }
+          if (
+            directoryCategory !== 'All' &&
+            directoryClubFilter === 'all' &&
+            c.category !== directoryCategory
+          ) {
+            continue
+          }
+          ensureGroup(c.clubId, c.label).members.push(m)
+        }
+      }
+    }
+
+    return Array.from(groups.values())
+      .filter(g => g.officers.length > 0 || g.members.length > 0)
+      .sort((a, b) => {
+        const aJoined = joinedIdSet.has(String(a.key)) ? 1 : 0
+        const bJoined = joinedIdSet.has(String(b.key)) ? 1 : 0
+        if (aJoined !== bJoined) return bJoined - aJoined
+        const totalDiff =
+          b.officers.length + b.members.length - (a.officers.length + a.members.length)
+        if (totalDiff !== 0) return totalDiff
+        return a.clubName.localeCompare(b.clubName)
+      })
+  }, [
+    directoryGroupMode,
+    directoryClubFilter,
+    allClubs,
+    roleFilter,
+    filteredOfficers,
+    filteredMembers,
+    directoryScope,
+    joinedIdSet,
+    directoryCategory,
+  ])
+
+  // Official Club Board Contacts surfaced when searching by club name or viewing joined clubs without named officers
+  const matchingClubContacts = useMemo(() => {
+    if (directoryClubFilter !== 'all') return []
+    const listedOfficerClubIds = new Set(filteredOfficers.map(o => String(o.clubId || '')))
+    const q = searchQuery.trim().toLowerCase()
+
+    if (q) {
+      return allClubs
+        .filter(
+          c =>
+            c.email &&
+            !listedOfficerClubIds.has(String(c.id)) &&
+            (directoryCategory === 'All' || c.category === directoryCategory) &&
+            (c._searchText.includes(q) || String(c.instagram || '').toLowerCase().includes(q))
+        )
+        .slice(0, 6)
+    }
+
+    if (directoryScope === 'myclubs' && joinedClubs.length > 0 && roleFilter !== 'members') {
+      return joinedClubs.filter(
+        c =>
+          c.email &&
+          !listedOfficerClubIds.has(String(c.id)) &&
+          (directoryCategory === 'All' || c.category === directoryCategory)
+      )
+    }
+
+    return []
+  }, [
+    directoryClubFilter,
+    filteredOfficers,
+    searchQuery,
+    allClubs,
+    directoryCategory,
+    directoryScope,
+    joinedClubs,
+    roleFilter,
+  ])
 
   async function handleCopyEmail(personId, emailAddr) {
+    if (!emailAddr) return
     try {
       await navigator.clipboard.writeText(emailAddr)
     } catch {
@@ -354,7 +1671,58 @@ export default function ClubsHub({
   function handleOpenClubRoster(clubId) {
     setSection('directory')
     setDirectoryClubFilter(String(clubId))
+    setDirectoryCategory('All')
     setRoleFilter('all')
+  }
+
+  function handleSelectDirectoryClub(nextClubId) {
+    setDirectoryClubFilter(String(nextClubId))
+    if (nextClubId !== 'all') {
+      setDirectoryCategory('All')
+    }
+  }
+
+  function handleResetDirectoryFilters() {
+    setDirectoryClubFilter('all')
+    setDirectoryScope('all')
+    setDirectoryCategory('All')
+    setRoleFilter('all')
+  }
+
+  function handleOpenAddPersonForClub(targetClubId = null, defaultType = null) {
+    if (targetClubId && allClubs.some(c => String(c.id) === String(targetClubId))) {
+      setPersonClubId(String(targetClubId))
+    } else if (
+      directoryClubFilter !== 'all' &&
+      allClubs.some(c => String(c.id) === String(directoryClubFilter))
+    ) {
+      setPersonClubId(String(directoryClubFilter))
+    }
+    if (defaultType) {
+      setPersonType(defaultType)
+    } else if (roleFilter === 'members') {
+      setPersonType('member')
+    } else if (roleFilter === 'officers') {
+      setPersonType('officer')
+    }
+    setShowAddPersonForm(true)
+  }
+
+  function handleRemoveCustomPerson(personId, kind = 'officer') {
+    const nextRoster = {
+      officers:
+        kind === 'officer'
+          ? (customRoster.officers || []).filter(o => o.id !== personId)
+          : customRoster.officers || [],
+      members:
+        kind === 'member'
+          ? (customRoster.members || []).filter(m => m.id !== personId)
+          : customRoster.members || [],
+    }
+    setCustomRoster(nextRoster)
+    if (onNotify) {
+      onNotify('Removed custom entry from session directory.', { type: 'info' })
+    }
   }
 
   function handleAddPersonSubmit(e) {
@@ -365,13 +1733,9 @@ export default function ClubsHub({
 
     const clubObj = allClubs.find(c => String(c.id) === String(personClubId))
     const clubLabel = clubObj ? cleanText(clubObj.name) : 'Campus Club'
-    const initials = cleanName
-      .split(' ')
-      .filter(Boolean)
-      .map(w => w[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase() || 'MB'
+    const catMeta = getClubCategoryMeta(clubObj?.category || clubObj)
+    const accentColor = catMeta?.color || 'blue'
+    const initials = toInitials(cleanName)
 
     const nextRoster = { ...customRoster }
     if (personType === 'officer') {
@@ -382,12 +1746,13 @@ export default function ClubsHub({
         role: personRoleTitle.trim() || 'Officer',
         club: clubLabel,
         clubId: String(personClubId),
-        major: personMajor.trim() || 'UCSC Undergraduate',
-        color: 'blue',
+        major: personMajor.trim() || '',
+        color: accentColor,
         email: cleanEmail,
-        office: personOfficeHours.trim() || 'By appointment',
+        isBoardEmail: false,
+        office: personOfficeHours.trim() || '',
       }
-      nextRoster.officers = [newOfficer, ...nextRoster.officers]
+      nextRoster.officers = [newOfficer, ...(nextRoster.officers || [])]
     } else {
       const newMember = {
         id: `custom_mem_${Date.now()}`,
@@ -396,19 +1761,14 @@ export default function ClubsHub({
         email: cleanEmail,
         role: personRoleTitle.trim() || 'Active Member',
         major: personMajor.trim() || 'UCSC Undergraduate',
-        avatarBg: 'linear-gradient(135deg, var(--blue), var(--teal))',
-        clubs: [{ label: clubLabel, clubId: String(personClubId), color: 'blue' }],
+        avatarBg: clubObj?.avatarBg || 'linear-gradient(135deg, var(--blue), var(--teal))',
+        clubs: [{ label: clubLabel, clubId: String(personClubId), color: accentColor }],
         joined: 'Nov 2026',
       }
-      nextRoster.members = [newMember, ...nextRoster.members]
+      nextRoster.members = [newMember, ...(nextRoster.members || [])]
     }
 
     setCustomRoster(nextRoster)
-    try {
-      localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
-    } catch {
-      // Ignore storage errors
-    }
 
     setPersonName('')
     setPersonEmail('')
@@ -427,12 +1787,23 @@ export default function ClubsHub({
 
     const clubObj = allClubs.find(c => String(c.id) === String(postClubId))
     const clubLabel = clubObj ? cleanText(clubObj.name) : 'Campus Club'
-    const captionText = [postTitle.trim(), postSummary.trim()].filter(Boolean).join(' — ')
+    const cleanHeadline = postTitle.trim()
+    const cleanDetails = postSummary.trim()
+    const cleanPermalink = normalizeExternalHttpUrl(postPermalink)
+    const captionText = [cleanHeadline, cleanDetails].filter(Boolean).join('\n\n')
+    const localPrefs = getLocalIntegrationPrefs(accountKey)
 
-    const res = await ingestFromSource(postSource, {
-      clubId: String(postClubId),
-      caption: captionText,
-    })
+    const res = isDemo
+      ? null
+      : await ingestFromSource(postSource, {
+          clubId: String(postClubId),
+          clubName: clubLabel,
+          title: cleanHeadline || undefined,
+          caption: captionText,
+          permalink: cleanPermalink || undefined,
+          pushDiscord: pushToDiscord ? localPrefs.discordWebhookUrl || true : false,
+          pushEmailTo: pushToEmail ? localPrefs.recipientEmail || '' : '',
+        })
 
     if (res && res.success && onRefresh) {
       await onRefresh()
@@ -443,21 +1814,85 @@ export default function ClubsHub({
         clubName: clubLabel,
         source: postSource,
         postedAt: new Date().toISOString(),
-        title: postTitle.trim() || clubLabel,
-        summary: postSummary.trim() || postTitle.trim(),
+        title: cleanHeadline || clubLabel,
+        caption: captionText,
+        summary: cleanDetails || cleanHeadline,
+        permalink: cleanPermalink || null,
       }
       if (onAddLocalPost) {
         onAddLocalPost(createdPost)
       } else {
         setInternalLocalPosts(prev => [createdPost, ...prev])
       }
+
+      // Direct client-side outbound push fallback when running without backend
+      if (pushToDiscord) {
+        dispatchDiscordNotification({
+          kind: 'announcement',
+          accountKey,
+          clubName: clubLabel,
+          title: cleanHeadline || `${clubLabel} Update`,
+          message: cleanDetails || captionText,
+          url: cleanPermalink || window.location.href,
+        }).catch(() => {})
+      }
+      if (pushToEmail) {
+        dispatchEmailNotification(
+          {
+            kind: 'announcement',
+            accountKey,
+            clubName: clubLabel,
+            title: cleanHeadline || `${clubLabel} Update`,
+            message: cleanDetails || captionText,
+            url: cleanPermalink || window.location.href,
+          },
+          { allowMailtoFallback: true }
+        ).catch(() => {})
+      }
     }
 
     setPostTitle('')
     setPostSummary('')
+    setPostPermalink('')
     setShowPostForm(false)
     if (onNotify) {
-      onNotify(`Published update to ${clubLabel} feed.`)
+      const pushedExtra =
+        res?.outbound?.discord?.ok || res?.outbound?.email?.ok
+          ? ' and pushed to external channel'
+          : ''
+      onNotify(`Published update to ${clubLabel} feed${pushedExtra}.`)
+    }
+  }
+
+  async function handleSyncChannelNow(platform) {
+    if (!platform || syncingChannel) return
+    setSyncingChannel(platform)
+    try {
+      const res = await syncAllSources(platform)
+      if (res && !res.error) {
+        if (onRefresh) await onRefresh()
+        if (onNotify) {
+          const count = Number(res.result?.synced ?? res.synced ?? res.count ?? 0)
+          onNotify(
+            count > 0
+              ? `Synced ${count} ${platform === 'discord' ? 'Discord' : 'Email'} update${count === 1 ? '' : 's'}!`
+              : `${platform === 'discord' ? 'Discord' : 'Email'} sync completed — no new updates found.`,
+            { type: count > 0 ? 'success' : 'info' }
+          )
+        }
+      } else if (onNotify) {
+        onNotify(
+          res?.error ||
+            `Connect ${platform === 'discord' ? 'Discord' : 'Email'} in Settings -> Integrations to sync live updates.`,
+          {
+            type: 'info',
+            actionLabel: onOpenSettings ? 'Open Integrations' : undefined,
+            onAction: onOpenSettings,
+          }
+        )
+      }
+    } finally {
+      setSyncingChannel('')
     }
   }
 
@@ -465,6 +1900,16 @@ export default function ClubsHub({
     const isJoined = Boolean(club.joined)
     const catMeta = getClubCategoryMeta(club.category)
     const accentColor = catMeta?.color || 'blue'
+    const clubLinks = hubDict?.[club.id]?.links || []
+    const discordInvite = clubLinks.find(
+      l =>
+        l?.url &&
+        (String(l.kind || '').toLowerCase() === 'discord' ||
+          /discord\.(?:gg|com\/invite)\//i.test(String(l.url)))
+    )
+    const clubDiscordUrl = normalizeExternalHttpUrl(club.discordUrl || discordInvite?.url || '')
+    const clubEmailAddr = !isDemoClubId(club.id) && club.email ? String(club.email).trim() : ''
+
     return (
       <div
         key={club.id}
@@ -472,7 +1917,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: `var(--${accentColor})`,
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -555,14 +2000,49 @@ export default function ClubsHub({
           </div>
 
           {!compact && (
-            <button
-              type="button"
-              onClick={() => handleOpenClubRoster(club.id)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
-            >
-              <span>Roster</span>
-              <ArrowRight size={12} />
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {clubDiscordUrl && (
+                <a
+                  href={clubDiscordUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${cleanText(club.name)} Discord`}
+                  aria-label={`Open ${cleanText(club.name)} Discord`}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-85 no-underline transition-opacity"
+                >
+                  <PlatformIcon type="discord" size={12.5} />
+                </a>
+              )}
+              {clubEmailAddr && (
+                <a
+                  href={`mailto:${clubEmailAddr}`}
+                  title={`Email ${clubEmailAddr}`}
+                  aria-label={`Email ${cleanText(club.name)}`}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border-subtle)] no-underline transition-colors"
+                >
+                  <Mail size={12} />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSection('rbac')
+                  setDirectoryClubFilter(String(club.id))
+                }}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+              >
+                <Shield size={11.5} />
+                <span>Roles</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenClubRoster(club.id)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+              >
+                <span>Roster</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -643,6 +2123,439 @@ export default function ClubsHub({
   }
 
   const totalDirectoryPeople = filteredOfficers.length + filteredMembers.length
+  const hasActiveDirectoryFilters =
+    directoryClubFilter !== 'all' ||
+    directoryScope !== 'all' ||
+    directoryCategory !== 'All' ||
+    roleFilter !== 'all'
+
+  const directoryGridClasses = isCompactDensity
+    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5'
+    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+
+  const unjoinedClubsForSelect = allClubs.filter(c => !joinedIdSet.has(String(c.id)))
+
+  const selectedClubHub = selectedDirectoryClub ? hubDict?.[selectedDirectoryClub.id] : null
+  const selectedClubHandle =
+    selectedDirectoryClub && !isDemoClubId(selectedDirectoryClub.id) && selectedDirectoryClub.instagram
+      ? String(selectedDirectoryClub.instagram).replace(/^@+/, '').trim()
+      : ''
+  const selectedClubInstagramUrl = selectedClubHandle
+    ? normalizeExternalHttpUrl(
+        selectedDirectoryClub.instagramUrl || `https://www.instagram.com/${selectedClubHandle}/`
+      )
+    : null
+  const rawSelectedClubSite =
+    selectedDirectoryClub?.website ||
+    selectedClubHub?.website ||
+    (selectedClubHub?.links || []).find(l => normalizeExternalHttpUrl(l?.url))?.url ||
+    ''
+  const selectedClubSiteUrl =
+    selectedDirectoryClub && !isDemoClubId(selectedDirectoryClub.id)
+      ? normalizeExternalHttpUrl(rawSelectedClubSite)
+      : null
+  const selectedClubSiteLabel = selectedClubSiteUrl
+    ? friendlyPostResourceLabel(selectedClubSiteUrl, 'Website')
+    : null
+
+  function renderOfficerCard(m, keySuffix = '') {
+    const isCopied = copiedEmailId === m.id
+    const officerColor = m.color || 'blue'
+    const introPostUrl = !isDemoClubId(m.clubId) ? normalizeExternalHttpUrl(m.permalink) : null
+    const canFilterToClub =
+      Boolean(m.clubId) && String(directoryClubFilter) !== String(m.clubId)
+
+    return (
+      <div
+        key={keySuffix ? `${m.id}_${keySuffix}` : m.id}
+        style={{
+          borderTopWidth: '3px',
+          borderTopColor: `var(--${officerColor})`,
+        }}
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
+          isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
+        } rounded-[var(--radius-sm)] flex flex-col justify-between`}
+      >
+        <div className="space-y-2.5">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
+              <Avatar
+                initials={m.initials}
+                bg={`linear-gradient(135deg, var(--${officerColor}), var(--purple))`}
+                size={isCompactDensity ? 34 : 40}
+              />
+              <div className="min-w-0">
+                <div
+                  className={`font-bold ${
+                    isCompactDensity ? 'text-[13px]' : 'text-sm'
+                  } text-[var(--text)] truncate`}
+                >
+                  {m.name}
+                </div>
+                {canFilterToClub ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDirectoryClub(m.clubId)}
+                    title={`Filter directory by ${m.club}`}
+                    className="block max-w-full p-0 bg-transparent border-none text-left text-xs font-semibold text-[var(--blue-ink)] hover:underline truncate cursor-pointer"
+                  >
+                    {m.club}
+                  </button>
+                ) : (
+                  <div className="text-xs font-semibold text-[var(--blue-ink)] truncate">
+                    {m.club}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0">
+              <BubbleTag label={m.role} color={officerColor} size="sm" />
+            </div>
+          </div>
+
+          {(m.major || m.office || introPostUrl) && (
+            <div className="space-y-1.5 text-xs text-[var(--text-muted)]">
+              {m.major && (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <GraduationCap size={12} className="text-[var(--text-light)] shrink-0" />
+                  <span className="truncate">{m.major}</span>
+                </div>
+              )}
+              {m.office && (
+                <div className="flex items-center gap-1.5 text-[var(--text)] font-medium min-w-0">
+                  <Clock size={12} className="text-[var(--teal)] shrink-0" />
+                  <span className="truncate">Office Hours: {m.office}</span>
+                </div>
+              )}
+              {introPostUrl && (
+                <div className="pt-0.5">
+                  <a
+                    href={introPostUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--blue-ink)] no-underline transition-colors"
+                  >
+                    <span>Board intro post</span>
+                    <ExternalLink size={11} className="shrink-0" />
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
+              {m.email || 'Contact via club'}
+            </span>
+            {m.email && m.isBoardEmail && (
+              <span
+                title="Official club executive board email"
+                className="px-1.5 py-0.5 rounded-md bg-[var(--bg-surface)] text-[10px] font-semibold text-[var(--text-muted)] shrink-0"
+              >
+                Board
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {m.email && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleCopyEmail(m.id, m.email)}
+                  title="Copy email address"
+                  className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check size={12} className="text-[var(--green)]" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} className="text-[var(--text-muted)]" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={`mailto:${m.email}`}
+                  title={`Email ${m.name}`}
+                  className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+                >
+                  <Mail size={13} />
+                </a>
+              </>
+            )}
+
+            {m.isCustom && (
+              <button
+                type="button"
+                onClick={() => handleRemoveCustomPerson(m.id, 'officer')}
+                title="Remove custom entry"
+                aria-label={`Remove ${m.name}`}
+                className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red)] cursor-pointer transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderMemberCard(m, keySuffix = '') {
+    const isCopied = copiedEmailId === m.id
+    const visibleClubTags = (m.clubs || []).slice(0, 4)
+    const extraClubCount = Math.max(0, (m.clubs || []).length - visibleClubTags.length)
+
+    return (
+      <div
+        key={keySuffix ? `${m.id}_${keySuffix}` : m.id}
+        style={{
+          borderTopWidth: '3px',
+          borderTopColor: m.isYou ? 'var(--blue)' : 'var(--teal)',
+        }}
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
+          isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
+        } rounded-[var(--radius-sm)] flex flex-col justify-between`}
+      >
+        <div className="space-y-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
+              <Avatar
+                initials={m.initials}
+                bg={m.avatarBg}
+                size={isCompactDensity ? 34 : 38}
+              />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`font-bold ${
+                      isCompactDensity ? 'text-[13px]' : 'text-sm'
+                    } text-[var(--text)] truncate`}
+                  >
+                    {m.name}
+                  </span>
+                  {m.isYou && <BubbleTag label="You" color="blue" size="sm" />}
+                </div>
+                <div className="text-xs text-[var(--text-muted)] truncate">
+                  {m.role}
+                  {m.joined
+                    ? ` · ${m.joined === 'Current' ? 'Active' : `Since ${m.joined}`}`
+                    : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {m.major && (
+            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] min-w-0">
+              <GraduationCap size={12} className="text-[var(--text-light)] shrink-0" />
+              <span className="truncate">{m.major}</span>
+            </div>
+          )}
+
+          {visibleClubTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {visibleClubTags.map(c => (
+                <button
+                  key={`${c.clubId || c.label}`}
+                  type="button"
+                  onClick={() => {
+                    if (c.clubId) handleSelectDirectoryClub(c.clubId)
+                  }}
+                  title={`Filter directory by ${c.label}`}
+                  className="bg-transparent border-none p-0 cursor-pointer hover:opacity-85 transition-opacity"
+                >
+                  <BubbleTag label={c.label} color={c.color || 'blue'} size="sm" />
+                </button>
+              ))}
+              {extraClubCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-[var(--bg-surface)] text-[10.5px] font-semibold text-[var(--text-muted)]">
+                  +{extraClubCount} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
+            {m.email}
+          </span>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {m.email && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleCopyEmail(m.id, m.email)}
+                  title="Copy email address"
+                  className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check size={12} className="text-[var(--green)]" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} className="text-[var(--text-muted)]" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={`mailto:${m.email}`}
+                  title={`Email ${m.name}`}
+                  className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+                >
+                  <Mail size={13} />
+                </a>
+              </>
+            )}
+
+            {m.isCustom && (
+              <button
+                type="button"
+                onClick={() => handleRemoveCustomPerson(m.id, 'member')}
+                title="Remove custom entry"
+                aria-label={`Remove ${m.name}`}
+                className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--red)] text-[var(--text-light)] hover:text-[var(--red)] cursor-pointer transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderClubContactCard(club, { isSelectedClubFallback = false } = {}) {
+    const cid = String(club.id)
+    const copyKey = `club_contact_${cid}`
+    const isCopied = copiedEmailId === copyKey
+    const catMeta = getClubCategoryMeta(club.category)
+    const accentColor = catMeta?.color || 'blue'
+    const clubEmail =
+      club.email ||
+      `${cid.replace(/^demo_/, '').replace(/[^a-zA-Z0-9._-]/g, '.')}@ucsc.edu`
+    const handle =
+      !isDemoClubId(cid) && club.instagram
+        ? String(club.instagram).replace(/^@+/, '').trim()
+        : ''
+
+    return (
+      <div
+        key={copyKey}
+        style={{
+          borderTopWidth: '3px',
+          borderTopColor: `var(--${accentColor})`,
+        }}
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
+          isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
+        } rounded-[var(--radius-sm)] flex flex-col justify-between`}
+      >
+        <div className="space-y-2.5">
+          <div className="flex items-start justify-between gap-2.5">
+            <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
+              <ClubAvatar club={club} size={isCompactDensity ? 34 : 40} />
+              <div className="min-w-0">
+                <div className="font-bold text-sm text-[var(--text)] truncate">
+                  {isSelectedClubFallback ? 'Executive Board Inbox' : cleanText(club.name)}
+                </div>
+                <div className="text-xs font-semibold text-[var(--blue-ink)] truncate">
+                  {isSelectedClubFallback
+                    ? `${cleanText(club.name)} · Official Contact`
+                    : `${club.categoryLabel || 'Campus Club'}${handle ? ` · @${handle}` : ''}`}
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0">
+              <BubbleTag label="Board Contact" color={accentColor} size="sm" />
+            </div>
+          </div>
+
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed line-clamp-2">
+            {isSelectedClubFallback
+              ? 'Individual officer names have not been published yet. Reach the executive board directly via their official club email or add an officer to the roster.'
+              : cleanText(
+                  club.description || club.schedule || 'Reach the club executive board directly.'
+                )}
+          </p>
+
+          {isSelectedClubFallback ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => handleOpenAddPersonForClub(club.id, 'officer')}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                <UserPlus size={12} />
+                <span>Add named officer for {cleanText(club.name)}</span>
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button
+                type="button"
+                onClick={() => handleSelectDirectoryClub(club.id)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                <span>Open club details &amp; roster</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 min-w-0">
+          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
+            {clubEmail}
+          </span>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleCopyEmail(copyKey, clubEmail)}
+              title="Copy club email"
+              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+            >
+              {isCopied ? (
+                <>
+                  <Check size={12} className="text-[var(--green)]" />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={12} className="text-[var(--text-muted)]" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+
+            <a
+              href={`mailto:${clubEmail}`}
+              title={`Email ${cleanText(club.name)}`}
+              className="inline-flex items-center justify-center w-[30px] h-[30px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+            >
+              <Mail size={13} />
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const showGroupedSections =
     clubLayout === 'grouped' && category === 'All' && groupedClubs.length > 1
 
@@ -655,6 +2568,7 @@ export default function ClubsHub({
           <div className="flex flex-wrap items-center gap-1.5">
             {[
               { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
+              { id: 'rbac',      label: 'Roles & Sub-Groups' },
               { id: 'discover',  label: `Discover (${allClubs.length})` },
               { id: 'updates',   label: 'Club Feed' },
               { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
@@ -726,7 +2640,10 @@ export default function ClubsHub({
           {section === 'directory' && (
             <button
               type="button"
-              onClick={() => setShowAddPersonForm(prev => !prev)}
+              onClick={() => {
+                if (showAddPersonForm) setShowAddPersonForm(false)
+                else handleOpenAddPersonForClub()
+              }}
               className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
             >
               {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
@@ -865,6 +2782,21 @@ export default function ClubsHub({
         </>
       )}
 
+      {/* ── SECTION 2B: ROLES, ROSTER CLAIMING & SUB-GROUPS (RBAC) ── */}
+      {section === 'rbac' && (
+        <ClubRbacPanel
+          clubs={allClubs}
+          selectedClubId={directoryClubFilter}
+          onSelectClub={cid => setDirectoryClubFilter(String(cid))}
+          user={user}
+          isDemo={isDemo}
+          onToggleJoin={onToggleJoin}
+          onOpenTasks={onOpenTasks}
+          onRefreshAnnouncements={onRefreshAnnouncements}
+          onNotify={onNotify}
+        />
+      )}
+
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
       {section === 'updates' && (
         <div className="space-y-4">
@@ -890,27 +2822,40 @@ export default function ClubsHub({
               })}
             </div>
 
-            {joinedClubs.length > 0 && (
-              <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
-                {[
-                  { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
-                  { id: 'all',     label: 'All Campus' },
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setFeedScope(opt.id)}
-                    className={`px-3 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                      feedScope === opt.id
-                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {Object.keys(expandedPostIds).length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedPostIds({})}
+                  className="inline-flex items-center gap-1 px-3 min-h-[32px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                >
+                  <span>Collapse all</span>
+                  <ChevronUp size={13} />
+                </button>
+              )}
+
+              {joinedClubs.length > 0 && (
+                <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                  {[
+                    { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
+                    { id: 'all',     label: 'All Campus' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFeedScope(opt.id)}
+                      className={`px-3 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                        feedScope === opt.id
+                          ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                          : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {showPostForm && (
@@ -968,22 +2913,58 @@ export default function ClubsHub({
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                    Details
+                    Original Post Link <span className="font-normal text-[var(--text-light)]">(optional)</span>
                   </label>
                   <input
-                    type="text"
+                    type="url"
+                    value={postPermalink}
+                    onChange={e => setPostPermalink(e.target.value)}
+                    placeholder="https://instagram.com/p/... or Discord message link"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Details
+                  </label>
+                  <textarea
+                    rows={3}
                     value={postSummary}
                     onChange={e => setPostSummary(e.target.value)}
-                    placeholder="e.g. Friday at 5 PM in Baskin 152"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    placeholder="Full post details, meeting time, location, and sign-up links…"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] resize-y"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--text-muted)]">
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={pushToDiscord}
+                      onChange={e => setPushToDiscord(e.target.checked)}
+                      className="rounded accent-[var(--blue)] cursor-pointer"
+                    />
+                    <PlatformIcon type="discord" size={13} />
+                    <span>Also push to connected Discord</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={pushToEmail}
+                      onChange={e => setPushToEmail(e.target.checked)}
+                      className="rounded accent-[var(--blue)] cursor-pointer"
+                    />
+                    <PlatformIcon type="email" size={13} />
+                    <span>Also send email alert</span>
+                  </label>
+                </div>
+
                 <button
                   type="submit"
-                  className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
+                  className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90 shrink-0"
                 >
                   Publish Update
                 </button>
@@ -991,50 +2972,82 @@ export default function ClubsHub({
             </form>
           )}
 
-          {feedPosts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {feedPosts.map(post => {
-                const meta = SOURCE_META[post.source] || SOURCE_META.instagram
-                return (
-                  <div
+          {visibleFeedPosts.length > 0 ? (
+            <>
+              <div
+                className={`grid grid-cols-1 md:grid-cols-2 items-start ${
+                  isCompactDensity ? 'gap-2.5' : 'gap-4'
+                }`}
+              >
+                {visibleFeedPosts.map(post => (
+                  <FeedPostCard
                     key={post.id}
-                    style={{
-                      borderLeftWidth: '3.5px',
-                      borderLeftColor: `var(--${meta.color})`,
-                    }}
-                    className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex items-start gap-3"
+                    post={post}
+                    isCompactDensity={isCompactDensity}
+                    isExpanded={Boolean(expandedPostIds[post.id])}
+                    use24h={use24h}
+                    onToggleExpand={handleToggleFeedPost}
+                  />
+                ))}
+              </div>
+
+              {hasMoreFeedPosts && (
+                <div ref={feedSentinelRef} className="pt-2 flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleFeedCount(prev => Math.min(prev + FEED_PAGE_SIZE, feedPosts.length))
+                    }
+                    className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
                   >
-                    <IconBadge color={meta.color} size={36} radius={10} className="mt-0.5">
-                      <PlatformIcon type={post.source} size={18} />
-                    </IconBadge>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <BubbleTag label={meta.label} color={meta.color} size="sm" />
-                          <span className="text-xs font-semibold text-[var(--blue-ink)] truncate">
-                            {cleanText(post.clubName || post.clubId)}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-[var(--text-light)] shrink-0">
-                          {post.postedAt ? new Date(post.postedAt).toLocaleDateString() : ''}
-                        </span>
-                      </div>
-
-                      <div className="font-semibold text-sm text-[var(--text)]">
-                        {cleanText(post.title)}
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
-                        {cleanText(post.summary || post.caption)}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                    <span>
+                      Load more updates ({visibleFeedPosts.length.toLocaleString()} of{' '}
+                      {feedPosts.length.toLocaleString()})
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-              No updates match the current filter.
+            <div className="py-10 px-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-center space-y-3">
+              <div className="text-xs font-medium text-[var(--text-muted)]">
+                {selectedSource === 'discord'
+                  ? 'No Discord announcements match the current filter yet.'
+                  : selectedSource === 'email'
+                    ? 'No club mailing list emails match the current filter yet.'
+                    : 'No updates match the current filter.'}
+              </div>
+              {(selectedSource === 'discord' || selectedSource === 'email') && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(syncingChannel)}
+                    onClick={() => handleSyncChannelNow(selectedSource)}
+                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer hover:opacity-90 disabled:opacity-60"
+                  >
+                    <RefreshCw
+                      size={13}
+                      className={syncingChannel === selectedSource ? 'animate-spin' : ''}
+                    />
+                    <span>
+                      {syncingChannel === selectedSource
+                        ? 'Syncing…'
+                        : `Sync ${selectedSource === 'discord' ? 'Discord' : 'Email'} Now`}
+                    </span>
+                  </button>
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      onClick={onOpenSettings}
+                      className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                      <Settings size={13} className="text-[var(--text-muted)]" />
+                      <span>Configure Integration</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1043,73 +3056,172 @@ export default function ClubsHub({
       {/* ── SECTION 4: REFINED OFFICERS & MEMBERS DIRECTORY ── */}
       {section === 'directory' && (
         <div className="space-y-5">
-          {/* Role Segmented Toggle + Club Filter Pills */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] self-start">
-              {[
-                { id: 'all',      label: `All (${totalDirectoryPeople})` },
-                { id: 'officers', label: `Officers (${filteredOfficers.length})` },
-                { id: 'members',  label: `Members (${filteredMembers.length})` },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setRoleFilter(tab.id)}
-                  className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    roleFilter === tab.id
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+          {/* Structured Directory Control Bar (replaces truncated 6-club pill strip) */}
+          <div className="space-y-2.5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              {/* Left Cluster: Role Filter + Campus/My Clubs Scope */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                  {[
+                    { id: 'all',      label: `All (${totalDirectoryPeople})` },
+                    { id: 'officers', label: `Officers (${filteredOfficers.length})` },
+                    { id: 'members',  label: `Members (${filteredMembers.length})` },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setRoleFilter(tab.id)}
+                      className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                        roleFilter === tab.id
+                          ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                          : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {joinedClubs.length > 0 && directoryClubFilter === 'all' && (
+                  <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                    {[
+                      { id: 'all',     label: 'All Campus' },
+                      { id: 'myclubs', label: `My Clubs (${joinedClubs.length})` },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setDirectoryScope(opt.id)}
+                        className={`px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                          directoryScope === opt.id
+                            ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                            : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Cluster: By Role / By Club Toggle + Searchable Club Picker across all clubs */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto">
+                {directoryClubFilter === 'all' && (
+                  <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDirectoryGroupMode('role')}
+                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                        directoryGroupMode === 'role'
+                          ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                          : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <Shield size={12} />
+                      <span>By Role</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDirectoryGroupMode('club')}
+                      className={`inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                        directoryGroupMode === 'club'
+                          ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                          : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <Layers size={12} />
+                      <span>By Club</span>
+                    </button>
+                  </div>
+                )}
+
+                <DirectoryClubPicker
+                  allClubs={allClubs}
+                  joinedClubs={joinedClubs}
+                  clubPeopleCounts={clubPeopleCounts}
+                  selectedClubId={directoryClubFilter}
+                  onSelectClub={handleSelectDirectoryClub}
+                  totalListedPeople={allOfficers.length + allMembers.length}
+                />
+              </div>
             </div>
 
-            {/* Club Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDirectoryClubFilter('all')}
-                className={`px-3 min-h-[32px] rounded-full text-xs font-semibold border cursor-pointer transition-colors ${
-                  directoryClubFilter === 'all'
-                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                }`}
-              >
-                All Clubs
-              </button>
-              {allClubs.slice(0, 6).map(c => {
-                const active = String(directoryClubFilter) === String(c.id)
-                return (
+            {/* Elevated Category Filter Pills (replaces muddy low-contrast club pills) */}
+            {directoryClubFilter === 'all' && directoryCategoryFilters.length > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {directoryCategoryFilters.map(cat => {
+                    const active = directoryCategory === cat.value
+                    return (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => setDirectoryCategory(cat.value)}
+                        className={`inline-flex items-center gap-1.5 px-3 min-h-[31px] rounded-full text-xs cursor-pointer border transition-all ${
+                          active
+                            ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold shadow-2xs'
+                            : 'bg-[var(--bg-tile)] hover:bg-[var(--bg-tile-hover)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border-tile)] hover:border-[var(--border-strong)] font-medium'
+                        }`}
+                      >
+                        {cat.value !== 'All' && (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ background: `var(--${cat.color || 'blue'})` }}
+                          />
+                        )}
+                        <span>{cat.label}</span>
+                        <span
+                          className={`text-[10.5px] font-mono-num ${
+                            active ? 'text-[var(--blue-ink)]' : 'text-[var(--text-light)]'
+                          }`}
+                        >
+                          {cat.count}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {hasActiveDirectoryFilters && (
                   <button
-                    key={c.id}
                     type="button"
-                    onClick={() =>
-                      setDirectoryClubFilter(prev =>
-                        String(prev) === String(c.id) ? 'all' : String(c.id)
-                      )
-                    }
-                    className={`px-3 min-h-[32px] rounded-full text-xs font-semibold border cursor-pointer transition-colors ${
-                      active
-                        ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                    }`}
+                    onClick={handleResetDirectoryFilters}
+                    className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg bg-transparent hover:bg-[var(--bg-surface)] border-none text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
                   >
-                    {cleanText(c.name)}
+                    <RotateCcw size={12} />
+                    <span>Reset filters</span>
                   </button>
-                )
-              })}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Add Officer / Member Form */}
           {showAddPersonForm && (
             <form
               onSubmit={handleAddPersonSubmit}
-              className="p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-4 fade-in"
+              className="p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-tile)] border border-[var(--border-tile)] shadow-2xs space-y-4 fade-in"
             >
-              <div className="text-sm font-bold text-[var(--text)]">Add to Club Directory</div>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold text-[var(--text)]">
+                    Add to Club Directory
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)]">
+                    Add an executive officer, committee lead, or active member for any campus club.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddPersonForm(false)}
+                  aria-label="Close form"
+                  className="w-8 h-8 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] flex items-center justify-center cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
@@ -1121,13 +3233,13 @@ export default function ClubsHub({
                     value={personName}
                     onChange={e => setPersonName(e.target.value)}
                     placeholder="e.g. Jordan Chen"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                    Campus Email
+                    Campus or Club Email
                   </label>
                   <input
                     type="email"
@@ -1135,7 +3247,7 @@ export default function ClubsHub({
                     value={personEmail}
                     onChange={e => setPersonEmail(e.target.value)}
                     placeholder="jchen@ucsc.edu"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
 
@@ -1146,13 +3258,32 @@ export default function ClubsHub({
                   <select
                     value={personClubId}
                     onChange={e => setPersonClubId(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
-                    {allClubs.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {cleanText(c.name)}
-                      </option>
-                    ))}
+                    {joinedClubs.length > 0 ? (
+                      <>
+                        <optgroup label="My Joined Clubs">
+                          {joinedClubs.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {cleanText(c.name)}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="All Campus Clubs">
+                          {unjoinedClubsForSelect.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {cleanText(c.name)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
+                    ) : (
+                      allClubs.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {cleanText(c.name)}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -1163,7 +3294,7 @@ export default function ClubsHub({
                   <select
                     value={personType}
                     onChange={e => setPersonType(e.target.value)}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   >
                     <option value="officer">Executive Officer / Lead</option>
                     <option value="member">Club Member</option>
@@ -1178,44 +3309,55 @@ export default function ClubsHub({
                     type="text"
                     value={personRoleTitle}
                     onChange={e => setPersonRoleTitle(e.target.value)}
-                    placeholder={personType === 'officer' ? 'e.g. Events Chair' : 'e.g. Project Member'}
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    placeholder={
+                      personType === 'officer' ? 'e.g. Events Chair' : 'e.g. Project Member'
+                    }
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                    {personType === 'officer' ? 'Office Hours & Room' : 'Major & Class Year'}
+                    Major &amp; Class Year{' '}
+                    <span className="font-normal text-[var(--text-light)]">(optional)</span>
                   </label>
                   <input
                     type="text"
-                    value={personType === 'officer' ? personOfficeHours : personMajor}
-                    onChange={e =>
-                      personType === 'officer'
-                        ? setPersonOfficeHours(e.target.value)
-                        : setPersonMajor(e.target.value)
-                    }
-                    placeholder={
-                      personType === 'officer'
-                        ? 'e.g. Thu 2–4 PM · Baskin 152'
-                        : "e.g. Computer Science '27"
-                    }
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    value={personMajor}
+                    onChange={e => setPersonMajor(e.target.value)}
+                    placeholder="e.g. Computer Science '27"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                 </div>
+
+                {personType === 'officer' && (
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                      Office Hours &amp; Room{' '}
+                      <span className="font-normal text-[var(--text-light)]">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={personOfficeHours}
+                      onChange={e => setPersonOfficeHours(e.target.value)}
+                      placeholder="e.g. Thu 2–4 PM · Baskin Engineering 152"
+                      className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAddPersonForm(false)}
-                  className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer"
+                  className="px-4 min-h-[40px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-xs sm:text-sm font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
+                  className="px-5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90"
                 >
                   Save to Directory
                 </button>
@@ -1223,214 +3365,555 @@ export default function ClubsHub({
             </form>
           )}
 
-          {/* 1. Club Leadership & Officers */}
-          {(roleFilter === 'all' || roleFilter === 'officers') && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Shield size={15} className="text-[var(--blue)]" />
-                <h3 className="text-sm font-bold text-[var(--text)]">
-                  Club Leadership & Officers
-                </h3>
-                <BubbleTag label={`${filteredOfficers.length}`} color="blue" size="sm" />
-              </div>
+          {/* Selected Club Spotlight & Official Contact Banner */}
+          {selectedDirectoryClub &&
+            (() => {
+              const clubCatMeta = getClubCategoryMeta(selectedDirectoryClub.category)
+              const clubAccent = clubCatMeta?.color || 'blue'
+              const isSelectedJoined = Boolean(selectedDirectoryClub.joined)
+              const spotlightCopyKey = `spotlight_email_${selectedDirectoryClub.id}`
+              const isSpotlightCopied = copiedEmailId === spotlightCopyKey
+              const clubBoardEmail = selectedDirectoryClub.email || ''
 
-              {filteredOfficers.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredOfficers.map(m => {
-                    const isCopied = copiedEmailId === m.id
-                    const officerColor = m.color || 'blue'
-                    return (
-                      <div
-                        key={m.id}
-                        style={{
-                          borderTopWidth: '3px',
-                          borderTopColor: `var(--${officerColor})`,
-                        }}
-                        className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex flex-col justify-between gap-3.5"
+              return (
+                <div
+                  style={{
+                    borderTopWidth: '3px',
+                    borderTopColor: `var(--${clubAccent})`,
+                  }}
+                  className="content-tile p-4 sm:p-4.5 rounded-[var(--radius-sm)] space-y-3 fade-in"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <ClubAvatar club={selectedDirectoryClub} size={44} />
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
+                            {cleanText(selectedDirectoryClub.name)}
+                          </h3>
+                          <BubbleTag
+                            label={selectedDirectoryClub.categoryLabel || clubCatMeta.label}
+                            color={clubAccent}
+                            size="sm"
+                          />
+                          {selectedDirectoryClub.members != null && (
+                            <span className="text-xs text-[var(--text-muted)] font-mono-num">
+                              {selectedDirectoryClub.members}{' '}
+                              {selectedDirectoryClub.members === 1 ? 'member' : 'members'}
+                            </span>
+                          )}
+                        </div>
+                        {(selectedDirectoryClub.description || selectedDirectoryClub.schedule) && (
+                          <p className="text-xs text-[var(--text-muted)] leading-relaxed line-clamp-2">
+                            {cleanText(
+                              selectedDirectoryClub.description || selectedDirectoryClub.schedule
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {onToggleJoin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onToggleJoin(selectedDirectoryClub.id)
+                            if (onNotify) {
+                              onNotify(
+                                isSelectedJoined
+                                  ? `Left ${cleanText(selectedDirectoryClub.name)}`
+                                  : `Joined ${cleanText(selectedDirectoryClub.name)}!`,
+                                { type: isSelectedJoined ? 'info' : 'success' }
+                              )
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
+                            isSelectedJoined
+                              ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent hover:opacity-85'
+                              : 'bg-[var(--blue)] text-white border-[var(--blue)] hover:opacity-90'
+                          }`}
+                        >
+                          {isSelectedJoined ? <Check size={12} /> : <Plus size={12} />}
+                          <span>{isSelectedJoined ? 'Joined' : 'Join Club'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddPersonForClub(selectedDirectoryClub.id)}
+                        className="inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
                       >
-                        <div className="space-y-2.5">
-                          <div className="flex items-start justify-between gap-2.5">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar
-                                initials={m.initials}
-                                bg={`linear-gradient(135deg, var(--${m.color || 'blue'}), var(--purple))`}
-                                size={40}
-                              />
-                              <div className="min-w-0">
-                                <div className="font-bold text-sm text-[var(--text)] truncate">
-                                  {m.name}
-                                </div>
-                                <div className="text-xs font-semibold text-[var(--blue-ink)] truncate">
-                                  {m.club}
-                                </div>
+                        <UserPlus size={13} className="text-[var(--blue)]" />
+                        <span>Add to Roster</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectDirectoryClub('all')}
+                        className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                      >
+                        <X size={13} />
+                        <span>All Clubs</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {(clubBoardEmail ||
+                    selectedClubInstagramUrl ||
+                    selectedClubSiteUrl ||
+                    selectedDirectoryClub.schedule) && (
+                    <div className="pt-2.5 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[var(--text-muted)]">
+                        {clubBoardEmail && (
+                          <div className="inline-flex items-center gap-1.5">
+                            <Mail size={12} className="text-[var(--blue)] shrink-0" />
+                            <span className="font-mono-num text-[var(--text)]">
+                              {clubBoardEmail}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyEmail(spotlightCopyKey, clubBoardEmail)}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-[11px] font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              {isSpotlightCopied ? (
+                                <>
+                                  <Check size={11} className="text-[var(--green)]" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={11} className="text-[var(--text-muted)]" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                            <a
+                              href={`mailto:${clubBoardEmail}`}
+                              className="text-[11px] font-semibold text-[var(--blue-ink)] hover:underline no-underline"
+                            >
+                              Email
+                            </a>
+                          </div>
+                        )}
+
+                        {selectedDirectoryClub.schedule && (
+                          <div className="inline-flex items-center gap-1.5">
+                            <Calendar size={12} className="text-[var(--text-light)] shrink-0" />
+                            <span>{cleanText(selectedDirectoryClub.schedule)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {(selectedClubInstagramUrl || selectedClubSiteUrl) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedClubInstagramUrl && (
+                            <a
+                              href={selectedClubInstagramUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--purple)] text-xs font-semibold text-[var(--text)] no-underline transition-colors"
+                            >
+                              <PlatformIcon type="instagram" size={12} />
+                              <span>@{selectedClubHandle}</span>
+                              <ExternalLink size={11} className="text-[var(--text-light)]" />
+                            </a>
+                          )}
+
+                          {selectedClubSiteUrl && (
+                            <a
+                              href={selectedClubSiteUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--teal)] text-xs font-semibold text-[var(--text)] no-underline transition-colors"
+                            >
+                              <span>{selectedClubSiteLabel}</span>
+                              <ExternalLink size={11} className="text-[var(--text-light)]" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+          {/* Directory Content: Grouped by Club OR Grouped by Role */}
+          {(() => {
+            const showOfficersSection = roleFilter === 'all' || roleFilter === 'officers'
+            const showMembersSection = roleFilter === 'all' || roleFilter === 'members'
+            const showSelectedClubBoardFallback =
+              Boolean(selectedDirectoryClub) &&
+              showOfficersSection &&
+              filteredOfficers.length === 0 &&
+              !searchQuery.trim()
+
+            const visibleOfficerItemsCount = showOfficersSection
+              ? filteredOfficers.length + (showSelectedClubBoardFallback ? 1 : 0)
+              : 0
+            const visibleMemberItemsCount = showMembersSection ? filteredMembers.length : 0
+            const hasAnyDirectoryContent =
+              visibleOfficerItemsCount > 0 ||
+              visibleMemberItemsCount > 0 ||
+              matchingClubContacts.length > 0
+
+            if (!hasAnyDirectoryContent) {
+              return (
+                <div className="py-10 px-4 text-center rounded-[var(--radius-sm)] bg-[var(--bg-tile)] border border-[var(--border-tile)] space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-[var(--bg-surface)] text-[var(--text-muted)] flex items-center justify-center mx-auto">
+                    <Users size={18} />
+                  </div>
+                  <div className="space-y-1 max-w-md mx-auto">
+                    <div className="text-sm font-bold text-[var(--text)]">
+                      {selectedDirectoryClub
+                        ? `No ${
+                            roleFilter === 'members' ? 'active members' : 'directory entries'
+                          } listed yet for ${cleanText(selectedDirectoryClub.name)}`
+                        : searchQuery.trim()
+                          ? `No people or clubs match “${searchQuery.trim()}”`
+                          : 'No directory entries match the current filters'}
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                      {selectedDirectoryClub
+                        ? !selectedDirectoryClub.joined && roleFilter === 'members'
+                          ? 'Join this club to appear as an active member, or add a club member directly to the directory.'
+                          : 'Add an executive officer or club member to help classmates connect with this organization.'
+                        : 'Try resetting your active filters, switching club scope, or adding a new officer or member.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                    {selectedDirectoryClub &&
+                      !selectedDirectoryClub.joined &&
+                      roleFilter === 'members' &&
+                      onToggleJoin && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleJoin(selectedDirectoryClub.id)}
+                          className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                        >
+                          <Plus size={14} />
+                          <span>Join {cleanText(selectedDirectoryClub.name)}</span>
+                        </button>
+                      )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleOpenAddPersonForClub(
+                          selectedDirectoryClub?.id || null,
+                          roleFilter === 'members' ? 'member' : 'officer'
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                    >
+                      <UserPlus size={14} className="text-[var(--blue)]" />
+                      <span>
+                        Add {roleFilter === 'members' ? 'Member' : 'Officer / Member'}
+                      </span>
+                    </button>
+
+                    {hasActiveDirectoryFilters && (
+                      <button
+                        type="button"
+                        onClick={handleResetDirectoryFilters}
+                        className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                      >
+                        <RotateCcw size={13} />
+                        <span>Reset filters</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+
+            const visibleOfficersSlice =
+              directoryClubFilter === 'all'
+                ? filteredOfficers.slice(0, visibleOfficersCount)
+                : filteredOfficers
+            const remainingOfficersCount = Math.max(
+              0,
+              filteredOfficers.length - visibleOfficersSlice.length
+            )
+
+            const visibleMembersSlice =
+              directoryClubFilter === 'all'
+                ? filteredMembers.slice(0, visibleMembersCount)
+                : filteredMembers
+            const remainingMembersCount = Math.max(
+              0,
+              filteredMembers.length - visibleMembersSlice.length
+            )
+
+            const visibleClubGroupsSlice = groupedDirectoryByClub.slice(0, visibleClubGroupsCount)
+            const remainingClubGroupsCount = Math.max(
+              0,
+              groupedDirectoryByClub.length - visibleClubGroupsSlice.length
+            )
+
+            return (
+              <div className="space-y-6">
+                {directoryClubFilter === 'all' && directoryGroupMode === 'club' ? (
+                  /* ── BY CLUB GROUPED VIEW ── */
+                  groupedDirectoryByClub.length > 0 && (
+                    <div className={isCompactDensity ? 'space-y-5' : 'space-y-6'}>
+                      {visibleClubGroupsSlice.map(group => {
+                        const groupCatMeta = getClubCategoryMeta(group.club.category)
+                        const groupColor = groupCatMeta?.color || 'blue'
+                        const groupPeopleTotal = group.officers.length + group.members.length
+
+                        return (
+                          <section key={group.key} className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <ClubAvatar club={group.club} size={28} />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectDirectoryClub(group.club.id)}
+                                  className="p-0 bg-transparent border-none text-left text-sm sm:text-[15px] font-bold text-[var(--text)] hover:text-[var(--blue-ink)] truncate cursor-pointer transition-colors"
+                                >
+                                  {group.clubName}
+                                </button>
+                                <BubbleTag
+                                  label={`${groupPeopleTotal}`}
+                                  color={groupColor}
+                                  size="sm"
+                                />
+                                {group.club.joined && (
+                                  <BubbleTag label="Joined" color="green" size="sm" />
+                                )}
                               </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleSelectDirectoryClub(group.club.id)}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+                              >
+                                <span>Club contact &amp; roster</span>
+                                <ArrowRight size={12} />
+                              </button>
                             </div>
 
+                            <div className={directoryGridClasses}>
+                              {group.officers.map(o => renderOfficerCard(o, group.key))}
+                              {group.members.map(m => renderMemberCard(m, group.key))}
+                            </div>
+                          </section>
+                        )
+                      })}
+
+                      {remainingClubGroupsCount > 0 && (
+                        <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleClubGroupsCount(prev =>
+                                Math.min(
+                                  prev + DIRECTORY_CLUB_GROUP_PAGE_SIZE,
+                                  groupedDirectoryByClub.length
+                                )
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                          >
+                            <span>
+                              Show more club rosters ({visibleClubGroupsSlice.length} of{' '}
+                              {groupedDirectoryByClub.length} clubs)
+                            </span>
+                            <ChevronDown size={14} />
+                          </button>
+                          {remainingClubGroupsCount > DIRECTORY_CLUB_GROUP_PAGE_SIZE && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleClubGroupsCount(groupedDirectoryByClub.length)
+                              }
+                              className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                            >
+                              <span>Show all {groupedDirectoryByClub.length} clubs</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  /* ── BY ROLE VIEW (DEFAULT) ── */
+                  <>
+                    {showOfficersSection && visibleOfficerItemsCount > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Shield size={15} className="text-[var(--blue)]" />
+                            <h3 className="text-sm font-bold text-[var(--text)]">
+                              Club Leadership &amp; Officers
+                            </h3>
                             <BubbleTag
-                              label={m.role}
-                              color={m.color || 'blue'}
+                              label={`${filteredOfficers.length}`}
+                              color="blue"
                               size="sm"
                             />
                           </div>
+                        </div>
 
-                          <div className="space-y-1 text-xs text-[var(--text-muted)]">
-                            {m.major && <div className="truncate">{m.major}</div>}
-                            {m.office && (
-                              <div className="flex items-center gap-1.5 text-[var(--text)] font-medium">
-                                <Clock size={12} className="text-[var(--teal)] shrink-0" />
-                                <span className="truncate">Office Hours: {m.office}</span>
+                        <div className={directoryGridClasses}>
+                          {filteredOfficers.length > 0
+                            ? visibleOfficersSlice.map(m => renderOfficerCard(m))
+                            : renderClubContactCard(selectedDirectoryClub, {
+                                isSelectedClubFallback: true,
+                              })}
+                        </div>
+
+                        {remainingOfficersCount > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleOfficersCount(prev =>
+                                  Math.min(prev + DIRECTORY_PAGE_SIZE, filteredOfficers.length)
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              <span>
+                                Show more officers ({visibleOfficersSlice.length.toLocaleString()} of{' '}
+                                {filteredOfficers.length.toLocaleString()})
+                              </span>
+                              <ChevronDown size={14} />
+                            </button>
+                            {remainingOfficersCount > DIRECTORY_PAGE_SIZE && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleOfficersCount(filteredOfficers.length)}
+                                className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                              >
+                                <span>Show all {filteredOfficers.length.toLocaleString()}</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {showMembersSection && (
+                      <>
+                        {filteredMembers.length > 0 ? (
+                          <div className="space-y-3 pt-1">
+                            <div className="flex items-center gap-2">
+                              <Users size={15} className="text-[var(--teal)]" />
+                              <h3 className="text-sm font-bold text-[var(--text)]">
+                                Active Members
+                              </h3>
+                              <BubbleTag
+                                label={`${filteredMembers.length}`}
+                                color="teal"
+                                size="sm"
+                              />
+                            </div>
+
+                            <div className={directoryGridClasses}>
+                              {visibleMembersSlice.map(m => renderMemberCard(m))}
+                            </div>
+
+                            {remainingMembersCount > 0 && (
+                              <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setVisibleMembersCount(prev =>
+                                      Math.min(prev + DIRECTORY_PAGE_SIZE, filteredMembers.length)
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                                >
+                                  <span>
+                                    Show more members ({visibleMembersSlice.length.toLocaleString()}{' '}
+                                    of {filteredMembers.length.toLocaleString()})
+                                  </span>
+                                  <ChevronDown size={14} />
+                                </button>
+                                {remainingMembersCount > DIRECTORY_PAGE_SIZE && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setVisibleMembersCount(filteredMembers.length)}
+                                    className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--teal)] cursor-pointer transition-colors"
+                                  >
+                                    <span>Show all {filteredMembers.length.toLocaleString()}</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
-                        </div>
+                        ) : (
+                          selectedDirectoryClub &&
+                          roleFilter === 'all' && (
+                            <div className="px-4 py-3 rounded-xl bg-[var(--bg-tile)] border border-[var(--border-tile)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                                <Users size={14} className="text-[var(--teal)] shrink-0" />
+                                <span>
+                                  {selectedDirectoryClub.joined
+                                    ? `No other active members listed yet for ${cleanText(selectedDirectoryClub.name)}.`
+                                    : `Join ${cleanText(selectedDirectoryClub.name)} to appear in Active Members, or add a club member manually.`}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {!selectedDirectoryClub.joined && onToggleJoin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onToggleJoin(selectedDirectoryClub.id)}
+                                    className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                                  >
+                                    <Plus size={12} />
+                                    <span>Join Club</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleOpenAddPersonForClub(
+                                      selectedDirectoryClub.id,
+                                      'member'
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer hover:border-[var(--blue)] transition-colors"
+                                >
+                                  <UserPlus size={12} className="text-[var(--teal)]" />
+                                  <span>Add Member</span>
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
 
-                        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
-                          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
-                            {m.email}
-                          </span>
+                {/* Official Club Board Contacts (when searching by club name or viewing joined clubs without named officers) */}
+                {matchingClubContacts.length > 0 && (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={15} className="text-[var(--purple)]" />
+                      <h3 className="text-sm font-bold text-[var(--text)]">
+                        Official Club Board Contacts
+                      </h3>
+                      <BubbleTag
+                        label={`${matchingClubContacts.length}`}
+                        color="purple"
+                        size="sm"
+                      />
+                    </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyEmail(m.id, m.email)}
-                              title="Copy email address"
-                              className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
-                            >
-                              {isCopied ? (
-                                <>
-                                  <Check size={12} className="text-[var(--green)]" />
-                                  <span>Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={12} className="text-[var(--text-muted)]" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-
-                            <a
-                              href={`mailto:${m.email}`}
-                              title={`Email ${m.name}`}
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
-                            >
-                              <Mail size={14} />
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] rounded-xl border border-[var(--border)]">
-                  No officers match the current club or search filter.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 2. Active Club Members */}
-          {(roleFilter === 'all' || roleFilter === 'members') && (
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center gap-2">
-                <Users size={15} className="text-[var(--teal)]" />
-                <h3 className="text-sm font-bold text-[var(--text)]">Active Members</h3>
-                <BubbleTag label={`${filteredMembers.length}`} color="teal" size="sm" />
+                    <div className={directoryGridClasses}>
+                      {matchingClubContacts.map(club => renderClubContactCard(club))}
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {filteredMembers.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filteredMembers.map(m => {
-                    const isCopied = copiedEmailId === m.id
-                    return (
-                      <div
-                        key={m.id}
-                        style={{
-                          borderTopWidth: '3px',
-                          borderTopColor: 'var(--teal)',
-                        }}
-                        className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex flex-col justify-between gap-3"
-                      >
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <Avatar initials={m.initials} bg={m.avatarBg} size={38} />
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-[var(--text)] truncate">
-                                {m.name}
-                              </div>
-                              <div className="text-xs text-[var(--text-muted)] truncate">
-                                {m.role} · Since {m.joined}
-                              </div>
-                            </div>
-                          </div>
-
-                          {m.major && (
-                            <div className="text-xs text-[var(--text-muted)] truncate">
-                              {m.major}
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap gap-1.5">
-                            {(m.clubs || []).map(c => (
-                              <button
-                                key={c.label}
-                                type="button"
-                                onClick={() => {
-                                  if (c.clubId) setDirectoryClubFilter(String(c.clubId))
-                                }}
-                                className="bg-transparent border-none p-0 cursor-pointer"
-                              >
-                                <BubbleTag label={c.label} color={c.color || 'blue'} size="sm" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
-                          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
-                            {m.email}
-                          </span>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyEmail(m.id, m.email)}
-                              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
-                            >
-                              {isCopied ? (
-                                <>
-                                  <Check size={12} className="text-[var(--green)]" />
-                                  <span>Copied</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={12} className="text-[var(--text-muted)]" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-
-                            <a
-                              href={`mailto:${m.email}`}
-                              title={`Email ${m.name}`}
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-[var(--blue-ink)] no-underline transition-colors"
-                            >
-                              <Mail size={14} />
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] rounded-xl border border-[var(--border)]">
-                  No members match the current club or search filter.
-                </div>
-              )}
-            </div>
-          )}
+            )
+          })()}
         </div>
       )}
     </Card>

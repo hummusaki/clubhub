@@ -6,6 +6,7 @@ import discordService from './discord.js';
 import emailService from './email.js';
 import googleCalendarService from './googleCalendar.js';
 import websiteService from './website.js';
+import rosterService from './roster.js';
 import { getDataSources } from './resourceIngestor.js';
 
 export class SyncOrchestrator {
@@ -21,6 +22,8 @@ export class SyncOrchestrator {
         return googleCalendarService.syncCalendar(options);
       case 'website':
         return websiteService.syncWebsite(options);
+      case 'roster':
+        return rosterService.syncRoster(options);
       default:
         throw new Error(`Unsupported platform: ${platform}`);
     }

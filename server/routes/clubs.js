@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   getDb,
   formatClubRow,
+  formatRosterRow,
   getClubById,
   normalizeClubId,
   upsertCollectorData,
@@ -38,7 +39,30 @@ router.get('/', (req, res) => {
   res.json(db.prepare(sql).all(...params).map(formatClubRow));
 });
 
-// GET /api/clubs/:id — single club by Instagram handle (`id`) with events, announcements, links, posts
+// GET /api/clubs/:id/roster — daily roster & officers alongside a single club
+router.get('/:id/roster', (req, res) => {
+  const db = getDb();
+  const cid = normalizeClubId(req.params.id);
+  const clubRow = db.stmt('SELECT * FROM clubs WHERE lower(id) = lower(?)').get(cid);
+  if (!clubRow) return res.status(404).json({ error: 'Club not found' });
+
+  const roster = db
+    .stmt("SELECT * FROM roster WHERE lower(clubId) = lower(?) ORDER BY CASE WHEN personType = 'officer' THEN 0 ELSE 1 END, name ASC")
+    .all(clubRow.id)
+    .map(formatRosterRow);
+
+  res.json({
+    clubId: clubRow.id,
+    clubName: clubRow.name,
+    memberCount: clubRow.memberCount || clubRow.followers || 0,
+    discordMemberCount: clubRow.discordMemberCount ?? null,
+    discordOnlineCount: clubRow.discordOnlineCount ?? null,
+    rosterUpdatedAt: clubRow.rosterUpdatedAt || null,
+    roster,
+  });
+});
+
+// GET /api/clubs/:id — single club by Instagram handle (`id`) with events, announcements, links, posts, roster
 router.get('/:id', (req, res) => {
   const club = getClubById(req.params.id);
   if (!club) return res.status(404).json({ error: 'Club not found' });

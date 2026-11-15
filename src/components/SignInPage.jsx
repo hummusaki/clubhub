@@ -24,34 +24,17 @@ import { ClubHubLogo, IconBadge } from './ui'
 import {
   STORED_CLERK_KEY,
   isValidClerkPublishableKey,
-  hashPasswordSha256,
-  verifyStoredAccountPassword,
 } from '../utils/authValidation'
+import {
+  authenticateWorkspaceEmail,
+  syncExternalWorkspaceSession,
+} from '../api/workspaceClient'
 
-const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
 const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
 
 // Support & Help links (e.g. Google Forms link for issue reporting)
 const SUPPORT_FORM_URL = 'https://forms.gle/ZmD1cq6mLFFLxBeB8'
 const SUPPORT_EMAIL = 'support@clubhub.ucsc.edu'
-
-function getRegisteredEmailAccounts() {
-  try {
-    return JSON.parse(localStorage.getItem(EMAIL_ACCOUNTS_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
-function saveRegisteredEmailAccount(account) {
-  try {
-    const existing = getRegisteredEmailAccounts()
-    existing[account.email.toLowerCase()] = account
-    localStorage.setItem(EMAIL_ACCOUNTS_KEY, JSON.stringify(existing))
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 function getEffectiveGoogleClientId() {
   const envId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim()
@@ -900,10 +883,11 @@ export default function SignInPage({
     }
   }
 
-  function finalizeUserSession(profile) {
+  function finalizeUserSession(profile, workspaceOverview = null) {
     const cleanEmail = (profile.email || '').trim().toLowerCase()
     const resolvedName = (profile.fullName || '').trim() || formatNameFromEmail(cleanEmail)
     const userObj = {
+      id: profile.id || workspaceOverview?.user?.id || '',
       fullName: resolvedName,
       firstName: resolvedName.split(' ')[0],
       email: cleanEmail,
@@ -912,10 +896,15 @@ export default function SignInPage({
       provider: profile.provider || 'email',
       authenticated: true,
       verifiedEdu: cleanEmail.endsWith('.edu'),
-      darkMode: typeof profile.darkMode === 'boolean' ? profile.darkMode : undefined,
+      themeMode:
+        profile.themeMode === 'light' ||
+        profile.themeMode === 'dark' ||
+        profile.themeMode === 'system'
+          ? profile.themeMode
+          : undefined,
       avatarBg: profile.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
     }
-    if (onLocalSignIn) onLocalSignIn(userObj)
+    if (onLocalSignIn) onLocalSignIn(userObj, workspaceOverview)
   }
 
   async function launchDirectGoogleOAuth(clientId) {
@@ -946,15 +935,26 @@ export default function SignInPage({
             })
             if (!res.ok) throw new Error('Could not retrieve Google account profile.')
             const data = await res.json()
-            setGoogleLoading(false)
-            setGoogleConfigPromptOpen(false)
-            finalizeUserSession({
-              fullName: data.name || formatNameFromEmail(data.email),
-              email: data.email,
-              picture: data.picture || null,
+            const synced = await syncExternalWorkspaceSession({
               provider: 'google',
+              googleAccessToken: tokenResponse.access_token,
+              email: data.email,
+              fullName: data.name || formatNameFromEmail(data.email),
               avatarBg: 'linear-gradient(135deg, #4285F4, #34A853)',
             })
+            setGoogleLoading(false)
+            setGoogleConfigPromptOpen(false)
+            finalizeUserSession(
+              {
+                id: synced?.user?.id || '',
+                fullName: synced?.user?.fullName || data.name || formatNameFromEmail(data.email),
+                email: data.email,
+                picture: data.picture || null,
+                provider: 'google',
+                avatarBg: 'linear-gradient(135deg, #4285F4, #34A853)',
+              },
+              synced?.ok ? synced : null
+            )
           } catch (err) {
             setGoogleLoading(false)
             setError(err?.message || 'Google Sign-In failed. Please try again.')
@@ -1167,8 +1167,6 @@ export default function SignInPage({
 
     setSubmitting(true)
     const clerk = clerkBridgeRef.current
-    const registered = getRegisteredEmailAccounts()
-    const existingLocal = registered[cleanEmail]
 
     // 1. Try Clerk authentication first when Clerk is active
     if (hasPublishableKey && clerk?.client) {
@@ -1209,21 +1207,11 @@ export default function SignInPage({
           }
           if (code === 'form_identifier_not_found') {
             notFoundInClerk = true
-          } else if (!existingLocal) {
-            setSubmitting(false)
-            setError(
-              err?.errors?.[0]?.longMessage ||
-                err?.errors?.[0]?.message ||
-                err?.message ||
-                'Unable to sign in right now. Please try again.'
-            )
-            return
           }
         }
       }
 
-      // If email is not in Clerk yet and not an existing local account, auto-create in Clerk
-      if (notFoundInClerk && !existingLocal && clerk.client.signUp) {
+      if (notFoundInClerk && clerk.client.signUp) {
         try {
           const derivedName = formatNameFromEmail(cleanEmail)
           const nameParts = derivedName.split(/\s+/)
@@ -1270,57 +1258,43 @@ export default function SignInPage({
             setSubmitting(false)
             return
           }
-        } catch (err) {
-          setSubmitting(false)
-          setError(
-            err?.errors?.[0]?.longMessage ||
-              err?.errors?.[0]?.message ||
-              err?.message ||
-              'New accounts require a stronger password (at least 8 characters).'
-          )
-          return
+        } catch {
+          // Fall through to Supabase / Workspace cloud auth
         }
       }
     }
 
-    // 2. Unified local account sign-in / automatic sign-up fallback (passwords hashed via SHA-256)
-    const passwordHash = await hashPasswordSha256(password, cleanEmail)
+    // 2. Cloud Supabase Auth / Backend Multi-User Session (zero localStorage credentials)
+    try {
+      const authRes = await authenticateWorkspaceEmail({
+        email: cleanEmail,
+        password,
+        fullName: formatNameFromEmail(cleanEmail),
+        avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
+        mode: 'auto',
+      })
 
-    if (existingLocal) {
-      const validPassword = await verifyStoredAccountPassword(existingLocal, password)
-      if (!validPassword) {
+      if (!authRes?.ok) {
         setSubmitting(false)
-        setError('Incorrect password for this account. Please try again.')
+        setError(authRes?.error || 'Unable to sign in. Please verify your email and password.')
         return
       }
 
-      const { password: _legacyPlaintext, ...restExisting } = existingLocal
-      const accountToSave = {
-        ...restExisting,
-        email: cleanEmail,
-        fullName: existingLocal.fullName || formatNameFromEmail(cleanEmail),
-        passwordHash,
-        darkMode:
-          typeof existingLocal.darkMode === 'boolean' ? existingLocal.darkMode : undefined,
-        avatarBg:
-          existingLocal.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
-      }
-      saveRegisteredEmailAccount(accountToSave)
       setSubmitting(false)
-      finalizeUserSession(accountToSave)
-      return
+      finalizeUserSession(
+        {
+          id: authRes.user?.id || '',
+          email: authRes.user?.email || cleanEmail,
+          fullName: authRes.user?.fullName || formatNameFromEmail(cleanEmail),
+          avatarBg:
+            authRes.user?.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))',
+        },
+        authRes
+      )
+    } catch (err) {
+      setSubmitting(false)
+      setError(err?.message || 'Unable to reach authentication service.')
     }
-
-    const newAccount = {
-      email: cleanEmail,
-      fullName: formatNameFromEmail(cleanEmail),
-      passwordHash,
-      darkMode: Boolean(dark),
-      avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
-    }
-    saveRegisteredEmailAccount(newAccount)
-    setSubmitting(false)
-    finalizeUserSession(newAccount)
   }
 
   return (
@@ -1385,8 +1359,8 @@ export default function SignInPage({
                 <span>UC Santa Cruz</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl lg:text-[36px] font-extrabold tracking-tight text-[var(--text)] leading-[1.16]">
-                Everything happening across{' '}
+              <h1 className="text-2xl sm:text-3xl lg:text-[36px] font-extrabold tracking-tight text-[var(--text)] leading-[1.16] text-balance">
+                See what&apos;s happening{' '}
                 <span
                   className="bg-clip-text text-transparent"
                   style={{
@@ -1394,12 +1368,12 @@ export default function SignInPage({
                       'linear-gradient(135deg, var(--blue) 0%, var(--purple) 52%, var(--teal) 100%)',
                   }}
                 >
-                  UCSC student clubs.
+                  across every campus club.
                 </span>
               </h1>
 
               <p className="text-[13.5px] sm:text-[14.5px] text-[var(--text-muted)] leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Explore campus organizations, follow announcements from Discord and Instagram, and
+                Explore student organizations, follow announcements from Discord and Instagram, and
                 coordinate event RSVPs and group availability.
               </p>
 

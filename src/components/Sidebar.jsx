@@ -34,17 +34,19 @@ export default function Sidebar({
       window.removeEventListener('keydown', handleKey)
     }
   }, [])
+  const effectiveUser = isDemo ? null : user
+
   const displayName =
     userSettings?.displayName?.trim() ||
-    user?.fullName ||
-    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-    user?.email?.split('@')[0] ||
+    effectiveUser?.fullName ||
+    effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    effectiveUser?.email?.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
   const subline =
     userSettings?.major?.trim() ||
-    user?.primaryEmailAddress?.emailAddress ||
-    user?.email ||
+    effectiveUser?.primaryEmailAddress?.emailAddress ||
+    effectiveUser?.email ||
     (isDemo ? 'Preview Mode' : 'Verified Member')
 
   const initials = displayName
@@ -57,7 +59,7 @@ export default function Sidebar({
 
   const avatarGradient =
     userSettings?.avatarBg ||
-    user?.avatarBg ||
+    effectiveUser?.avatarBg ||
     'linear-gradient(135deg, var(--blue), var(--purple))'
 
   return (
@@ -208,10 +210,10 @@ export default function Sidebar({
         </nav>
       </aside>
 
-      {/* ── Mobile Bottom Navigation Bar (< lg): 5 Core Destinations ── */}
+      {/* ── Mobile Bottom Navigation Bar (< lg): 6 Core Destinations ── */}
       <nav
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-glass)] backdrop-blur-md
-          border-t border-[var(--border)] px-1.5 pt-1.5 grid grid-cols-5 select-none"
+          border-t border-[var(--border)] px-1 pt-1.5 grid grid-cols-6 select-none"
         style={{
           paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom))',
         }}

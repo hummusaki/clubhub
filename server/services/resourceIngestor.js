@@ -9,6 +9,7 @@ import {
   upsertCollectorData,
   setDictEntry,
   getDictionary,
+  deleteDictEntry,
 } from '../database.js';
 import { extractPost } from '../../collector/src/extract.js';
 
@@ -30,6 +31,14 @@ export function upsertDataSource({ clubId, platform, identifier, isActive = true
     source: platform,
   });
   return value;
+}
+
+export function deleteDataSource(idOrKey) {
+  const raw = String(idOrKey || '').trim();
+  if (!raw) return { deleted: false, id: raw };
+  const dictKey = raw.startsWith('source:') ? raw : `source:${raw}`;
+  const res = deleteDictEntry(dictKey);
+  return { deleted: res.deleted, id: raw.replace(/^source:/, '') };
 }
 
 export function getDataSources({ clubId, platform } = {}) {
@@ -83,12 +92,13 @@ export function ingestResourceItem({
     });
   }
 
-  // Discord #announcements and Instagram Story Mentions should always surface in Announcements
-  // even when they also contain an event date/time.
+  // Discord #announcements, club Email newsletters, and Instagram Story Mentions should always
+  // surface in Announcements even when they also contain an event date/time.
   const shouldCreateAnnouncement =
     forceAnnouncement !== null
       ? Boolean(forceAnnouncement)
       : source === 'discord' ||
+        source === 'email' ||
         source === 'instagram_story' ||
         info.type === 'announcement' ||
         Boolean(info.important);
