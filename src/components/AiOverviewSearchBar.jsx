@@ -259,8 +259,8 @@ export default function AiOverviewSearchBar({
                               {/* Match Score Badge */}
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold ${matchScore >= 80
-                                    ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
-                                    : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
+                                  ? 'bg-[var(--green-light)] text-[var(--green-ink)] border border-[var(--green)]/20'
+                                  : 'bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20'
                                   }`}
                               >
                                 {matchScore}% Match
@@ -271,8 +271,8 @@ export default function AiOverviewSearchBar({
                                 type="button"
                                 onClick={e => handleJoinClick(e, club)}
                                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer border ${isJoined
-                                    ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
-                                    : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
+                                  ? 'bg-[var(--bg-card)] border-[var(--green)]/35 text-[var(--green-ink)]'
+                                  : 'bg-[var(--blue)] hover:opacity-90 border-[var(--blue)] text-white shadow-2xs'
                                   }`}
                               >
                                 {isJoined ? (
