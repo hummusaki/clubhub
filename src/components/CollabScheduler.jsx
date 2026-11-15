@@ -19,6 +19,7 @@ import {
   createSchedulerPoll,
   saveSchedulerResponse,
   bookSchedulerSlot,
+  deleteEvent,
 } from '../api/client'
 
 // ── Supported Timezones ─────────────────────────────────────────────
@@ -323,8 +324,11 @@ export default function CollabScheduler({
     'Free Mon 2pm-4:30pm, Wed 2pm-5pm; Busy Tue 2pm-3:30pm'
   )
 
-  // Selected/inspected slot on the heatmap
+  // Selected/inspected slot on the heatmap (locked on click so moving mouse to Book button never loses selection)
   const [activeSlotIso, setActiveSlotIso] = useState(null)
+  const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
+  const [bookingDurationMins, setBookingDurationMins] = useState(60)
+  const [bookingLoading, setBookingLoading] = useState(false)
   const [statusBanner, setStatusBanner] = useState(null)
 
   // New Collaboration Poll Modal
@@ -604,35 +608,70 @@ export default function CollabScheduler({
     handleSaveToDatabase(nextFree, nextBusy, textInput)
   }
 
+  // Booked collaboration events from the database
+  const bookedCollabEvents = useMemo(() => {
+    const allCalEvents = [
+      ...(activePoll.calendarEvents || []),
+      ...(Array.isArray(events) ? events : []),
+    ]
+    const seen = new Set()
+    const list = []
+    for (const ev of allCalEvents) {
+      if (!ev || !ev.id || seen.has(ev.id)) continue
+      seen.add(ev.id)
+      if (String(ev.id).startsWith('collab_evt_')) {
+        list.push(ev)
+      }
+    }
+    return list.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+  }, [activePoll.calendarEvents, events])
+
   // Book an overlapping slot onto the ClubHub Calendar (`events` table)
   async function handleBookMeeting(slotIso) {
-    if (!slotIso) return
-    const endIso = new Date(new Date(slotIso).getTime() + 60 * 60 * 1000).toISOString()
+    const targetIso = slotIso || inspectedStats?.iso
+    if (!targetIso) {
+      setStatusBanner('⚠️ Click any time slot on the grid first to select a time to book.')
+      return
+    }
+    setBookingLoading(true)
+    const endIso = new Date(
+      new Date(targetIso).getTime() + bookingDurationMins * 60 * 1000
+    ).toISOString()
     setStatusBanner('Booking collaboration meeting onto ClubHub Calendar…')
     const res = await bookSchedulerSlot(activePoll.id, {
-      start: slotIso,
+      start: targetIso,
       end: endIso,
       title: activePoll.title,
       clubId: activePoll.hostClubId || 'demo_ucsc_csclub',
       clubName: (activePoll.collaboratingClubs || []).slice(0, 2).join(' × ') || userClubName,
       location: activePoll.location || 'Baskin Engineering 152',
     })
+    setBookingLoading(false)
 
     if (res && res.booked) {
+      setActiveSlotIso(targetIso)
       setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
       setStatusBanner(
-        `🎉 Booked "${activePoll.title}" for ${formatSlotInTz(slotIso, detectedLocalTz, {
+        `🎉 Booked "${activePoll.title}" for ${formatSlotInTz(targetIso, detectedLocalTz, {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
-        })} (${getTzShortName(detectedLocalTz)}) and added to ClubHub Calendar!`
+        })} (${bookingDurationMins} min, ${getTzShortName(detectedLocalTz)}) and added to ClubHub Schedule!`
       )
-      if (onEventBooked) onEventBooked()
+      if (onEventBooked) await onEventBooked()
     } else {
       setStatusBanner('⚠️ Could not reach backend database to book event.')
     }
+  }
+
+  async function handleUnbookMeeting(eventId) {
+    if (!eventId) return
+    await deleteEvent(eventId)
+    await loadPolls()
+    if (onEventBooked) await onEventBooked()
+    setStatusBanner('🗑️ Removed booked collaboration meeting from the ClubHub Calendar.')
   }
 
   // Create a new Collaboration Poll
@@ -663,7 +702,9 @@ export default function CollabScheduler({
 
   const inspectedStats = activeSlotIso
     ? slotStatsMap[activeSlotIso]
-    : bestOverlaps[0] || null
+    : hoveredSlotIso
+      ? slotStatsMap[hoveredSlotIso]
+      : bestOverlaps[0] || Object.values(slotStatsMap)[0] || null
 
   const tzDiffersFromLocal = userTimezone !== detectedLocalTz
 
@@ -1144,8 +1185,14 @@ export default function CollabScheduler({
                       const isSelected = activeSlotIso === iso
                       const calEvs = st?.calendarEvents || []
 
+                      const isBookedCollabSlot = calEvs.some(e =>
+                        String(e.id || '').startsWith('collab_evt_')
+                      )
+
                       let bg = 'var(--bg-card)'
-                      if (count > 0) {
+                      if (isBookedCollabSlot) {
+                        bg = 'rgba(59, 130, 246, 0.88)'
+                      } else if (count > 0) {
                         const alpha = (0.18 + ratio * 0.78).toFixed(2)
                         bg = `rgba(22, 163, 74, ${alpha})`
                       }
@@ -1155,18 +1202,27 @@ export default function CollabScheduler({
                           key={iso}
                           onClick={() => setActiveSlotIso(iso)}
                           onMouseEnter={() => {
-                            if (!isDragging) setActiveSlotIso(iso)
+                            if (!isDragging) setHoveredSlotIso(iso)
                           }}
+                          onMouseLeave={() => setHoveredSlotIso(null)}
                           className={`border border-[var(--border)] h-5 cursor-pointer transition-all text-center text-[9.5px] font-semibold relative ${
-                            isSelected ? 'ring-2 ring-[var(--blue)] z-10' : ''
+                            isSelected
+                              ? 'ring-2 ring-[var(--blue)] z-10'
+                              : hoveredSlotIso === iso
+                                ? 'ring-1 ring-[var(--text-muted)] z-10'
+                                : ''
                           }`}
                           style={{
                             background: bg,
-                            color: ratio > 0.5 ? '#fff' : 'var(--text)',
+                            color: isBookedCollabSlot || ratio > 0.5 ? '#fff' : 'var(--text)',
                           }}
                         >
-                          {count > 0 && <span>{count}/{total}</span>}
-                          {calEvs.length > 0 && (
+                          {isBookedCollabSlot ? (
+                            <span title="Booked Collaboration Meeting">📅 {count}/{total}</span>
+                          ) : (
+                            count > 0 && <span>{count}/{total}</span>
+                          )}
+                          {calEvs.length > 0 && !isBookedCollabSlot && (
                             <span
                               className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-[var(--yellow)]"
                               title={`Club Event: ${calEvs.map(e => e.title).join(', ')}`}
@@ -1204,11 +1260,16 @@ export default function CollabScheduler({
                       ({getTzShortName(detectedLocalTz)})
                     </span>
                   </div>
-                  <BubbleTag
-                    label={`${inspectedStats.availableCount}/${inspectedStats.totalParticipants} Available`}
-                    color={inspectedStats.availableCount === inspectedStats.totalParticipants ? 'green' : 'blue'}
-                    size="sm"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    {activeSlotIso && (
+                      <BubbleTag label="📌 Slot Selected" color="purple" size="sm" />
+                    )}
+                    <BubbleTag
+                      label={`${inspectedStats.availableCount}/${inspectedStats.totalParticipants} Available`}
+                      color={inspectedStats.availableCount === inspectedStats.totalParticipants ? 'green' : 'blue'}
+                      size="sm"
+                    />
+                  </div>
                 </div>
 
                 {tzDiffersFromLocal && (
@@ -1276,85 +1337,214 @@ export default function CollabScheduler({
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleBookMeeting(inspectedStats.iso)}
-                className="w-full py-2 px-4 rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5"
-              >
-                <CalendarIcon size={13.5} />
-                Book This Slot onto ClubHub Calendar
-              </button>
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-[var(--text-muted)]">
+                    Meeting Duration:
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {[30, 60, 90, 120].map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setBookingDurationMins(mins)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-pointer border ${
+                          bookingDurationMins === mins
+                            ? 'bg-[var(--blue)] text-white border-transparent'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border)]'
+                        }`}
+                      >
+                        {mins === 30 ? '30m' : `${mins / 60}h`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {(() => {
+                  const existingBooked = inspectedStats.calendarEvents.find(e =>
+                    String(e.id || '').startsWith('collab_evt_')
+                  )
+                  return existingBooked ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleBookMeeting(inspectedStats.iso)}
+                        className="flex-1 py-2 px-4 rounded-lg bg-[var(--green)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5"
+                      >
+                        <Check size={14} />
+                        Booked on ClubHub Calendar! (Click to Update)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUnbookMeeting(existingBooked.id)}
+                        className="py-2 px-3 rounded-lg bg-[var(--red-light)] text-[var(--red)] text-xs font-semibold border border-[var(--border)] cursor-pointer hover:opacity-90"
+                      >
+                        Unbook
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={bookingLoading}
+                      onClick={() => handleBookMeeting(inspectedStats.iso)}
+                      className="w-full py-2.5 px-4 rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-1.5 shadow-xs"
+                    >
+                      <CalendarIcon size={13.5} />
+                      {bookingLoading
+                        ? 'Booking onto Calendar…'
+                        : `Book ${formatSlotInTz(inspectedStats.iso, detectedLocalTz, {
+                            weekday: 'short',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })} (${bookingDurationMins}m) onto ClubHub Calendar`}
+                    </button>
+                  )
+                })()}
+              </div>
             </>
           ) : (
             <div className="text-xs text-[var(--text-muted)]">
-              Hover or click any slot on the heatmap to inspect group availability.
+              Click any slot on the heatmap to inspect group availability.
             </div>
           )}
         </div>
 
         {/* Best Overlapping Times for Collaboration */}
-        <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)]">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs sm:text-sm font-bold text-[var(--text)] inline-flex items-center gap-1.5">
-              <Sparkles size={15} className="text-[var(--yellow)]" />
-              Best Overlapping Times (You + Collaborating Clubs)
-            </span>
-            <span className="text-[11px] text-[var(--text-muted)]">
-              Auto-translated to {getTzShortName(detectedLocalTz)}
-            </span>
+        <div className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between gap-3">
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] inline-flex items-center gap-1.5">
+                <Sparkles size={15} className="text-[var(--yellow)]" />
+                Best Overlapping Times (You + Collaborating Clubs)
+              </span>
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Auto-translated to {getTzShortName(detectedLocalTz)}
+              </span>
+            </div>
+
+            {bestOverlaps.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {bestOverlaps.map(slot => {
+                  const isAlreadyBooked = (slot.calendarEvents || []).some(e =>
+                    String(e.id || '').startsWith('collab_evt_')
+                  )
+                  return (
+                    <div
+                      key={slot.iso}
+                      onClick={() => setActiveSlotIso(slot.iso)}
+                      className={`p-2.5 rounded-lg bg-[var(--bg-card)] border flex flex-wrap items-center justify-between gap-2 cursor-pointer transition-colors ${
+                        activeSlotIso === slot.iso
+                          ? 'border-[var(--blue)]'
+                          : 'border-[var(--border)] hover:border-[var(--blue)]'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-semibold text-[var(--text)]">
+                          {formatSlotInTz(slot.iso, detectedLocalTz, {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}{' '}
+                          ({getTzShortName(detectedLocalTz)})
+                        </div>
+                        <div className="text-[11px] text-[var(--text-muted)]">
+                          {slot.availableUsers.map(u => u.clubName || u.userName).join(' · ')}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <BubbleTag
+                          label={`${slot.availableCount}/${slot.totalParticipants} Free`}
+                          color="green"
+                          size="sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={ev => {
+                            ev.stopPropagation()
+                            handleBookMeeting(slot.iso)
+                          }}
+                          className={`px-3 py-1 rounded-full text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90 ${
+                            isAlreadyBooked ? 'bg-[var(--green)]' : 'bg-[var(--blue)]'
+                          }`}
+                        >
+                          {isAlreadyBooked ? '✓ Booked' : 'Book'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--text-muted)] py-4">
+                Mark more green Free slots on your grid (or type when you are free above) to see overlapping times with collaborating clubs!
+              </div>
+            )}
           </div>
 
-          {bestOverlaps.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {bestOverlaps.map(slot => (
-                <div
-                  key={slot.iso}
-                  onClick={() => setActiveSlotIso(slot.iso)}
-                  className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 cursor-pointer hover:border-[var(--blue)] transition-colors"
-                >
-                  <div>
-                    <div className="text-xs font-semibold text-[var(--text)]">
-                      {formatSlotInTz(slot.iso, detectedLocalTz, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}{' '}
-                      ({getTzShortName(detectedLocalTz)})
+          {/* Booked Collaboration Meetings Summary List */}
+          {bookedCollabEvents.length > 0 && (
+            <div className="pt-3 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-[var(--green)] inline-flex items-center gap-1.5">
+                  📅 Booked Collaboration Meetings ({bookedCollabEvents.length})
+                </span>
+                <span className="text-[10.5px] text-[var(--text-muted)]">
+                  Synced to ClubHub Calendar ↑
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {bookedCollabEvents.map(ev => (
+                  <div
+                    key={ev.id}
+                    className="px-3 py-2 rounded-lg bg-[var(--green-light)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <div>
+                      <span className="font-semibold text-[var(--text)]">
+                        {cleanText(ev.title)}
+                      </span>{' '}
+                      <span className="text-[var(--text-muted)]">
+                        —{' '}
+                        {formatSlotInTz(ev.start, detectedLocalTz, {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}{' '}
+                        ({getTzShortName(detectedLocalTz)}) · {ev.location || 'TBD'}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-[var(--text-muted)]">
-                      {slot.availableUsers.map(u => u.clubName || u.userName).join(' · ')}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <BubbleTag
-                      label={`${slot.availableCount}/${slot.totalParticipants} Free`}
-                      color="green"
-                      size="sm"
-                    />
                     <button
                       type="button"
-                      onClick={ev => {
-                        ev.stopPropagation()
-                        handleBookMeeting(slot.iso)
-                      }}
-                      className="px-3 py-1 rounded-full bg-[var(--blue)] text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90"
+                      onClick={() => handleUnbookMeeting(ev.id)}
+                      className="text-[11px] font-semibold text-[var(--red)] bg-transparent border-none cursor-pointer hover:underline"
                     >
-                      Book
+                      Unbook
                     </button>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--text-muted)] py-4">
-              Mark more green Free slots on your grid (or type when you are free above) to see overlapping times with collaborating clubs!
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Bottom Status Confirmation Toast (visible right next to the Book buttons) */}
+      {statusBanner && (
+        <div className="mt-3 px-3.5 py-2.5 rounded-lg bg-[var(--green-light)] border border-[var(--border)] text-[var(--text)] text-xs font-semibold flex items-center justify-between">
+          <span>{statusBanner}</span>
+          <button
+            type="button"
+            onClick={() => setStatusBanner(null)}
+            className="text-xs font-bold bg-transparent border-none cursor-pointer text-[var(--text-muted)]"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </Card>
   )
 }

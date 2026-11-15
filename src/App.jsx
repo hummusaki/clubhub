@@ -22,6 +22,7 @@ import {
   getEvents,
   getLinks,
   getStats,
+  deleteEvent,
 } from './api/client'
 
 const KIND_ICON_MAP = {
@@ -132,13 +133,23 @@ function MainDashboard({
     if (evts && evts.length > 0) {
       setRawEvents(evts)
       const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
+      // Put newly booked collaboration events at the top of the schedule so they are immediately visible!
+      const sortedEvts = [...evts].sort((a, b) => {
+        const aBooked = String(a.id || '').startsWith('collab_evt_') ? 1 : 0
+        const bBooked = String(b.id || '').startsWith('collab_evt_') ? 1 : 0
+        if (aBooked !== bBooked) return bBooked - aBooked
+        return new Date(a.start).getTime() - new Date(b.start).getTime()
+      })
       setLiveSchedule(
-        evts.slice(0, 6).map((e, i) => {
+        sortedEvts.map((e, i) => {
+          const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
           const startDate = new Date(e.start)
           const timeLabel = e.allDay
             ? `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (All Day)`
             : startDate.toLocaleString('en-US', {
                 weekday: 'short',
+                month: 'short',
+                day: 'numeric',
                 hour: 'numeric',
                 minute: '2-digit',
               })
@@ -148,9 +159,14 @@ function MainDashboard({
             event: cleanText(e.title),
             time: timeLabel,
             location: cleanText(e.location || 'TBD'),
-            duration: e.recurring ? `Every ${e.recurring}` : e.kind || 'event',
-            color: palette[i % palette.length],
+            duration: isBookedCollab
+              ? 'Booked via Collab Scheduler'
+              : e.recurring
+                ? `Every ${e.recurring}`
+                : e.kind || 'event',
+            color: isBookedCollab ? 'green' : palette[i % palette.length],
             upcoming: false,
+            isBookedCollab,
           }
         })
       )
@@ -294,7 +310,14 @@ function MainDashboard({
         {(showAll || activeNav === 'calendar') && (
           <>
             <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
-              <TodaySchedule items={liveSchedule} searchQuery={searchQuery} />
+              <TodaySchedule
+                items={liveSchedule}
+                searchQuery={searchQuery}
+                onDeleteEvent={async id => {
+                  await deleteEvent(id)
+                  await loadBackendData()
+                }}
+              />
               <Announcements items={liveAnnouncements} />
             </div>
 

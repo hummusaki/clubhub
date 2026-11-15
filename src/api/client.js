@@ -66,6 +66,7 @@ export const getEvents = (params = {}) => fetchJSON(withQuery('/events', params)
 export const getTodaySchedule = () => fetchJSON('/events/today');
 export const getUpcomingEvents = () => fetchJSON('/events/upcoming');
 export const createEvent = data => fetchJSON('/events', { method: 'POST', body: JSON.stringify(data) });
+export const deleteEvent = id => fetchJSON(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 export const getAnnouncements = (params = {}) => fetchJSON(withQuery('/announcements', params));
 export const createAnnouncement = data => fetchJSON('/announcements', { method: 'POST', body: JSON.stringify(data) });
