@@ -412,7 +412,11 @@ function FallbackApp({ dark, toggleDark }) {
   )
 }
 
-export default function App({ hasClerkKey = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) }) {
+const DEFAULT_CLERK_KEY =
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  'pk_test_c2VjdXJlLWNvdy0zMDI1LmNsZXJrLmFjY291bnRzLmRldiQ'
+
+export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
   const [dark, setDark] = useState(false)
 
   function toggleDark() {
