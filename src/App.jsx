@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useUser } from '@clerk/react'
+import { useUser, AuthenticateWithRedirectCallback } from '@clerk/react'
 import { Sparkles } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
@@ -11,6 +11,7 @@ import ClubBoard from './components/ClubBoard'
 import LinksResources from './components/LinksResources'
 import MemberActivity from './components/MemberActivity'
 import SourceFeedHub from './components/SourceFeedHub'
+import CollabScheduler from './components/CollabScheduler'
 import SignInPage from './components/SignInPage'
 import { cleanText } from './components/ui'
 import { clubs as initialClubs } from './data/sampleData'
@@ -21,7 +22,10 @@ import {
   getEvents,
   getLinks,
   getStats,
+  deleteEvent,
 } from './api/client'
+
+const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
 
 const KIND_ICON_MAP = {
   discord: 'MessageCircle',
@@ -46,12 +50,126 @@ const CLUB_AVATAR_GRADIENTS = [
   'linear-gradient(135deg, var(--yellow), #E09F2D)',
 ]
 
+// Static fallback dictionary for GitHub Pages when backend port 3001 is not running
+const STATIC_HUB_FALLBACK = {
+  demo_ucsc_csclub: {
+    id: 'demo_ucsc_csclub',
+    name: 'Computer Science Club',
+    instagram: 'demo_ucsc_csclub',
+    category: 'academic',
+    followers: 1240,
+    posts: [
+      {
+        id: 'demo_cs_1',
+        clubId: 'demo_ucsc_csclub',
+        source: 'instagram',
+        postedAt: '2026-11-14T01:34:07.526Z',
+        title: 'Intro to React Workshop!',
+        summary: 'Learn to build your first web app from scratch. Nov 17 · 6–8 PM · Baskin Engineering 152.',
+      },
+      {
+        id: 'discord_cs_msg_1',
+        clubId: 'demo_ucsc_csclub',
+        source: 'discord',
+        postedAt: '2026-11-14T15:00:00.000Z',
+        title: 'Hackathon Team Formation & Social',
+        summary: 'Hackathon team formation & pizza social on Friday at 5:00 PM in Baskin Engineering 152.',
+      },
+      {
+        id: 'email_cs_newsletter_1',
+        clubId: 'demo_ucsc_csclub',
+        source: 'email',
+        postedAt: '2026-11-13T18:00:00.000Z',
+        title: 'Weekly Digest & Technical Interview Prep',
+        summary: 'Technical Interview Prep session this Wednesday from 7:00 PM to 8:30 PM in Baskin Engineering 152.',
+      },
+      {
+        id: 'gcal_cs_officehours',
+        clubId: 'demo_ucsc_csclub',
+        source: 'google_calendar',
+        postedAt: '2026-11-14T12:00:00.000Z',
+        title: 'Officer Hours & Resume Review',
+        summary: 'Friday from 2:00 PM to 4:00 PM at Baskin Engineering 152.',
+      },
+    ],
+  },
+  demo_ucsc_debate: {
+    id: 'demo_ucsc_debate',
+    name: 'Debate Society',
+    instagram: 'demo_ucsc_debate',
+    category: 'social',
+    followers: 410,
+    posts: [
+      {
+        id: 'demo_debate_2',
+        clubId: 'demo_ucsc_debate',
+        source: 'instagram',
+        postedAt: '2026-11-11T21:34:07.526Z',
+        title: 'Fall Showcase Tournament',
+        summary: 'This Saturday from 10:00 AM to 3:00 PM at Stevenson Event Center.',
+      },
+      {
+        id: 'discord_debate_msg_1',
+        clubId: 'demo_ucsc_debate',
+        source: 'discord',
+        postedAt: '2026-11-14T14:00:00.000Z',
+        title: 'Practice Round Topic Announcement',
+        summary: 'Motion for Thursday 4:30 PM practice in Humanities 1 Room 110 is now posted in #motions.',
+      },
+    ],
+  },
+  demo_ucsc_artcollective: {
+    id: 'demo_ucsc_artcollective',
+    name: 'Art Collective',
+    instagram: 'demo_ucsc_artcollective',
+    category: 'arts',
+    followers: 650,
+    posts: [
+      {
+        id: 'demo_art_1',
+        clubId: 'demo_ucsc_artcollective',
+        source: 'instagram',
+        postedAt: '2026-11-13T15:34:07.526Z',
+        title: 'Open Studio & Printmaking Session',
+        summary: 'Tomorrow at 1:00 PM in Porter D-Building Studio 3B. Materials provided.',
+      },
+      {
+        id: 'email_art_newsletter_1',
+        clubId: 'demo_ucsc_artcollective',
+        source: 'email',
+        postedAt: '2026-11-12T16:00:00.000Z',
+        title: 'Winter Zine Submissions Open',
+        summary: 'Submit your artwork for the Winter Zine! Open studio hours every Sunday at 1:00 PM.',
+      },
+    ],
+  },
+}
+
+function getInitialStoredUser() {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (
+      !parsed?.authenticated &&
+      (parsed?.email === 'sslug@ucsc.edu' || parsed?.email === 'arivera@ucsc.edu')
+    ) {
+      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 function MainDashboard({
   dark,
   toggleDark,
   user = null,
   isDemo = false,
   onExitDemo,
+  onSignOut,
   hasClerkKey = false,
 }) {
   const [activeNav, setActiveNav] = useState('overview')
@@ -60,11 +178,12 @@ function MainDashboard({
   const [linksCount, setLinksCount] = useState(24)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const [hubDict, setHubDict] = useState({})
-  const [rawDict, setRawDict] = useState({})
+  const [hubDict, setHubDict] = useState(STATIC_HUB_FALLBACK)
+  const [rawDict, setRawDict] = useState(STATIC_HUB_FALLBACK)
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
   const [liveClubs, setLiveClubs] = useState(null)
   const [liveSchedule, setLiveSchedule] = useState(null)
+  const [rawEvents, setRawEvents] = useState([])
   const [liveLinks, setLiveLinks] = useState(null)
   const [liveStats, setLiveStats] = useState(null)
 
@@ -78,7 +197,7 @@ function MainDashboard({
       getStats(),
     ])
 
-    if (hub) {
+    if (hub && Object.keys(hub).length > 0) {
       setHubDict(hub)
       const mappedClubs = Object.values(hub).map((c, idx) => {
         const nextEvent = (c.events || [])[0]
@@ -123,19 +242,30 @@ function MainDashboard({
       if (mappedClubs.length > 0) setLiveClubs(mappedClubs)
     }
 
-    if (dict) {
+    if (dict && Object.keys(dict).length > 0) {
       setRawDict(dict)
     }
 
     if (evts && evts.length > 0) {
+      setRawEvents(evts)
       const palette = ['blue', 'green', 'purple', 'yellow', 'teal']
+      // Put newly booked collaboration events at the top of the schedule so they are immediately visible!
+      const sortedEvts = [...evts].sort((a, b) => {
+        const aBooked = String(a.id || '').startsWith('collab_evt_') ? 1 : 0
+        const bBooked = String(b.id || '').startsWith('collab_evt_') ? 1 : 0
+        if (aBooked !== bBooked) return bBooked - aBooked
+        return new Date(a.start).getTime() - new Date(b.start).getTime()
+      })
       setLiveSchedule(
-        evts.slice(0, 6).map((e, i) => {
+        sortedEvts.map((e, i) => {
+          const isBookedCollab = String(e.id || '').startsWith('collab_evt_')
           const startDate = new Date(e.start)
           const timeLabel = e.allDay
             ? `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (All Day)`
             : startDate.toLocaleString('en-US', {
                 weekday: 'short',
+                month: 'short',
+                day: 'numeric',
                 hour: 'numeric',
                 minute: '2-digit',
               })
@@ -145,9 +275,14 @@ function MainDashboard({
             event: cleanText(e.title),
             time: timeLabel,
             location: cleanText(e.location || 'TBD'),
-            duration: e.recurring ? `Every ${e.recurring}` : e.kind || 'event',
-            color: palette[i % palette.length],
+            duration: isBookedCollab
+              ? 'Booked via Collab Scheduler'
+              : e.recurring
+                ? `Every ${e.recurring}`
+                : e.kind || 'event',
+            color: isBookedCollab ? 'green' : palette[i % palette.length],
             upcoming: false,
+            isBookedCollab,
           }
         })
       )
@@ -241,6 +376,7 @@ function MainDashboard({
         user={user}
         isDemo={isDemo}
         onExitDemo={onExitDemo}
+        onSignOut={onSignOut}
         hasClerkKey={hasClerkKey}
       />
 
@@ -255,6 +391,7 @@ function MainDashboard({
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           user={user}
           isDemo={isDemo}
+          onSignOut={onSignOut}
           hasClerkKey={hasClerkKey}
         />
 
@@ -272,7 +409,7 @@ function MainDashboard({
                 onClick={onExitDemo}
                 className="font-bold underline cursor-pointer bg-transparent border-none text-[var(--blue-ink)] hover:opacity-80"
               >
-                Sign In with Clerk &rarr;
+                Sign In with Google &rarr;
               </button>
             )}
           </div>
@@ -289,10 +426,26 @@ function MainDashboard({
 
         {/* Schedule + Announcements */}
         {(showAll || activeNav === 'calendar') && (
-          <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
-            <TodaySchedule items={liveSchedule} searchQuery={searchQuery} />
-            <Announcements items={liveAnnouncements} />
-          </div>
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5 mb-5 sm:mb-7">
+              <TodaySchedule
+                items={liveSchedule}
+                searchQuery={searchQuery}
+                onDeleteEvent={async id => {
+                  await deleteEvent(id)
+                  await loadBackendData()
+                }}
+              />
+              <Announcements items={liveAnnouncements} />
+            </div>
+
+            <CollabScheduler
+              user={user}
+              clubs={effectiveClubs}
+              events={rawEvents}
+              onEventBooked={loadBackendData}
+            />
+          </>
         )}
 
         {/* My Clubs / Discover */}
@@ -307,8 +460,8 @@ function MainDashboard({
           />
         )}
 
-        {/* Multi-Source Feed (shown in Discover view or when backend data is connected) */}
-        {(activeNav === 'discover' || Object.keys(hubDict).length > 0) && (
+        {/* Multi-Source Feed */}
+        {(activeNav === 'discover' || showAll) && (
           <SourceFeedHub
             hubDict={hubDict}
             rawDict={rawDict}
@@ -338,11 +491,46 @@ function MainDashboard({
   )
 }
 
-function ClerkAppWrapper({ dark, toggleDark }) {
+function ClerkAppWrapper({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOut }) {
   const { isLoaded, isSignedIn, user } = useUser()
   const [demoMode, setDemoMode] = useState(false)
+  const [loadTimedOut, setLoadTimedOut] = useState(false)
 
-  if (!isLoaded) {
+  const isOAuthCallback =
+    typeof window !== 'undefined' &&
+    (window.location.hash.includes('sso-callback') ||
+      window.location.search.includes('__clerk_'))
+
+  useEffect(() => {
+    if (isLoaded) return
+    const timer = setTimeout(() => setLoadTimedOut(true), 2500)
+    return () => clearTimeout(timer)
+  }, [isLoaded])
+
+  if (isOAuthCallback && !isSignedIn && !localUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+        <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-semibold text-[var(--text-muted)]">Completing Google Sign-In…</span>
+        <AuthenticateWithRedirectCallback />
+      </div>
+    )
+  }
+
+  if (localUser) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={toggleDark}
+        user={localUser}
+        isDemo={false}
+        onSignOut={onLocalSignOut}
+        hasClerkKey={false}
+      />
+    )
+  }
+
+  if (!isLoaded && !loadTimedOut) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
         <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
@@ -351,7 +539,7 @@ function ClerkAppWrapper({ dark, toggleDark }) {
     )
   }
 
-  if (isSignedIn) {
+  if (isSignedIn && user) {
     return (
       <MainDashboard
         dark={dark}
@@ -380,14 +568,28 @@ function ClerkAppWrapper({ dark, toggleDark }) {
     <SignInPage
       dark={dark}
       onToggleDark={toggleDark}
-      hasPublishableKey={true}
+      hasPublishableKey={!loadTimedOut}
       onEnterDemo={() => setDemoMode(true)}
+      onLocalSignIn={onLocalSignIn}
     />
   )
 }
 
-function FallbackApp({ dark, toggleDark }) {
+function FallbackApp({ dark, toggleDark, localUser, onLocalSignIn, onLocalSignOut }) {
   const [demoMode, setDemoMode] = useState(false)
+
+  if (localUser) {
+    return (
+      <MainDashboard
+        dark={dark}
+        toggleDark={toggleDark}
+        user={localUser}
+        isDemo={false}
+        onSignOut={onLocalSignOut}
+        hasClerkKey={false}
+      />
+    )
+  }
 
   if (demoMode) {
     return (
@@ -408,6 +610,7 @@ function FallbackApp({ dark, toggleDark }) {
       onToggleDark={toggleDark}
       hasPublishableKey={false}
       onEnterDemo={() => setDemoMode(true)}
+      onLocalSignIn={onLocalSignIn}
     />
   )
 }
@@ -418,6 +621,7 @@ const DEFAULT_CLERK_KEY =
 
 export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
   const [dark, setDark] = useState(false)
+  const [localUser, setLocalUser] = useState(getInitialStoredUser)
 
   function toggleDark() {
     setDark(prev => {
@@ -427,9 +631,43 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
     })
   }
 
-  if (hasClerkKey) {
-    return <ClerkAppWrapper dark={dark} toggleDark={toggleDark} />
+  function handleLocalSignIn(profile) {
+    setLocalUser(profile)
+    try {
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(profile))
+    } catch {
+      // Ignore storage errors
+    }
   }
 
-  return <FallbackApp dark={dark} toggleDark={toggleDark} />
+  function handleLocalSignOut() {
+    setLocalUser(null)
+    try {
+      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  if (hasClerkKey) {
+    return (
+      <ClerkAppWrapper
+        dark={dark}
+        toggleDark={toggleDark}
+        localUser={localUser}
+        onLocalSignIn={handleLocalSignIn}
+        onLocalSignOut={handleLocalSignOut}
+      />
+    )
+  }
+
+  return (
+    <FallbackApp
+      dark={dark}
+      toggleDark={toggleDark}
+      localUser={localUser}
+      onLocalSignIn={handleLocalSignIn}
+      onLocalSignOut={handleLocalSignOut}
+    />
+  )
 }

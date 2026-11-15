@@ -27,7 +27,20 @@ export async function fetchClub(handle, { igUserId, accessToken, version = 'v26.
   url.searchParams.set('fields', fields)
   url.searchParams.set('access_token', accessToken)
 
-  const res = await fetch(url)
+  // Retry network hiccups up to 3 times, and show the real reason if it still fails.
+  let res
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(20000) })
+      break
+    } catch (err) {
+      const reason = err.cause?.code || err.cause?.message || err.name || err.message
+      if (attempt >= 3) {
+        throw new InstagramError(`@${handle}: could not reach Instagram (${reason}). Check Wi-Fi, VPN or ad blocker.`, { code: 'NETWORK', handle })
+      }
+      await new Promise(r => setTimeout(r, 1500 * attempt))
+    }
+  }
   const body = await res.json().catch(() => ({}))
 
   if (!res.ok || body.error) {

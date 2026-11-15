@@ -30,15 +30,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 // ── Sources ────────────────────────────────────────────────────────────────
 
 async function* liveSource(clubs) {
-  const { IG_USER_ID, IG_ACCESS_TOKEN, GRAPH_API_VERSION, POSTS_PER_CLUB } = process.env
+  let { IG_USER_ID, IG_ACCESS_TOKEN, GRAPH_API_VERSION, POSTS_PER_CLUB } = process.env
   if (!IG_USER_ID || !IG_ACCESS_TOKEN) {
     throw new Error('Missing IG_USER_ID or IG_ACCESS_TOKEN in .env (see README). Try `npm run demo` meanwhile.')
+  }
+  if (!/^\d+$/.test(IG_USER_ID.trim())) {
+    throw new Error(`IG_USER_ID should be a long number like 17841400000000000, not "${IG_USER_ID}". See README step 5.`)
+  }
+  if (/\s/.test(IG_ACCESS_TOKEN.trim())) {
+    throw new Error('IG_ACCESS_TOKEN contains spaces or line breaks. Re-copy it as one line.')
   }
   for (const club of clubs) {
     try {
       const data = await fetchClub(club.instagram, {
-        igUserId: IG_USER_ID,
-        accessToken: IG_ACCESS_TOKEN,
+        igUserId: IG_USER_ID.trim(),
+        accessToken: IG_ACCESS_TOKEN.trim(),
         version: GRAPH_API_VERSION || 'v26.0',
         limit: Number(POSTS_PER_CLUB) || 20,
       })
