@@ -763,10 +763,25 @@ function mergeClubRosterEntries(club, rawEntries = [], { colorOffset = 0 } = {})
   const clubName = club.name || clubId
   const clubEmails = [club.email, ...(club.extraEmails || [])].filter(Boolean)
 
+  // Sort full names ahead of single-word first names so single-word duplicates merge cleanly into full names
+  const sortedRaw = [...rawEntries].sort((a, b) => {
+    const aw = String(a?.name || '').trim().split(/\s+/).length
+    const bw = String(b?.name || '').trim().split(/\s+/).length
+    return bw - aw
+  })
+
   const byName = new Map()
-  for (const entry of rawEntries) {
+  for (const entry of sortedRaw) {
     if (!entry?.name || !entry?.role) continue
-    const key = entry.name.replace(/"[^"]*"/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+    let key = entry.name.replace(/["“][^"”]*["”]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+    if (!key.includes(' ')) {
+      for (const existingKey of byName.keys()) {
+        if (existingKey.startsWith(`${key} `)) {
+          key = existingKey
+          break
+        }
+      }
+    }
     const prev = byName.get(key)
     if (!prev) {
       byName.set(key, { ...entry })

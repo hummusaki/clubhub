@@ -52,6 +52,7 @@ import {
   getClubCategoryMeta,
 } from '../utils/clubCategories'
 import { buildClubDirectoryData, toInitials } from '../utils/clubDirectory'
+import ClubRbacPanel from './ClubRbacPanel'
 
 const SOURCE_FILTERS = [
   { id: 'all',       label: 'All Channels', color: 'blue' },
@@ -720,19 +721,7 @@ const FeedPostCard = memo(function FeedPostCard({
   )
 })
 
-const CUSTOM_ROSTER_STORAGE_KEY = 'clubhub_custom_roster_v1'
-
-function loadCustomRoster(isDemo = false) {
-  if (isDemo) return { officers: [], members: [] }
-  try {
-    const raw = localStorage.getItem(CUSTOM_ROSTER_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (parsed && Array.isArray(parsed.officers) && Array.isArray(parsed.members)) {
-      return parsed
-    }
-  } catch {
-    // Ignore storage errors
-  }
+function loadCustomRoster() {
   return { officers: [], members: [] }
 }
 
@@ -1038,9 +1027,12 @@ export default function ClubsHub({
   clubsData,
   hubDict = {},
   initialSection = null,
+  initialRbacClubId = '',
   isDemo = false,
   userSettings = {},
   onToggleJoin,
+  onOpenTasks,
+  onRefreshAnnouncements,
   searchQuery = '',
   compact = false,
   onOpenClubs,
@@ -1081,7 +1073,15 @@ export default function ClubsHub({
 
   const [section, setSection] = useState(
     () => initialSection || (joinedClubs.length === 0 ? 'discover' : 'myclubs')
-  ) // 'myclubs' | 'discover' | 'updates' | 'directory'
+  ) // 'myclubs' | 'rbac' | 'discover' | 'updates' | 'directory'
+
+  useEffect(() => {
+    if (initialSection) setSection(initialSection)
+  }, [initialSection])
+
+  useEffect(() => {
+    if (initialRbacClubId) setDirectoryClubFilter(String(initialRbacClubId))
+  }, [initialRbacClubId])
   const [category, setCategory] = useState('All')
   const [clubLayout, setClubLayout] = useState('grouped') // 'grouped' | 'grid'
   const [expandedCategories, setExpandedCategories] = useState({})
@@ -1104,11 +1104,18 @@ export default function ClubsHub({
   }, [])
 
   // Directory filters & state
+  const DIRECTORY_PAGE_SIZE = 36
+  const DIRECTORY_CLUB_GROUP_PAGE_SIZE = 16
   const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
   const [directoryScope, setDirectoryScope] = useState('all') // 'all' | 'myclubs'
   const [directoryClubFilter, setDirectoryClubFilter] = useState('all')
   const [directoryCategory, setDirectoryCategory] = useState('All')
   const [directoryGroupMode, setDirectoryGroupMode] = useState('role') // 'role' | 'club'
+  const [visibleOfficersCount, setVisibleOfficersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleMembersCount, setVisibleMembersCount] = useState(DIRECTORY_PAGE_SIZE)
+  const [visibleClubGroupsCount, setVisibleClubGroupsCount] = useState(
+    DIRECTORY_CLUB_GROUP_PAGE_SIZE
+  )
   const [copiedEmailId, setCopiedEmailId] = useState(null)
   const [customRoster, setCustomRoster] = useState(() => loadCustomRoster(isDemo))
 
@@ -1514,6 +1521,20 @@ export default function ClubsHub({
     )
   }, [preCatMembers, directoryCategory, directoryClubFilter])
 
+  // Reset progressive directory slices whenever directory filters or search change
+  useEffect(() => {
+    setVisibleOfficersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleMembersCount(DIRECTORY_PAGE_SIZE)
+    setVisibleClubGroupsCount(DIRECTORY_CLUB_GROUP_PAGE_SIZE)
+  }, [
+    directoryClubFilter,
+    directoryScope,
+    directoryCategory,
+    roleFilter,
+    directoryGroupMode,
+    searchQuery,
+  ])
+
   // Grouped-by-Club directory sections for "By Club" mode
   const groupedDirectoryByClub = useMemo(() => {
     if (directoryGroupMode !== 'club' || directoryClubFilter !== 'all') return []
@@ -1699,15 +1720,8 @@ export default function ClubsHub({
           : customRoster.members || [],
     }
     setCustomRoster(nextRoster)
-    if (!isDemo) {
-      try {
-        localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
-      } catch {
-        // Ignore storage errors
-      }
-    }
     if (onNotify) {
-      onNotify('Removed custom entry from directory.', { type: 'info' })
+      onNotify('Removed custom entry from session directory.', { type: 'info' })
     }
   }
 
@@ -1755,13 +1769,6 @@ export default function ClubsHub({
     }
 
     setCustomRoster(nextRoster)
-    if (!isDemo) {
-      try {
-        localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
-      } catch {
-        // Ignore storage errors
-      }
-    }
 
     setPersonName('')
     setPersonEmail('')
@@ -1865,7 +1872,7 @@ export default function ClubsHub({
       if (res && !res.error) {
         if (onRefresh) await onRefresh()
         if (onNotify) {
-          const count = Number(res.synced ?? res.count ?? 0)
+          const count = Number(res.result?.synced ?? res.synced ?? res.count ?? 0)
           onNotify(
             count > 0
               ? `Synced ${count} ${platform === 'discord' ? 'Discord' : 'Email'} update${count === 1 ? '' : 's'}!`
@@ -2018,6 +2025,17 @@ export default function ClubsHub({
               )}
               <button
                 type="button"
+                onClick={() => {
+                  setSection('rbac')
+                  setDirectoryClubFilter(String(club.id))
+                }}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+              >
+                <Shield size={11.5} />
+                <span>Roles</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleOpenClubRoster(club.id)}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
               >
@@ -2154,7 +2172,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: `var(--${officerColor})`,
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2303,7 +2321,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: m.isYou ? 'var(--blue)' : 'var(--teal)',
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2442,7 +2460,7 @@ export default function ClubsHub({
           borderTopWidth: '3px',
           borderTopColor: `var(--${accentColor})`,
         }}
-        className={`content-tile content-tile-interactive ${
+        className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
@@ -2550,6 +2568,7 @@ export default function ClubsHub({
           <div className="flex flex-wrap items-center gap-1.5">
             {[
               { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
+              { id: 'rbac',      label: 'Roles & Sub-Groups' },
               { id: 'discover',  label: `Discover (${allClubs.length})` },
               { id: 'updates',   label: 'Club Feed' },
               { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
@@ -2761,6 +2780,21 @@ export default function ClubsHub({
             </div>
           )}
         </>
+      )}
+
+      {/* ── SECTION 2B: ROLES, ROSTER CLAIMING & SUB-GROUPS (RBAC) ── */}
+      {section === 'rbac' && (
+        <ClubRbacPanel
+          clubs={allClubs}
+          selectedClubId={directoryClubFilter}
+          onSelectClub={cid => setDirectoryClubFilter(String(cid))}
+          user={user}
+          isDemo={isDemo}
+          onToggleJoin={onToggleJoin}
+          onOpenTasks={onOpenTasks}
+          onRefreshAnnouncements={onRefreshAnnouncements}
+          onNotify={onNotify}
+        />
       )}
 
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
@@ -3595,13 +3629,37 @@ export default function ClubsHub({
               )
             }
 
+            const visibleOfficersSlice =
+              directoryClubFilter === 'all'
+                ? filteredOfficers.slice(0, visibleOfficersCount)
+                : filteredOfficers
+            const remainingOfficersCount = Math.max(
+              0,
+              filteredOfficers.length - visibleOfficersSlice.length
+            )
+
+            const visibleMembersSlice =
+              directoryClubFilter === 'all'
+                ? filteredMembers.slice(0, visibleMembersCount)
+                : filteredMembers
+            const remainingMembersCount = Math.max(
+              0,
+              filteredMembers.length - visibleMembersSlice.length
+            )
+
+            const visibleClubGroupsSlice = groupedDirectoryByClub.slice(0, visibleClubGroupsCount)
+            const remainingClubGroupsCount = Math.max(
+              0,
+              groupedDirectoryByClub.length - visibleClubGroupsSlice.length
+            )
+
             return (
               <div className="space-y-6">
                 {directoryClubFilter === 'all' && directoryGroupMode === 'club' ? (
                   /* ── BY CLUB GROUPED VIEW ── */
                   groupedDirectoryByClub.length > 0 && (
                     <div className={isCompactDensity ? 'space-y-5' : 'space-y-6'}>
-                      {groupedDirectoryByClub.map(group => {
+                      {visibleClubGroupsSlice.map(group => {
                         const groupCatMeta = getClubCategoryMeta(group.club.category)
                         const groupColor = groupCatMeta?.color || 'blue'
                         const groupPeopleTotal = group.officers.length + group.members.length
@@ -3645,6 +3703,40 @@ export default function ClubsHub({
                           </section>
                         )
                       })}
+
+                      {remainingClubGroupsCount > 0 && (
+                        <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleClubGroupsCount(prev =>
+                                Math.min(
+                                  prev + DIRECTORY_CLUB_GROUP_PAGE_SIZE,
+                                  groupedDirectoryByClub.length
+                                )
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                          >
+                            <span>
+                              Show more club rosters ({visibleClubGroupsSlice.length} of{' '}
+                              {groupedDirectoryByClub.length} clubs)
+                            </span>
+                            <ChevronDown size={14} />
+                          </button>
+                          {remainingClubGroupsCount > DIRECTORY_CLUB_GROUP_PAGE_SIZE && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleClubGroupsCount(groupedDirectoryByClub.length)
+                              }
+                              className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                            >
+                              <span>Show all {groupedDirectoryByClub.length} clubs</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 ) : (
@@ -3668,11 +3760,40 @@ export default function ClubsHub({
 
                         <div className={directoryGridClasses}>
                           {filteredOfficers.length > 0
-                            ? filteredOfficers.map(m => renderOfficerCard(m))
+                            ? visibleOfficersSlice.map(m => renderOfficerCard(m))
                             : renderClubContactCard(selectedDirectoryClub, {
                                 isSelectedClubFallback: true,
                               })}
                         </div>
+
+                        {remainingOfficersCount > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisibleOfficersCount(prev =>
+                                  Math.min(prev + DIRECTORY_PAGE_SIZE, filteredOfficers.length)
+                                )
+                              }
+                              className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              <span>
+                                Show more officers ({visibleOfficersSlice.length.toLocaleString()} of{' '}
+                                {filteredOfficers.length.toLocaleString()})
+                              </span>
+                              <ChevronDown size={14} />
+                            </button>
+                            {remainingOfficersCount > DIRECTORY_PAGE_SIZE && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleOfficersCount(filteredOfficers.length)}
+                                className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer transition-colors"
+                              >
+                                <span>Show all {filteredOfficers.length.toLocaleString()}</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3693,8 +3814,37 @@ export default function ClubsHub({
                             </div>
 
                             <div className={directoryGridClasses}>
-                              {filteredMembers.map(m => renderMemberCard(m))}
+                              {visibleMembersSlice.map(m => renderMemberCard(m))}
                             </div>
+
+                            {remainingMembersCount > 0 && (
+                              <div className="pt-1 flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setVisibleMembersCount(prev =>
+                                      Math.min(prev + DIRECTORY_PAGE_SIZE, filteredMembers.length)
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
+                                >
+                                  <span>
+                                    Show more members ({visibleMembersSlice.length.toLocaleString()}{' '}
+                                    of {filteredMembers.length.toLocaleString()})
+                                  </span>
+                                  <ChevronDown size={14} />
+                                </button>
+                                {remainingMembersCount > DIRECTORY_PAGE_SIZE && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setVisibleMembersCount(filteredMembers.length)}
+                                    className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-transparent hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--teal)] cursor-pointer transition-colors"
+                                  >
+                                    <span>Show all {filteredMembers.length.toLocaleString()}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           selectedDirectoryClub &&

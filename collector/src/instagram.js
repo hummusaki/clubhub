@@ -11,7 +11,16 @@ const PROFILE_FIELDS = [
   'media_count',
 ]
 
-const MEDIA_FIELDS = ['id', 'caption', 'timestamp', 'permalink', 'media_type', 'media_url', 'thumbnail_url']
+const MEDIA_FIELDS = [
+  'id',
+  'caption',
+  'timestamp',
+  'permalink',
+  'media_type',
+  'media_url',
+  'thumbnail_url',
+  'children{id,media_type,media_url}',
+]
 
 export const RATE_LIMIT_CODES = new Set([4, 17, 32, 613])
 
@@ -149,13 +158,19 @@ export async function fetchClub(handle, { igUserId, accessToken, version = 'v26.
       followers: bd.followers_count ?? null,
       mediaCount: bd.media_count ?? null,
     },
-    posts: (bd.media?.data || []).map(m => ({
-      id: m.id,
-      caption: m.caption || '',
-      postedAt: m.timestamp,
-      permalink: m.permalink,
-      mediaType: m.media_type,
-      imageUrl: m.media_type === 'VIDEO' ? m.thumbnail_url || null : m.media_url || null,
-    })),
+    posts: (bd.media?.data || []).map(m => {
+      const carouselUrls = (m.children?.data || [])
+        .filter(c => c?.media_url && c.media_type !== 'VIDEO')
+        .map(c => c.media_url)
+      return {
+        id: m.id,
+        caption: m.caption || '',
+        postedAt: m.timestamp,
+        permalink: m.permalink,
+        mediaType: m.media_type,
+        imageUrl: m.media_type === 'VIDEO' ? m.thumbnail_url || null : m.media_url || null,
+        ...(carouselUrls.length > 0 ? { carouselUrls } : {}),
+      }
+    }),
   }
 }

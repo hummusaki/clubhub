@@ -8,10 +8,20 @@ import CalendarView from './components/CalendarView'
 import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
 import ClubsHub from './components/ClubsHub'
+import ClubTaskBoard from './components/ClubTaskBoard'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
 import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
+import {
+  getWorkspaceMe,
+  logoutWorkspaceSession,
+  joinWorkspaceClub,
+  leaveWorkspaceClub,
+  getWorkspaceAnnouncements,
+  syncExternalWorkspaceSession,
+  onWorkspacePermissionChange,
+} from './api/workspaceClient'
 import { categorizeClub, getClubCategoryMeta } from './utils/clubCategories'
 import {
   clubs as initialClubs,
@@ -54,8 +64,7 @@ import {
 import { isValidClerkPublishableKey } from './utils/authValidation'
 import { buildDashboardPageTitle } from './utils/pageTitle'
 
-const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
-const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
+const AUTH_USER_SESSION_KEY = 'clubhub_auth_user_session_v1'
 const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v2'
 const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_theme_mode_v1'
 const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
@@ -67,7 +76,6 @@ const REMOVED_EVENT_IDS_KEY = 'clubhub_removed_event_ids_v1'
 const LOCAL_ADDED_LINKS_KEY = 'clubhub_local_added_links_v1'
 const PINNED_LINK_OVERRIDES_KEY = 'clubhub_pinned_link_overrides_v1'
 const LOCAL_CLUB_POSTS_KEY = 'clubhub_local_club_posts_v1'
-const CUSTOM_POLLS_STORAGE_KEY = 'clubhub_custom_polls_v1'
 const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
 
 const VALID_THEME_MODES = new Set(['system', 'light', 'dark'])
@@ -526,16 +534,11 @@ function formatScheduleItem(e, index = 0) {
 
 function getInitialStoredUser() {
   try {
-    const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY)
+    if (typeof sessionStorage === 'undefined') return null
+    const raw = sessionStorage.getItem(AUTH_USER_SESSION_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    if (
-      !parsed?.authenticated &&
-      (parsed?.email === 'sslug@ucsc.edu' || parsed?.email === 'arivera@ucsc.edu')
-    ) {
-      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
-      return null
-    }
+    if (!parsed?.authenticated) return null
     return parsed
   } catch {
     return null
@@ -585,6 +588,9 @@ function MainDashboard({
   })
   const [pageSubContext, setPageSubContext] = useState(null)
   const [clubsInitialSection, setClubsInitialSection] = useState(null)
+  const [clubsInitialRbacClubId, setClubsInitialRbacClubId] = useState('')
+  const [tasksInitialClubId, setTasksInitialClubId] = useState('')
+  const [workspaceAnnouncements, setWorkspaceAnnouncements] = useState([])
   const [calendarInitialView, setCalendarInitialView] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData] = useState(initialClubs)
@@ -916,11 +922,79 @@ function MainDashboard({
     loadBackendData()
   }, [loadBackendData])
 
+  // Hydrate authenticated workspace memberships & targeted RBAC announcements
+  const loadWorkspaceState = useCallback(async () => {
+    if (isDemo) {
+      setWorkspaceAnnouncements([])
+      return
+    }
+    if (hasClerkKey && effectiveUser && accountEmail && !effectiveUser.workspaceSynced) {
+      await syncExternalWorkspaceSession({
+        provider: 'clerk',
+        email: accountEmail,
+        fullName: effectiveUser.fullName || accountEmail.split('@')[0],
+      }).catch(() => {})
+    }
+    const [meRes, annRes] = await Promise.all([
+      effectiveUser ? getWorkspaceMe() : Promise.resolve(null),
+      getWorkspaceAnnouncements(),
+    ])
+    if (meRes?.ok && Array.isArray(meRes.memberships) && meRes.memberships.length > 0) {
+      const dbClubIds = meRes.memberships.map(m => String(m.clubId))
+      setJoinedClubIds(prev => Array.from(new Set([...prev, ...dbClubIds])))
+    }
+    if (annRes?.ok && Array.isArray(annRes.announcements)) {
+      setWorkspaceAnnouncements(
+        annRes.announcements.map(a => ({
+          id: a.id,
+          clubId: a.clubId,
+          source: 'workspace',
+          permalink: a.permalink || null,
+          type:
+            a.visibility === 'board'
+              ? 'Board Only'
+              : a.visibility === 'group'
+                ? 'Sub-Group'
+                : a.type || 'Club Notice',
+          color:
+            a.visibility === 'board'
+              ? 'purple'
+              : a.visibility === 'group'
+                ? 'teal'
+                : 'blue',
+          time: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : 'Just now',
+          title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
+          description: cleanText(a.body || a.recipientsSummary || ''),
+          navTarget: 'clubs',
+        }))
+      )
+    }
+  }, [isDemo, hasClerkKey, effectiveUser, accountEmail])
+
+  useEffect(() => {
+    loadWorkspaceState()
+  }, [loadWorkspaceState])
+
+  useEffect(() => {
+    if (isDemo) return undefined
+    return onWorkspacePermissionChange(detail => {
+      loadWorkspaceState()
+      if (detail?.status === 403) {
+        showToast(detail.error || 'Your club permissions were updated.', { type: 'info' })
+      }
+    })
+  }, [isDemo, loadWorkspaceState, showToast])
+
   function handleNavigate(nextNav, options = {}) {
     if (nextNav === 'clubs') {
       setClubsInitialSection(options.section || null)
+      setClubsInitialRbacClubId(options.clubId || '')
     } else {
       setClubsInitialSection(null)
+      setClubsInitialRbacClubId('')
+    }
+    if (nextNav === 'tasks' && options.clubId !== undefined) {
+      setTasksInitialClubId(options.clubId || '')
     }
     if (nextNav === 'calendar') {
       setCalendarInitialView(options.view || null)
@@ -999,12 +1073,15 @@ function MainDashboard({
   }, [upcomingSchedule, joinedClubSet])
 
   const personalizedAnnouncements = useMemo(() => {
-    if (!liveAnnouncements || joinedClubSet.size === 0) return liveAnnouncements
-    const matched = liveAnnouncements.filter(
-      a => a.clubId && joinedClubSet.has(String(a.clubId))
-    )
-    return matched.length > 0 ? matched.slice(0, 8) : liveAnnouncements.slice(0, 8)
-  }, [liveAnnouncements, joinedClubSet])
+    const baseList = Array.isArray(liveAnnouncements) ? liveAnnouncements : []
+    const matched =
+      joinedClubSet.size > 0
+        ? baseList.filter(a => a.clubId && joinedClubSet.has(String(a.clubId)))
+        : baseList
+    const publicSlice = matched.length > 0 ? matched : baseList
+    const merged = [...workspaceAnnouncements, ...publicSlice]
+    return merged.length > 0 ? merged.slice(0, 10) : liveAnnouncements
+  }, [workspaceAnnouncements, liveAnnouncements, joinedClubSet])
 
   const combinedRawEvents = useMemo(
     () =>
@@ -1016,6 +1093,14 @@ function MainDashboard({
     const targetId = String(clubId)
     if (isDemo) {
       demoUserModifiedClubsRef.current = true
+    }
+    const currentlyJoined = joinedClubSet.has(targetId)
+    if (!isDemo && effectiveUser?.id) {
+      const clubMeta = effectiveClubs.find(c => String(c.id) === targetId)
+      const syncPromise = currentlyJoined
+        ? leaveWorkspaceClub(targetId)
+        : joinWorkspaceClub(targetId, { clubName: clubMeta?.name || targetId })
+      syncPromise.then(() => loadWorkspaceState()).catch(() => {})
     }
     setJoinedClubIds(prev => {
       const exists = prev.some(id => String(id) === targetId)
@@ -1186,7 +1271,7 @@ function MainDashboard({
       localStorage.removeItem(LOCAL_ADDED_LINKS_KEY)
       localStorage.removeItem(PINNED_LINK_OVERRIDES_KEY)
       localStorage.removeItem(LOCAL_CLUB_POSTS_KEY)
-      localStorage.removeItem(CUSTOM_POLLS_STORAGE_KEY)
+      localStorage.removeItem('clubhub_custom_polls_v1')
       saveStoredJoinedClubIds([accountKey, emailKey], [])
     } catch {
       // Ignore storage errors
@@ -1774,6 +1859,7 @@ function MainDashboard({
               user={effectiveUser}
               accountKey={accountKey}
               isDemo={isDemo}
+              clubs={effectiveClubs}
               userSettings={userSettings}
               events={combinedRawEvents}
               onEventBooked={loadBackendData}
@@ -1789,7 +1875,7 @@ function MainDashboard({
           {/* ── 4. CLUBS & COMMUNITY ── */}
           {activeNav === 'clubs' && (
             <ClubsHub
-              key={`clubs_${resetGeneration}_${clubsInitialSection || 'auto'}`}
+              key={`clubs_${resetGeneration}_${clubsInitialSection || 'auto'}_${clubsInitialRbacClubId || 'none'}`}
               user={effectiveUser}
               accountKey={accountKey}
               isDemo={isDemo}
@@ -1797,14 +1883,37 @@ function MainDashboard({
               clubsData={clubsData}
               hubDict={hubDict}
               initialSection={clubsInitialSection}
+              initialRbacClubId={clubsInitialRbacClubId}
               userSettings={userSettings}
               onToggleJoin={toggleJoinClub}
               searchQuery={searchQuery}
               onRefresh={loadBackendData}
+              onRefreshAnnouncements={loadWorkspaceState}
+              onOpenTasks={cid => handleNavigate('tasks', { clubId: cid })}
               onOpenSettings={() => handleNavigate('settings')}
               localPosts={localClubPosts}
               onAddLocalPost={handleAddLocalClubPost}
               onPageContextChange={setPageSubContext}
+              onNotify={showToast}
+            />
+          )}
+
+          {/* ── 4B. MONDAY.COM-STYLE CLUB TASK BOARD ── */}
+          {activeNav === 'tasks' && (
+            <ClubTaskBoard
+              key={`tasks_${resetGeneration}_${tasksInitialClubId || 'auto'}`}
+              user={effectiveUser}
+              isDemo={isDemo}
+              clubs={effectiveClubs}
+              joinedClubIds={joinedClubIds}
+              initialClubId={tasksInitialClubId}
+              onClubJoined={cid => {
+                if (!joinedClubSet.has(String(cid))) {
+                  toggleJoinClub(cid)
+                }
+                loadWorkspaceState()
+              }}
+              onOpenClubsRbac={cid => handleNavigate('clubs', { section: 'rbac', clubId: cid })}
               onNotify={showToast}
             />
           )}
@@ -2596,7 +2705,7 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
             : {}),
         }
         try {
-          localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(updated))
+          sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(updated))
         } catch {
           // Ignore storage errors
         }
@@ -2616,19 +2725,9 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
       }
       const emailLower = (prev.email || '').toLowerCase()
       try {
-        localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(updated))
+        sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(updated))
         if (emailLower) {
           saveAccountThemeForKeys([`email:${emailLower}`], normalized)
-          const regRaw = localStorage.getItem(EMAIL_ACCOUNTS_KEY)
-          const reg = regRaw ? JSON.parse(regRaw) : {}
-          if (reg[emailLower]) {
-            reg[emailLower] = {
-              ...reg[emailLower],
-              themeMode: normalized,
-              darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : undefined,
-            }
-            localStorage.setItem(EMAIL_ACCOUNTS_KEY, JSON.stringify(reg))
-          }
         }
       } catch {
         // Ignore storage errors
@@ -2638,6 +2737,33 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
       }
       return updated
     })
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    getWorkspaceMe()
+      .then(res => {
+        if (!active || !res?.user?.id) return
+        setLocalUser(prev => {
+          const merged = {
+            ...(prev || {}),
+            id: res.user.id,
+            email: res.user.email,
+            fullName: res.user.displayName || prev?.fullName || res.user.email,
+            avatarBg: res.user.avatarBg || prev?.avatarBg,
+          }
+          try {
+            sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(merged))
+          } catch {
+            // Ignore storage errors
+          }
+          return merged
+        })
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleLocalSignIn = useCallback(profile => {
@@ -2653,9 +2779,9 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
 
     setLocalUser(nextProfile)
     try {
-      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextProfile))
+      sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(nextProfile))
       if (emailLower) {
-        localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, `email:${emailLower}`)
+        sessionStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, `email:${emailLower}`)
       }
     } catch {
       // Ignore storage errors
@@ -2664,9 +2790,12 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
 
   const handleLocalSignOut = useCallback((opts = {}) => {
     setLocalUser(null)
+    logoutWorkspaceSession().catch(() => {})
     try {
-      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+      sessionStorage.removeItem(AUTH_USER_SESSION_KEY)
+      localStorage.removeItem('clubhub_auth_user_v1')
       if (!opts?.silent) {
+        sessionStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
         localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
       }
     } catch {

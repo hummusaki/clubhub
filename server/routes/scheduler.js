@@ -1,63 +1,48 @@
-// ── Collaborative When2Meet + Google Calendar Scheduler Routes (/api/scheduler) ──
-// Stores group collaboration polls and user free/busy availability in SQLite
-// and mirrors them into `dictionary_store`.
-// Connects directly with the `events` and `clubs` tables so groups can book
-// overlapping times straight onto the ClubHub Calendar.
+// ── Collaborative When2Meet + Club Leadership Scheduler Routes (/api/scheduler) ──
+// Backed exclusively by `server/privateDb.js` (`club_polls` & `club_poll_responses`).
+// Guarantees:
+//   1. ZERO fake/demo responders — only authenticated real users who submit availability appear.
+//   2. ZERO private user availability data ever enters `clubhub.db` or `public/clubhub-data.json`.
+//   3. Club leadership shortcuts (`all_board`, `all_members`, `everyone`, `group:<id>`) verified via RBAC.
 
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import {
   getDb,
   upsertCollectorData,
   deleteRecord,
-  setDictEntry,
-  normalizeClubId,
   formatEventRow,
 } from '../database.js';
+import {
+  privQueryAll,
+  privQueryGet,
+  privExecute,
+} from '../privateDb.js';
+import {
+  normalizeClubKey,
+  normalizeEmail,
+  getClubPermission,
+  getUserWorkspaceOverview,
+} from '../services/authService.js';
+import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import {
+  buildClubPeopleAndShortcuts,
+  expandShortcutTargets,
+} from './workspace.js';
 
 const router = Router();
 
-// ── Initialize Scheduler Tables ─────────────────────────────────────
-function initSchedulerTables() {
-  const db = getDb();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS scheduler_polls (
-      id                 TEXT PRIMARY KEY,
-      title              TEXT NOT NULL,
-      description        TEXT,
-      hostClubId         TEXT,
-      collaboratingClubs TEXT NOT NULL DEFAULT '[]',
-      dates              TEXT NOT NULL DEFAULT '[]',
-      startHour          INTEGER NOT NULL DEFAULT 9,
-      endHour            INTEGER NOT NULL DEFAULT 20,
-      slotMinutes        INTEGER NOT NULL DEFAULT 30,
-      baseTimezone       TEXT NOT NULL DEFAULT 'America/Los_Angeles',
-      location           TEXT DEFAULT 'Baskin Engineering 152',
-      createdAt          TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS scheduler_responses (
-      id           TEXT PRIMARY KEY,
-      pollId       TEXT NOT NULL REFERENCES scheduler_polls(id) ON DELETE CASCADE,
-      userId       TEXT NOT NULL,
-      userName     TEXT NOT NULL,
-      clubId       TEXT,
-      clubName     TEXT,
-      timezone     TEXT NOT NULL DEFAULT 'America/Los_Angeles',
-      freeSlots    TEXT NOT NULL DEFAULT '[]',
-      busySlots    TEXT NOT NULL DEFAULT '[]',
-      rawTextInput TEXT DEFAULT '',
-      updatedAt    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_sched_resp_pollId ON scheduler_responses(pollId);
-  `);
-
-  seedDefaultPolls(db);
+function parseJsonSafe(raw, fallback) {
+  if (!raw) return fallback;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
 }
 
-// ── Helper: build 7-day date list starting from current week's Monday (or Nov 16, 2026) ──
 function getDefaultWeekDates() {
-  // Using Mon Nov 16, 2026 -> Sun Nov 22, 2026 so it aligns with sample/collector events
   return [
     '2026-11-16',
     '2026-11-17',
@@ -69,14 +54,9 @@ function getDefaultWeekDates() {
   ];
 }
 
-/**
- * Convert a local date (`YYYY-MM-DD`), hour (0-23), minute (0 or 30), and IANA timezone
- * into a canonical UTC ISO string (`YYYY-MM-DDTHH:mm:00.000Z`).
- */
 export function localSlotToUtcIso(dateStr, hour, minute, timeZone = 'America/Los_Angeles') {
   try {
     const [y, m, d] = dateStr.split('-').map(Number);
-    // Estimate UTC timestamp assuming UTC first, then compute the timezone's offset at that instant
     const approxUtc = new Date(Date.UTC(y, m - 1, d, hour, minute, 0, 0));
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -109,9 +89,6 @@ export function localSlotToUtcIso(dateStr, hour, minute, timeZone = 'America/Los
   }
 }
 
-/**
- * Generate an array of 30-min UTC ISO slot strings for a date and local hour range in `timeZone`.
- */
 function makeSlotsRange(dateStr, startH, endH, timeZone = 'America/Los_Angeles') {
   const out = [];
   for (let mins = Math.round(startH * 60); mins < Math.round(endH * 60); mins += 30) {
@@ -122,150 +99,6 @@ function makeSlotsRange(dateStr, startH, endH, timeZone = 'America/Los_Angeles')
   return out;
 }
 
-// ── Seed realistic multi-club collaboration poll & responses ────────
-function seedDefaultPolls(db) {
-  const existing = db.stmt('SELECT COUNT(*) AS n FROM scheduler_polls').get().n;
-  if (existing > 0) return;
-
-  const dates = getDefaultWeekDates();
-  const pollId = 'collab_ucsc_hackathon_2026';
-
-  const poll = {
-    id: pollId,
-    title: 'Cross-Club Hackathon & Fall Showcase Planning',
-    description:
-      'Find a common meeting time for CS Club, Debate Society, Art Collective & Robotics League officers to coordinate the Fall Collaborations.',
-    hostClubId: 'demo_ucsc_csclub',
-    collaboratingClubs: [
-      'Computer Science Club',
-      'Debate Society',
-      'Art Collective',
-      'Robotics League',
-    ],
-    dates,
-    startHour: 9,
-    endHour: 20,
-    slotMinutes: 30,
-    baseTimezone: 'America/Los_Angeles',
-    location: 'Baskin Engineering 152',
-  };
-
-  db.stmt(`
-    INSERT INTO scheduler_polls (
-      id, title, description, hostClubId, collaboratingClubs,
-      dates, startHour, endHour, slotMinutes, baseTimezone, location
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    poll.id,
-    poll.title,
-    poll.description,
-    poll.hostClubId,
-    JSON.stringify(poll.collaboratingClubs),
-    JSON.stringify(poll.dates),
-    poll.startHour,
-    poll.endHour,
-    poll.slotMinutes,
-    poll.baseTimezone,
-    poll.location
-  );
-
-  // Seed 4 club representatives across multiple timezones
-  const sampleResponses = [
-    {
-      userId: 'alex_cs',
-      userName: 'Alex Lee (CS President)',
-      clubId: 'demo_ucsc_csclub',
-      clubName: 'Computer Science Club',
-      timezone: 'America/Los_Angeles',
-      freeSlots: [
-        ...makeSlotsRange(dates[0], 13, 17, 'America/Los_Angeles'), // Mon 1-5pm PT
-        ...makeSlotsRange(dates[2], 14, 18, 'America/Los_Angeles'), // Wed 2-6pm PT
-        ...makeSlotsRange(dates[4], 10, 15, 'America/Los_Angeles'), // Fri 10am-3pm PT
-      ],
-      busySlots: [
-        ...makeSlotsRange(dates[1], 18, 20, 'America/Los_Angeles'), // Tue 6-8pm PT (CS Workshop)
-      ],
-      rawTextInput: 'Free Mon 1pm-5pm, Wed 2pm-6pm, Fri 10am-3pm; Busy Tue 6pm-8pm',
-    },
-    {
-      userId: 'maya_debate',
-      userName: 'Maya Rodriguez (Debate VP)',
-      clubId: 'demo_ucsc_debate',
-      clubName: 'Debate Society',
-      timezone: 'America/New_York', // Viewing from East Coast (EST) -> translates to PT automatically!
-      freeSlots: [
-        ...makeSlotsRange(dates[0], 17, 20, 'America/New_York'),    // Mon 5-8pm EST (= 2-5pm PT)
-        ...makeSlotsRange(dates[2], 17, 21, 'America/New_York'),    // Wed 5-9pm EST (= 2-6pm PT)
-        ...makeSlotsRange(dates[4], 14, 18, 'America/New_York'),    // Fri 2-6pm EST (= 11am-3pm PT)
-      ],
-      busySlots: [
-        ...makeSlotsRange(dates[3], 16.5, 18, 'America/Los_Angeles'), // Thu 4:30-6pm PT (Debate Practice)
-      ],
-      rawTextInput: 'Free Mon 5pm-8pm EST, Wed 5pm-9pm EST, Fri 2pm-6pm EST',
-    },
-    {
-      userId: 'chloe_art',
-      userName: 'Chloe Lindqvist (Art Collective)',
-      clubId: 'demo_ucsc_artcollective',
-      clubName: 'Art Collective',
-      timezone: 'America/Los_Angeles',
-      freeSlots: [
-        ...makeSlotsRange(dates[0], 14, 16.5, 'America/Los_Angeles'), // Mon 2-4:30pm PT
-        ...makeSlotsRange(dates[2], 14, 17, 'America/Los_Angeles'),   // Wed 2-5pm PT
-        ...makeSlotsRange(dates[4], 11, 14, 'America/Los_Angeles'),   // Fri 11am-2pm PT
-      ],
-      busySlots: [
-        ...makeSlotsRange(dates[5], 13, 15, 'America/Los_Angeles'),   // Sat 1-3pm PT (Studio)
-      ],
-      rawTextInput: 'Free Mon 2pm-4:30pm, Wed 2pm-5pm, Fri 11am-2pm',
-    },
-    {
-      userId: 'raj_robotics',
-      userName: 'Raj Nair (Robotics Lead)',
-      clubId: 'ucsc_robotics',
-      clubName: 'Robotics League',
-      timezone: 'America/Chicago', // CST -> translates to PT automatically!
-      freeSlots: [
-        ...makeSlotsRange(dates[0], 16, 19, 'America/Chicago'), // Mon 4-7pm CST (= 2-5pm PT)
-        ...makeSlotsRange(dates[2], 16, 19, 'America/Chicago'), // Wed 4-7pm CST (= 2-5pm PT)
-      ],
-      busySlots: [
-        ...makeSlotsRange(dates[0], 17, 18, 'America/Los_Angeles'), // Mon 5-6pm PT
-      ],
-      rawTextInput: 'Free Mon 4pm-7pm CST, Wed 4pm-7pm CST',
-    },
-  ];
-
-  const insertResp = db.stmt(`
-    INSERT INTO scheduler_responses (
-      id, pollId, userId, userName, clubId, clubName,
-      timezone, freeSlots, busySlots, rawTextInput, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `);
-
-  for (const r of sampleResponses) {
-    const id = `${pollId}:${r.userId}`;
-    insertResp.run(
-      id,
-      pollId,
-      r.userId,
-      r.userName,
-      r.clubId,
-      r.clubName,
-      r.timezone,
-      JSON.stringify(r.freeSlots),
-      JSON.stringify(r.busySlots),
-      r.rawTextInput
-    );
-    setDictEntry(`scheduler:${id}`, r, {
-      namespace: 'scheduler',
-      clubId: r.clubId,
-      source: 'scheduler',
-    });
-  }
-}
-
-// ── Helper: parse natural language availability string into UTC slots ──
 export function parseAvailabilityText(text = '', dates = [], timeZone = 'America/Los_Angeles') {
   const freeSlots = new Set();
   const busySlots = new Set();
@@ -274,7 +107,6 @@ export function parseAvailabilityText(text = '', dates = [], timeZone = 'America
     return { freeSlots: [], busySlots: [] };
   }
 
-  // Map weekday prefixes ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun') to dates in the poll
   const dayToDate = {};
   for (const dateStr of dates) {
     const [y, m, d] = dateStr.split('-').map(Number);
@@ -285,23 +117,25 @@ export function parseAvailabilityText(text = '', dates = [], timeZone = 'America
     dayToDate[weekday] = dateStr;
   }
 
-  // Split by semicolons or newlines into segments; track whether current mode is "busy" or "free"
   const segments = text.split(/[;\n]+/);
   for (const seg of segments) {
     let mode = 'free';
-    if (/\b(busy|unavailable|class|conflict|cannot|can't)\b/i.test(seg) && !/^\s*(free|available)/i.test(seg)) {
+    if (
+      /\b(busy|unavailable|class|conflict|cannot|can't)\b/i.test(seg) &&
+      !/^\s*(free|available)/i.test(seg)
+    ) {
       mode = 'busy';
     }
 
-    // Match patterns like "Mon 2pm-5pm", "Wednesday 10:30am - 1:00pm", "Tue 14:00-16:30", or "2026-11-16 2pm-4pm"
     const regex =
       /\b(mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|\d{4}-\d{2}-\d{2})\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–to]+)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/gi;
 
     let match;
     while ((match = regex.exec(seg)) !== null) {
       const [, dayToken, shRaw, smRaw, sMeridiem, ehRaw, emRaw, eMeridiem] = match;
-      const dateStr =
-        dayToken.includes('-') ? dayToken : dayToDate[dayToken.toLowerCase().slice(0, 3)];
+      const dateStr = dayToken.includes('-')
+        ? dayToken
+        : dayToDate[dayToken.toLowerCase().slice(0, 3)];
       if (!dateStr) continue;
 
       const toHours = (hStr, mStr, mer, fallbackMer) => {
@@ -337,62 +171,201 @@ export function parseAvailabilityText(text = '', dates = [], timeZone = 'America
   };
 }
 
-// ── Format a Poll Row + Attach Responses & Existing Calendar Events ──
-function getFullPoll(pollId) {
-  const db = getDb();
-  const row = db.stmt('SELECT * FROM scheduler_polls WHERE id = ?').get(pollId);
+function getCampusCalendarEvents() {
+  try {
+    const db = getDb();
+    return db
+      .stmt('SELECT * FROM events ORDER BY start ASC LIMIT 500')
+      .all()
+      .map(formatEventRow);
+  } catch {
+    return [];
+  }
+}
+
+async function canUserAccessPoll(pollRow, user, explicitById = false) {
+  const vis = pollRow.visibility || 'public_link';
+  if (vis === 'public_link' && explicitById) return true;
+  if (pollRow.createdByUserId && user?.id && pollRow.createdByUserId === user.id) return true;
+
+  // Check if user was explicitly invited by userId or email
+  if (user) {
+    const invited = parseJsonSafe(pollRow.invitedParticipantsJson, []);
+    const userEmail = normalizeEmail(user.email);
+    const isInvited = invited.some(
+      p => (p.userId && p.userId === user.id) || (p.email && normalizeEmail(p.email) === userEmail)
+    );
+    if (isInvited && vis !== 'board_only') return true;
+  }
+
+  if (!pollRow.hostClubId) {
+    return vis === 'public_link';
+  }
+
+  const perm = await getClubPermission(user, pollRow.hostClubId);
+  if (vis === 'board_only') return Boolean(perm.isBoard);
+  if (vis === 'club_members') return Boolean(perm.isMember || perm.isBoard);
+  // For public_link in list view: show if public_link and either general poll or user is in club / responded
+  return true;
+}
+
+async function formatFullPoll(row, requesterUser = null, campusEvents = null) {
   if (!row) return null;
+  const hostPerm = row.hostClubId
+    ? await getClubPermission(requesterUser, row.hostClubId)
+    : { isBoard: false };
+  const isCreator = Boolean(requesterUser?.id && row.createdByUserId === requesterUser.id);
+  const canSeeEmails = Boolean(hostPerm.isBoard || isCreator);
 
-  const responses = db
-    .stmt('SELECT * FROM scheduler_responses WHERE pollId = ? ORDER BY updatedAt DESC')
-    .all(pollId)
-    .map(r => ({
-      ...r,
-      freeSlots: JSON.parse(r.freeSlots || '[]'),
-      busySlots: JSON.parse(r.busySlots || '[]'),
-    }));
+  const responseRows = await privQueryAll(
+    `SELECT r.*
+       FROM club_poll_responses r
+       INNER JOIN users u ON u.id = r.userId
+      WHERE r.pollId = ?
+      ORDER BY r.updatedAt DESC`,
+    [row.id]
+  );
 
-  const events = db
-    .stmt('SELECT * FROM events ORDER BY start ASC')
-    .all()
-    .map(formatEventRow);
+  const responses = responseRows.map(r => ({
+    id: r.id,
+    pollId: r.pollId,
+    userId: r.userId,
+    userName: r.userName,
+    roleTitle: r.roleTitle || '',
+    clubId: r.clubId || '',
+    clubName: r.clubName || '',
+    timezone: r.timezone || 'America/Los_Angeles',
+    freeSlots: parseJsonSafe(r.freeSlotsJson, []),
+    busySlots: parseJsonSafe(r.busySlotsJson, []),
+    rawTextInput: r.rawTextInput || '',
+    updatedAt: r.updatedAt,
+    isVerifiedUser: true,
+  }));
+
+  const respondedUserIds = new Set(responses.map(r => r.userId));
+  const respondedNamesLower = new Set(
+    responses.map(r => String(r.userName || '').trim().toLowerCase())
+  );
+
+  const rawInvited = parseJsonSafe(row.invitedParticipantsJson, []);
+  const candidateUserIds = rawInvited.map(inv => inv?.userId).filter(Boolean);
+  let validUserIdSet = new Set();
+  if (candidateUserIds.length > 0) {
+    const placeholders = candidateUserIds.map(() => '?').join(',');
+    const existingUsers = await privQueryAll(
+      `SELECT id FROM users WHERE id IN (${placeholders})`,
+      candidateUserIds
+    );
+    validUserIdSet = new Set(existingUsers.map(u => u.id));
+  }
+
+  const invitedParticipants = rawInvited
+    .filter(inv => !inv?.userId || validUserIdSet.has(inv.userId))
+    .map(inv => {
+      const hasResponded = Boolean(
+        (inv.userId && respondedUserIds.has(inv.userId)) ||
+          (inv.name && respondedNamesLower.has(String(inv.name).trim().toLowerCase()))
+      );
+      return {
+        memberKey: inv.memberKey || inv.userId || inv.name,
+        userId: inv.userId || null,
+        name: inv.name,
+        initials: inv.initials || '',
+        email: canSeeEmails ? inv.email || '' : '',
+        roleTitle: inv.roleTitle || 'Member',
+        tier: inv.tier || 'member',
+        sourceShortcut: inv.sourceShortcut || '',
+        hasResponded,
+      };
+    });
+
+  const privateBookedEvents = parseJsonSafe(row.bookedEventsJson, []);
+  const sharedEvents = campusEvents ?? getCampusCalendarEvents();
 
   return {
-    ...row,
-    collaboratingClubs: JSON.parse(row.collaboratingClubs || '[]'),
-    dates: JSON.parse(row.dates || '[]'),
+    id: row.id,
+    title: row.title,
+    description: row.description || '',
+    hostClubId: row.hostClubId || '',
+    hostClubName: row.hostClubName || '',
+    collaboratingClubs: parseJsonSafe(row.collaboratingClubsJson, []),
+    dates: parseJsonSafe(row.datesJson, []),
+    startHour: Number(row.startHour ?? 9),
+    endHour: Number(row.endHour ?? 20),
+    slotMinutes: Number(row.slotMinutes ?? 30),
+    baseTimezone: row.baseTimezone || 'America/Los_Angeles',
+    location: row.location || 'TBD',
+    visibility: row.visibility || 'public_link',
+    createdByUserId: row.createdByUserId || null,
+    createdByName: row.createdByName || '',
+    createdAt: row.createdAt,
+    invitedParticipants,
     responses,
-    calendarEvents: events,
+    calendarEvents: [...privateBookedEvents, ...sharedEvents],
   };
 }
 
-// ── Routes ──────────────────────────────────────────────────────────
+// GET /api/scheduler/polls — list real polls visible to the signed-in user (ZERO fake demo polls!)
+router.get('/polls', optionalAuth, async (req, res) => {
+  const rows = await privQueryAll(`SELECT * FROM club_polls ORDER BY createdAt DESC LIMIT 50`);
+  const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
+  const myClubIds = new Set(Object.keys(overview?.permissionsByClub || {}));
+  const campusEvents = getCampusCalendarEvents();
 
-// GET /api/scheduler/polls — list all collaboration polls with responses & calendar events
-router.get('/polls', (req, res) => {
-  initSchedulerTables();
-  const db = getDb();
-  const rows = db.stmt('SELECT id FROM scheduler_polls ORDER BY createdAt DESC').all();
-  res.json(rows.map(r => getFullPoll(r.id)));
+  // Also include polls the user has already responded to
+  const myRespondedPollIds = new Set();
+  if (req.user?.id) {
+    const myResps = await privQueryAll(
+      `SELECT pollId FROM club_poll_responses WHERE userId = ?`,
+      [req.user.id]
+    );
+    for (const r of myResps) myRespondedPollIds.add(r.pollId);
+  }
+
+  const visiblePolls = [];
+  for (const row of rows) {
+    if (!(await canUserAccessPoll(row, req.user, false))) continue;
+    // Scope list view to polls created by user, responded by user, invited user, or belonging to user's clubs (or general campus polls if no hostClubId)
+    if (req.user) {
+      const invited = parseJsonSafe(row.invitedParticipantsJson, []);
+      const userEmail = normalizeEmail(req.user.email);
+      const isInvited = invited.some(
+        p => (p.userId && p.userId === req.user.id) || (p.email && normalizeEmail(p.email) === userEmail)
+      );
+      const isMine = row.createdByUserId === req.user.id;
+      const isMyClub = row.hostClubId && myClubIds.has(row.hostClubId);
+      const isResponded = myRespondedPollIds.has(row.id);
+      if (isMine || isMyClub || isInvited || isResponded || !row.hostClubId) {
+        visiblePolls.push(await formatFullPoll(row, req.user, campusEvents));
+      }
+    } else if (!row.hostClubId && row.visibility === 'public_link') {
+      visiblePolls.push(await formatFullPoll(row, null, campusEvents));
+    }
+  }
+
+  res.json(visiblePolls);
 });
 
-// GET /api/scheduler/polls/:id — single poll
-router.get('/polls/:id', (req, res) => {
-  initSchedulerTables();
-  const poll = getFullPoll(req.params.id);
-  if (!poll) return res.status(404).json({ error: 'Poll not found' });
-  res.json(poll);
+// GET /api/scheduler/polls/:id — single poll (supports shared `?poll=<id>` links)
+router.get('/polls/:id', optionalAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+  if (!(await canUserAccessPoll(row, req.user, true))) {
+    return res.status(403).json({
+      error: 'You do not have permission to view this private club poll.',
+    });
+  }
+  res.json(await formatFullPoll(row, req.user));
 });
 
-// POST /api/scheduler/polls — create a new group collaboration poll
-router.post('/polls', (req, res) => {
-  initSchedulerTables();
-  const db = getDb();
+// POST /api/scheduler/polls — create a real multi-user availability poll (with leadership shortcuts!)
+router.post('/polls', requireAuth, async (req, res) => {
   const {
     id,
     title,
     description = '',
-    hostClubId = 'demo_ucsc_csclub',
+    hostClubId: rawHostClubId = '',
+    hostClubName = '',
     collaboratingClubs = [],
     dates = getDefaultWeekDates(),
     startHour = 9,
@@ -400,74 +373,160 @@ router.post('/polls', (req, res) => {
     slotMinutes = 30,
     baseTimezone = 'America/Los_Angeles',
     location = 'TBD',
+    visibility: rawVisibility = 'public_link',
+    shortcutTargets = [],
+    invitedParticipants = [],
   } = req.body || {};
 
-  if (!title) return res.status(400).json({ error: 'Poll title is required' });
+  const cleanTitle = String(title || '').trim().slice(0, 140);
+  if (!cleanTitle) return res.status(400).json({ error: 'Poll title is required.' });
 
-  const pollId = id || `collab_${Date.now()}`;
-  db.stmt(`
-    INSERT INTO scheduler_polls (
-      id, title, description, hostClubId, collaboratingClubs,
-      dates, startHour, endHour, slotMinutes, baseTimezone, location
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      title              = excluded.title,
-      description        = excluded.description,
-      collaboratingClubs = excluded.collaboratingClubs,
-      dates              = excluded.dates,
-      startHour          = excluded.startHour,
-      endHour            = excluded.endHour,
-      baseTimezone       = excluded.baseTimezone,
-      location           = excluded.location
-  `).run(
-    pollId,
-    title,
-    description,
-    normalizeClubId(hostClubId),
-    JSON.stringify(collaboratingClubs),
-    JSON.stringify(dates),
-    Number(startHour),
-    Number(endHour),
-    Number(slotMinutes),
-    baseTimezone,
-    location
+  const hostClubId = rawHostClubId ? normalizeClubKey(rawHostClubId) : '';
+  let resolvedClubName = String(hostClubName || '').trim();
+  let resolvedInvited = Array.isArray(invitedParticipants) ? [...invitedParticipants] : [];
+  let visibility = ['public_link', 'club_members', 'board_only'].includes(rawVisibility)
+    ? rawVisibility
+    : 'public_link';
+
+  if (hostClubId) {
+    const perm = await getClubPermission(req.user, hostClubId);
+    if (visibility === 'board_only' && !perm.isBoard) {
+      return res.status(403).json({
+        error: 'Only claimed board members can create board-only polls.',
+      });
+    }
+    if (Array.isArray(shortcutTargets) && shortcutTargets.length > 0) {
+      if (!perm.isBoard) {
+        return res.status(403).json({
+          error: 'Only claimed club leadership can use bulk board/member invite shortcuts.',
+        });
+      }
+      const clubData = await buildClubPeopleAndShortcuts(hostClubId, req.user, perm);
+      resolvedClubName = resolvedClubName || clubData.clubName;
+      resolvedInvited = expandShortcutTargets(clubData, shortcutTargets, resolvedInvited);
+    } else if (!resolvedClubName) {
+      const clubData = await buildClubPeopleAndShortcuts(hostClubId, req.user, perm);
+      resolvedClubName = clubData.clubName;
+    }
+  } else {
+    visibility = 'public_link';
+  }
+
+  const pollId =
+    (typeof id === 'string' && id.trim()) ||
+    `poll_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const nowIso = new Date().toISOString();
+
+  const existing = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [pollId]);
+  if (existing && existing.createdByUserId && existing.createdByUserId !== req.user.id) {
+    return res.status(403).json({ error: 'Only the poll organizer can overwrite this poll.' });
+  }
+
+  await privExecute(
+    `INSERT INTO club_polls (
+       id, title, description, hostClubId, hostClubName,
+       collaboratingClubsJson, datesJson, startHour, endHour, slotMinutes,
+       baseTimezone, location, visibility, invitedParticipantsJson, bookedEventsJson,
+       createdByUserId, createdByName, createdAt
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title                   = excluded.title,
+       description             = excluded.description,
+       collaboratingClubsJson  = excluded.collaboratingClubsJson,
+       datesJson               = excluded.datesJson,
+       startHour               = excluded.startHour,
+       endHour                 = excluded.endHour,
+       baseTimezone            = excluded.baseTimezone,
+       location                = excluded.location,
+       visibility              = excluded.visibility,
+       invitedParticipantsJson = excluded.invitedParticipantsJson`,
+    [
+      pollId,
+      cleanTitle,
+      String(description || '').trim().slice(0, 500),
+      hostClubId,
+      resolvedClubName,
+      JSON.stringify(Array.isArray(collaboratingClubs) ? collaboratingClubs : []),
+      JSON.stringify(Array.isArray(dates) && dates.length ? dates : getDefaultWeekDates()),
+      Number(startHour),
+      Number(endHour),
+      Number(slotMinutes),
+      baseTimezone,
+      String(location || 'TBD').trim().slice(0, 120),
+      visibility,
+      JSON.stringify(resolvedInvited),
+      req.user.id,
+      req.user.fullName,
+      nowIso,
+    ]
   );
 
-  const saved = getFullPoll(pollId);
-  setDictEntry(`scheduler:poll:${pollId}`, saved, {
-    namespace: 'scheduler',
-    clubId: normalizeClubId(hostClubId),
-    source: 'scheduler',
-  });
-
-  res.status(201).json(saved);
+  const savedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [pollId]);
+  res.status(201).json(await formatFullPoll(savedRow, req.user));
 });
 
-// POST /api/scheduler/polls/:id/respond — upsert a user's Free & Busy slots in the database
-router.post('/polls/:id/respond', (req, res) => {
-  initSchedulerTables();
-  const db = getDb();
+// POST /api/scheduler/polls/:id/invite — Leadership shortcut to add All Board / All Members / Club Groups to an existing poll!
+router.post('/polls/:id/invite', requireAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+
+  const targetClubId = normalizeClubKey(req.body?.clubId || row.hostClubId || '');
+  if (!targetClubId) {
+    return res.status(400).json({ error: 'Select a club to use leadership invite shortcuts.' });
+  }
+
+  const perm = await getClubPermission(req.user, targetClubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members of this club can bulk-invite board or member rosters.',
+    });
+  }
+
+  const { shortcutTargets = [], participants = [] } = req.body || {};
+  const clubData = await buildClubPeopleAndShortcuts(targetClubId, req.user, perm);
+  const existingInvited = parseJsonSafe(row.invitedParticipantsJson, []);
+  const mergedInvited = expandShortcutTargets(clubData, shortcutTargets, [
+    ...existingInvited,
+    ...(Array.isArray(participants) ? participants : []),
+  ]);
+
+  await privExecute(
+    `UPDATE club_polls
+        SET hostClubId = CASE WHEN hostClubId = '' THEN ? ELSE hostClubId END,
+            hostClubName = CASE WHEN hostClubName = '' THEN ? ELSE hostClubName END,
+            invitedParticipantsJson = ?
+      WHERE id = ?`,
+    [targetClubId, clubData.clubName, JSON.stringify(mergedInvited), row.id]
+  );
+
+  const updatedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [row.id]);
+  res.json(await formatFullPoll(updatedRow, req.user));
+});
+
+// POST /api/scheduler/polls/:id/respond — Save authenticated user's availability (strictly bound to req.user!)
+router.post('/polls/:id/respond', requireAuth, async (req, res) => {
   const pollId = req.params.id;
-  const poll = getFullPoll(pollId);
-  if (!poll) return res.status(404).json({ error: 'Poll not found' });
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [pollId]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+
+  if (!(await canUserAccessPoll(row, req.user, true))) {
+    return res.status(403).json({ error: 'You do not have permission to respond to this poll.' });
+  }
 
   const {
-    userId = 'current_user',
-    userName = 'You',
-    clubId = 'demo_ucsc_csclub',
-    clubName = 'Computer Science Club',
     timezone = 'America/Los_Angeles',
     freeSlots = [],
     busySlots = [],
     rawTextInput = '',
+    parseText = false,
   } = req.body || {};
 
-  // If rawTextInput is provided and parseText is requested, merge parsed slots
+  const dates = parseJsonSafe(row.datesJson, getDefaultWeekDates());
   let finalFree = Array.isArray(freeSlots) ? [...freeSlots] : [];
   let finalBusy = Array.isArray(busySlots) ? [...busySlots] : [];
 
-  if (req.body?.parseText && rawTextInput) {
-    const parsed = parseAvailabilityText(rawTextInput, poll.dates, timezone);
+  if (parseText && rawTextInput) {
+    const parsed = parseAvailabilityText(rawTextInput, dates, timezone);
     const freeSet = new Set([...finalFree, ...parsed.freeSlots]);
     const busySet = new Set([...finalBusy, ...parsed.busySlots]);
     for (const b of busySet) freeSet.delete(b);
@@ -475,226 +534,182 @@ router.post('/polls/:id/respond', (req, res) => {
     finalBusy = Array.from(busySet);
   }
 
-  const respId = `${pollId}:${userId}`;
-  db.stmt(`
-    INSERT INTO scheduler_responses (
-      id, pollId, userId, userName, clubId, clubName,
-      timezone, freeSlots, busySlots, rawTextInput, updatedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
-      userName     = excluded.userName,
-      clubId       = excluded.clubId,
-      clubName     = excluded.clubName,
-      timezone     = excluded.timezone,
-      freeSlots    = excluded.freeSlots,
-      busySlots    = excluded.busySlots,
-      rawTextInput = excluded.rawTextInput,
-      updatedAt    = datetime('now')
-  `).run(
-    respId,
-    pollId,
-    userId,
-    userName,
-    normalizeClubId(clubId),
-    clubName,
-    timezone,
-    JSON.stringify(finalFree),
-    JSON.stringify(finalBusy),
-    rawTextInput
-  );
+  // Look up user's verified role in hostClubId if any
+  const perm = row.hostClubId ? await getClubPermission(req.user, row.hostClubId) : null;
+  const roleTitle = perm?.roleTitle || '';
+  const clubName = row.hostClubName || '';
+  const respId = `${pollId}::${req.user.id}`;
+  const nowIso = new Date().toISOString();
 
-  // Mirror to dictionary_store so the availability is accessible via /api/dict
-  setDictEntry(
-    `scheduler:${respId}`,
-    {
-      pollId,
-      userId,
-      userName,
-      clubId: normalizeClubId(clubId),
-      clubName,
-      timezone,
-      freeSlots: finalFree,
-      busySlots: finalBusy,
-      rawTextInput,
-      updatedAt: new Date().toISOString(),
-    },
-    { namespace: 'scheduler', clubId: normalizeClubId(clubId), source: 'scheduler' }
-  );
+  if (finalFree.length === 0 && finalBusy.length === 0 && !rawTextInput) {
+    await privExecute(`DELETE FROM club_poll_responses WHERE id = ?`, [respId]);
+  } else {
+    await privExecute(
+      `INSERT INTO club_poll_responses (
+         id, pollId, userId, userName, userEmail, roleTitle, clubId, clubName,
+         timezone, freeSlotsJson, busySlotsJson, rawTextInput, updatedAt
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(pollId, userId) DO UPDATE SET
+         userName      = excluded.userName,
+         userEmail     = excluded.userEmail,
+         roleTitle     = excluded.roleTitle,
+         timezone      = excluded.timezone,
+         freeSlotsJson = excluded.freeSlotsJson,
+         busySlotsJson = excluded.busySlotsJson,
+         rawTextInput  = excluded.rawTextInput,
+         updatedAt     = excluded.updatedAt`,
+      [
+        respId,
+        pollId,
+        req.user.id,
+        req.user.fullName,
+        normalizeEmail(req.user.email),
+        roleTitle,
+        row.hostClubId || '',
+        clubName,
+        timezone,
+        JSON.stringify(finalFree),
+        JSON.stringify(finalBusy),
+        String(rawTextInput || ''),
+        nowIso,
+      ]
+    );
+  }
 
-  res.json(getFullPoll(pollId));
+  const updatedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [pollId]);
+  res.json(await formatFullPoll(updatedRow, req.user));
 });
 
-// POST /api/scheduler/parse-text — parse natural language availability into UTC ISO slots
 router.post('/parse-text', (req, res) => {
-  initSchedulerTables();
-  const { text = '', dates = getDefaultWeekDates(), timezone = 'America/Los_Angeles' } = req.body || {};
+  const {
+    text = '',
+    dates = getDefaultWeekDates(),
+    timezone = 'America/Los_Angeles',
+  } = req.body || {};
   res.json(parseAvailabilityText(text, dates, timezone));
 });
 
-// POST /api/scheduler/polls/:id/book — book an overlapping slot directly onto the ClubHub Calendar (`events` table)
-router.post('/polls/:id/book', (req, res) => {
-  initSchedulerTables();
-  const db = getDb();
-  const poll = getFullPoll(req.params.id);
-  if (!poll) return res.status(404).json({ error: 'Poll not found' });
+// POST /api/scheduler/polls/:id/book — Book overlapping window onto calendar
+router.post('/polls/:id/book', requireAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
+
+  const hostPerm = row.hostClubId
+    ? await getClubPermission(req.user, row.hostClubId)
+    : { isBoard: false };
+  const isOrganizer = row.createdByUserId === req.user.id;
+
+  if (row.hostClubId && !hostPerm.isBoard && !isOrganizer) {
+    return res.status(403).json({
+      error: 'Only club board members or the poll organizer can book the finalized meeting slot.',
+    });
+  }
 
   const {
     start,
     end,
-    title = poll.title,
-    clubId = poll.hostClubId || 'demo_ucsc_csclub',
-    clubName = (poll.collaboratingClubs || []).join(' × ') || 'Club Collaboration',
-    location = poll.location || 'Baskin Engineering 152',
-    userId,
-    userName,
-    userClubName,
-    timezone = 'America/Los_Angeles',
+    title = row.title,
+    location = row.location || 'TBD',
   } = req.body || {};
 
-  if (!start) {
-    return res.status(400).json({ error: 'start (ISO UTC string) is required' });
-  }
+  if (!start) return res.status(400).json({ error: 'start ISO string is required.' });
 
-  const endIso =
-    end || new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
-  const eventId = `collab_evt_${poll.id}_${new Date(start).getTime()}`;
+  const endIso = end || new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
+  const eventId = `collab_evt_${row.id}_${new Date(start).getTime()}`;
 
-  // If user info is passed, also ensure this person is recorded as available/booked for the slot range
-  if (userId && userName) {
-    const respId = `${poll.id}:${userId}`;
-    const existing = db
-      .stmt('SELECT * FROM scheduler_responses WHERE id = ?')
-      .get(respId);
+  const bookedEvent = {
+    id: eventId,
+    clubId: row.hostClubId || 'personal_poll',
+    clubName: row.hostClubName || 'Group Poll',
+    title,
+    kind: 'meeting',
+    start,
+    end: endIso,
+    allDay: false,
+    location,
+    isBookedCollab: true,
+    source: 'scheduler',
+  };
 
-    const startMs = new Date(start).getTime();
-    const endMs = new Date(endIso).getTime();
-    const bookedSlotIsos = [];
-    for (let t = startMs; t < endMs; t += 30 * 60 * 1000) {
-      bookedSlotIsos.push(new Date(t).toISOString());
+  const prevBooked = parseJsonSafe(row.bookedEventsJson, []).filter(e => e.id !== eventId);
+  prevBooked.push(bookedEvent);
+
+  await privExecute(`UPDATE club_polls SET bookedEventsJson = ? WHERE id = ?`, [
+    JSON.stringify(prevBooked),
+    row.id,
+  ]);
+
+  // Only publish to official campus club calendar if booked by a verified board member of that club
+  if (row.hostClubId && hostPerm.isBoard) {
+    try {
+      upsertCollectorData({ events: [bookedEvent] });
+    } catch {
+      // Ignore public calendar write failure
     }
-
-    const prevFree = existing ? JSON.parse(existing.freeSlots || '[]') : [];
-    const prevBusy = existing ? JSON.parse(existing.busySlots || '[]') : [];
-    const nextFree = Array.from(new Set([...prevFree, ...bookedSlotIsos]));
-    const nextBusy = prevBusy.filter(s => !bookedSlotIsos.includes(s));
-
-    db.stmt(`
-      INSERT INTO scheduler_responses (
-        id, pollId, userId, userName, clubId, clubName,
-        timezone, freeSlots, busySlots, rawTextInput, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(id) DO UPDATE SET
-        userName  = excluded.userName,
-        clubId    = excluded.clubId,
-        clubName  = excluded.clubName,
-        timezone  = excluded.timezone,
-        freeSlots = excluded.freeSlots,
-        busySlots = excluded.busySlots,
-        updatedAt = datetime('now')
-    `).run(
-      respId,
-      poll.id,
-      userId,
-      userName,
-      normalizeClubId(userClubName || clubId),
-      userClubName || clubName,
-      timezone,
-      JSON.stringify(nextFree),
-      JSON.stringify(nextBusy),
-      existing?.rawTextInput || ''
-    );
   }
 
-  upsertCollectorData({
-    events: [
-      {
-        id: eventId,
-        clubId: normalizeClubId(clubId),
-        clubName,
-        title,
-        kind: 'meeting',
-        start,
-        end: endIso,
-        allDay: false,
-        recurring: null,
-        location,
-        source: 'google_calendar',
-      },
-    ],
-  });
-
+  const updatedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [row.id]);
   res.status(201).json({
     booked: true,
     eventId,
-    poll: getFullPoll(poll.id),
+    officialClubEvent: Boolean(row.hostClubId && hostPerm.isBoard),
+    poll: await formatFullPoll(updatedRow, req.user),
   });
 });
 
-// POST /api/scheduler/polls/:id/unbook — unbook a slot / remove booked collaboration event from ClubHub Calendar
-router.post('/polls/:id/unbook', (req, res) => {
-  initSchedulerTables();
-  const db = getDb();
-  const poll = getFullPoll(req.params.id);
-  if (!poll) return res.status(404).json({ error: 'Poll not found' });
+router.post('/polls/:id/unbook', requireAuth, async (req, res) => {
+  const row = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: 'Poll not found.' });
 
-  const { eventId, start, userId, removeUserAvailability = false } = req.body || {};
-  const removedIds = [];
-
-  if (eventId) {
-    const resDel = deleteRecord('events', eventId);
-    if (resDel.deleted) removedIds.push(eventId);
+  const hostPerm = row.hostClubId
+    ? await getClubPermission(req.user, row.hostClubId)
+    : { isBoard: false };
+  const isOrganizer = row.createdByUserId === req.user.id;
+  if (row.hostClubId && !hostPerm.isBoard && !isOrganizer) {
+    return res.status(403).json({
+      error: 'Only club board members or the poll organizer can unbook a meeting.',
+    });
   }
 
-  if (start) {
-    const slotMs = new Date(start).getTime();
-    const exactId = `collab_evt_${poll.id}_${slotMs}`;
-    const resExact = deleteRecord('events', exactId);
-    if (resExact.deleted) removedIds.push(exactId);
+  const { eventId, start } = req.body || {};
+  const prevBooked = parseJsonSafe(row.bookedEventsJson, []);
+  const slotMs = start ? new Date(start).getTime() : NaN;
 
-    // Also check any collab_evt_ that spans across `start`
-    const allCollabEvents = db
-      .stmt("SELECT * FROM events WHERE id LIKE 'collab_evt_%'")
-      .all();
-    for (const ev of allCollabEvents) {
+  const removedIds = [];
+  const nextBooked = prevBooked.filter(ev => {
+    if (eventId && ev.id === eventId) {
+      removedIds.push(ev.id);
+      return false;
+    }
+    if (!Number.isNaN(slotMs)) {
       const sMs = new Date(ev.start).getTime();
       const eMs = ev.end ? new Date(ev.end).getTime() : sMs + 60 * 60 * 1000;
       if (slotMs >= sMs && slotMs < eMs) {
-        const r = deleteRecord('events', ev.id);
-        if (r.deleted) removedIds.push(ev.id);
+        removedIds.push(ev.id);
+        return false;
       }
     }
+    return true;
+  });
 
-    // Optionally remove the slot from the user's freeSlots if requested
-    if (removeUserAvailability && userId) {
-      const respId = `${poll.id}:${userId}`;
-      const existing = db
-        .stmt('SELECT * FROM scheduler_responses WHERE id = ?')
-        .get(respId);
-      if (existing) {
-        const nextFree = JSON.parse(existing.freeSlots || '[]').filter(s => s !== start);
-        db.stmt(
-          "UPDATE scheduler_responses SET freeSlots = ?, updatedAt = datetime('now') WHERE id = ?"
-        ).run(JSON.stringify(nextFree), respId);
-      }
+  await privExecute(`UPDATE club_polls SET bookedEventsJson = ? WHERE id = ?`, [
+    JSON.stringify(nextBooked),
+    row.id,
+  ]);
+
+  for (const rid of removedIds) {
+    try {
+      deleteRecord('events', rid);
+    } catch {
+      // ignore if not in public events
     }
   }
 
-  // If neither matched a specific slot but there is a booked collab event for this poll and no eventId/start matched,
-  // check if `unbookLatest` was passed
-  if (removedIds.length === 0 && req.body?.fallbackLatest) {
-    const latest = db
-      .stmt("SELECT id FROM events WHERE id LIKE ? ORDER BY start DESC LIMIT 1")
-      .get(`collab_evt_${poll.id}_%`);
-    if (latest) {
-      const r = deleteRecord('events', latest.id);
-      if (r.deleted) removedIds.push(latest.id);
-    }
-  }
-
+  const updatedRow = await privQueryGet(`SELECT * FROM club_polls WHERE id = ?`, [row.id]);
   res.json({
     unbooked: true,
     removedIds,
-    poll: getFullPoll(poll.id),
+    poll: await formatFullPoll(updatedRow, req.user),
   });
 });
 

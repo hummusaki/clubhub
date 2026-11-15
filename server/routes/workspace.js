@@ -1,0 +1,1990 @@
+// ── ClubHub Multi-User Workspace, RBAC, Roster Claims, Club Groups & Monday.com Tasks Router ──
+// Backed exclusively by `server/privateDb.js` (Turso Cloud SQLite or isolated private DB).
+// Zero private user data ever touches `clubhub.db` or `public/clubhub-data.json`.
+
+import crypto from 'node:crypto';
+import { Router } from 'express';
+import { getClubById } from '../database.js';
+import {
+  privQueryAll,
+  privQueryGet,
+  privExecute,
+  privBatch,
+  getPrivateDbMode,
+} from '../privateDb.js';
+import {
+  normalizeEmail,
+  normalizeClubKey,
+  classifyLeadershipTier,
+  registerOrLoginEmailUser,
+  syncExternalAuthUser,
+  revokeSessionToken,
+  extractBearerToken,
+  getClubPermission,
+  getUserWorkspaceOverview,
+} from '../services/authService.js';
+import { optionalAuth, requireAuth } from '../middleware/auth.js';
+
+const router = Router();
+
+const VALID_TASK_STATUSES = new Set([
+  'not_started',
+  'working_on_it',
+  'in_review',
+  'stuck',
+  'done',
+]);
+
+const VALID_TASK_PRIORITIES = new Set(['low', 'medium', 'high', 'critical']);
+const VALID_COLORS = new Set(['blue', 'purple', 'teal', 'green', 'yellow', 'red']);
+
+function parseJsonSafe(raw, fallback) {
+  if (!raw) return fallback;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function toInitials(name = '') {
+  return (
+    String(name || 'MB')
+      .replace(/["“][^"”]*["”]/g, '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(w => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'MB'
+  );
+}
+
+function makeMemberKey({ userId = '', email = '', name = '', rosterId = '' }) {
+  if (userId) return `uid:${userId}`;
+  if (email) return `email:${normalizeEmail(email)}`;
+  if (rosterId) return `roster:${rosterId}`;
+  return `name:${String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+}
+
+/**
+ * Builds the complete people, claims, groups, and leadership-shortcut directory for a club.
+ * Masks private personal emails when requester is not a board leader of this club.
+ */
+export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = null, precomputedPerm = null) {
+  const clubId = normalizeClubKey(rawClubId);
+  const perm = precomputedPerm || (await getClubPermission(requesterUser, clubId));
+  const canSeePrivateEmails = Boolean(perm.isBoard);
+
+  let publicClub = null;
+  try {
+    publicClub = getClubById(clubId);
+  } catch {
+    publicClub = null;
+  }
+
+  const clubOfficialEmail = normalizeEmail(publicClub?.email || '');
+
+  // 1. Private memberships joined with users
+  const membershipRows = await privQueryAll(
+    `SELECT m.*, u.email, u.fullName, u.major, u.gradYear, u.avatarBg, u.verifiedEdu
+       FROM club_memberships m
+       JOIN users u ON u.id = m.userId
+      WHERE m.clubId = ?
+      ORDER BY CASE m.tier WHEN 'president' THEN 0 WHEN 'board' THEN 1 ELSE 2 END, m.joinedAt ASC`,
+    [clubId]
+  );
+
+  // 2. Approved & pending claims for this club
+  const claimRows = await privQueryAll(
+    `SELECT c.*, u.fullName AS claimerName, u.email AS claimerEmail, u.verifiedEdu AS claimerVerifiedEdu
+       FROM roster_claims c
+       JOIN users u ON u.id = c.userId
+      WHERE c.clubId = ? AND c.status IN ('approved', 'pending')
+      ORDER BY c.createdAt DESC`,
+    [clubId]
+  );
+
+  const approvedClaimByRosterId = new Map();
+  const pendingClaims = [];
+  for (const cl of claimRows) {
+    if (cl.status === 'approved') {
+      approvedClaimByRosterId.set(cl.rosterId, cl);
+    } else if (cl.status === 'pending') {
+      pendingClaims.push({
+        id: cl.id,
+        clubId: cl.clubId,
+        rosterId: cl.rosterId,
+        userId: cl.userId,
+        requestedRole: cl.requestedRole,
+        rosterName: cl.rosterName,
+        claimerName: cl.claimerName,
+        claimerEmail:
+          canSeePrivateEmails || cl.userId === requesterUser?.id ? cl.claimerEmail : '',
+        claimerVerifiedEdu: Boolean(cl.claimerVerifiedEdu),
+        notes: cl.notes || '',
+        createdAt: cl.createdAt,
+      });
+    }
+  }
+
+  // 3. Build unified Board & Member lists
+  const boardMap = new Map();
+  const memberMap = new Map();
+
+  for (const m of membershipRows) {
+    const isSelf = Boolean(requesterUser?.id && m.userId === requesterUser.id);
+    const exposedEmail = canSeePrivateEmails || isSelf ? m.email : '';
+    const key = `uid:${m.userId}`;
+    const entry = {
+      memberKey: key,
+      userId: m.userId,
+      rosterId: m.claimedRosterId || null,
+      name: m.fullName,
+      initials: toInitials(m.fullName),
+      email: exposedEmail,
+      roleTitle: m.roleTitle || (m.tier === 'member' ? 'Member' : 'Officer'),
+      tier: m.tier,
+      major: m.major || '',
+      avatarBg: m.avatarBg || '',
+      officeHours: m.officeHours || '',
+      claimed: m.tier === 'board' || m.tier === 'president',
+      isYou: isSelf,
+      joinedAt: m.joinedAt,
+    };
+
+    if (m.tier === 'board' || m.tier === 'president') {
+      boardMap.set(key, entry);
+    } else {
+      memberMap.set(key, entry);
+    }
+  }
+
+  // Merge public scraped roster entries (marking which ones are claimed vs unclaimed!)
+  const publicRoster = Array.isArray(publicClub?.roster) ? publicClub.roster : [];
+  const enrichedPublicRoster = [];
+
+  for (const r of publicRoster) {
+    if (!r?.id) continue;
+    const isSyntheticContact = String(r.id).endsWith('_official_contact');
+    const approvedClaim = approvedClaimByRosterId.get(r.id) || null;
+    const isClaimedByYou = Boolean(
+      approvedClaim && requesterUser?.id && approvedClaim.userId === requesterUser.id
+    );
+
+    enrichedPublicRoster.push({
+      ...r,
+      isSyntheticContact,
+      claimed: Boolean(approvedClaim),
+      claimedByUserId: approvedClaim?.userId || null,
+      claimedByName: approvedClaim?.claimerName || null,
+      claimedRole: approvedClaim?.requestedRole || r.role,
+      isClaimedByYou,
+    });
+
+    if (isSyntheticContact) continue;
+
+    if (r.personType === 'member') {
+      if (!approvedClaim) {
+        const key = makeMemberKey({ email: r.email, name: r.name, rosterId: r.id });
+        if (!memberMap.has(key)) {
+          memberMap.set(key, {
+            memberKey: key,
+            userId: null,
+            rosterId: r.id,
+            name: r.name,
+            initials: r.initials || toInitials(r.name),
+            email: r.email && normalizeEmail(r.email) !== clubOfficialEmail ? r.email : '',
+            roleTitle: r.role || 'Active Member',
+            tier: 'member',
+            major: r.major || '',
+            avatarBg: '',
+            officeHours: '',
+            claimed: false,
+            isYou: false,
+          });
+        }
+      }
+    } else if (!approvedClaim) {
+      const key = makeMemberKey({ email: r.email, name: r.name, rosterId: r.id });
+      if (!boardMap.has(key)) {
+        boardMap.set(key, {
+          memberKey: key,
+          userId: null,
+          rosterId: r.id,
+          name: r.name,
+          initials: r.initials || toInitials(r.name),
+          email: r.email || publicClub?.email || '',
+          roleTitle: r.role || 'Officer',
+          tier: classifyLeadershipTier(r.role || 'Officer'),
+          major: r.major || '',
+          avatarBg: '',
+          officeHours: r.office || '',
+          claimed: false,
+          isYou: false,
+        });
+      }
+    }
+  }
+
+  // 4. Club groups & their members
+  const groupRows = await privQueryAll(
+    `SELECT * FROM club_groups WHERE clubId = ? ORDER BY createdAt ASC`,
+    [clubId]
+  );
+  const groupMemberRows = await privQueryAll(
+    `SELECT * FROM club_group_members WHERE clubId = ? ORDER BY addedAt ASC`,
+    [clubId]
+  );
+
+  const membersByGroup = new Map();
+  for (const gm of groupMemberRows) {
+    if (!membersByGroup.has(gm.groupId)) membersByGroup.set(gm.groupId, []);
+    const isSelf = Boolean(
+      (requesterUser?.id && gm.userId === requesterUser.id) ||
+        (requesterUser?.email && gm.email && normalizeEmail(gm.email) === normalizeEmail(requesterUser.email))
+    );
+    membersByGroup.get(gm.groupId).push({
+      id: gm.id,
+      memberKey: gm.memberKey,
+      userId: gm.userId || null,
+      name: gm.name,
+      initials: toInitials(gm.name),
+      email: canSeePrivateEmails || isSelf ? gm.email : '',
+      roleTitle: gm.roleTitle || 'Member',
+      personType: gm.personType || 'member',
+      isYou: isSelf,
+    });
+  }
+
+  const groups = groupRows.map(g => {
+    const gMembers = membersByGroup.get(g.id) || [];
+    const isMyGroup = gMembers.some(m => m.isYou);
+    return {
+      id: g.id,
+      clubId: g.clubId,
+      name: g.name,
+      color: g.color || 'blue',
+      description: g.description || '',
+      memberCount: gMembers.length,
+      isMyGroup,
+      members: gMembers,
+      createdAt: g.createdAt,
+    };
+  });
+
+  const boardList = Array.from(boardMap.values());
+  const membersList = Array.from(memberMap.values());
+
+  // Deduplicated everyone list
+  const everyoneMap = new Map();
+  for (const p of [...boardList, ...membersList]) {
+    const dedupe = p.userId ? `uid:${p.userId}` : `name:${p.name.toLowerCase()}`;
+    if (!everyoneMap.has(dedupe)) everyoneMap.set(dedupe, p);
+  }
+  const everyoneList = Array.from(everyoneMap.values());
+
+  return {
+    clubId,
+    clubName: publicClub?.name || clubId,
+    clubOfficialEmail,
+    permission: perm,
+    board: boardList,
+    members: membersList,
+    everyone: everyoneList,
+    publicRoster: enrichedPublicRoster,
+    groups,
+    pendingClaims: perm.isBoard
+      ? pendingClaims
+      : pendingClaims.filter(c => c.userId === requesterUser?.id),
+    shortcuts: {
+      allBoardCount: boardList.length,
+      allMembersCount: membersList.length,
+      everyoneCount: everyoneList.length,
+      groups: groups.map(g => ({
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        count: g.memberCount,
+      })),
+    },
+  };
+}
+
+/**
+ * Expands leadership shortcut tokens (`'all_board'`, `'all_members'`, `'everyone'`, `'group:<id>'`)
+ * into a deduplicated array of participant/assignee objects.
+ */
+export function expandShortcutTargets(clubData, shortcutTargets = [], explicitPeople = []) {
+  const map = new Map();
+
+  const addPerson = (p, sourceLabel = '') => {
+    if (!p?.name) return;
+    const key = p.userId
+      ? `uid:${p.userId}`
+      : p.email
+        ? `email:${normalizeEmail(p.email)}`
+        : p.memberKey || `name:${String(p.name).toLowerCase()}`;
+    if (map.has(key)) return;
+    map.set(key, {
+      memberKey: key,
+      userId: p.userId || null,
+      name: p.name,
+      initials: p.initials || toInitials(p.name),
+      email: p.email || '',
+      roleTitle: p.roleTitle || p.role || 'Member',
+      tier: p.tier || (p.personType === 'officer' ? 'board' : 'member'),
+      sourceShortcut: sourceLabel,
+    });
+  };
+
+  for (const token of shortcutTargets || []) {
+    const t = String(token || '').trim();
+    if (t === 'all_board') {
+      for (const b of clubData.board || []) addPerson(b, 'All Board');
+    } else if (t === 'all_members') {
+      for (const m of clubData.members || []) addPerson(m, 'All Members');
+    } else if (t === 'everyone') {
+      for (const e of clubData.everyone || []) addPerson(e, 'Everyone');
+    } else if (t.startsWith('group:')) {
+      const gid = t.slice(6);
+      const grp = (clubData.groups || []).find(g => g.id === gid);
+      if (grp) {
+        for (const gm of grp.members || []) addPerson(gm, grp.name);
+      }
+    }
+  }
+
+  for (const p of explicitPeople || []) {
+    addPerson(p, p.sourceShortcut || 'Direct');
+  }
+
+  return Array.from(map.values());
+}
+
+/**
+ * Ensures default Monday.com sections exist for a club when first opened.
+ */
+async function ensureDefaultTaskSections(clubId, actorUserId = 'system') {
+  const existing = await privQueryAll(
+    `SELECT * FROM club_task_sections WHERE clubId = ? ORDER BY position ASC, createdAt ASC`,
+    [clubId]
+  );
+  if (existing.length > 0) return existing;
+
+  const nowIso = new Date().toISOString();
+  const defaults = [
+    {
+      id: `sec_${clubId}_general`,
+      title: 'General Club Checklist',
+      color: 'teal',
+      visibility: 'members',
+      position: 0,
+    },
+    {
+      id: `sec_${clubId}_sprint`,
+      title: 'Team & Group Assignments',
+      color: 'blue',
+      visibility: 'members',
+      position: 1,
+    },
+    {
+      id: `sec_${clubId}_board`,
+      title: 'Executive Board Internal',
+      color: 'purple',
+      visibility: 'board',
+      position: 2,
+    },
+  ];
+
+  await privBatch(
+    defaults.map(s => ({
+      sql: `INSERT OR IGNORE INTO club_task_sections (
+              id, clubId, title, color, visibility, position, createdByUserId, createdAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [s.id, clubId, s.title, s.color, s.visibility, s.position, actorUserId, nowIso],
+    }))
+  );
+
+  return privQueryAll(
+    `SELECT * FROM club_task_sections WHERE clubId = ? ORDER BY position ASC, createdAt ASC`,
+    [clubId]
+  );
+}
+
+function formatTaskRow(row) {
+  return {
+    id: row.id,
+    clubId: row.clubId,
+    sectionId: row.sectionId,
+    title: row.title,
+    notes: row.notes || '',
+    visibility: row.visibility || 'members',
+    audience: row.audience || 'general',
+    status: row.status || 'not_started',
+    priority: row.priority || 'medium',
+    dueDate: row.dueDate || '',
+    assignees: parseJsonSafe(row.assigneesJson, []),
+    groupIds: parseJsonSafe(row.groupIdsJson, []),
+    completedBy: parseJsonSafe(row.completedByJson, []),
+    position: Number(row.position || 0),
+    createdByUserId: row.createdByUserId,
+    createdByName: row.createdByName || '',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+// ── 0. Workspace Health & Cloud Storage Mode (never leaks secrets) ────
+router.get('/status', optionalAuth, async (req, res) => {
+  const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
+  res.json({
+    ok: true,
+    storageMode: getPrivateDbMode(),
+    authenticated: Boolean(req.user),
+    ...(overview || {}),
+  });
+});
+
+// ── 1. Multi-User Authentication Endpoints ────────────────────────────
+
+router.post('/auth/session', async (req, res) => {
+  try {
+    const { email, password, fullName, major, gradYear, avatarBg, mode = 'auto' } = req.body || {};
+    const result = await registerOrLoginEmailUser({
+      email,
+      password,
+      fullName,
+      major,
+      gradYear,
+      avatarBg,
+      mode,
+    });
+    const overview = await getUserWorkspaceOverview(result.user);
+    res.status(result.created ? 201 : 200).json({
+      ok: true,
+      ...result,
+      ...overview,
+    });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message || 'Authentication failed.' });
+  }
+});
+
+router.post('/auth/sync-external', async (req, res) => {
+  try {
+    const { provider, googleAccessToken, clerkUserId, email, fullName, avatarBg } = req.body || {};
+    const result = await syncExternalAuthUser({
+      provider,
+      googleAccessToken,
+      clerkUserId,
+      email,
+      fullName,
+      avatarBg,
+    });
+    const overview = await getUserWorkspaceOverview(result.user);
+    res.json({
+      ok: true,
+      ...result,
+      ...overview,
+    });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message || 'External auth sync failed.' });
+  }
+});
+
+router.post('/auth/logout', async (req, res) => {
+  const token = extractBearerToken(req);
+  await revokeSessionToken(token);
+  res.json({ ok: true });
+});
+
+router.get('/auth/me', requireAuth, async (req, res) => {
+  const overview = await getUserWorkspaceOverview(req.user);
+  res.json({ ok: true, ...overview });
+});
+
+router.patch('/auth/profile', requireAuth, async (req, res) => {
+  const { fullName, major, gradYear, avatarBg } = req.body || {};
+  const nowIso = new Date().toISOString();
+  await privExecute(
+    `UPDATE users
+        SET fullName = COALESCE(?, fullName),
+            major = COALESCE(?, major),
+            gradYear = COALESCE(?, gradYear),
+            avatarBg = COALESCE(?, avatarBg),
+            updatedAt = ?
+      WHERE id = ?`,
+    [
+      typeof fullName === 'string' && fullName.trim() ? fullName.trim() : null,
+      typeof major === 'string' ? major.trim() : null,
+      typeof gradYear === 'string' ? gradYear.trim() : null,
+      typeof avatarBg === 'string' && avatarBg.trim() ? avatarBg.trim() : null,
+      nowIso,
+      req.user.id,
+    ]
+  );
+  const updated = await privQueryGet(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
+  const overview = await getUserWorkspaceOverview({
+    ...req.user,
+    fullName: updated.fullName,
+    major: updated.major,
+    gradYear: updated.gradYear,
+    avatarBg: updated.avatarBg,
+  });
+  res.json({ ok: true, ...overview });
+});
+
+// ── 2. Club Memberships (Join / Leave / Sync Joined Clubs) ────────────
+
+router.post('/clubs/:clubId/join', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+
+  const nowIso = new Date().toISOString();
+  const membershipId = `${clubId}::${req.user.id}`;
+  await privExecute(
+    `INSERT INTO club_memberships (
+       id, clubId, userId, tier, roleTitle, claimedRosterId, officeHours, joinedAt, updatedAt
+     ) VALUES (?, ?, ?, 'member', 'Member', NULL, '', ?, ?)
+     ON CONFLICT(clubId, userId) DO UPDATE SET updatedAt = excluded.updatedAt`,
+    [membershipId, clubId, req.user.id, nowIso, nowIso]
+  );
+
+  const overview = await getUserWorkspaceOverview(req.user);
+  res.json({ ok: true, clubId, ...overview });
+});
+
+router.post('/clubs/:clubId/leave', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const nowIso = new Date().toISOString();
+
+  const tasks = await privQueryAll(
+    `SELECT id, assigneesJson FROM club_tasks WHERE clubId = ?`,
+    [clubId]
+  );
+  const taskScrubStmts = [];
+  for (const t of tasks) {
+    const arr = parseJsonSafe(t.assigneesJson, []);
+    if (Array.isArray(arr) && arr.some(a => a.userId === req.user.id)) {
+      const filtered = arr.filter(a => a.userId !== req.user.id);
+      taskScrubStmts.push({
+        sql: `UPDATE club_tasks SET assigneesJson = ?, updatedAt = ? WHERE id = ?`,
+        params: [JSON.stringify(filtered), nowIso, t.id],
+      });
+    }
+  }
+
+  await privBatch([
+    ...taskScrubStmts,
+    {
+      sql: `UPDATE roster_claims
+               SET status = 'revoked', updatedAt = ?
+             WHERE clubId = ? AND userId = ? AND status IN ('approved', 'pending')`,
+      params: [nowIso, clubId, req.user.id],
+    },
+    {
+      sql: `DELETE FROM club_group_members
+             WHERE clubId = ? AND (userId = ? OR LOWER(email) = ?)`,
+      params: [clubId, req.user.id, normalizeEmail(req.user.email)],
+    },
+    {
+      sql: `DELETE FROM club_memberships WHERE clubId = ? AND userId = ?`,
+      params: [clubId, req.user.id],
+    },
+  ]);
+
+  const overview = await getUserWorkspaceOverview(req.user);
+  res.json({ ok: true, clubId, ...overview });
+});
+
+router.post('/memberships/sync', requireAuth, async (req, res) => {
+  const { clubIds = [] } = req.body || {};
+  if (!Array.isArray(clubIds)) {
+    return res.status(400).json({ error: 'clubIds array is required' });
+  }
+  const nowIso = new Date().toISOString();
+  const cleanIds = Array.from(new Set(clubIds.map(normalizeClubKey).filter(Boolean))).slice(0, 60);
+
+  if (cleanIds.length > 0) {
+    await privBatch(
+      cleanIds.map(cid => ({
+        sql: `INSERT INTO club_memberships (
+                id, clubId, userId, tier, roleTitle, claimedRosterId, officeHours, joinedAt, updatedAt
+              ) VALUES (?, ?, ?, 'member', 'Member', NULL, '', ?, ?)
+              ON CONFLICT(clubId, userId) DO NOTHING`,
+        params: [`${cid}::${req.user.id}`, cid, req.user.id, nowIso, nowIso],
+      }))
+    );
+  }
+
+  const overview = await getUserWorkspaceOverview(req.user);
+  res.json({ ok: true, ...overview });
+});
+
+// ── 3. Club People, Roster Position Claiming & Board Approvals ────────
+
+router.get('/clubs/:clubId/people', optionalAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const data = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.json(data);
+});
+
+router.post('/clubs/:clubId/claims', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+
+  const {
+    rosterId: rawRosterId = '',
+    requestedRole: rawRole = '',
+    rosterName: rawRosterName = '',
+    officeHours = '',
+    notes = '',
+  } = req.body || {};
+
+  let publicClub = null;
+  try {
+    publicClub = getClubById(clubId);
+  } catch {
+    publicClub = null;
+  }
+
+  const publicRoster = Array.isArray(publicClub?.roster) ? publicClub.roster : [];
+  const matchedRosterEntry = rawRosterId
+    ? publicRoster.find(r => r.id === rawRosterId) || null
+    : null;
+
+  const requestedRole = String(rawRole || matchedRosterEntry?.role || 'Officer')
+    .trim()
+    .slice(0, 80);
+  if (!requestedRole) {
+    return res.status(400).json({ error: 'A board/officer role title is required.' });
+  }
+
+  const rosterId =
+    String(rawRosterId || '').trim() ||
+    `claimed_role_${clubId}_${requestedRole.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+  const rosterName = String(rawRosterName || matchedRosterEntry?.name || req.user.fullName)
+    .trim()
+    .slice(0, 80);
+
+  // 1. Check if this exact rosterId is already claimed by another user (case-insensitive)
+  const existingSlotClaim = await privQueryGet(
+    `SELECT * FROM roster_claims WHERE clubId = ? AND LOWER(rosterId) = LOWER(?) AND status = 'approved'`,
+    [clubId, rosterId]
+  );
+
+  if (existingSlotClaim && existingSlotClaim.userId !== req.user.id) {
+    return res.status(409).json({
+      error: 'This roster position has already been claimed by another verified board member.',
+      code: 'SLOT_ALREADY_CLAIMED',
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Idempotent update if this user already holds this exact claim
+  if (existingSlotClaim && existingSlotClaim.userId === req.user.id) {
+    const tier = classifyLeadershipTier(requestedRole);
+    await privBatch([
+      {
+        sql: `UPDATE roster_claims
+                 SET requestedRole = ?, notes = ?, updatedAt = ?
+               WHERE id = ?`,
+        params: [requestedRole, String(notes || '').trim(), nowIso, existingSlotClaim.id],
+      },
+      {
+        sql: `UPDATE club_memberships
+                 SET tier = ?, roleTitle = ?, officeHours = ?, updatedAt = ?
+               WHERE clubId = ? AND userId = ?`,
+        params: [
+          tier,
+          requestedRole,
+          String(officeHours || '').trim(),
+          nowIso,
+          clubId,
+          req.user.id,
+        ],
+      },
+    ]);
+    const overview = await getUserWorkspaceOverview(req.user);
+    const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+    return res.json({
+      ok: true,
+      claimStatus: 'approved',
+      claim: { ...existingSlotClaim, requestedRole },
+      clubPeople,
+      ...overview,
+    });
+  }
+
+  // 2. Prevent one user from hoarding multiple board seats in the same club
+  const userOtherApprovedClaim = await privQueryGet(
+    `SELECT * FROM roster_claims
+      WHERE clubId = ? AND userId = ? AND status = 'approved' AND rosterId != ?`,
+    [clubId, req.user.id, rosterId]
+  );
+  if (userOtherApprovedClaim) {
+    return res.status(409).json({
+      error: `You already hold the "${userOtherApprovedClaim.requestedRole}" position in this club. Release your current seat first if changing positions.`,
+      code: 'USER_ALREADY_ON_BOARD',
+    });
+  }
+
+  // 3. Determine verification method & whether claim is auto-approved or pending board review
+  const userEmail = normalizeEmail(req.user.email);
+  const clubEmail = normalizeEmail(publicClub?.email || '');
+  const rosterEntryEmail = normalizeEmail(matchedRosterEntry?.email || '');
+  const hasDirectRosterEmailMatch =
+    Boolean(rosterEntryEmail) &&
+    rosterEntryEmail !== clubEmail &&
+    userEmail === rosterEntryEmail;
+  const hasOfficialClubEmailMatch = Boolean(clubEmail) && userEmail === clubEmail;
+
+  const preInvite = await privQueryGet(
+    `SELECT * FROM club_role_invites WHERE clubId = ? AND LOWER(email) = ?`,
+    [clubId, userEmail]
+  );
+
+  const otherBoardCountRow = await privQueryGet(
+    `SELECT COUNT(*) AS cnt
+       FROM club_memberships
+      WHERE clubId = ? AND tier IN ('board', 'president') AND userId != ?`,
+    [clubId, req.user.id]
+  );
+  const existingBoardCount = Number(otherBoardCountRow?.cnt || 0);
+
+  let status = 'pending';
+  let verificationMethod = 'pending_board_review';
+
+  if (hasOfficialClubEmailMatch) {
+    status = 'approved';
+    verificationMethod = 'official_email';
+  } else if (hasDirectRosterEmailMatch) {
+    status = 'approved';
+    verificationMethod = 'roster_email_match';
+  } else if (preInvite && (preInvite.tier === 'board' || preInvite.tier === 'president')) {
+    status = 'approved';
+    verificationMethod = 'board_invited';
+  } else if (existingBoardCount === 0) {
+    // Founding/first board leader onboarding this club onto ClubHub
+    status = 'approved';
+    verificationMethod = 'first_board_claim';
+  }
+
+  // Check if user already has a pending claim in this club (update instead of duplicating)
+  const existingPending = await privQueryGet(
+    `SELECT * FROM roster_claims WHERE clubId = ? AND userId = ? AND status = 'pending'`,
+    [clubId, req.user.id]
+  );
+
+  const claimId =
+    existingPending?.id || `claim_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const tier = status === 'approved' ? classifyLeadershipTier(requestedRole) : 'member';
+  const membershipRoleTitle = status === 'approved' ? requestedRole : 'Member';
+  const membershipId = `${clubId}::${req.user.id}`;
+
+  const statements = [];
+  if (existingPending) {
+    statements.push({
+      sql: `UPDATE roster_claims
+               SET rosterId = ?, requestedRole = ?, rosterName = ?, status = ?,
+                   verificationMethod = ?, notes = ?, updatedAt = ?
+             WHERE id = ?`,
+      params: [
+        rosterId,
+        requestedRole,
+        rosterName,
+        status,
+        verificationMethod,
+        String(notes || '').trim(),
+        nowIso,
+        claimId,
+      ],
+    });
+  } else {
+    statements.push({
+      sql: `INSERT INTO roster_claims (
+              id, clubId, rosterId, userId, requestedRole, rosterName,
+              status, verificationMethod, notes, reviewedByUserId, reviewedAt, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      params: [
+        claimId,
+        clubId,
+        rosterId,
+        req.user.id,
+        requestedRole,
+        rosterName,
+        status,
+        verificationMethod,
+        String(notes || '').trim(),
+        nowIso,
+        nowIso,
+      ],
+    });
+  }
+
+  statements.push({
+    sql: `INSERT INTO club_memberships (
+            id, clubId, userId, tier, roleTitle, claimedRosterId, officeHours, joinedAt, updatedAt
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(clubId, userId) DO UPDATE SET
+            tier = CASE
+              WHEN ? = 'approved' THEN excluded.tier
+              ELSE club_memberships.tier
+            END,
+            roleTitle = CASE
+              WHEN ? = 'approved' THEN excluded.roleTitle
+              ELSE club_memberships.roleTitle
+            END,
+            claimedRosterId = CASE
+              WHEN ? = 'approved' THEN excluded.claimedRosterId
+              ELSE club_memberships.claimedRosterId
+            END,
+            officeHours = CASE
+              WHEN ? = 'approved' AND excluded.officeHours != '' THEN excluded.officeHours
+              ELSE club_memberships.officeHours
+            END,
+            updatedAt = excluded.updatedAt`,
+    params: [
+      membershipId,
+      clubId,
+      req.user.id,
+      tier,
+      membershipRoleTitle,
+      status === 'approved' ? rosterId : null,
+      String(officeHours || '').trim(),
+      nowIso,
+      nowIso,
+      status,
+      status,
+      status,
+      status,
+    ],
+  });
+
+  try {
+    await privBatch(statements);
+  } catch (err) {
+    if (/UNIQUE constraint|23505/i.test(err?.message || '')) {
+      return res.status(409).json({
+        error: 'This roster position was simultaneously claimed by another verified member.',
+        code: 'SLOT_ALREADY_CLAIMED',
+      });
+    }
+    throw err;
+  }
+
+  if (status === 'approved') {
+    await ensureDefaultTaskSections(clubId, req.user.id);
+  }
+
+  const savedClaim = await privQueryGet(`SELECT * FROM roster_claims WHERE id = ?`, [claimId]);
+  const overview = await getUserWorkspaceOverview(req.user);
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+
+  res.status(201).json({
+    ok: true,
+    claimStatus: status,
+    verificationMethod,
+    claim: savedClaim,
+    clubPeople,
+    ...overview,
+  });
+});
+
+// Approve or reject a pending roster claim (Board leaders of this club ONLY; never self-approve)
+router.post('/clubs/:clubId/claims/:claimId/review', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only verified board members of this club can review roster claims.',
+    });
+  }
+
+  const claim = await privQueryGet(
+    `SELECT * FROM roster_claims WHERE id = ? AND clubId = ?`,
+    [req.params.claimId, clubId]
+  );
+  if (!claim) {
+    return res.status(404).json({ error: 'Roster claim not found.' });
+  }
+  if (claim.userId === req.user.id) {
+    return res.status(403).json({ error: 'You cannot approve or review your own roster claim.' });
+  }
+  if (claim.status !== 'pending') {
+    return res.status(409).json({ error: `Claim has already been ${claim.status}.` });
+  }
+
+  const decision = String(req.body?.decision || '').toLowerCase();
+  if (decision !== 'approve' && decision !== 'reject') {
+    return res.status(400).json({ error: 'decision must be "approve" or "reject".' });
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (decision === 'approve') {
+    // Race condition check: ensure slot wasn't claimed in the meantime (case-insensitive)
+    const slotConflict = await privQueryGet(
+      `SELECT * FROM roster_claims
+        WHERE clubId = ? AND LOWER(rosterId) = LOWER(?) AND status = 'approved' AND id != ?`,
+      [clubId, claim.rosterId, claim.id]
+    );
+    if (slotConflict) {
+      return res.status(409).json({
+        error: 'Another board member was already approved for this exact roster slot.',
+        code: 'SLOT_ALREADY_CLAIMED',
+      });
+    }
+
+    const tier = classifyLeadershipTier(claim.requestedRole);
+    const membershipId = `${clubId}::${claim.userId}`;
+    try {
+      await privBatch([
+        {
+          sql: `UPDATE roster_claims
+                   SET status = 'approved',
+                       verificationMethod = 'board_approved',
+                       reviewedByUserId = ?,
+                       reviewedAt = ?,
+                       updatedAt = ?
+                 WHERE id = ?`,
+          params: [req.user.id, nowIso, nowIso, claim.id],
+        },
+        {
+          sql: `INSERT INTO club_memberships (
+                  id, clubId, userId, tier, roleTitle, claimedRosterId, officeHours, joinedAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
+                ON CONFLICT(clubId, userId) DO UPDATE SET
+                  tier = excluded.tier,
+                  roleTitle = excluded.roleTitle,
+                  claimedRosterId = excluded.claimedRosterId,
+                  updatedAt = excluded.updatedAt`,
+          params: [
+            membershipId,
+            clubId,
+            claim.userId,
+            tier,
+            claim.requestedRole,
+            claim.rosterId,
+            nowIso,
+            nowIso,
+          ],
+        },
+      ]);
+    } catch (err) {
+      if (/UNIQUE constraint|23505/i.test(err?.message || '')) {
+        return res.status(409).json({
+          error: 'Another board member was approved for this exact roster slot at the same time.',
+          code: 'SLOT_ALREADY_CLAIMED',
+        });
+      }
+      throw err;
+    }
+  } else {
+    await privExecute(
+      `UPDATE roster_claims
+          SET status = 'rejected', reviewedByUserId = ?, reviewedAt = ?, updatedAt = ?
+        WHERE id = ?`,
+      [req.user.id, nowIso, nowIso, claim.id]
+    );
+  }
+
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.json({
+    ok: true,
+    decision,
+    clubPeople,
+  });
+});
+
+// Step down from or revoke an approved/pending claim
+router.post('/clubs/:clubId/claims/:claimId/revoke', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const claim = await privQueryGet(
+    `SELECT * FROM roster_claims WHERE id = ? AND clubId = ?`,
+    [req.params.claimId, clubId]
+  );
+  if (!claim) return res.status(404).json({ error: 'Claim not found.' });
+
+  const perm = await getClubPermission(req.user, clubId);
+  const isSelf = claim.userId === req.user.id;
+  if (!isSelf && !perm.isPresident) {
+    return res.status(403).json({
+      error: 'Only the position holder or a club President can revoke a claimed board position.',
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  await privBatch([
+    {
+      sql: `UPDATE roster_claims SET status = 'revoked', updatedAt = ? WHERE id = ?`,
+      params: [nowIso, claim.id],
+    },
+    {
+      sql: `UPDATE club_memberships
+               SET tier = 'member', roleTitle = 'Member', claimedRosterId = NULL, updatedAt = ?
+             WHERE clubId = ? AND userId = ?`,
+      params: [nowIso, clubId, claim.userId],
+    },
+  ]);
+
+  const overview = await getUserWorkspaceOverview(req.user);
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.json({ ok: true, clubPeople, ...overview });
+});
+
+// Pre-invite or assign a role by email / userId (Board / President only)
+router.post('/clubs/:clubId/roles/assign', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({ error: 'Board leadership permissions required.' });
+  }
+
+  const {
+    email: rawEmail = '',
+    userId: targetUserId = '',
+    fullName = '',
+    roleTitle = 'Officer',
+    tier: requestedTier = 'board',
+  } = req.body || {};
+
+  const tier =
+    requestedTier === 'president'
+      ? 'president'
+      : requestedTier === 'board'
+        ? 'board'
+        : 'member';
+
+  if (tier === 'president' && !perm.isPresident) {
+    return res.status(403).json({
+      error: 'Only a club President can assign another President-tier role.',
+    });
+  }
+
+  const cleanEmail = normalizeEmail(rawEmail);
+  let targetUser = null;
+  if (targetUserId) {
+    targetUser = await privQueryGet(`SELECT * FROM users WHERE id = ?`, [targetUserId]);
+  } else if (cleanEmail) {
+    targetUser = await privQueryGet(`SELECT * FROM users WHERE email = ?`, [cleanEmail]);
+  }
+
+  const nowIso = new Date().toISOString();
+  const cleanTitle = String(roleTitle || (tier === 'member' ? 'Member' : 'Officer')).trim();
+
+  if (targetUser) {
+    // Prevent non-president board member from demoting a president
+    const existingTargetPerm = await getClubPermission(targetUser, clubId);
+    if (existingTargetPerm.isPresident && !perm.isPresident && targetUser.id !== req.user.id) {
+      return res.status(403).json({
+        error: 'Only a club President can modify another President’s role.',
+      });
+    }
+
+    const rosterId =
+      tier !== 'member'
+        ? `assigned_${clubId}_${targetUser.id}`
+        : null;
+    await privBatch([
+      {
+        sql: `INSERT INTO club_memberships (
+                id, clubId, userId, tier, roleTitle, claimedRosterId, officeHours, joinedAt, updatedAt
+              ) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
+              ON CONFLICT(clubId, userId) DO UPDATE SET
+                tier = excluded.tier,
+                roleTitle = excluded.roleTitle,
+                claimedRosterId = excluded.claimedRosterId,
+                updatedAt = excluded.updatedAt`,
+        params: [
+          `${clubId}::${targetUser.id}`,
+          clubId,
+          targetUser.id,
+          tier,
+          cleanTitle,
+          rosterId,
+          nowIso,
+          nowIso,
+        ],
+      },
+      ...(tier !== 'member'
+        ? [
+            {
+              sql: `INSERT INTO roster_claims (
+                      id, clubId, rosterId, userId, requestedRole, rosterName,
+                      status, verificationMethod, notes, reviewedByUserId, reviewedAt, createdAt, updatedAt
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'approved', 'board_invited', 'Assigned by club leadership', ?, ?, ?, ?)`,
+              params: [
+                `claim_assign_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+                clubId,
+                rosterId,
+                targetUser.id,
+                cleanTitle,
+                targetUser.fullName,
+                req.user.id,
+                nowIso,
+                nowIso,
+                nowIso,
+              ],
+            },
+          ]
+        : [
+            {
+              sql: `UPDATE roster_claims SET status = 'revoked', updatedAt = ? WHERE clubId = ? AND userId = ? AND status = 'approved'`,
+              params: [nowIso, clubId, targetUser.id],
+            },
+          ]),
+    ]);
+  } else if (cleanEmail && cleanEmail.includes('@')) {
+    await privExecute(
+      `INSERT INTO club_role_invites (
+         id, clubId, email, fullName, tier, roleTitle, rosterId, invitedByUserId, acceptedByUserId, createdAt
+       ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?)
+       ON CONFLICT(clubId, email) DO UPDATE SET
+         fullName = excluded.fullName,
+         tier = excluded.tier,
+         roleTitle = excluded.roleTitle,
+         invitedByUserId = excluded.invitedByUserId`,
+      [
+        `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+        clubId,
+        cleanEmail,
+        String(fullName || '').trim(),
+        tier,
+        cleanTitle,
+        req.user.id,
+        nowIso,
+      ]
+    );
+  } else {
+    return res.status(400).json({ error: 'Valid email or userId is required.' });
+  }
+
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.status(201).json({ ok: true, clubPeople });
+});
+
+// ── 4. Club Groups / Sub-Teams Within Clubs ───────────────────────────
+
+router.get('/clubs/:clubId/groups', optionalAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.json({ clubId, groups: clubPeople.groups, permission: clubPeople.permission });
+});
+
+router.post('/clubs/:clubId/groups', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members of this club can create club groups.',
+    });
+  }
+
+  const {
+    name,
+    color = 'blue',
+    description = '',
+    members = [],
+    shortcutTargets = [],
+  } = req.body || {};
+
+  const cleanName = String(name || '').trim().slice(0, 60);
+  if (!cleanName) {
+    return res.status(400).json({ error: 'Group name is required.' });
+  }
+
+  const dupGroup = await privQueryGet(
+    `SELECT id FROM club_groups WHERE clubId = ? AND LOWER(name) = LOWER(?)`,
+    [clubId, cleanName]
+  );
+  if (dupGroup) {
+    return res.status(409).json({
+      error: `A sub-group named "${cleanName}" already exists in this club.`,
+      code: 'GROUP_NAME_EXISTS',
+    });
+  }
+
+  const safeColor = VALID_COLORS.has(color) ? color : 'blue';
+  const groupId = `grp_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const nowIso = new Date().toISOString();
+
+  const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+  const initialPeople = expandShortcutTargets(clubData, shortcutTargets, members);
+
+  const statements = [
+    {
+      sql: `INSERT INTO club_groups (
+              id, clubId, name, color, description, createdByUserId, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        groupId,
+        clubId,
+        cleanName,
+        safeColor,
+        String(description || '').trim().slice(0, 200),
+        req.user.id,
+        nowIso,
+        nowIso,
+      ],
+    },
+    ...initialPeople.map(p => ({
+      sql: `INSERT OR IGNORE INTO club_group_members (
+              id, groupId, clubId, memberKey, userId, email, name, roleTitle, personType, addedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        `gm_${groupId}_${crypto.randomBytes(4).toString('hex')}`,
+        groupId,
+        clubId,
+        p.memberKey,
+        p.userId || null,
+        normalizeEmail(p.email || ''),
+        p.name,
+        p.roleTitle || 'Member',
+        p.tier === 'board' || p.tier === 'president' ? 'officer' : 'member',
+        nowIso,
+      ],
+    })),
+  ];
+
+  await privBatch(statements);
+  const updatedPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  const createdGroup = updatedPeople.groups.find(g => g.id === groupId);
+  res.status(201).json({ ok: true, group: createdGroup, clubPeople: updatedPeople });
+});
+
+router.patch('/clubs/:clubId/groups/:groupId', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members can modify club groups.',
+    });
+  }
+
+  const group = await privQueryGet(
+    `SELECT * FROM club_groups WHERE id = ? AND clubId = ?`,
+    [req.params.groupId, clubId]
+  );
+  if (!group) return res.status(404).json({ error: 'Group not found.' });
+
+  const {
+    name,
+    color,
+    description,
+    addMembers = [],
+    removeMemberKeys = [],
+    shortcutTargets = [],
+  } = req.body || {};
+
+  const nowIso = new Date().toISOString();
+  const nextName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 60) : group.name;
+  const nextColor = color && VALID_COLORS.has(color) ? color : group.color;
+  const nextDesc =
+    typeof description === 'string' ? description.trim().slice(0, 200) : group.description;
+
+  const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+  const peopleToAdd = expandShortcutTargets(clubData, shortcutTargets, addMembers);
+
+  const statements = [
+    {
+      sql: `UPDATE club_groups SET name = ?, color = ?, description = ?, updatedAt = ? WHERE id = ?`,
+      params: [nextName, nextColor, nextDesc, nowIso, group.id],
+    },
+    ...peopleToAdd.map(p => ({
+      sql: `INSERT OR IGNORE INTO club_group_members (
+              id, groupId, clubId, memberKey, userId, email, name, roleTitle, personType, addedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        `gm_${group.id}_${crypto.randomBytes(4).toString('hex')}`,
+        group.id,
+        clubId,
+        p.memberKey,
+        p.userId || null,
+        normalizeEmail(p.email || ''),
+        p.name,
+        p.roleTitle || 'Member',
+        p.tier === 'board' || p.tier === 'president' ? 'officer' : 'member',
+        nowIso,
+      ],
+    })),
+    ...(Array.isArray(removeMemberKeys) ? removeMemberKeys : []).map(mk => ({
+      sql: `DELETE FROM club_group_members WHERE groupId = ? AND memberKey = ?`,
+      params: [group.id, String(mk)],
+    })),
+  ];
+
+  await privBatch(statements);
+  const updatedPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  const updatedGroup = updatedPeople.groups.find(g => g.id === group.id);
+  res.json({ ok: true, group: updatedGroup, clubPeople: updatedPeople });
+});
+
+router.delete('/clubs/:clubId/groups/:groupId', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members can delete club groups.',
+      code: 'BOARD_PERMISSION_REQUIRED',
+    });
+  }
+
+  const groupId = req.params.groupId;
+  const nowIso = new Date().toISOString();
+
+  // Scrub deleted groupId from active tasks & announcements so zero dangling references remain
+  const affectedTasks = await privQueryAll(
+    `SELECT id, groupIdsJson FROM club_tasks WHERE clubId = ?`,
+    [clubId]
+  );
+  const taskCleanupStmts = [];
+  for (const t of affectedTasks) {
+    const gids = parseJsonSafe(t.groupIdsJson, []);
+    if (Array.isArray(gids) && gids.includes(groupId)) {
+      const nextGids = gids.filter(id => id !== groupId);
+      taskCleanupStmts.push({
+        sql: `UPDATE club_tasks SET groupIdsJson = ?, updatedAt = ? WHERE id = ?`,
+        params: [JSON.stringify(nextGids), nowIso, t.id],
+      });
+    }
+  }
+
+  const affectedAnns = await privQueryAll(
+    `SELECT id, targetGroupIdsJson FROM club_announcements_private WHERE clubId = ?`,
+    [clubId]
+  );
+  const annCleanupStmts = [];
+  for (const a of affectedAnns) {
+    const gids = parseJsonSafe(a.targetGroupIdsJson, []);
+    if (Array.isArray(gids) && gids.includes(groupId)) {
+      const nextGids = gids.filter(id => id !== groupId);
+      annCleanupStmts.push({
+        sql: `UPDATE club_announcements_private SET targetGroupIdsJson = ? WHERE id = ?`,
+        params: [JSON.stringify(nextGids), a.id],
+      });
+    }
+  }
+
+  await privBatch([
+    ...taskCleanupStmts,
+    ...annCleanupStmts,
+    { sql: `DELETE FROM club_group_members WHERE groupId = ? AND clubId = ?`, params: [groupId, clubId] },
+    { sql: `DELETE FROM club_groups WHERE id = ? AND clubId = ?`, params: [groupId, clubId] },
+  ]);
+
+  const updatedPeople = await buildClubPeopleAndShortcuts(clubId, req.user);
+  res.json({ ok: true, clubPeople: updatedPeople });
+});
+
+// ── 5. Monday.com-Style Two-Tier Club Tasks & Higher-Perm Board View ──
+
+async function buildClubTasksBoardPayload(clubId, user, perm) {
+  const allSections = await ensureDefaultTaskSections(clubId, user?.id || 'system');
+  const [rawTasks, activeGroups, activeMemberships] = await Promise.all([
+    privQueryAll(
+      `SELECT * FROM club_tasks WHERE clubId = ? ORDER BY position ASC, createdAt ASC`,
+      [clubId]
+    ),
+    privQueryAll(`SELECT id FROM club_groups WHERE clubId = ?`, [clubId]),
+    privQueryAll(`SELECT userId FROM club_memberships WHERE clubId = ?`, [clubId]),
+  ]);
+
+  const validGroupIds = new Set(activeGroups.map(g => g.id));
+  const activeClubUserIds = new Set(activeMemberships.map(m => m.userId));
+  const userEmailLower = normalizeEmail(user?.email || '');
+
+  // Strict server-side RBAC filter: strip `visibility = 'board'` sections & tasks unless `perm.isBoard`,
+  // and scope regular members to general club tasks + tasks assigned to them or their sub-groups!
+  const visibleSections = perm.isBoard
+    ? allSections
+    : allSections.filter(s => s.visibility !== 'board');
+
+  const visibleSectionIds = new Set(visibleSections.map(s => s.id));
+  const formattedTasks = rawTasks
+    .map(row => {
+      const t = formatTaskRow(row);
+      const cleanGroupIds = (t.groupIds || []).filter(gid => validGroupIds.has(gid));
+      const cleanAssignees = (t.assignees || []).filter(
+        a => !a.userId || activeClubUserIds.has(a.userId)
+      );
+      return {
+        ...t,
+        groupIds: cleanGroupIds,
+        assignees: cleanAssignees,
+      };
+    })
+    .filter(t => {
+      if (!visibleSectionIds.has(t.sectionId)) return false;
+      if (perm.isBoard) return true;
+      if (t.visibility === 'board' || t.audience === 'board') return false;
+      if (t.audience === 'general') return true;
+
+      // Targeted task: visible to regular member ONLY if assigned directly to them or one of their sub-groups
+      const isDirectlyAssigned = t.assignees.some(
+        a =>
+          (user?.id && a.userId === user.id) ||
+          (userEmailLower && a.email && normalizeEmail(a.email) === userEmailLower)
+      );
+      const isGroupAssigned = t.groupIds.some(gid => (perm.groupIds || []).includes(gid));
+      return isDirectlyAssigned || isGroupAssigned;
+    });
+
+  return {
+    clubId,
+    permission: perm,
+    sections: visibleSections,
+    tasks: formattedTasks,
+  };
+}
+
+router.get('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isMember && !perm.isBoard) {
+    return res.status(403).json({
+      error: 'Join this club to access its member task board.',
+      code: 'NOT_CLUB_MEMBER',
+    });
+  }
+
+  const boardPayload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  const clubPeople = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+  res.json({
+    ...boardPayload,
+    groups: clubPeople.groups,
+    shortcuts: clubPeople.shortcuts,
+  });
+});
+
+router.post('/clubs/:clubId/task-sections', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members can create task sections.',
+    });
+  }
+
+  const { title, color = 'blue', visibility = 'members' } = req.body || {};
+  const cleanTitle = String(title || '').trim().slice(0, 80);
+  if (!cleanTitle) return res.status(400).json({ error: 'Section title is required.' });
+
+  const safeColor = VALID_COLORS.has(color) ? color : 'blue';
+  const safeVis = visibility === 'board' ? 'board' : 'members';
+  const existing = await ensureDefaultTaskSections(clubId, req.user.id);
+  const nextPos = existing.length;
+  const sectionId = `sec_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const nowIso = new Date().toISOString();
+
+  await privExecute(
+    `INSERT INTO club_task_sections (
+       id, clubId, title, color, visibility, position, createdByUserId, createdAt
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [sectionId, clubId, cleanTitle, safeColor, safeVis, nextPos, req.user.id, nowIso]
+  );
+
+  const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  res.status(201).json({ ok: true, ...payload });
+});
+
+router.delete('/clubs/:clubId/task-sections/:sectionId', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({ error: 'Only claimed board members can delete task sections.' });
+  }
+
+  const sectionId = req.params.sectionId;
+  await privBatch([
+    { sql: `DELETE FROM club_tasks WHERE clubId = ? AND sectionId = ?`, params: [clubId, sectionId] },
+    { sql: `DELETE FROM club_task_sections WHERE clubId = ? AND id = ?`, params: [clubId, sectionId] },
+  ]);
+
+  const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  res.json({ ok: true, ...payload });
+});
+
+router.post('/clubs/:clubId/tasks', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only claimed board members of this club can create and assign tasks.',
+    });
+  }
+
+  const {
+    title,
+    notes = '',
+    sectionId: rawSectionId = '',
+    visibility: rawVisibility = 'members',
+    audience: rawAudience = 'general',
+    status: rawStatus = 'not_started',
+    priority: rawPriority = 'medium',
+    dueDate = '',
+    assignees = [],
+    groupIds = [],
+    shortcutTargets = [],
+  } = req.body || {};
+
+  const cleanTitle = String(title || '').trim().slice(0, 160);
+  if (!cleanTitle) return res.status(400).json({ error: 'Task title is required.' });
+
+  const sections = await ensureDefaultTaskSections(clubId, req.user.id);
+  const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+
+  let visibility = rawVisibility === 'board' ? 'board' : 'members';
+  let audience =
+    visibility === 'board'
+      ? 'board'
+      : rawAudience === 'targeted' || rawAudience === 'board'
+        ? rawAudience
+        : 'general';
+
+  // Extract group IDs from shortcutTargets if any `group:<id>` shortcuts were clicked
+  const mergedGroupIds = new Set(Array.isArray(groupIds) ? groupIds.map(String) : []);
+  const personShortcuts = [];
+  let hasAllMembersShortcut = false;
+
+  for (const st of shortcutTargets || []) {
+    const s = String(st || '');
+    if (s === 'all_members' || s === 'everyone') {
+      hasAllMembersShortcut = true;
+    } else if (s.startsWith('group:')) {
+      mergedGroupIds.add(s.slice(6));
+    } else {
+      personShortcuts.push(s);
+    }
+  }
+
+  const resolvedAssignees = expandShortcutTargets(clubData, personShortcuts, assignees);
+  const finalGroupIds = Array.from(mergedGroupIds).filter(gid =>
+    clubData.groups.some(g => g.id === gid)
+  );
+
+  if (visibility !== 'board') {
+    if (hasAllMembersShortcut && resolvedAssignees.length === 0 && finalGroupIds.length === 0) {
+      audience = 'general';
+    } else if (resolvedAssignees.length > 0 || finalGroupIds.length > 0) {
+      audience = 'targeted';
+    }
+  }
+
+  // Pick section matching visibility if none provided
+  let targetSection = sections.find(s => s.id === rawSectionId);
+  if (!targetSection) {
+    if (visibility === 'board') {
+      targetSection = sections.find(s => s.visibility === 'board') || sections[0];
+    } else if (audience === 'targeted') {
+      targetSection =
+        sections.find(s => s.id.endsWith('_sprint')) ||
+        sections.find(s => s.visibility === 'members') ||
+        sections[0];
+    } else {
+      targetSection = sections.find(s => s.visibility === 'members') || sections[0];
+    }
+  }
+  if (targetSection?.visibility === 'board') {
+    visibility = 'board';
+    audience = 'board';
+  }
+
+  const status = VALID_TASK_STATUSES.has(rawStatus) ? rawStatus : 'not_started';
+  const priority = VALID_TASK_PRIORITIES.has(rawPriority) ? rawPriority : 'medium';
+  const taskId = `tsk_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const nowIso = new Date().toISOString();
+
+  await privExecute(
+    `INSERT INTO club_tasks (
+       id, clubId, sectionId, title, notes, visibility, audience,
+       status, priority, dueDate, assigneesJson, groupIdsJson, completedByJson,
+       position, createdByUserId, createdByName, createdAt, updatedAt
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 0, ?, ?, ?, ?)`,
+    [
+      taskId,
+      clubId,
+      targetSection.id,
+      cleanTitle,
+      String(notes || '').trim().slice(0, 800),
+      visibility,
+      audience,
+      status,
+      priority,
+      String(dueDate || '').trim().slice(0, 32),
+      JSON.stringify(resolvedAssignees),
+      JSON.stringify(finalGroupIds),
+      req.user.id,
+      req.user.fullName,
+      nowIso,
+      nowIso,
+    ]
+  );
+
+  const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  const createdTask = payload.tasks.find(t => t.id === taskId);
+  res.status(201).json({ ok: true, task: createdTask, ...payload });
+});
+
+router.patch('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isMember && !perm.isBoard) {
+    return res.status(403).json({ error: 'Club membership required.' });
+  }
+
+  const rawRow = await privQueryGet(
+    `SELECT * FROM club_tasks WHERE id = ? AND clubId = ?`,
+    [req.params.taskId, clubId]
+  );
+  if (!rawRow) return res.status(404).json({ error: 'Task not found.' });
+
+  const task = formatTaskRow(rawRow);
+  if (!perm.isBoard && (task.visibility === 'board' || task.audience === 'board')) {
+    return res.status(403).json({ error: 'Board leadership permissions required for board tasks.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const body = req.body || {};
+
+  // Regular Member RBAC path: strictly scoped to own completion on general tasks OR status on tasks assigned to them / their groups
+  if (!perm.isBoard) {
+    const forbiddenFields = [
+      'title',
+      'notes',
+      'priority',
+      'dueDate',
+      'visibility',
+      'audience',
+      'assignees',
+      'groupIds',
+      'shortcutTargets',
+      'sectionId',
+    ];
+    for (const f of forbiddenFields) {
+      if (body[f] !== undefined) {
+        return res.status(403).json({
+          error: `Only club board members can edit task ${f}.`,
+        });
+      }
+    }
+
+    const userEmailLower = normalizeEmail(req.user.email);
+    const isDirectlyAssigned = task.assignees.some(
+      a =>
+        (a.userId && a.userId === req.user.id) ||
+        (a.email && normalizeEmail(a.email) === userEmailLower)
+    );
+    const isGroupAssigned = task.groupIds.some(gid => perm.groupIds.includes(gid));
+    const canModifyTargeted = isDirectlyAssigned || isGroupAssigned;
+
+    let nextStatus = task.status;
+    let nextCompletedBy = [...task.completedBy];
+
+    if (body.toggleCompletedForSelf) {
+      if (task.audience !== 'general' && !canModifyTargeted) {
+        return res.status(403).json({
+          error: 'This task is assigned to specific members or groups.',
+        });
+      }
+      const alreadyIdx = nextCompletedBy.findIndex(c => c.userId === req.user.id);
+      if (alreadyIdx >= 0) {
+        nextCompletedBy.splice(alreadyIdx, 1);
+      } else {
+        nextCompletedBy.push({
+          userId: req.user.id,
+          name: req.user.fullName,
+          completedAt: nowIso,
+        });
+      }
+    }
+
+    if (body.status !== undefined) {
+      if (task.audience === 'general' && !body.toggleCompletedForSelf) {
+        // On general club checklists, clicking status for a regular member toggles their own personal completion!
+        const markDone = body.status === 'done';
+        const alreadyIdx = nextCompletedBy.findIndex(c => c.userId === req.user.id);
+        if (markDone && alreadyIdx === -1) {
+          nextCompletedBy.push({
+            userId: req.user.id,
+            name: req.user.fullName,
+            completedAt: nowIso,
+          });
+        } else if (!markDone && alreadyIdx >= 0) {
+          nextCompletedBy.splice(alreadyIdx, 1);
+        }
+      } else {
+        if (!canModifyTargeted) {
+          return res.status(403).json({
+            error: 'Only assigned members, group members, or club board leaders can change this task status.',
+          });
+        }
+        if (!VALID_TASK_STATUSES.has(body.status)) {
+          return res.status(400).json({ error: 'Invalid status value.' });
+        }
+        nextStatus = body.status;
+      }
+    }
+
+    await privExecute(
+      `UPDATE club_tasks SET status = ?, completedByJson = ?, updatedAt = ? WHERE id = ?`,
+      [nextStatus, JSON.stringify(nextCompletedBy), nowIso, task.id]
+    );
+
+    const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+    const updatedTask = payload.tasks.find(t => t.id === task.id) || null;
+    return res.json({ ok: true, task: updatedTask, ...payload });
+  }
+
+  // Board Leader full edit path
+  const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+  const nextTitle =
+    typeof body.title === 'string' && body.title.trim()
+      ? body.title.trim().slice(0, 160)
+      : task.title;
+  const nextNotes =
+    typeof body.notes === 'string' ? body.notes.trim().slice(0, 800) : task.notes;
+  const nextStatus =
+    body.status && VALID_TASK_STATUSES.has(body.status) ? body.status : task.status;
+  const nextPriority =
+    body.priority && VALID_TASK_PRIORITIES.has(body.priority) ? body.priority : task.priority;
+  const nextDueDate =
+    typeof body.dueDate === 'string' ? body.dueDate.trim().slice(0, 32) : task.dueDate;
+  const nextSectionId =
+    typeof body.sectionId === 'string' && body.sectionId ? body.sectionId : task.sectionId;
+  let nextVisibility =
+    body.visibility === 'board' || body.visibility === 'members'
+      ? body.visibility
+      : task.visibility;
+
+  let nextAssignees = task.assignees;
+  let nextGroupIds = task.groupIds;
+  let nextAudience =
+    body.audience === 'general' || body.audience === 'targeted' || body.audience === 'board'
+      ? body.audience
+      : task.audience;
+
+  if (body.assignees !== undefined || body.groupIds !== undefined || body.shortcutTargets !== undefined) {
+    const grpSet = new Set(Array.isArray(body.groupIds) ? body.groupIds.map(String) : nextGroupIds);
+    const pShortcuts = [];
+    let allMem = false;
+    for (const st of body.shortcutTargets || []) {
+      const s = String(st || '');
+      if (s === 'all_members' || s === 'everyone') allMem = true;
+      else if (s.startsWith('group:')) grpSet.add(s.slice(6));
+      else pShortcuts.push(s);
+    }
+    nextAssignees = expandShortcutTargets(
+      clubData,
+      pShortcuts,
+      body.assignees !== undefined ? body.assignees : nextAssignees
+    );
+    nextGroupIds = Array.from(grpSet).filter(gid => clubData.groups.some(g => g.id === gid));
+
+    if (nextVisibility !== 'board' && body.audience === undefined) {
+      if (allMem && nextAssignees.length === 0 && nextGroupIds.length === 0) {
+        nextAudience = 'general';
+      } else {
+        nextAudience = nextAssignees.length > 0 || nextGroupIds.length > 0 ? 'targeted' : 'general';
+      }
+    }
+  }
+
+  if (nextVisibility === 'board') nextAudience = 'board';
+
+  let nextCompletedBy = [...task.completedBy];
+  if (body.toggleCompletedForSelf) {
+    const idx = nextCompletedBy.findIndex(c => c.userId === req.user.id);
+    if (idx >= 0) nextCompletedBy.splice(idx, 1);
+    else nextCompletedBy.push({ userId: req.user.id, name: req.user.fullName, completedAt: nowIso });
+  }
+
+  await privExecute(
+    `UPDATE club_tasks
+        SET sectionId = ?, title = ?, notes = ?, visibility = ?, audience = ?,
+            status = ?, priority = ?, dueDate = ?,
+            assigneesJson = ?, groupIdsJson = ?, completedByJson = ?, updatedAt = ?
+      WHERE id = ? AND clubId = ?`,
+    [
+      nextSectionId,
+      nextTitle,
+      nextNotes,
+      nextVisibility,
+      nextAudience,
+      nextStatus,
+      nextPriority,
+      nextDueDate,
+      JSON.stringify(nextAssignees),
+      JSON.stringify(nextGroupIds),
+      JSON.stringify(nextCompletedBy),
+      nowIso,
+      task.id,
+      clubId,
+    ]
+  );
+
+  const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  const updatedTask = payload.tasks.find(t => t.id === task.id) || null;
+  res.json({ ok: true, task: updatedTask, ...payload });
+});
+
+router.delete('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({ error: 'Only claimed board members can delete tasks.' });
+  }
+
+  await privExecute(`DELETE FROM club_tasks WHERE id = ? AND clubId = ?`, [
+    req.params.taskId,
+    clubId,
+  ]);
+  const payload = await buildClubTasksBoardPayload(clubId, req.user, perm);
+  res.json({ ok: true, ...payload });
+});
+
+// ── 6. Board-Verified Club Announcements with Audience Shortcuts ──────
+
+router.get('/announcements', optionalAuth, async (req, res) => {
+  const overview = req.user ? await getUserWorkspaceOverview(req.user) : null;
+  const perms = overview?.permissionsByClub || {};
+
+  const rows = await privQueryAll(
+    `SELECT * FROM club_announcements_private ORDER BY createdAt DESC LIMIT 100`
+  );
+
+  const visible = rows
+    .filter(r => {
+      if (r.visibility === 'public') return true;
+      if (!req.user) return false;
+      const p = perms[r.clubId];
+      if (!p || !p.isMember) return false;
+      if (r.visibility === 'board') return Boolean(p.isBoard);
+      if (r.visibility === 'group') {
+        if (p.isBoard) return true;
+        const targetGroups = parseJsonSafe(r.targetGroupIdsJson, []);
+        return targetGroups.some(gid => (p.groupIds || []).includes(gid));
+      }
+      return true;
+    })
+    .map(r => ({
+      id: r.id,
+      clubId: r.clubId,
+      clubName: r.clubName,
+      title: r.title,
+      body: r.body,
+      type: r.type || 'Update',
+      visibility: r.visibility || 'members',
+      targetGroupIds: parseJsonSafe(r.targetGroupIdsJson, []),
+      recipientsSummary: r.recipientsSummary || '',
+      permalink: r.permalink || '',
+      authorName: r.authorName,
+      authorRole: r.authorRole,
+      createdAt: r.createdAt,
+    }));
+
+  res.json({ announcements: visible });
+});
+
+router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) {
+    return res.status(403).json({
+      error: 'Only verified board members of this club can publish official club announcements.',
+    });
+  }
+
+  const {
+    title,
+    body = '',
+    type = 'Update',
+    visibility: rawVisibility = 'members',
+    targetGroupIds = [],
+    shortcutTargets = [],
+    permalink = '',
+  } = req.body || {};
+
+  const cleanTitle = String(title || '').trim().slice(0, 140);
+  if (!cleanTitle) return res.status(400).json({ error: 'Announcement title is required.' });
+
+  const clubData = await buildClubPeopleAndShortcuts(clubId, req.user, perm);
+  const recipients = expandShortcutTargets(clubData, shortcutTargets, []);
+  const grpIds = new Set(Array.isArray(targetGroupIds) ? targetGroupIds.map(String) : []);
+  for (const st of shortcutTargets || []) {
+    if (String(st).startsWith('group:')) grpIds.add(String(st).slice(6));
+  }
+
+  let visibility = ['public', 'members', 'group', 'board'].includes(rawVisibility)
+    ? rawVisibility
+    : 'members';
+  if (
+    shortcutTargets?.length === 1 &&
+    shortcutTargets[0] === 'all_board' &&
+    rawVisibility === 'members'
+  ) {
+    visibility = 'board';
+  } else if (grpIds.size > 0 && rawVisibility === 'members' && !shortcutTargets?.includes('all_members')) {
+    visibility = 'group';
+  }
+
+  const recipientsSummary =
+    recipients.length > 0
+      ? `${recipients.length} ${recipients.length === 1 ? 'person' : 'people'} notified`
+      : visibility === 'board'
+        ? 'Board Officers Only'
+        : 'All Club Members';
+
+  const id = `ann_priv_${clubId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const nowIso = new Date().toISOString();
+
+  await privExecute(
+    `INSERT INTO club_announcements_private (
+       id, clubId, clubName, title, body, type, visibility,
+       targetGroupIdsJson, recipientsSummary, permalink,
+       authorUserId, authorName, authorRole, createdAt
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      clubId,
+      clubData.clubName,
+      cleanTitle,
+      String(body || '').trim().slice(0, 2000),
+      String(type || 'Update').slice(0, 32),
+      visibility,
+      JSON.stringify(Array.from(grpIds)),
+      recipientsSummary,
+      String(permalink || '').trim().slice(0, 400),
+      req.user.id,
+      req.user.fullName,
+      perm.roleTitle || 'Officer',
+      nowIso,
+    ]
+  );
+
+  res.status(201).json({
+    ok: true,
+    announcement: {
+      id,
+      clubId,
+      clubName: clubData.clubName,
+      title: cleanTitle,
+      body: String(body || '').trim(),
+      type,
+      visibility,
+      targetGroupIds: Array.from(grpIds),
+      recipientsSummary,
+      recipientCount: recipients.length,
+      permalink,
+      authorName: req.user.fullName,
+      authorRole: perm.roleTitle || 'Officer',
+      createdAt: nowIso,
+    },
+  });
+});
+
+export default router;

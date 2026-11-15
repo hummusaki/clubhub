@@ -345,3 +345,82 @@ export function ToastViewport({ toast, onDismiss }) {
     </div>
   )
 }
+
+// ── Unified Accessible Toggle Switch ──
+export function ToggleSwitch({
+  checked = false,
+  onChange,
+  disabled = false,
+  ariaLabel,
+  size = 'md',
+}) {
+  const isSm = size === 'sm'
+  const trackClasses = isSm ? 'w-9 h-5' : 'w-11 h-6'
+  const thumbSize = isSm ? 14 : 18
+  const thumbOffset = checked ? (isSm ? 18 : 22) : 2
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={e => {
+        if (disabled) return
+        onChange?.(!checked, e)
+      }}
+      className={`relative ${trackClasses} rounded-full transition-colors duration-200 border shrink-0 ${
+        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+      } ${
+        checked
+          ? 'bg-[var(--blue)] border-[var(--blue)]'
+          : 'bg-[var(--bg-subtle)] border-[var(--border-strong)]'
+      }`}
+    >
+      <span
+        className="absolute top-1/2 -translate-y-1/2 rounded-full bg-[var(--switch-thumb)] shadow-[0_1px_3px_rgba(0,0,0,0.24)] transition-[left] duration-200"
+        style={{
+          width: thumbSize,
+          height: thumbSize,
+          left: thumbOffset,
+        }}
+      />
+    </button>
+  )
+}
+
+// ── Unified Card Section Header ──
+export function SectionHeader({
+  icon,
+  color = 'blue',
+  title,
+  subtitle,
+  badge,
+  action,
+  className = '',
+}) {
+  return (
+    <div className={`flex flex-wrap items-start justify-between gap-3 ${className}`}>
+      <div className="flex items-start gap-3 min-w-0">
+        {icon && (
+          <IconBadge color={color} size={36} radius={10}>
+            {icon}
+          </IconBadge>
+        )}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[15px] sm:text-base font-bold text-[var(--text)] leading-snug">
+              {title}
+            </h2>
+            {badge}
+          </div>
+          {subtitle && (
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      {action && <div className="shrink-0 flex items-center gap-2">{action}</div>}
+    </div>
+  )
+}

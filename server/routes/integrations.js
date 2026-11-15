@@ -64,13 +64,25 @@ router.get('/status', async (req, res) => {
 // PUT /api/integrations/config — save runtime Discord and/or Email credentials & defaults
 router.put('/config', async (req, res) => {
   try {
-    const { discord, email, verifyEmail = false } = req.body || {};
+    const { discord, email, platform, config, verifyEmail = false } = req.body || {};
+    const discordPatch =
+      discord && typeof discord === 'object'
+        ? discord
+        : platform === 'discord' && config && typeof config === 'object'
+          ? config
+          : null;
+    const emailPatch =
+      email && typeof email === 'object'
+        ? email
+        : platform === 'email' && config && typeof config === 'object'
+          ? config
+          : null;
 
-    if (discord && typeof discord === 'object') {
-      discordService.saveConfig(discord);
+    if (discordPatch) {
+      discordService.saveConfig(discordPatch);
     }
-    if (email && typeof email === 'object') {
-      emailService.saveConfig(email);
+    if (emailPatch) {
+      emailService.saveConfig(emailPatch);
     }
 
     let emailVerification = null;

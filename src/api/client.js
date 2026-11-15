@@ -3,6 +3,49 @@
 // Automatically operates in zero-error static mode on GitHub Pages when no backend API is configured.
 
 const EXPLICIT_API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+const SESSION_TOKEN_STORAGE_KEY = 'clubhub_session_token_v1';
+
+let inMemorySessionToken = '';
+
+export function setApiSessionToken(token) {
+  inMemorySessionToken = String(token || '').trim();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      if (inMemorySessionToken) {
+        sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, inMemorySessionToken);
+      } else {
+        sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getApiSessionToken() {
+  if (inMemorySessionToken) return inMemorySessionToken;
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const saved = sessionStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+      if (saved) {
+        inMemorySessionToken = saved;
+        return saved;
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return '';
+}
+
+export function buildAuthHeaders(extraHeaders = {}) {
+  const token = getApiSessionToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  };
+}
 
 function isLocalhostHost() {
   if (typeof window === 'undefined') return false;
@@ -89,13 +132,13 @@ async function fetchJSON(path, options = {}) {
 
   try {
     const res = await fetch(`${activeBase}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: buildAuthHeaders(options.headers),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    if (!EXPLICIT_API_BASE && isLocalhostHost()) {
+    if (!EXPLICIT_API_BASE && isLocalhostHost() && /Failed to fetch|NetworkError/i.test(err.message || '')) {
       apiAvailabilityState = 'disabled';
       localRetryAfter = Date.now() + 15_000;
     }
@@ -106,14 +149,14 @@ async function fetchJSON(path, options = {}) {
   }
 }
 
-async function fetchActionJSON(path, options = {}) {
+export async function fetchActionJSON(path, options = {}) {
   const activeBase = await resolveActiveApiBase();
   if (!activeBase) return { ok: false, offline: true, error: 'Backend API server is not reachable.' };
 
   try {
     const res = await fetch(`${activeBase}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: buildAuthHeaders(options.headers),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
