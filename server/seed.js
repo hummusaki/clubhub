@@ -6,30 +6,37 @@
 import { getDb, importCollectorFile } from './database.js';
 import discordService, { getEffectiveDiscordConfig } from './services/discord.js';
 import emailService, { getEffectiveEmailConfig } from './services/email.js';
+import { syncDiscordEmailAgent } from './services/discordEmailAgent.js';
 import googleCalendarService from './services/googleCalendar.js';
 import websiteService from './services/website.js';
 
-export async function seedDatabase() {
+export async function seedDatabase({ offline = false } = {}) {
   const db = getDb();
   const result = importCollectorFile();
   const realClubCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%'").get()?.c || 0;
   const hasLiveData = realClubCount > 0 || Boolean(process.env.IG_ACCESS_TOKEN);
 
-  if (getEffectiveDiscordConfig().botToken || !hasLiveData) {
+  if (hasLiveData) {
     try {
-      await discordService.syncDiscord();
+      await syncDiscordEmailAgent({ offline });
     } catch (err) {
-      console.warn('⚠️ Initial Discord sync skipped:', err.message);
+      console.warn('⚠️ Autonomous Discord & Email agent sync skipped:', err.message);
     }
-  }
-  if (getEffectiveEmailConfig().imapReady || !hasLiveData) {
-    try {
-      await emailService.syncEmail();
-    } catch (err) {
-      console.warn('⚠️ Initial Email IMAP sync skipped:', err.message);
+  } else {
+    if (getEffectiveDiscordConfig().botToken || !hasLiveData) {
+      try {
+        await discordService.syncDiscord();
+      } catch (err) {
+        console.warn('⚠️ Initial Discord sync skipped:', err.message);
+      }
     }
-  }
-  if (!hasLiveData) {
+    if (getEffectiveEmailConfig().imapReady || !hasLiveData) {
+      try {
+        await emailService.syncEmail();
+      } catch (err) {
+        console.warn('⚠️ Initial Email IMAP sync skipped:', err.message);
+      }
+    }
     await googleCalendarService.syncCalendar();
     await websiteService.syncWebsite();
   }
