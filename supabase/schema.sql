@@ -407,7 +407,23 @@ create policy users_insert_self on public.users
   );
 drop policy if exists users_update_self on public.users;
 create policy users_update_self on public.users
-  for update to authenticated using (id = public.current_user_id()) with check (id = public.current_user_id());
+  for update to authenticated
+  using (
+    id = public.current_user_id()
+    or (
+      external_auth_id is null
+      and (auth.jwt()->>'email') is not null
+      and lower(email) = lower(auth.jwt()->>'email')
+    )
+  )
+  with check (
+    id = public.current_user_id()
+    or (
+      external_auth_id = (auth.jwt()->>'sub')
+      and (auth.jwt()->>'email') is not null
+      and lower(email) = lower(auth.jwt()->>'email')
+    )
+  );
 
 -- 2. CLUBS: Public directory read; authenticated create; board-only update/delete
 drop policy if exists clubs_select_all on public.clubs;

@@ -162,12 +162,13 @@ export async function syncSnapshotToSupabase(sqliteDb) {
 
   // 2. Map internal userIds -> Supabase `auth.users` / `public.users` UUIDs
   const userUuidByLocalId = new Map();
-  const userUpserts = [];
+  const userUpsertsWithExtId = [];
+  const userUpsertsWithoutExtId = [];
   for (const u of snapshot.users || []) {
     const sbUuid = await resolveSupabaseUserUuid(admin, u);
     if (!sbUuid) continue;
     userUuidByLocalId.set(u.id, sbUuid);
-    userUpserts.push({
+    const baseUser = {
       id: sbUuid,
       email: String(u.email || '').toLowerCase(),
       full_name: u.fullName || '',
@@ -175,10 +176,25 @@ export async function syncSnapshotToSupabase(sqliteDb) {
       grad_year: u.gradYear || '',
       avatar_bg: u.avatarBg || '',
       verified_edu: Boolean(u.verifiedEdu),
-    });
+    };
+    const extId = String(u.externalAuthId || '').trim();
+    if (extId) {
+      userUpsertsWithExtId.push({ ...baseUser, external_auth_id: extId });
+    } else {
+      userUpsertsWithoutExtId.push(baseUser);
+    }
   }
-  if (userUpserts.length > 0) {
-    await admin.from('users').upsert(userUpserts, { onConflict: 'id' });
+  if (userUpsertsWithExtId.length > 0) {
+    const { error } = await admin.from('users').upsert(userUpsertsWithExtId, { onConflict: 'id' });
+    if (error && /external_auth_id/i.test(error.message || '')) {
+      await admin.from('users').upsert(
+        userUpsertsWithExtId.map(({ external_auth_id: _omit, ...rest }) => rest),
+        { onConflict: 'id' }
+      );
+    }
+  }
+  if (userUpsertsWithoutExtId.length > 0) {
+    await admin.from('users').upsert(userUpsertsWithoutExtId, { onConflict: 'id' });
   }
 
   // 3. Ensure referenced clubs exist in `public.clubs`

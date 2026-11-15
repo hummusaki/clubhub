@@ -235,11 +235,17 @@ export async function discoverClubWebsiteSocials(websiteUrl) {
       if (metaDesc) {
         const cleaned = metaDesc
           .replace(/&amp;/g, '&')
-          .replace(/&#0?39;|&rsquo;/g, "'")
+          .replace(/&#0?39;|&#x27;|&rsquo;|&lsquo;/gi, "'")
           .replace(/&quot;/g, '"')
+          .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+          .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
           .replace(/\s+/g, ' ')
           .trim()
-        if (cleaned.length >= 20 && !/university of california, santa cruz official athletics/i.test(cleaned)) {
+        if (
+          cleaned.length >= 20 &&
+          !/university of california, santa cruz official athletics/i.test(cleaned) &&
+          !/website\s*[-–—]\s*about us$/i.test(cleaned)
+        ) {
           result.description = cleaned
         }
       }

@@ -164,14 +164,20 @@ export async function resolveUserProfileWithClient({
       extId &&
       usersHasExternalAuthId &&
       Object.prototype.hasOwnProperty.call(existing, 'external_auth_id') &&
-      !existing.external_auth_id
+      existing.external_auth_id !== extId
     ) {
-      const { error: updErr } = await sb
-        .from('users')
-        .update({ external_auth_id: extId })
-        .eq('id', existing.id)
-      if (updErr && isMissingExternalAuthIdError(updErr)) {
-        usersHasExternalAuthId = false
+      if (!existing.external_auth_id) {
+        const { data: updData, error: updErr } = await sb
+          .from('users')
+          .update({ external_auth_id: extId })
+          .eq('id', existing.id)
+          .select('*')
+          .maybeSingle()
+        if (updErr && isMissingExternalAuthIdError(updErr)) {
+          usersHasExternalAuthId = false
+        } else if (updData?.external_auth_id === extId) {
+          return updData
+        }
       }
     }
     return existing
@@ -427,11 +433,21 @@ export async function buildDirectClubPeople(clubId) {
   const cid = normalizeClub(clubId)
   const profile = await getDirectUserProfile().catch(() => null)
 
-  const [{ data: memRows }, { data: grpRows }, { data: gmRows }] = await Promise.all([
-    sb.from('club_members').select('*, users(*)').eq('club_id', cid),
+  const [memRes, { data: grpRows }, gmRes] = await Promise.all([
+    sb.from('club_members').select('*, users!club_members_user_id_fkey(*)').eq('club_id', cid),
     sb.from('club_groups').select('*').eq('club_id', cid).order('created_at', { ascending: true }),
-    sb.from('group_members').select('*, users(*)').eq('club_id', cid),
+    sb.from('group_members').select('*, users!group_members_user_id_fkey(*)').eq('club_id', cid),
   ])
+  let memRows = memRes.data
+  if (memRes.error) {
+    const plainMem = await sb.from('club_members').select('*').eq('club_id', cid)
+    memRows = plainMem.data
+  }
+  let gmRows = gmRes.data
+  if (gmRes.error) {
+    const plainGm = await sb.from('group_members').select('*').eq('club_id', cid)
+    gmRows = plainGm.data
+  }
 
   const meRow = (memRows || []).find(m => m.user_id === profile?.id)
   const isBoard =

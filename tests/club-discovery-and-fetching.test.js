@@ -1,8 +1,13 @@
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, '..');
 
 process.env.CLUBHUB_DB_PATH = ':memory:';
 
@@ -430,5 +435,22 @@ describe('Multi-Source UCSC Club Discovery, Grassroots Classifier & Non-IG Fetch
       assert.equal(backendCategorize(sample), expected, `Backend category mismatch for ${sample.name}`);
       assert.equal(frontendCategorize(sample), expected, `Frontend category mismatch for ${sample.name}`);
     }
+  });
+
+  it('compiles Python Instagram scraper & discovery scripts cleanly and prevents /embed/ <script> false-positive 404s', () => {
+    const venvPy = path.join(REPO_ROOT, '.venv', 'bin', 'python3');
+    const pyBin = fs.existsSync(venvPy) ? venvPy : 'python3';
+    const scraperPath = path.join(REPO_ROOT, 'collector', 'scripts', 'scrape_personal_ig.py');
+    const discoverPath = path.join(REPO_ROOT, 'collector', 'scripts', 'discover_ig_clubs.py');
+
+    const compileRes = spawnSync(pyBin, ['-m', 'py_compile', scraperPath, discoverPath], {
+      encoding: 'utf8',
+    });
+    assert.equal(compileRes.status, 0, `Python syntax check failed: ${compileRes.stderr}`);
+
+    // Verify scrape_personal_ig.py strips <script> bundles before checking "Profile isn't available"
+    const scraperCode = fs.readFileSync(scraperPath, 'utf8');
+    assert.match(scraperCode, /usernameinfo/);
+    assert.match(scraperCode, /visible_html\s*=\s*re\.sub\(r"<script/);
   });
 });

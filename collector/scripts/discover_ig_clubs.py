@@ -49,6 +49,12 @@ DEFAULT_QUERIES = [
     "ucsc robotics",
     "formulaslug",
     "slugbotics",
+    "ucsc blueprint",
+    "autoslug",
+    "slugsat",
+    "sacnas ucsc",
+    "ucsc badminton",
+    "crown senate",
     "slugsec",
     "cruzhacks",
     "kzsc",
@@ -140,8 +146,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Discover UCSC clubs via Instagram mobile search")
     parser.add_argument("--session-user", type=str, default=os.environ.get("IG_SCRAPER_SESSION_USER", ""))
     parser.add_argument("--session-file", type=str, default=os.environ.get("IG_SCRAPER_SESSION_FILE", ""))
-    parser.add_argument("--delay", type=float, default=0.45, help="Delay between search queries (sec)")
-    parser.add_argument("--max-seconds", type=float, default=165.0, help="Graceful time budget before returning results")
+    parser.add_argument("--delay", type=float, default=0.4, help="Delay between search queries (sec)")
+    parser.add_argument("--max-seconds", type=float, default=200.0, help="Graceful time budget before returning results")
     parser.add_argument("--query", action="append", dest="queries", help="Custom query (repeatable)")
     args = parser.parse_args()
 

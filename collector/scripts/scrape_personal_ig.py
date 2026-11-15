@@ -83,8 +83,6 @@ def fetch_via_web_profile_info(sess: requests.Session, handle: str, limit: int, 
 
     payload = resp.json()
     data_obj = payload.get("data")
-    if isinstance(data_obj, dict) and "user" in data_obj and data_obj["user"] is None:
-        raise LookupError(f"@{handle}: account not found")
     user = (data_obj or {}).get("user") if isinstance(data_obj, dict) else None
     if not user:
         return None
@@ -224,16 +222,15 @@ def fetch_via_public_embed(sess: requests.Session, handle: str, limit: int) -> d
         return None
     html = resp.text
 
+    visible_html = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", html, flags=re.I)
     if (
-        "Profile isn&#039;t available" in html
-        or "Profile isn't available" in html
-        or "Sorry, this page isn&#039;t available" in html
-        or "Sorry, this page isn't available" in html
-        or "The link may be broken, or the profile may have been removed" in html
+        "Profile isn&#039;t available" in visible_html
+        or "Profile isn't available" in visible_html
+        or "The link may be broken, or the profile may have been removed" in visible_html
     ):
         raise LookupError(f"@{handle}: account not found")
 
-    if "This Account is Private" in html or '"is_private":true' in html:
+    if "This Account is Private" in visible_html:
         raise PermissionError(f"@{handle}: account is private")
 
     # Try parsing contextJSON if embedded
@@ -381,27 +378,38 @@ def fetch_via_page_and_mobile(
 ) -> dict | None:
     """
     Primary personal-account scraper:
-      1. Loads embedded `xig_user_by_username` + `polaris_ordered_timeline_connection` from
-         Instagram's HTML document navigation (`get_page_data`) — zero `/graphql/query` calls!
-      2. When logged in, enriches via mobile `Bearer IGT:2:` (`api/v1/feed/user/{pk}/`) for
-         exact post timestamps/carousels and `api/v1/feed/reels_media/` for active 24h Stories.
+      1. When logged in, queries Instagram's mobile iPhone API (`Bearer IGT:2:`) directly via
+         `api/v1/users/{handle}/usernameinfo/` + `api/v1/feed/user/{pk}/` (+ `reels_media` for Stories).
+      2. When logged out, checks embedded `xig_user_by_username` from HTML document navigation (`get_page_data`).
     """
     import instaloader
 
-    try:
-        page = L.context.get_page_data(f"{handle.lower()}/")
-    except instaloader.exceptions.QueryReturnedNotFoundException:
-        raise LookupError(f"@{handle}: account not found")
-    except Exception:
-        return None
-
     user: dict = {}
-    for block in page:
-        xig = block.get("xig_user_by_username")
-        if isinstance(xig, dict):
-            for k, v in xig.items():
-                if v is not None:
-                    user[k] = v
+
+    if logged_in:
+        try:
+            u_resp = L.context.get_iphone_json(f"api/v1/users/{handle.lower()}/usernameinfo/", {})
+            if isinstance(u_resp, dict) and isinstance(u_resp.get("user"), dict):
+                user = u_resp["user"]
+        except instaloader.exceptions.QueryReturnedNotFoundException:
+            raise LookupError(f"@{handle}: account not found")
+        except Exception as u_exc:
+            log(f"  [scraper] Mobile usernameinfo note for @{handle}: {u_exc}")
+
+    if not user.get("pk"):
+        try:
+            page = L.context.get_page_data(f"{handle.lower()}/")
+            for block in page:
+                xig = block.get("xig_user_by_username")
+                if isinstance(xig, dict):
+                    for k, v in xig.items():
+                        if v is not None:
+                            user[k] = v
+        except instaloader.exceptions.QueryReturnedNotFoundException:
+            if not logged_in:
+                raise LookupError(f"@{handle}: account not found")
+        except Exception:
+            pass
 
     pk = user.get("pk")
     if not pk:
@@ -500,6 +508,18 @@ def fetch_via_page_and_mobile(
     if followers is None:
         followers = (user.get("edge_followed_by") or {}).get("count")
 
+    hd_pic = (
+        (user.get("hd_profile_pic_url_info") or {}).get("url")
+        or user.get("profile_pic_url_hd")
+        or user.get("profile_pic_url")
+        or None
+    )
+    media_count = (
+        user.get("media_count")
+        or (user.get("edge_owner_to_timeline_media") or {}).get("count")
+        or len(posts_out)
+    )
+
     return {
         "handle": handle,
         "profile": {
@@ -508,9 +528,9 @@ def fetch_via_page_and_mobile(
             "biography": user.get("biography") or "",
             "website": website or None,
             "extraBioLinks": extra_links,
-            "profilePictureUrl": user.get("profile_pic_url_hd") or user.get("profile_pic_url") or None,
+            "profilePictureUrl": hd_pic,
             "followers": followers,
-            "mediaCount": (user.get("edge_owner_to_timeline_media") or {}).get("count") or len(posts_out),
+            "mediaCount": media_count,
         },
         "posts": posts_out,
     }
@@ -562,10 +582,22 @@ def main() -> int:
     except Exception:
         L = None
 
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    collector_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if not args.session_user:
+        for folder in (repo_root, collector_root):
+            try:
+                for fname in os.listdir(folder):
+                    if fname.startswith(".ig-session-") and len(fname) > len(".ig-session-"):
+                        args.session_user = fname[len(".ig-session-"):]
+                        break
+            except OSError:
+                pass
+            if args.session_user:
+                break
+
     if args.session_user and L is not None:
         try:
-            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            collector_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             auto_session_candidates = [
                 args.session_file,
                 os.path.join(repo_root, f".ig-session-{args.session_user}"),

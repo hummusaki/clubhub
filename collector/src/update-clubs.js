@@ -94,7 +94,7 @@ const RESERVED = new Set([
 ])
 
 const SMALL_CAPS_MAP = {
-  'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i',
+  'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i',
   'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ꞯ': 'q', 'ʀ': 'r',
   'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'ʏ': 'y', 'ᴢ': 'z',
 }
@@ -126,6 +126,8 @@ export function canonicalClubNameKey(rawName = '') {
   if (!rawName) return ''
   let s = normalizeUnicodeText(rawName)
     .toLowerCase()
+    .replace(/\bsociety for the advancement of chicanos and native americans in science\b/gi, 'sacnas')
+    .replace(/\bcrown (?:college )?(?:student )?senate\b/gi, 'crown senate')
     .replace(/\([^)]*\)/g, ' ') // strip "(ACM)", "(SWESLUGS)", "(SHPE)"
     .replace(/^sc\s*[-–—:]\s*/i, '') // strip GoSlugs "SC - " prefix
     .replace(/\buniversity of california,?\s*santa cruz\b/gi, ' ')
@@ -554,7 +556,7 @@ function hasCleanUcscAffiliation(username, normName) {
   const n = String(normName || '').toLowerCase()
 
   if (
-    /^(?:slugsonwheelsclub|slugsontwowheels|santacruzskiandsnow|cruzhacks|formulaslug|slugbotics|slugsec|sweslugs|slugultimate|slugxc|slugsvolleyball|slugshockey|cruzlacrosse|sol_ultimate|tangroupe|kzsc|kzsc881|cityonahillpress|fishraplive|autoslug|neurotechsc|santacruzai|kresge_parliament)$/i.test(
+    /^(?:slugsonwheelsclub|slugsontwowheels|santacruzskiandsnow|cruzhacks|formulaslug|formula_slug|slugbotics|slugsec|slugsat|sweslugs|slugultimate|slugxc|slugsvolleyball|slugshockey|cruzlacrosse|sol_ultimate|tangroupe|kzsc|kzsc881|cityonahillpress|fishraplive|autoslug|autoslug\.ucsc|neurotechsc|santacruzai|kresge_parliament|crowncollegesenate)$/i.test(
       u
     )
   ) {
@@ -628,9 +630,10 @@ export function isGenuineUcscClubCandidate(entry = {}) {
 
   if (!hasCleanUcscAffiliation(u, normName)) return false
   if (!normName || normName.length < 3 || /^@/.test(normName)) return false
+  if (/^president of the\b/i.test(normName)) return false
 
   const orgWordRe =
-    /\b(club|clubs|team|society|association|organization|union|council|senate|parliament|government|assembly|coalition|collective|alliance|chapter|fraternity|sorority|brigade|sisters|project|robotics|rocket|rocketry|gaming|esports|radio|media|magazine|journal|press|choir|band|orchestra|troupe|cabaret|dance|a\s*cappella|rugby|lacrosse|soccer|volleyball|basketball|baseball|softball|tennis|table tennis|pickleball|badminton|water polo|polo|hockey|fencing|judo|taekwondo|muay thai|wrestling|grappling|kendo|boxing|cycling|bikepacking|triathlon|sailing|surf|skimboard|skate|skatboarding|skateboard|ski|snow|snowboard|disc golf|ultimate|quidditch|cross country|run|yoga|climbing|outdoors?|camping|backpacking|chess|mahjong|pokemon|roblox|cosplay|crochet|fiber|tango|ballroom|breakers|spirit|kesem|rotaract|red cross|divest|sky\b|sankofa|psa\b|tsa\b|hsa\b|gsa\b|sisa\b|tlsa\b|cnsa\b|ansa\b|ppsa\b|swana\b|yuva\b|rishi\b|acm\b|ieee\b|swe\b|shpe\b|nsbe\b|sacnas\b|igem\b|neurotech|blueprint|formulaslug|cruzhacks|kzsc|slugworks|slugwerks|wheels|bioslugs|praxis|herpetology|plant|pre-?vet|pre-?law|investing|startup|bioinformatics|astronomy|anthro|poets|freethinkers|regents|interfaith|inter-greek|rotc|hospital|music|musicians)\b/i
+    /\b(club|clubs|team|society|association|organization|union|council|senate|parliament|government|assembly|coalition|collective|alliance|chapter|fraternity|sorority|brigade|sisters|project|robotics|slugbotics|autoslug|slugsat|rocket|rocketry|gaming|esports|radio|media|magazine|journal|press|choir|band|orchestra|troupe|cabaret|dance|a\s*cappella|rugby|lacrosse|soccer|volleyball|basketball|baseball|softball|tennis|table tennis|pickleball|badminton|water polo|polo|hockey|fencing|judo|taekwondo|muay thai|wrestling|grappling|kendo|boxing|cycling|bikepacking|triathlon|sailing|surf|skimboard|skate|skatboarding|skateboard|ski|snow|snowboard|disc golf|ultimate|quidditch|cross country|run|yoga|climbing|outdoors?|camping|backpacking|chess|mahjong|pokemon|roblox|cosplay|crochet|fiber|tango|ballroom|breakers|spirit|kesem|rotaract|red cross|divest|sky\b|sankofa|psa\b|tsa\b|hsa\b|gsa\b|sisa\b|tlsa\b|cnsa\b|ansa\b|ppsa\b|swana\b|yuva\b|rishi\b|acm\b|ieee\b|swe\b|shpe\b|nsbe\b|sacnas\b|igem\b|neurotech|blueprint|formulaslug|formula_slug|cruzhacks|kzsc|slugworks|slugwerks|wheels|bioslugs|praxis|herpetology|plant|pre-?vet|pre-?law|investing|startup|bioinformatics|astronomy|anthro|poets|freethinkers|regents|interfaith|inter-greek|rotc|hospital|music|musicians)\b/i
 
   return orgWordRe.test(combined)
 }
@@ -638,8 +641,8 @@ export function isGenuineUcscClubCandidate(entry = {}) {
 export function formatDiscoveredClubEntry(entry = {}, sourceTag = 'instagram_discovery') {
   const handle = String(entry.username || entry.instagram || '').toLowerCase().replace(/^@+/, '').trim()
   let cleanName = normalizeUnicodeText(entry.full_name || entry.name || handle)
-    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
-    .replace(/^s³\s*\|\s*/i, '')
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/^s(?:³|3)\s*\|\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim()
 
