@@ -3,10 +3,21 @@ import { announcements as defaultAnnouncements } from '../data/sampleData'
 import { Card, BubbleTag, IconBadge, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 
-export default function Announcements({ items, searchQuery = '', onNav }) {
+export default function Announcements({
+  items,
+  userSettings = {},
+  searchQuery = '',
+  onNav,
+}) {
   const base = items && items.length > 0 ? items : defaultAnnouncements
+  const channels = userSettings?.channels || {}
 
   const announcements = base.filter(item => {
+    const src = String(item.source || '').toLowerCase()
+    if (src.includes('instagram') && channels.instagram === false) return false
+    if (src.includes('discord') && channels.discord === false) return false
+    if (src.includes('email') && channels.email === false) return false
+
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -91,7 +102,7 @@ export default function Announcements({ items, searchQuery = '', onNav }) {
                       </p>
                     )}
 
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-snug">
                       {cleanText(item.description)}
                     </p>
                   </div>
@@ -101,7 +112,7 @@ export default function Announcements({ items, searchQuery = '', onNav }) {
           </div>
         ) : (
           <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-            No matching announcements.
+            No matching announcements for your enabled channels.
           </div>
         )}
       </div>

@@ -64,6 +64,7 @@ async function* liveSource(clubs, { fallbackPersonal = false, personalOnly = fal
   }
 
   const personalFallbackQueue = []
+  let consecutiveNetworkErrors = 0
 
   for (let idx = 0; idx < clubs.length; idx++) {
     const club = clubs[idx]
@@ -74,8 +75,17 @@ async function* liveSource(clubs, { fallbackPersonal = false, personalOnly = fal
         version: GRAPH_API_VERSION || 'v26.0',
         limit: Number(POSTS_PER_CLUB) || 20,
       })
+      consecutiveNetworkErrors = 0
       yield { club, ...data }
     } catch (err) {
+      if (err.code === 'NETWORK') {
+        consecutiveNetworkErrors++
+        if (consecutiveNetworkErrors >= 2) {
+          throw new Error(err.message)
+        }
+      } else {
+        consecutiveNetworkErrors = 0
+      }
       // Code 190 = IG_ACCESS_TOKEN expired; stop calling Graph API and fall back to Instaloader!
       if (fallbackPersonal && err.code === 190) {
         console.warn(`\n! ${err.message}`)
@@ -172,11 +182,17 @@ async function* demoSource() {
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
 
-// Instagram page + email links, so every club can be reached even when its posts can't be read.
+// Instagram page + email + directory Discord/website links, so every club can be reached even when IG posts can't be read.
 function contactLinks(club, handle) {
   const links = [{ url: `https://www.instagram.com/${handle}/`, label: 'Instagram page', kind: 'instagram', postId: null }]
   for (const email of [club.email, ...(club.extraEmails || [])].filter(Boolean)) {
     links.push({ url: `mailto:${email}`, label: `Email ${email}`, kind: 'email', postId: null })
+  }
+  if (club.discord) {
+    links.push({ url: club.discord, label: 'Discord', kind: 'discord', postId: null })
+  }
+  if (club.website) {
+    links.push({ url: club.website, label: 'Club website', kind: 'website', postId: null })
   }
   return links
 }
@@ -236,23 +252,54 @@ export async function collect({
       out.errors.push({ club: club.instagram, message: item.error })
       // Keep the club anyway, with its Instagram page and email so people can reach it manually.
       const clubId = club.instagram.toLowerCase()
+      const clubName = club.name || clubId
       out.clubs.push({
         id: clubId,
-        name: club.name || clubId,
+        name: clubName,
         alsoKnownAs: club.alsoKnownAs || [],
         instagram: clubId,
         instagramUrl: `https://www.instagram.com/${clubId}/`,
         category: club.category || null,
         email: club.email || null,
         bio: null,
-        website: null,
+        website: club.website || null,
         profilePictureUrl: null,
         followers: null,
         lastPostAt: null,
         syncStatus: 'unavailable',
         syncNote: syncNote(item.error),
       })
-      for (const l of contactLinks(club, clubId)) out.links.push({ id: `${clubId}:${l.url}`, clubId, clubName: club.name || clubId, ...l })
+
+      const fallbackLinks = new Map()
+      for (const l of contactLinks(club, clubId)) fallbackLinks.set(l.url.toLowerCase(), l)
+      if (!demo && club.website) {
+        const unpacked = await unpackBioWebsite(club.website)
+        for (const l of unpacked) {
+          if (!fallbackLinks.has(l.url.toLowerCase())) fallbackLinks.set(l.url.toLowerCase(), { ...l, postId: null })
+          const gcalId = extractGoogleCalendarId(l.url)
+          if (gcalId) {
+            const gcalEvents = await fetchPublicGoogleCalendarEvents(gcalId, { clubId, clubName, calendarUrl: l.url })
+            for (const ge of gcalEvents) out.events.push(ge)
+          }
+        }
+      }
+      if (!demo) {
+        for (const l of fallbackLinks.values()) {
+          if (l.kind === 'discord') {
+            const inviteMeta = await fetchDiscordInviteMetadata(l.url)
+            if (inviteMeta?.serverName) {
+              const stats =
+                inviteMeta.memberCount != null
+                  ? ` (${inviteMeta.memberCount.toLocaleString()} members${
+                      inviteMeta.onlineCount != null ? ` · ${inviteMeta.onlineCount} online` : ''
+                    })`
+                  : ''
+              l.label = `Discord — ${inviteMeta.serverName}${stats}`
+            }
+          }
+        }
+      }
+      for (const l of fallbackLinks.values()) out.links.push({ id: `${clubId}:${l.url}`, clubId, clubName, ...l })
       continue
     }
     const { profile, posts } = item

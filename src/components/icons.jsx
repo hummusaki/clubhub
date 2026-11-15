@@ -107,6 +107,28 @@ export function NavIcon({ name, active = false, size = 19 }) {
           <path d="M17.2 14.3C19.3 14.8 20.8 16.4 20.8 18.8" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
         </svg>
       )
+    case 'Settings':
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <path
+            d="M10.35 3.65H13.65L14.2 5.95C14.78 6.18 15.32 6.5 15.8 6.88L18.08 6.2L19.73 9.05L18.08 10.75C18.16 11.16 18.2 11.58 18.2 12C18.2 12.42 18.16 12.84 18.08 13.25L19.73 14.95L18.08 17.8L15.8 17.12C15.32 17.5 14.78 17.82 14.2 18.05L13.65 20.35H10.35L9.8 18.05C9.22 17.82 8.68 17.5 8.2 17.12L5.92 17.8L4.27 14.95L5.92 13.25C5.84 12.84 5.8 12.42 5.8 12C5.8 11.58 5.84 11.16 5.92 10.75L4.27 9.05L5.92 6.2L8.2 6.88C8.68 6.5 9.22 6.18 9.8 5.95L10.35 3.65Z"
+            fill="currentColor"
+            fillOpacity={fillOpacity}
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r="3"
+            fill="currentColor"
+            fillOpacity={fillOpacity * 1.5}
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+          />
+        </svg>
+      )
     case 'Link':
     default:
       return (

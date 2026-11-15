@@ -11,23 +11,50 @@ export default function Sidebar({
   dark,
   onToggleDark,
   user = null,
+  userSettings = {},
   isDemo = false,
   onExitDemo,
   onSignOut,
   hasClerkKey = false,
 }) {
+  const displayName =
+    userSettings?.displayName?.trim() ||
+    user?.fullName ||
+    user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    user?.email?.split('@')[0] ||
+    (isDemo ? 'Demo Guest' : 'Student')
+
+  const subline =
+    userSettings?.major?.trim() ||
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.email ||
+    (isDemo ? 'Preview Mode' : 'Verified Member')
+
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'ST'
+
+  const avatarGradient =
+    userSettings?.avatarBg ||
+    user?.avatarBg ||
+    'linear-gradient(135deg, var(--blue), var(--purple))'
+
   return (
     <>
-      {/* ── Desktop Sticky Sidebar (lg+) ── */}
+      {/* ── Desktop Fixed Sidebar (lg+): Locked to Viewport, Never Scrolls With Page ── */}
       <aside
-        className="hidden lg:flex w-[244px] sticky top-0 h-screen bg-[var(--bg-card)] border-r border-[var(--border)]
-          flex-col px-3.5 py-5 shrink-0 transition-colors duration-300 select-none z-30"
+        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] h-dvh bg-[var(--bg-card)] border-r border-[var(--border)]
+          flex-col px-3.5 py-5 z-40 select-none overflow-y-auto"
       >
         {/* Brand Logo */}
         <button
           type="button"
           onClick={() => onNav('overview')}
-          className="flex items-center gap-2.5 px-2.5 mb-7 bg-transparent border-none text-left cursor-pointer"
+          className="flex items-center gap-2.5 px-2.5 mb-7 bg-transparent border-none text-left cursor-pointer shrink-0"
         >
           <ClubHubLogo size={36} />
           <div>
@@ -50,7 +77,7 @@ export default function Sidebar({
                 type="button"
                 onClick={() => onNav(item.id)}
                 className={`flex items-center gap-3 px-3.5 min-h-[42px] rounded-[var(--radius-sm)]
-                  text-[13.5px] cursor-pointer transition-colors duration-200 border-none text-left
+                  text-[13.5px] cursor-pointer transition-colors duration-150 border-none text-left
                   ${
                     isActive
                       ? 'font-semibold text-[var(--blue-ink)] bg-[var(--blue-light)]'
@@ -63,6 +90,21 @@ export default function Sidebar({
             )
           })}
 
+          <button
+            type="button"
+            onClick={() => onNav('settings')}
+            className={`flex items-center gap-3 px-3.5 min-h-[42px] rounded-[var(--radius-sm)]
+              text-[13.5px] cursor-pointer transition-colors duration-150 border-none text-left
+              ${
+                activeNav === 'settings'
+                  ? 'font-semibold text-[var(--blue-ink)] bg-[var(--blue-light)]'
+                  : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)] bg-transparent'
+              }`}
+          >
+            <NavIcon name="Settings" active={activeNav === 'settings'} size={19} />
+            <span>Settings</span>
+          </button>
+
           {/* Bottom Controls: Theme & Account */}
           <div className="mt-auto pt-4 border-t border-[var(--border)] flex flex-col gap-1.5">
             <div className="flex items-center justify-between px-3 py-1.5">
@@ -74,64 +116,35 @@ export default function Sidebar({
                 type="button"
                 onClick={onToggleDark}
                 aria-label="Toggle dark mode"
-                className="w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-300 border-none"
+                className="w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-200 border-none"
                 style={{
                   background: dark ? 'var(--blue)' : 'var(--border-strong)',
                 }}
               >
                 <div
-                  className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform duration-300
-                    shadow-[0_1px_3px_rgba(0,0,0,0.18)]"
+                  className="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform duration-200
+                    shadow-[0_1px_3px_rgba(0,0,0,0.22)]"
                   style={{ left: 2, transform: dark ? 'translateX(20px)' : 'translateX(0)' }}
                 />
               </button>
             </div>
 
             {hasClerkKey && user ? (
-              <div className="flex items-center gap-2.5 px-3 py-2 min-w-0">
-                <UserButton appearance={getUserButtonAppearance(dark)} />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                    {user.fullName ||
-                      user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-                      'Student'}
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] truncate">
-                    {user.primaryEmailAddress?.emailAddress || 'Verified Member'}
-                  </div>
-                </div>
-              </div>
-            ) : user ? (
-              <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  {user.picture ? (
-                    <img
-                      src={user.picture}
-                      alt={user.fullName || 'User'}
-                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-[var(--border)]"
-                    />
-                  ) : (
-                    <Avatar
-                      initials={(user.fullName || user.email || 'ST')
-                        .split(' ')
-                        .map(w => w[0])
-                        .join('')
-                        .slice(0, 2)
-                        .toUpperCase()}
-                      bg={user.avatarBg || 'linear-gradient(135deg, var(--blue), var(--purple))'}
-                      size={32}
-                    />
-                  )}
-                  <div className="min-w-0">
+                  <UserButton appearance={getUserButtonAppearance(dark)} />
+                  <button
+                    type="button"
+                    onClick={() => onNav('settings')}
+                    className="min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
+                  >
                     <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                      {user.fullName ||
-                        user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-                        'Student'}
+                      {displayName}
                     </div>
                     <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      {user.primaryEmailAddress?.emailAddress || user.email || 'Verified Member'}
+                      {subline}
                     </div>
-                  </div>
+                  </button>
                 </div>
                 {onSignOut && (
                   <button
@@ -139,29 +152,66 @@ export default function Sidebar({
                     onClick={onSignOut}
                     title="Sign out"
                     aria-label="Sign out"
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:bg-[var(--bg-surface)] cursor-pointer bg-transparent border-none shrink-0 transition-colors"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:bg-[var(--red-light)] cursor-pointer bg-transparent border-none shrink-0 transition-colors"
+                  >
+                    <LogOut size={15} />
+                  </button>
+                )}
+              </div>
+            ) : user ? (
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
+                <button
+                  type="button"
+                  onClick={() => onNav('settings')}
+                  className="flex items-center gap-2.5 min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
+                >
+                  {user.picture ? (
+                    <img
+                      src={user.picture}
+                      alt={displayName}
+                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-[var(--border)]"
+                    />
+                  ) : (
+                    <Avatar initials={initials} bg={avatarGradient} size={32} />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-[var(--text)] truncate">
+                      {displayName}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] truncate">
+                      {subline}
+                    </div>
+                  </div>
+                </button>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    title="Sign out"
+                    aria-label="Sign out"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-muted)] hover:text-[var(--red-ink)] hover:bg-[var(--red-light)] cursor-pointer bg-transparent border-none shrink-0 transition-colors"
                   >
                     <LogOut size={15} />
                   </button>
                 )}
               </div>
             ) : isDemo ? (
-              <div className="flex items-center justify-between gap-2 px-3 py-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Avatar
-                    initials="DM"
-                    bg="linear-gradient(135deg, var(--blue), var(--purple))"
-                    size={32}
-                  />
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] hover:bg-[var(--bg-surface)] transition-colors">
+                <button
+                  type="button"
+                  onClick={() => onNav('settings')}
+                  className="flex items-center gap-2.5 min-w-0 text-left bg-transparent border-none p-0 cursor-pointer"
+                >
+                  <Avatar initials={initials} bg={avatarGradient} size={32} />
                   <div className="min-w-0">
                     <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                      Demo Guest
+                      {displayName}
                     </div>
                     <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      Preview Mode
+                      {subline}
                     </div>
                   </div>
-                </div>
+                </button>
                 {onExitDemo && (
                   <button
                     type="button"
@@ -178,7 +228,7 @@ export default function Sidebar({
         </nav>
       </aside>
 
-      {/* ── Mobile Bottom Navigation Bar (< lg): All 5 Destinations, Zero Redundant Drawer ── */}
+      {/* ── Mobile Bottom Navigation Bar (< lg): 5 Core Destinations ── */}
       <nav
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-glass)] backdrop-blur-md
           border-t border-[var(--border)] px-1.5 pt-1.5 grid grid-cols-5 select-none"

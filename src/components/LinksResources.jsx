@@ -43,6 +43,7 @@ export default function LinksResources({
   onAddLocalLink,
   pinnedOverrides: externalPinnedOverrides,
   onTogglePinOverride,
+  onNotify,
 }) {
   const [internalLocalAdded, setInternalLocalAdded] = useState([])
   const [internalPinnedOverrides, setInternalPinnedOverrides] = useState({})
@@ -125,6 +126,7 @@ export default function LinksResources({
 
     if (created && onRefresh) {
       await onRefresh()
+      if (onNotify) onNotify('Shared resource added!')
     } else {
       const newLinkItem = {
         id: `link_${Date.now()}`,

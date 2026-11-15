@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Bell, CheckCheck, Moon, Sun, LogOut, LogIn } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Bell, CheckCheck, Moon, Sun, LogOut, LogIn, Settings } from 'lucide-react'
 import { UserButton } from '@clerk/react'
 import { SearchBox, BubbleTag, ClubHubLogo, IconBadge, cleanText } from './ui'
 import { AnnouncementTypeIcon } from './icons'
@@ -14,6 +14,7 @@ export default function Header({
   dark = false,
   onToggleDark,
   user = null,
+  userSettings = {},
   isDemo = false,
   onExitDemo,
   onSignOut,
@@ -25,8 +26,29 @@ export default function Header({
   const [readIds, setReadIds] = useState({})
   const notifRef = useRef(null)
 
-  const items = announcements && announcements.length > 0 ? announcements : initialAnnouncements
-  const unreadCount = items.filter(i => !readIds[i.id] && i.unread !== false).length
+  const rawItems = announcements && announcements.length > 0 ? announcements : initialAnnouncements
+
+  // Apply channel preferences from User Settings
+  const items = useMemo(() => {
+    const channels = userSettings?.channels || {}
+    return rawItems.filter(item => {
+      const src = String(item.source || '').toLowerCase()
+      if (src.includes('instagram') && channels.instagram === false) return false
+      if (src.includes('discord') && channels.discord === false) return false
+      if (src.includes('email') && channels.email === false) return false
+      return true
+    })
+  }, [rawItems, userSettings?.channels])
+
+  const unreadCount = useMemo(() => {
+    return items.filter(i => {
+      if (readIds[i.id] || i.unread === false) return false
+      if (userSettings?.urgentOnlyBadge) {
+        return String(i.type || '').toLowerCase() === 'urgent' || i.color === 'red'
+      }
+      return true
+    }).length
+  }, [items, readIds, userSettings?.urgentOnlyBadge])
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -51,7 +73,11 @@ export default function Header({
     setReadIds(next)
   }
 
-  const firstName = user?.firstName || (user?.fullName ? user.fullName.split(' ')[0] : null)
+  const customFirst = userSettings?.displayName?.trim()
+    ? userSettings.displayName.trim().split(' ')[0]
+    : null
+  const firstName =
+    customFirst || user?.firstName || (user?.fullName ? user.fullName.split(' ')[0] : null)
   const greetingName = firstName || (isDemo ? 'Guest' : 'Jane')
 
   const viewTitles = {
@@ -60,27 +86,29 @@ export default function Header({
     availability: 'Group Availability',
     clubs: 'Clubs & Community',
     links: 'Shared Resources',
+    settings: 'Settings',
   }
 
   const viewSubtitles = {
     overview: `${upcomingCount} upcoming ${upcomingCount === 1 ? 'event' : 'events'} across your campus clubs`,
     calendar: 'Scheduled club meetings, workshops, and RSVPs',
-    availability: 'Mark when you are free and find the best group meeting time',
-    clubs: 'Manage your memberships, browse updates, and connect with officers',
+    availability: 'Click or drag when you are free — group overlap updates automatically',
+    clubs: 'Manage your memberships, club feed, and officers & members directory',
     links: 'Pinned club documents, forms, and community links',
+    settings: 'Customize your profile, theme, calendar format, and notifications',
   }
 
   const searchPlaceholders = {
     overview: 'Search clubs, events, updates…',
     calendar: 'Search events or locations…',
-    clubs: 'Search clubs, posts, or members…',
+    clubs: 'Search clubs, officers, or members…',
     links: 'Search documents and links…',
   }
 
-  const showSearch = activeNav !== 'availability'
+  const showSearch = activeNav !== 'availability' && activeNav !== 'settings'
 
   return (
-    <header className="relative z-40 mb-5 sm:mb-6 fade-in" ref={notifRef}>
+    <header className="relative z-30 mb-5 sm:mb-6" ref={notifRef}>
       {/* ── Mobile / Tablet Top Bar (< lg) ── */}
       <div className="flex lg:hidden items-center justify-between gap-2 pb-3 mb-3.5 border-b border-[var(--border)]">
         <button
@@ -94,7 +122,7 @@ export default function Header({
           </span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {isDemo && onExitDemo ? (
             <button
               type="button"
@@ -105,7 +133,7 @@ export default function Header({
               <span>Sign In</span>
             </button>
           ) : hasClerkKey && user ? (
-            <div className="flex items-center">
+            <div className="flex items-center mr-0.5">
               <UserButton appearance={getUserButtonAppearance(dark)} />
             </div>
           ) : user && onSignOut ? (
@@ -128,6 +156,19 @@ export default function Header({
               flex items-center justify-center text-[var(--text-muted)] cursor-pointer"
           >
             {dark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNav && onNav('settings')}
+            aria-label="Settings"
+            className={`w-9 h-9 rounded-full border flex items-center justify-center cursor-pointer transition-colors ${
+              activeNav === 'settings'
+                ? 'bg-[var(--blue-light)] border-[var(--blue)]/40 text-[var(--blue-ink)]'
+                : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-muted)]'
+            }`}
+          >
+            <Settings size={16} />
           </button>
 
           <button
@@ -198,12 +239,12 @@ export default function Header({
         </div>
       </div>
 
-      {/* ── Notification Popover ── */}
+      {/* ── Notification Popover (Anchored directly beneath Bell — No transform trap) ── */}
       {notifOpen && (
         <div
-          className="fixed sm:absolute left-3 right-3 top-[64px] sm:left-auto sm:right-0 sm:top-full sm:mt-2
-            sm:w-84 rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
-            shadow-[var(--shadow-lg)] p-4 z-[100] fade-in"
+          className="fixed lg:absolute left-3 right-3 top-[58px] lg:left-auto lg:right-0 lg:top-full lg:mt-2
+            lg:w-[340px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
+            shadow-[var(--shadow-lg)] p-4 z-[90] fade-in"
         >
           <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[var(--border)]">
             <span className="text-xs font-semibold text-[var(--text)]">
@@ -222,48 +263,54 @@ export default function Header({
             )}
           </div>
 
-          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
-            {items.map(item => {
-              const isUnread = !readIds[item.id] && item.unread !== false
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setReadIds(prev => ({ ...prev, [item.id]: true }))
-                    if (item.navTarget && onNav) {
-                      onNav(item.navTarget)
-                      setNotifOpen(false)
-                    } else if (item.permalink) {
-                      window.open(item.permalink, '_blank', 'noopener,noreferrer')
-                      setNotifOpen(false)
-                    }
-                  }}
-                  className="w-full text-left p-2.5 rounded-[var(--radius-sm)] border-none transition-colors cursor-pointer hover:bg-[var(--bg-surface)] flex items-start gap-2.5"
-                  style={{
-                    background: isUnread ? 'var(--bg-surface)' : 'transparent',
-                  }}
-                >
-                  <IconBadge color={item.color || 'blue'} size={30} radius={9} className="mt-0.5">
-                    <AnnouncementTypeIcon type={item.type} size={15} />
-                  </IconBadge>
+          {items.length > 0 ? (
+            <div className="flex flex-col gap-2 max-h-[56vh] overflow-y-auto">
+              {items.map(item => {
+                const isUnread = !readIds[item.id] && item.unread !== false
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setReadIds(prev => ({ ...prev, [item.id]: true }))
+                      if (item.navTarget && onNav) {
+                        onNav(item.navTarget)
+                        setNotifOpen(false)
+                      } else if (item.permalink) {
+                        window.open(item.permalink, '_blank', 'noopener,noreferrer')
+                        setNotifOpen(false)
+                      }
+                    }}
+                    className="w-full text-left p-2.5 rounded-[var(--radius-sm)] border-none transition-colors cursor-pointer hover:bg-[var(--bg-surface)] flex items-start gap-2.5"
+                    style={{
+                      background: isUnread ? 'var(--bg-surface)' : 'transparent',
+                    }}
+                  >
+                    <IconBadge color={item.color || 'blue'} size={30} radius={9} className="mt-0.5">
+                      <AnnouncementTypeIcon type={item.type} size={15} />
+                    </IconBadge>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <BubbleTag label={item.type} color={item.color} size="sm" dot={isUnread} />
-                      <span className="text-[10.5px] text-[var(--text-light)]">{item.time}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <BubbleTag label={item.type} color={item.color} size="sm" dot={isUnread} />
+                        <span className="text-[10.5px] text-[var(--text-light)]">{item.time}</span>
+                      </div>
+                      <div className="text-xs font-semibold text-[var(--text)]">
+                        {cleanText(item.title)}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">
+                        {cleanText(item.description)}
+                      </div>
                     </div>
-                    <div className="text-xs font-semibold text-[var(--text)]">
-                      {cleanText(item.title)}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">
-                      {cleanText(item.description)}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-xs text-[var(--text-muted)]">
+              No notifications for your enabled channels.
+            </div>
+          )}
         </div>
       )}
     </header>

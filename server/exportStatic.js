@@ -25,11 +25,12 @@ const PUBLIC_DIR = path.resolve(__dirname, '../public');
 const OUTPUT_FILE = path.join(PUBLIC_DIR, 'clubhub-data.json');
 
 async function main() {
+  const exportOnly = process.argv.includes('--export-only');
   getDb();
 
   // 1. Pre-load existing public/clubhub-data.json so previously scraped personal-account
   //    clubs & posts are preserved across incremental 2-hour GitHub Actions runs.
-  if (fs.existsSync(OUTPUT_FILE)) {
+  if (!exportOnly && fs.existsSync(OUTPUT_FILE)) {
     try {
       const prev = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf8'));
       if (prev && Array.isArray(prev.clubs)) {
@@ -41,7 +42,7 @@ async function main() {
   }
 
   // 2. Sync live Instagram (Business Discovery + optional Instaloader personal fallback + Linktree/GCal/Discord-Invite crawl)
-  if (process.env.IG_USER_ID && process.env.IG_ACCESS_TOKEN) {
+  if (!exportOnly && process.env.IG_USER_ID && process.env.IG_ACCESS_TOKEN) {
     try {
       console.log('📸 Syncing live Instagram Business Discovery + personal fallback...');
       await instagramService.syncInstagram({
@@ -53,8 +54,24 @@ async function main() {
     }
   }
 
-  // 3. Import local collector output (if newer) + sync live Discord, Email, GCal, and Websites
-  await seedDatabase();
+  // 3. Import local collector output (if newer) + sync live Discord
+  if (!exportOnly) {
+    await seedDatabase();
+  }
+
+  // Remove placeholder demo_* fixtures (and any CSS @media false-positive) whenever real UCSC clubs are loaded
+  const db = getDb();
+  const realCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%' AND id != 'media'").get()?.c || 0;
+  if (realCount > 0) {
+    db.exec(`
+      DELETE FROM posts WHERE clubId LIKE 'demo_%' OR clubId = 'media';
+      DELETE FROM events WHERE clubId LIKE 'demo_%' OR clubId = 'media';
+      DELETE FROM announcements WHERE clubId LIKE 'demo_%' OR clubId = 'media';
+      DELETE FROM links WHERE clubId LIKE 'demo_%' OR clubId = 'media';
+      DELETE FROM clubs WHERE id LIKE 'demo_%' OR id = 'media';
+      DELETE FROM dictionary_store WHERE clubId LIKE 'demo_%' OR clubId = 'media' OR key LIKE 'club:demo_%' OR key = 'club:media';
+    `);
+  }
 
   const collectorData = getAllCollectorData();
   const hub = buildClubHubDictionary();

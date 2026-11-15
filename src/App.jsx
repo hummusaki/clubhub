@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useUser, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { Clock, ArrowRight } from 'lucide-react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
+import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
+import { Clock, ArrowRight, LogOut } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
@@ -9,8 +9,9 @@ import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
 import ClubsHub from './components/ClubsHub'
 import LinksResources from './components/LinksResources'
+import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Card, IconBadge, cleanText } from './components/ui'
+import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
 import {
   clubs as initialClubs,
   todaySchedule as fallbackSchedule,
@@ -35,6 +36,52 @@ const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v1'
 const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_dark_v1'
 const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
 const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
+const USER_SETTINGS_STORAGE_KEY = 'clubhub_user_settings_v1'
+
+const DEFAULT_USER_SETTINGS = {
+  displayName: '',
+  major: '',
+  avatarBg: 'linear-gradient(135deg, var(--blue), var(--purple))',
+  themeMode: null, // null = follow account dark boolean | 'light' | 'dark' | 'system'
+  compactCards: false,
+  reduceMotion: false,
+  timeFormat: '12h',
+  weekStartsOn: 'monday',
+  defaultCalendarView: 'agenda',
+  availabilityHours: '9-19',
+  urgentOnlyBadge: false,
+  channels: {
+    discord: true,
+    instagram: true,
+    email: true,
+  },
+}
+
+function getStoredUserSettings() {
+  try {
+    const raw = localStorage.getItem(USER_SETTINGS_STORAGE_KEY)
+    if (!raw) return DEFAULT_USER_SETTINGS
+    const parsed = JSON.parse(raw)
+    return {
+      ...DEFAULT_USER_SETTINGS,
+      ...parsed,
+      channels: {
+        ...DEFAULT_USER_SETTINGS.channels,
+        ...(parsed?.channels || {}),
+      },
+    }
+  } catch {
+    return DEFAULT_USER_SETTINGS
+  }
+}
+
+function saveStoredUserSettings(nextSettings) {
+  try {
+    localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 function getStoredRsvps() {
   try {
@@ -263,6 +310,9 @@ function getInitialStoredUser() {
 function MainDashboard({
   dark,
   toggleDark,
+  onSetExplicitThemeMode,
+  userSettings,
+  onUpdateSettings,
   user = null,
   isDemo = false,
   onExitDemo,
@@ -272,8 +322,12 @@ function MainDashboard({
   const [activeNav, setActiveNav] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [clubsData, setClubsData] = useState(initialClubs)
-  const [linksCount, setLinksCount] = useState(fallbackLinks.length)
+  const [linksCount] = useState(fallbackLinks.length)
   const [rsvpMap, setRsvpMap] = useState(getStoredRsvps)
+  const [resetGeneration, setResetGeneration] = useState(0)
+
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
 
   const [hubDict, setHubDict] = useState(STATIC_HUB_FALLBACK)
   const [liveAnnouncements, setLiveAnnouncements] = useState(null)
@@ -288,6 +342,26 @@ function MainDashboard({
   const [localClubPosts, setLocalClubPosts] = useState([])
   const [liveStats, setLiveStats] = useState(null)
 
+  const showToast = useCallback((text, options = {}) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast({
+      id: Date.now(),
+      text,
+      type: options.type || 'success',
+      actionLabel: options.actionLabel,
+      onAction: options.onAction,
+    })
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null)
+    }, 4200)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
   const loadBackendData = useCallback(async () => {
     let [hub, anns, evts, lnks, dbStats] = await Promise.all([
       getClubHub(),
@@ -297,7 +371,6 @@ function MainDashboard({
       getStats(),
     ])
 
-    // If backend server (port 3001) is offline (e.g. on GitHub Pages), load exported static snapshot
     if (!hub) {
       const snap = await getStaticSnapshot()
       if (snap) {
@@ -354,6 +427,7 @@ function MainDashboard({
           joined: true,
         }
       })
+
       if (mappedClubs.length > 0) {
         const mappedNames = new Set(
           mappedClubs.map(mc => (mc.name || '').toLowerCase().trim())
@@ -439,10 +513,9 @@ function MainDashboard({
     loadBackendData()
   }, [loadBackendData])
 
-  // Clear search query when switching to Availability so filters stay intuitive
   function handleNavigate(nextNav) {
     setActiveNav(nextNav)
-    if (nextNav === 'availability') {
+    if (nextNav === 'availability' || nextNav === 'settings') {
       setSearchQuery('')
     }
   }
@@ -511,6 +584,9 @@ function MainDashboard({
       }
       return next
     })
+    showToast(isGoing ? 'Marked as Going!' : 'RSVP removed.', {
+      type: isGoing ? 'success' : 'info',
+    })
   }
 
   async function handleAddCalendarEvent(eventPayload) {
@@ -528,6 +604,7 @@ function MainDashboard({
     setRemovedEventIds(prev => new Set(prev).add(eventId))
     setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
     await loadBackendData()
+    showToast('Removed event from calendar.', { type: 'info' })
   }
 
   function handleAddLocalCollabEvent(ev) {
@@ -565,171 +642,254 @@ function MainDashboard({
 
   function handleAddLocalLink(linkObj) {
     setLocalAddedLinks(prev => [linkObj, ...prev])
+    showToast('Shared resource added!')
   }
 
   function handleTogglePinOverride(linkId, nextPinned) {
     setPinnedLinkOverrides(prev => ({ ...prev, [linkId]: nextPinned }))
+    showToast(nextPinned ? 'Pinned resource to top.' : 'Unpinned resource.', { type: 'info' })
   }
 
   function handleAddLocalClubPost(postObj) {
     setLocalClubPosts(prev => [postObj, ...prev])
   }
 
+  function handleResetLocalData() {
+    try {
+      localStorage.removeItem(RSVP_STORAGE_KEY)
+      localStorage.removeItem('clubhub_availability_user_slots_v2')
+      localStorage.removeItem('clubhub_custom_roster_v1')
+    } catch {
+      // Ignore storage errors
+    }
+    setRsvpMap({})
+    setLocalAddedEvents([])
+    setRemovedEventIds(new Set())
+    setLocalAddedLinks([])
+    setPinnedLinkOverrides({})
+    setLocalClubPosts([])
+    setResetGeneration(g => g + 1)
+    showToast('Reset local demo changes to clean defaults.', { type: 'info' })
+  }
+
   return (
-    <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
+      {/* Floating Non-Shifting Toast Notifications */}
+      <ToastViewport toast={toast} onDismiss={() => setToast(null)} />
+
+      {/* Fixed Left Sidebar (Desktop) & Bottom Bar (Mobile) */}
       <Sidebar
         activeNav={activeNav}
         onNav={handleNavigate}
         dark={dark}
         onToggleDark={toggleDark}
         user={user}
+        userSettings={userSettings}
         isDemo={isDemo}
         onExitDemo={onExitDemo}
         onSignOut={onSignOut}
         hasClerkKey={hasClerkKey}
       />
 
-      <main className="flex-1 w-full min-w-0 overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-24 sm:py-7 lg:pb-8">
-        <Header
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          activeNav={activeNav}
-          onNav={handleNavigate}
-          dark={dark}
-          onToggleDark={toggleDark}
-          user={user}
-          isDemo={isDemo}
-          onExitDemo={onExitDemo}
-          onSignOut={onSignOut}
-          hasClerkKey={hasClerkKey}
-          announcements={liveAnnouncements}
-          upcomingCount={effectiveSchedule.length}
-        />
+      {/* Main Content Area (Offset by Fixed Sidebar on Desktop) */}
+      <main className="w-full min-w-0 lg:pl-[252px]">
+        <div className="px-3.5 sm:px-6 lg:px-8 pt-3.5 pb-28 sm:py-7 lg:pb-20">
+          <Header
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            activeNav={activeNav}
+            onNav={handleNavigate}
+            dark={dark}
+            onToggleDark={toggleDark}
+            user={user}
+            userSettings={userSettings}
+            isDemo={isDemo}
+            onExitDemo={onExitDemo}
+            onSignOut={onSignOut}
+            hasClerkKey={hasClerkKey}
+            announcements={liveAnnouncements}
+            upcomingCount={effectiveSchedule.length}
+          />
 
-        {/* ── 1. OVERVIEW (Clean Summary Only — Zero Clutter) ── */}
-        {activeNav === 'overview' && (
-          <div className="space-y-5 sm:space-y-6">
-            <StatCards
-              items={effectiveStats}
-              joinedCount={joinedCount}
-              eventsCount={effectiveSchedule.length}
-              linksCount={totalLinksCount}
-              onNav={handleNavigate}
-            />
-
-            <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5">
-              <CalendarView
-                compact={true}
-                items={effectiveSchedule}
-                clubs={effectiveClubs}
-                searchQuery={searchQuery}
-                rsvpMap={rsvpMap}
-                onToggleRsvp={handleToggleRsvp}
-                onDeleteEvent={handleDeleteCalendarEvent}
-                onOpenCalendar={() => handleNavigate('calendar')}
-              />
-              <Announcements
-                items={liveAnnouncements}
-                searchQuery={searchQuery}
+          {/* ── 1. OVERVIEW ── */}
+          {activeNav === 'overview' && (
+            <div className="space-y-5 sm:space-y-6">
+              <StatCards
+                items={effectiveStats}
+                joinedCount={joinedCount}
+                eventsCount={effectiveSchedule.length}
+                linksCount={totalLinksCount}
                 onNav={handleNavigate}
               />
-            </div>
 
-            {/* Clean Shortcut Card to Separated Group Availability Tool */}
-            <Card
-              delay={4}
-              onClick={() => handleNavigate('availability')}
-              className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:border-[var(--blue)]/40"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <IconBadge color="green" size={42} radius={13}>
-                  <Clock size={21} />
-                </IconBadge>
-                <div className="min-w-0">
-                  <div className="text-sm sm:text-base font-bold text-[var(--text)]">
-                    Coordinate Group Availability
-                  </div>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Poll members for free hours and schedule the best overlapping time onto the calendar.
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 xl:grid-cols-[5fr_3fr] gap-4 sm:gap-5">
+                <CalendarView
+                  compact={true}
+                  items={effectiveSchedule}
+                  clubs={effectiveClubs}
+                  userSettings={userSettings}
+                  searchQuery={searchQuery}
+                  rsvpMap={rsvpMap}
+                  onToggleRsvp={handleToggleRsvp}
+                  onDeleteEvent={handleDeleteCalendarEvent}
+                  onOpenCalendar={() => handleNavigate('calendar')}
+                  onNotify={showToast}
+                />
+                <Announcements
+                  items={liveAnnouncements}
+                  userSettings={userSettings}
+                  searchQuery={searchQuery}
+                  onNav={handleNavigate}
+                />
               </div>
 
-              <span className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto">
-                <span>Open Availability</span>
-                <ArrowRight size={14} />
-              </span>
-            </Card>
+              {/* Shortcut Card to Separated Group Availability Tool */}
+              <Card
+                delay={4}
+                onClick={() => handleNavigate('availability')}
+                className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 hover:border-[var(--blue)]/40"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <IconBadge color="green" size={42} radius={13}>
+                    <Clock size={21} />
+                  </IconBadge>
+                  <div className="min-w-0">
+                    <div className="text-sm sm:text-base font-bold text-[var(--text)]">
+                      Coordinate Group Availability
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Click or drag when you&apos;re free — group overlap updates automatically and schedules straight onto your calendar.
+                    </p>
+                  </div>
+                </div>
 
+                <span className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold shrink-0 self-start sm:self-auto">
+                  <span>Open Availability</span>
+                  <ArrowRight size={14} />
+                </span>
+              </Card>
+
+              <ClubsHub
+                compact={true}
+                items={liveClubs}
+                clubsData={clubsData}
+                userSettings={userSettings}
+                onToggleJoin={toggleJoinClub}
+                searchQuery={searchQuery}
+                onOpenClubs={() => handleNavigate('clubs')}
+                onNotify={showToast}
+              />
+            </div>
+          )}
+
+          {/* ── 2. CALENDAR ── */}
+          {activeNav === 'calendar' && (
+            <CalendarView
+              key={`cal_${userSettings?.defaultCalendarView}_${resetGeneration}`}
+              items={effectiveSchedule}
+              clubs={effectiveClubs}
+              userSettings={userSettings}
+              searchQuery={searchQuery}
+              rsvpMap={rsvpMap}
+              onToggleRsvp={handleToggleRsvp}
+              onAddEvent={handleAddCalendarEvent}
+              onDeleteEvent={handleDeleteCalendarEvent}
+              onNotify={showToast}
+            />
+          )}
+
+          {/* ── 3. AVAILABILITY ── */}
+          {activeNav === 'availability' && (
+            <AvailabilityView
+              key={`avail_${resetGeneration}`}
+              user={user}
+              userSettings={userSettings}
+              events={combinedRawEvents}
+              onEventBooked={loadBackendData}
+              onAddLocalEvent={handleAddLocalCollabEvent}
+              onRemoveLocalEvent={handleRemoveLocalCollabEvent}
+              onOpenCalendar={() => handleNavigate('calendar')}
+              onNotify={showToast}
+            />
+          )}
+
+          {/* ── 4. CLUBS & COMMUNITY ── */}
+          {activeNav === 'clubs' && (
             <ClubsHub
-              compact={true}
+              key={`clubs_${resetGeneration}`}
               items={liveClubs}
               clubsData={clubsData}
+              hubDict={hubDict}
+              userSettings={userSettings}
               onToggleJoin={toggleJoinClub}
               searchQuery={searchQuery}
-              onOpenClubs={() => handleNavigate('clubs')}
+              onRefresh={loadBackendData}
+              localPosts={localClubPosts}
+              onAddLocalPost={handleAddLocalClubPost}
+              onNotify={showToast}
             />
-          </div>
-        )}
+          )}
 
-        {/* ── 2. CALENDAR (Dedicated Club Events & Schedule) ── */}
-        {activeNav === 'calendar' && (
-          <CalendarView
-            items={effectiveSchedule}
-            clubs={effectiveClubs}
-            searchQuery={searchQuery}
-            rsvpMap={rsvpMap}
-            onToggleRsvp={handleToggleRsvp}
-            onAddEvent={handleAddCalendarEvent}
-            onDeleteEvent={handleDeleteCalendarEvent}
-          />
-        )}
+          {/* ── 5. RESOURCES ── */}
+          {activeNav === 'links' && (
+            <LinksResources
+              items={liveLinks}
+              clubs={effectiveClubs}
+              searchQuery={searchQuery}
+              onRefresh={loadBackendData}
+              localAdded={localAddedLinks}
+              onAddLocalLink={handleAddLocalLink}
+              pinnedOverrides={pinnedLinkOverrides}
+              onTogglePinOverride={handleTogglePinOverride}
+              onNotify={showToast}
+            />
+          )}
 
-        {/* ── 3. AVAILABILITY (Dedicated When2Meet-Style Group Polls) ── */}
-        {activeNav === 'availability' && (
-          <AvailabilityView
-            user={user}
-            events={combinedRawEvents}
-            onEventBooked={loadBackendData}
-            onAddLocalEvent={handleAddLocalCollabEvent}
-            onRemoveLocalEvent={handleRemoveLocalCollabEvent}
-            onOpenCalendar={() => handleNavigate('calendar')}
-          />
-        )}
-
-        {/* ── 4. CLUBS (My Clubs, Discover, Feed & Directory) ── */}
-        {activeNav === 'clubs' && (
-          <ClubsHub
-            items={liveClubs}
-            clubsData={clubsData}
-            hubDict={hubDict}
-            onToggleJoin={toggleJoinClub}
-            searchQuery={searchQuery}
-            onRefresh={loadBackendData}
-            localPosts={localClubPosts}
-            onAddLocalPost={handleAddLocalClubPost}
-          />
-        )}
-
-        {/* ── 5. RESOURCES (Links & Documents) ── */}
-        {activeNav === 'links' && (
-          <LinksResources
-            items={liveLinks}
-            clubs={effectiveClubs}
-            searchQuery={searchQuery}
-            onRefresh={loadBackendData}
-            localAdded={localAddedLinks}
-            onAddLocalLink={handleAddLocalLink}
-            pinnedOverrides={pinnedLinkOverrides}
-            onTogglePinOverride={handleTogglePinOverride}
-          />
-        )}
+          {/* ── 6. USER SETTINGS ── */}
+          {activeNav === 'settings' && (
+            <SettingsView
+              user={user}
+              isDemo={isDemo}
+              hasClerkKey={hasClerkKey}
+              dark={dark}
+              userSettings={userSettings}
+              onUpdateSettings={onUpdateSettings}
+              onSetThemeMode={onSetExplicitThemeMode}
+              events={effectiveSchedule}
+              onResetLocalData={handleResetLocalData}
+              onSignOut={onSignOut}
+              onExitDemo={onExitDemo}
+              onNotify={showToast}
+            />
+          )}
+        </div>
       </main>
+
+      {/* ── Fixed Bottom-Right Logout Button ── */}
+      {(onSignOut || (isDemo && onExitDemo)) && (
+        <button
+          type="button"
+          onClick={isDemo ? onExitDemo : onSignOut}
+          title={isDemo ? 'Exit demo and return to sign in' : 'Sign out of ClubHub'}
+          className="fixed bottom-[74px] lg:bottom-5 right-4 lg:right-6 z-40 inline-flex items-center gap-2
+            px-4 h-10 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
+            hover:border-[var(--red)]/55 text-xs font-semibold text-[var(--text-muted)]
+            hover:text-[var(--red-ink)] shadow-[var(--shadow-md)] cursor-pointer transition-all"
+        >
+          <LogOut size={14} />
+          <span>{isDemo ? 'Exit Demo' : 'Log Out'}</span>
+        </button>
+      )}
     </div>
   )
 }
 
 function getInitialTheme() {
+  const settings = getStoredUserSettings()
+  if (settings.themeMode === 'system' && typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  }
+
   const storedLocal = getInitialStoredUser()
   const map = getAccountThemeMap()
 
@@ -748,18 +908,24 @@ function getInitialTheme() {
     // Ignore storage errors
   }
 
+  if (settings.themeMode === 'dark') return true
+  if (settings.themeMode === 'light') return false
+
   return getGuestTheme()
 }
 
 function ClerkAppWrapper({
   dark,
   setDark,
+  userSettings,
+  onUpdateSettings,
   localUser,
   onLocalSignIn,
   onLocalSignOut,
   onUpdateLocalUserTheme,
 }) {
   const { isLoaded, isSignedIn, user } = useUser()
+  const { signOut } = useClerk()
   const [demoMode, setDemoMode] = useState(false)
   const [loadTimedOut, setLoadTimedOut] = useState(false)
   const syncedAccountRef = useRef(null)
@@ -783,14 +949,12 @@ function ClerkAppWrapper({
     return () => clearTimeout(timer)
   }, [isLoaded, isOAuthCallback])
 
-  // Ensure a real Clerk/Google session takes precedence over any leftover local session
   useEffect(() => {
     if (isSignedIn && user && localUser) {
       onLocalSignOut({ silent: true })
     }
   }, [isSignedIn, user, localUser, onLocalSignOut])
 
-  // Clean OAuth callback parameters from the URL once Clerk finishes signing in
   useEffect(() => {
     if (isSignedIn && user && isOAuthCallback && typeof window !== 'undefined') {
       window.history.replaceState({}, '', window.location.pathname)
@@ -806,10 +970,12 @@ function ClerkAppWrapper({
         ? `email:${localEmail}`
         : 'guest'
 
-  // Sync dark mode automatically whenever the signed-in account changes
+  // Sync dark mode automatically whenever the signed-in account changes (without white flash!)
   useEffect(() => {
+    if (userSettings.themeMode === 'system') return
+
     if (activeAccountKey === 'guest') {
-      if (!isLoaded && !loadTimedOut) return
+      if (!isLoaded) return // Never overwrite theme before Clerk actually finishes loading
       if (syncedAccountRef.current === 'guest') return
       syncedAccountRef.current = 'guest'
       try {
@@ -817,7 +983,11 @@ function ClerkAppWrapper({
       } catch {
         // Ignore storage errors
       }
-      setDark(getGuestTheme())
+      if (userSettings.themeMode === 'dark' || userSettings.themeMode === 'light') {
+        setDark(userSettings.themeMode === 'dark')
+      } else {
+        setDark(getGuestTheme())
+      }
       return
     }
 
@@ -837,12 +1007,6 @@ function ClerkAppWrapper({
       const emailKey = clerkEmail ? `email:${clerkEmail}` : null
       const metaDark = user.unsafeMetadata?.darkMode
 
-      if (typeof metaDark === 'boolean') {
-        setDark(metaDark)
-        saveAccountThemeForKeys([clerkKey, emailKey], metaDark)
-        return
-      }
-
       const localStored =
         typeof map[clerkKey] === 'boolean'
           ? map[clerkKey]
@@ -853,11 +1017,19 @@ function ClerkAppWrapper({
       if (typeof localStored === 'boolean') {
         setDark(localStored)
         saveAccountThemeForKeys([clerkKey, emailKey], localStored)
-        user
-          .update({
-            unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: localStored },
-          })
-          .catch(() => {})
+        if (metaDark !== localStored) {
+          user
+            .update({
+              unsafeMetadata: { ...(user.unsafeMetadata || {}), darkMode: localStored },
+            })
+            .catch(() => {})
+        }
+        return
+      }
+
+      if (typeof metaDark === 'boolean') {
+        setDark(metaDark)
+        saveAccountThemeForKeys([clerkKey, emailKey], metaDark)
         return
       }
 
@@ -913,22 +1085,26 @@ function ClerkAppWrapper({
   }, [
     activeAccountKey,
     isLoaded,
-    loadTimedOut,
     isSignedIn,
     user,
     clerkEmail,
     localUser,
     localEmail,
+    userSettings.themeMode,
     setDark,
   ])
 
-  function handleToggleDark() {
-    const next = !dark
+  function persistDarkChoice(next) {
     setDark(next)
 
     if (isSignedIn && user) {
       const clerkKey = `clerk:${user.id}`
       const emailKey = clerkEmail ? `email:${clerkEmail}` : null
+      try {
+        localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, clerkKey)
+      } catch {
+        // Ignore storage errors
+      }
       saveAccountThemeForKeys([clerkKey, emailKey], next)
       user
         .update({
@@ -947,6 +1123,38 @@ function ClerkAppWrapper({
     }
 
     saveGuestTheme(next)
+  }
+
+  function handleToggleDark() {
+    const next = !dark
+    onUpdateSettings({ themeMode: next ? 'dark' : 'light' })
+    persistDarkChoice(next)
+  }
+
+  function handleSetExplicitThemeMode(mode) {
+    onUpdateSettings({ themeMode: mode })
+    if (mode === 'system') {
+      const sysDark =
+        typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+      setDark(Boolean(sysDark))
+    } else {
+      persistDarkChoice(mode === 'dark')
+    }
+  }
+
+  async function handleClerkSignOut() {
+    try {
+      localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
+    } catch {
+      // Ignore storage errors
+    }
+    try {
+      await signOut()
+    } catch {
+      // Ignore Clerk signOut fallback errors
+    }
   }
 
   const baseUrl =
@@ -978,8 +1186,12 @@ function ClerkAppWrapper({
       <MainDashboard
         dark={dark}
         toggleDark={handleToggleDark}
+        onSetExplicitThemeMode={handleSetExplicitThemeMode}
+        userSettings={userSettings}
+        onUpdateSettings={onUpdateSettings}
         user={user}
         isDemo={false}
+        onSignOut={handleClerkSignOut}
         hasClerkKey={true}
       />
     )
@@ -990,6 +1202,9 @@ function ClerkAppWrapper({
       <MainDashboard
         dark={dark}
         toggleDark={handleToggleDark}
+        onSetExplicitThemeMode={handleSetExplicitThemeMode}
+        userSettings={userSettings}
+        onUpdateSettings={onUpdateSettings}
         user={localUser}
         isDemo={false}
         onSignOut={onLocalSignOut}
@@ -1012,6 +1227,9 @@ function ClerkAppWrapper({
       <MainDashboard
         dark={dark}
         toggleDark={handleToggleDark}
+        onSetExplicitThemeMode={handleSetExplicitThemeMode}
+        userSettings={userSettings}
+        onUpdateSettings={onUpdateSettings}
         user={null}
         isDemo={true}
         onExitDemo={() => setDemoMode(false)}
@@ -1034,6 +1252,8 @@ function ClerkAppWrapper({
 function FallbackApp({
   dark,
   setDark,
+  userSettings,
+  onUpdateSettings,
   localUser,
   onLocalSignIn,
   onLocalSignOut,
@@ -1045,11 +1265,16 @@ function FallbackApp({
   const activeAccountKey = localUser && localEmail ? `email:${localEmail}` : 'guest'
 
   useEffect(() => {
+    if (userSettings.themeMode === 'system') return
     if (syncedAccountRef.current === activeAccountKey) return
     syncedAccountRef.current = activeAccountKey
 
     if (activeAccountKey === 'guest') {
-      setDark(getGuestTheme())
+      if (userSettings.themeMode === 'dark' || userSettings.themeMode === 'light') {
+        setDark(userSettings.themeMode === 'dark')
+      } else {
+        setDark(getGuestTheme())
+      }
       return
     }
 
@@ -1068,10 +1293,9 @@ function FallbackApp({
         }
       })
     }
-  }, [activeAccountKey, localUser, localEmail, setDark])
+  }, [activeAccountKey, localUser, localEmail, userSettings.themeMode, setDark])
 
-  function handleToggleDark() {
-    const next = !dark
+  function persistDarkChoice(next) {
     setDark(next)
     if (localUser && localEmail) {
       onUpdateLocalUserTheme(next)
@@ -1080,11 +1304,33 @@ function FallbackApp({
     }
   }
 
+  function handleToggleDark() {
+    const next = !dark
+    onUpdateSettings({ themeMode: next ? 'dark' : 'light' })
+    persistDarkChoice(next)
+  }
+
+  function handleSetExplicitThemeMode(mode) {
+    onUpdateSettings({ themeMode: mode })
+    if (mode === 'system') {
+      const sysDark =
+        typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+      setDark(Boolean(sysDark))
+    } else {
+      persistDarkChoice(mode === 'dark')
+    }
+  }
+
   if (localUser) {
     return (
       <MainDashboard
         dark={dark}
         toggleDark={handleToggleDark}
+        onSetExplicitThemeMode={handleSetExplicitThemeMode}
+        userSettings={userSettings}
+        onUpdateSettings={onUpdateSettings}
         user={localUser}
         isDemo={false}
         onSignOut={onLocalSignOut}
@@ -1098,6 +1344,9 @@ function FallbackApp({
       <MainDashboard
         dark={dark}
         toggleDark={handleToggleDark}
+        onSetExplicitThemeMode={handleSetExplicitThemeMode}
+        userSettings={userSettings}
+        onUpdateSettings={onUpdateSettings}
         user={null}
         isDemo={true}
         onExitDemo={() => setDemoMode(false)}
@@ -1124,13 +1373,53 @@ const DEFAULT_CLERK_KEY = (
 ).trim()
 
 export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
+  const [userSettings, setUserSettings] = useState(getStoredUserSettings)
   const [dark, setDark] = useState(getInitialTheme)
   const [localUser, setLocalUser] = useState(getInitialStoredUser)
 
-  // Always keep root <html> .dark class synchronized with active dark state
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', Boolean(dark))
+  // Synchronously apply dark & reduce-motion classes BEFORE paint so zero white flash can occur
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    const isDark = Boolean(dark)
+    root.classList.toggle('dark', isDark)
+    root.style.colorScheme = isDark ? 'dark' : 'light'
   }, [dark])
+
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', Boolean(userSettings.reduceMotion))
+  }, [userSettings.reduceMotion])
+
+  // Enable smooth CSS theme transitions only AFTER initial frame has painted
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      document.documentElement.classList.add('theme-ready')
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  // Live OS color-scheme listener when Theme Mode is set to 'System'
+  useEffect(() => {
+    if (userSettings.themeMode !== 'system' || typeof window === 'undefined' || !window.matchMedia) {
+      return
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = e => setDark(e.matches)
+    setDark(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [userSettings.themeMode])
+
+  const handleUpdateSettings = useCallback(patch => {
+    setUserSettings(prev => {
+      const next = {
+        ...prev,
+        ...patch,
+        channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
+      }
+      saveStoredUserSettings(next)
+      return next
+    })
+  }, [])
 
   const updateLocalUserTheme = useCallback(nextDark => {
     setLocalUser(prev => {
@@ -1199,6 +1488,8 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
       <ClerkAppWrapper
         dark={dark}
         setDark={setDark}
+        userSettings={userSettings}
+        onUpdateSettings={handleUpdateSettings}
         localUser={localUser}
         onLocalSignIn={handleLocalSignIn}
         onLocalSignOut={handleLocalSignOut}
@@ -1211,6 +1502,8 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
     <FallbackApp
       dark={dark}
       setDark={setDark}
+      userSettings={userSettings}
+      onUpdateSettings={handleUpdateSettings}
       localUser={localUser}
       onLocalSignIn={handleLocalSignIn}
       onLocalSignOut={handleLocalSignOut}

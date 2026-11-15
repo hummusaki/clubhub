@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Clock,
   Users,
@@ -10,6 +10,7 @@ import {
   ChevronRight,
   UserPlus,
   CalendarPlus,
+  Share2,
   ArrowRight,
   X,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ import {
 
 const BASE_MONDAY = '2026-11-16'
 const DEFAULT_TZ = 'America/Los_Angeles'
+const LOCAL_SLOTS_STORAGE_KEY = 'clubhub_availability_user_slots_v2'
 
 function parseDateParts(dateStr) {
   const [y, m, d] = String(dateStr).split('-').map(Number)
@@ -43,17 +45,21 @@ function addDaysToYmd(dateStr, daysDelta) {
   return formatYmdUtc(dt)
 }
 
-function getMondayOfDate(dateStr) {
+function getWeekStartOfDate(dateStr, weekStartsOn = 'monday') {
   const { y, m, d } = parseDateParts(dateStr)
   const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-  const day = dt.getUTCDay()
-  const diffToMon = day === 0 ? -6 : 1 - day
-  dt.setUTCDate(dt.getUTCDate() + diffToMon)
+  const day = dt.getUTCDay() // 0 = Sun ... 6 = Sat
+  if (weekStartsOn === 'sunday') {
+    dt.setUTCDate(dt.getUTCDate() - day)
+  } else {
+    const diffToMon = day === 0 ? -6 : 1 - day
+    dt.setUTCDate(dt.getUTCDate() + diffToMon)
+  }
   return formatYmdUtc(dt)
 }
 
-function getWeekDatesFromStart(mondayStr) {
-  return Array.from({ length: 7 }, (_, i) => addDaysToYmd(mondayStr, i))
+function getWeekDatesFromStart(startYmd) {
+  return Array.from({ length: 7 }, (_, i) => addDaysToYmd(startYmd, i))
 }
 
 export function slotToUtcIso(dateStr, hour, minute, timeZone = DEFAULT_TZ) {
@@ -99,12 +105,13 @@ function makeRangeSlots(dateStr, startH, endH, tz = DEFAULT_TZ) {
   return out
 }
 
-function formatSlotLocal(isoStr, options = {}) {
+function formatTimeFromIso(isoStr, use24h = false, extraOptions = {}) {
   try {
     return new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
-      ...options,
+      hour12: !use24h,
+      ...extraOptions,
     }).format(new Date(isoStr))
   } catch {
     return isoStr
@@ -126,12 +133,6 @@ const FALLBACK_POLL = {
   id: 'collab_ucsc_hackathon_2026',
   title: 'Fall Hackathon & Showcase Planning',
   hostClubId: 'demo_ucsc_csclub',
-  collaboratingClubs: [
-    'Computer Science Club',
-    'Debate Society',
-    'Art Collective',
-    'Robotics League',
-  ],
   dates: DEFAULT_DATES,
   startHour: 9,
   endHour: 19,
@@ -181,40 +182,71 @@ const FALLBACK_POLL = {
   ],
 }
 
+function loadStoredUserSlots(defaultUserId) {
+  try {
+    const raw = localStorage.getItem(LOCAL_SLOTS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      const hydrated = {}
+      for (const [k, arr] of Object.entries(parsed)) {
+        if (Array.isArray(arr)) hydrated[k] = new Set(arr)
+      }
+      if (Object.keys(hydrated).length > 0) return hydrated
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+
+  return {
+    [defaultUserId]: new Set([
+      ...makeRangeSlots(DEFAULT_DATES[0], 14, 16.5),
+      ...makeRangeSlots(DEFAULT_DATES[2], 14, 17),
+    ]),
+  }
+}
+
 export default function AvailabilityView({
   user = null,
+  userSettings = {},
   events = [],
   onEventBooked,
   onAddLocalEvent,
   onRemoveLocalEvent,
   onOpenCalendar,
+  onNotify,
 }) {
+  const use24h = userSettings?.timeFormat === '24h'
+  const weekStartsOn = userSettings?.weekStartsOn === 'sunday' ? 'sunday' : 'monday'
+
   const defaultUserName =
+    userSettings?.displayName?.trim() ||
     user?.fullName ||
     user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+    user?.email?.split('@')[0] ||
     'Jane Doe'
 
   const [polls, setPolls] = useState([FALLBACK_POLL])
   const [selectedPollId, setSelectedPollId] = useState(FALLBACK_POLL.id)
-  const [weekStartMonday, setWeekStartMonday] = useState(BASE_MONDAY)
+  const [weekAnchorDate, setWeekAnchorDate] = useState(BASE_MONDAY)
   const [mobileDay, setMobileDay] = useState(BASE_MONDAY)
 
-  // 'mine' = toggle my free times | 'group' = view group overlap heatmap
+  // 'mine' = click & drag my free blocks | 'group' = inspect group heatmap
   const [gridMode, setGridMode] = useState('mine')
 
-  // Active responder editing state
-  const [activePersonName, setActivePersonName] = useState(defaultUserName)
-  const [showAddPerson, setShowAddPerson] = useState(false)
-  const [newPersonInput, setNewPersonInput] = useState('')
+  // Current responder identity (defaults to signed-in user; guest override optional)
+  const [guestOverrideName, setGuestOverrideName] = useState('')
+  const [showGuestForm, setShowGuestForm] = useState(false)
+  const [guestInput, setGuestInput] = useState('')
+
+  const activePersonName = guestOverrideName || defaultUserName
   const currentUserId = useMemo(() => toUserId(activePersonName), [activePersonName])
 
-  // Personal free slots per userId in client session
-  const [localSlotsByUser, setLocalSlotsByUser] = useState(() => ({
-    [toUserId(defaultUserName)]: new Set([
-      ...makeRangeSlots(DEFAULT_DATES[0], 14, 16.5),
-      ...makeRangeSlots(DEFAULT_DATES[2], 14, 17),
-    ]),
-  }))
+  // Spotlight filter: click a responder chip on the right to highlight their free blocks
+  const [spotlightUserId, setSpotlightUserId] = useState(null)
+
+  const [localSlotsByUser, setLocalSlotsByUser] = useState(() =>
+    loadStoredUserSlots(toUserId(defaultUserName))
+  )
 
   const myFreeSlots = useMemo(
     () => localSlotsByUser[currentUserId] || new Set(),
@@ -223,27 +255,35 @@ export default function AvailabilityView({
 
   const [isDragging, setIsDragging] = useState(false)
   const [dragAdding, setDragAdding] = useState(true)
+  const [autoSaveState, setAutoSaveState] = useState('saved') // 'saving' | 'saved'
 
-  // Inspected slot & scheduling state
-  const [selectedSlotIso, setSelectedSlotIso] = useState(null)
+  // Hovered or clicked slot for inspection
+  const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
+  const [pinnedSlotIso, setPinnedSlotIso] = useState(null)
   const [durationMins, setDurationMins] = useState(60)
-  const [saving, setSaving] = useState(false)
-  const [feedback, setFeedback] = useState(null)
+  const [bookingBusy, setBookingBusy] = useState(false)
 
-  // New Poll form state
+  // New Poll inline drawer
   const [showNewPollForm, setShowNewPollForm] = useState(false)
   const [newPollTitle, setNewPollTitle] = useState('')
   const [newPollDate, setNewPollDate] = useState(BASE_MONDAY)
   const [newPollLocation, setNewPollLocation] = useState('')
+
+  const saveTimerRef = useRef(null)
 
   const activePoll = useMemo(
     () => polls.find(p => p.id === selectedPollId) || polls[0] || FALLBACK_POLL,
     [polls, selectedPollId]
   )
 
+  const weekStartYmd = useMemo(
+    () => getWeekStartOfDate(weekAnchorDate, weekStartsOn),
+    [weekAnchorDate, weekStartsOn]
+  )
+
   const displayedWeekDates = useMemo(
-    () => getWeekDatesFromStart(weekStartMonday),
-    [weekStartMonday]
+    () => getWeekDatesFromStart(weekStartYmd),
+    [weekStartYmd]
   )
 
   const loadPolls = useCallback(async () => {
@@ -258,29 +298,74 @@ export default function AvailabilityView({
     loadPolls()
   }, [loadPolls])
 
+  // Persist localSlotsByUser to localStorage & auto-sync to backend after painting
+  const persistAvailability = useCallback(
+    (nextMap, targetUserId, targetName) => {
+      try {
+        const serializable = {}
+        for (const [k, setVal] of Object.entries(nextMap)) {
+          serializable[k] = Array.from(setVal)
+        }
+        localStorage.setItem(LOCAL_SLOTS_STORAGE_KEY, JSON.stringify(serializable))
+      } catch {
+        // Ignore storage errors
+      }
+
+      setAutoSaveState('saving')
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(async () => {
+        const freeArr = Array.from(nextMap[targetUserId] || [])
+        const updated = await saveSchedulerResponse(activePoll.id, {
+          userId: targetUserId,
+          userName: targetName,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
+          freeSlots: freeArr,
+          busySlots: [],
+        })
+        if (updated && updated.id) {
+          setPolls(prev => prev.map(p => (p.id === updated.id ? updated : p)))
+        }
+        setAutoSaveState('saved')
+      }, 450)
+    },
+    [activePoll.id]
+  )
+
   useEffect(() => {
     const stopDrag = () => setIsDragging(false)
     window.addEventListener('mouseup', stopDrag)
-    return () => window.removeEventListener('mouseup', stopDrag)
+    return () => {
+      window.removeEventListener('mouseup', stopDrag)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
   }, [])
 
-  // Keep mobileDay within displayedWeekDates when switching weeks
   useEffect(() => {
     if (!displayedWeekDates.includes(mobileDay)) {
       setMobileDay(displayedWeekDates[0])
     }
   }, [displayedWeekDates, mobileDay])
 
-  // Time rows (9:00 AM to 7:00 PM in 30-min increments)
+  // Parse hour bounds from User Settings (e.g. '9-19', '9-17', '8-21')
+  const { startHour, endHour } = useMemo(() => {
+    const pref = userSettings?.availabilityHours || '9-19'
+    const [s, e] = String(pref).split('-').map(Number)
+    if (!Number.isNaN(s) && !Number.isNaN(e) && e > s) {
+      return { startHour: s, endHour: e }
+    }
+    return {
+      startHour: activePoll.startHour ?? 9,
+      endHour: Math.min(activePoll.endHour ?? 19, 21),
+    }
+  }, [userSettings?.availabilityHours, activePoll.startHour, activePoll.endHour])
+
   const timeRows = useMemo(() => {
-    const startH = activePoll.startHour ?? 9
-    const endH = Math.min(activePoll.endHour ?? 19, 20)
     const rows = []
-    for (let mins = startH * 60; mins < endH * 60; mins += 30) {
+    for (let mins = startHour * 60; mins < endHour * 60; mins += 30) {
       rows.push({ hour: Math.floor(mins / 60), minute: mins % 60 })
     }
     return rows
-  }, [activePoll.startHour, activePoll.endHour])
+  }, [startHour, endHour])
 
   const gridSlots = useMemo(() => {
     const baseTz = activePoll.baseTimezone || DEFAULT_TZ
@@ -294,7 +379,7 @@ export default function AvailabilityView({
     return matrix
   }, [displayedWeekDates, activePoll.baseTimezone, timeRows])
 
-  // Merge poll responders + locally edited responders
+  // Combine poll responders + current user's live slots
   const allParticipants = useMemo(() => {
     const map = new Map()
 
@@ -305,31 +390,39 @@ export default function AvailabilityView({
       map.set(uid, {
         userId: uid,
         userName: cleanName,
+        clubName: r.clubName || '',
         freeSlots: localOverride ? Array.from(localOverride) : r.freeSlots || [],
       })
     }
 
-    // Ensure active user is always included
     if (!map.has(currentUserId)) {
       map.set(currentUserId, {
         userId: currentUserId,
         userName: activePersonName,
+        clubName: 'You',
         freeSlots: Array.from(myFreeSlots),
       })
-    } else if (localSlotsByUser[currentUserId]) {
+    } else {
       const existing = map.get(currentUserId)
       map.set(currentUserId, {
         ...existing,
-        freeSlots: Array.from(localSlotsByUser[currentUserId]),
+        userName: activePersonName,
+        freeSlots: localSlotsByUser[currentUserId]
+          ? Array.from(localSlotsByUser[currentUserId])
+          : existing.freeSlots,
       })
     }
 
-    // Also include any other people added locally during this session
     for (const [uid, slotSet] of Object.entries(localSlotsByUser)) {
-      if (!map.has(uid)) {
+      if (!map.has(uid) && slotSet.size > 0) {
         map.set(uid, {
           userId: uid,
-          userName: uid.replace(/^user_/, '').replace(/_/g, ' '),
+          userName: uid
+            .replace(/^user_/, '')
+            .split('_')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' '),
+          clubName: 'Guest',
           freeSlots: Array.from(slotSet),
         })
       }
@@ -338,7 +431,6 @@ export default function AvailabilityView({
     return Array.from(map.values())
   }, [activePoll.responses, localSlotsByUser, currentUserId, activePersonName, myFreeSlots])
 
-  // Scheduled events lookup so we only show "Cancel" on slots that are actually scheduled
   const scheduledEventsBySlot = useMemo(() => {
     const bySlot = {}
     const allEvs = [...(activePoll.calendarEvents || []), ...(Array.isArray(events) ? events : [])]
@@ -366,32 +458,122 @@ export default function AvailabilityView({
         const iso = gridSlots[d]?.[`${r.hour}:${r.minute}`]
         if (!iso) continue
         const availableUsers = allParticipants.filter(p => (p.freeSlots || []).includes(iso))
+        const unavailableUsers = allParticipants.filter(p => !(p.freeSlots || []).includes(iso))
+        const otherAvailableCount = availableUsers.filter(p => p.userId !== currentUserId).length
         stats[iso] = {
           iso,
           dateStr: d,
           availableUsers,
+          unavailableUsers,
           availableCount: availableUsers.length,
+          otherAvailableCount,
           ratio: availableUsers.length / total,
           scheduledEvent: scheduledEventsBySlot[iso] || null,
         }
       }
     }
     return stats
-  }, [displayedWeekDates, timeRows, gridSlots, allParticipants, scheduledEventsBySlot])
+  }, [displayedWeekDates, timeRows, gridSlots, allParticipants, currentUserId, scheduledEventsBySlot])
 
-  const bestOverlaps = useMemo(() => {
-    return Object.values(slotStatsMap)
-      .filter(s => s.availableCount > 0)
-      .sort((a, b) => b.availableCount - a.availableCount || a.iso.localeCompare(b.iso))
+  // Merge contiguous 30-min slots into real human-readable meeting windows that fit `durationMins`!
+  const bestMeetingWindows = useMemo(() => {
+    const requiredSlots = Math.max(1, Math.round(durationMins / 30))
+    const windows = []
+
+    for (const d of displayedWeekDates) {
+      const dayIsos = timeRows
+        .map(r => gridSlots[d]?.[`${r.hour}:${r.minute}`])
+        .filter(Boolean)
+
+      // Walk through the day and group contiguous runs with identical high participant sets
+      let i = 0
+      while (i < dayIsos.length) {
+        const startIso = dayIsos[i]
+        const startStat = slotStatsMap[startIso]
+        if (!startStat || startStat.availableCount === 0) {
+          i += 1
+          continue
+        }
+
+        const startKey = startStat.availableUsers
+          .map(u => u.userId)
+          .sort()
+          .join(',')
+
+        let j = i + 1
+        while (j < dayIsos.length) {
+          const nextStat = slotStatsMap[dayIsos[j]]
+          if (!nextStat || nextStat.availableCount === 0) break
+          const nextKey = nextStat.availableUsers
+            .map(u => u.userId)
+            .sort()
+            .join(',')
+          if (nextKey !== startKey) break
+          j += 1
+        }
+
+        const runLength = j - i
+        if (runLength >= requiredSlots) {
+          const windowStartMs = new Date(startIso).getTime()
+          const windowEndMs = windowStartMs + runLength * 30 * 60 * 1000
+          const windowEndIso = new Date(windowEndMs).toISOString()
+
+          // Check if any slot inside this window already has a scheduled event
+          let existingScheduled = null
+          let existingSlotIso = startIso
+          for (let k = i; k < j; k += 1) {
+            const ev = slotStatsMap[dayIsos[k]]?.scheduledEvent
+            if (ev) {
+              existingScheduled = ev
+              existingSlotIso = dayIsos[k]
+              break
+            }
+          }
+
+          windows.push({
+            id: `${d}_${startIso}`,
+            dateStr: d,
+            startIso,
+            endIso: windowEndIso,
+            totalMinutes: runLength * 30,
+            availableCount: startStat.availableCount,
+            availableUsers: startStat.availableUsers,
+            scheduledEvent: existingScheduled,
+            scheduledSlotIso: existingSlotIso,
+          })
+        }
+
+        i = j
+      }
+    }
+
+    return windows
+      .sort(
+        (a, b) =>
+          b.availableCount - a.availableCount ||
+          b.totalMinutes - a.totalMinutes ||
+          a.startIso.localeCompare(b.startIso)
+      )
       .slice(0, 5)
-  }, [slotStatsMap])
+  }, [displayedWeekDates, timeRows, gridSlots, slotStatsMap, durationMins])
 
   const inspectedSlot = useMemo(() => {
-    if (selectedSlotIso && slotStatsMap[selectedSlotIso]) {
-      return slotStatsMap[selectedSlotIso]
+    const activeIso = hoveredSlotIso || pinnedSlotIso
+    if (activeIso && slotStatsMap[activeIso]) {
+      return slotStatsMap[activeIso]
     }
-    return bestOverlaps[0] || null
-  }, [selectedSlotIso, slotStatsMap, bestOverlaps])
+    const topWindow = bestMeetingWindows[0]
+    if (topWindow && slotStatsMap[topWindow.startIso]) {
+      return slotStatsMap[topWindow.startIso]
+    }
+    return null
+  }, [hoveredSlotIso, pinnedSlotIso, slotStatsMap, bestMeetingWindows])
+
+  const spotlightSet = useMemo(() => {
+    if (!spotlightUserId) return null
+    const person = allParticipants.find(p => p.userId === spotlightUserId)
+    return person ? new Set(person.freeSlots || []) : null
+  }, [spotlightUserId, allParticipants])
 
   const weekLabel = useMemo(() => {
     const p1 = parseDateParts(displayedWeekDates[0])
@@ -408,106 +590,114 @@ export default function AvailabilityView({
     return `${s1} – ${s2}`
   }, [displayedWeekDates])
 
-  function updatePersonSlot(iso, shouldAdd) {
-    if (!iso) return
+  function applySlotsForCurrentUser(updater) {
     setLocalSlotsByUser(prev => {
-      const nextSet = new Set(prev[currentUserId] || [])
-      if (shouldAdd) nextSet.add(iso)
-      else nextSet.delete(iso)
-      return { ...prev, [currentUserId]: nextSet }
+      const currentSet = new Set(prev[currentUserId] || [])
+      const updatedSet = updater(currentSet)
+      const nextMap = { ...prev, [currentUserId]: updatedSet }
+      persistAvailability(nextMap, currentUserId, activePersonName)
+      return nextMap
     })
   }
 
   function handleCellMouseDown(iso) {
-    setSelectedSlotIso(iso)
+    setPinnedSlotIso(iso)
     if (gridMode !== 'mine') return
     const willAdd = !myFreeSlots.has(iso)
     setDragAdding(willAdd)
     setIsDragging(true)
-    updatePersonSlot(iso, willAdd)
+    applySlotsForCurrentUser(set => {
+      if (willAdd) set.add(iso)
+      else set.delete(iso)
+      return set
+    })
   }
 
   function handleCellMouseEnter(iso) {
+    setHoveredSlotIso(iso)
     if (!isDragging || gridMode !== 'mine') return
-    updatePersonSlot(iso, dragAdding)
+    applySlotsForCurrentUser(set => {
+      if (dragAdding) set.add(iso)
+      else set.delete(iso)
+      return set
+    })
   }
 
   function handleMobileSlotTap(iso) {
-    setSelectedSlotIso(iso)
+    setPinnedSlotIso(iso)
     if (gridMode === 'mine') {
-      updatePersonSlot(iso, !myFreeSlots.has(iso))
+      const willAdd = !myFreeSlots.has(iso)
+      applySlotsForCurrentUser(set => {
+        if (willAdd) set.add(iso)
+        else set.delete(iso)
+        return set
+      })
     }
   }
 
-  function handleSelectResponder(person) {
-    setActivePersonName(person.userName)
-    const uid = person.userId
-    if (!localSlotsByUser[uid]) {
-      setLocalSlotsByUser(prev => ({
-        ...prev,
-        [uid]: new Set(person.freeSlots || []),
-      }))
+  function handleFillWeekdayAfternoons() {
+    const baseTz = activePoll.baseTimezone || DEFAULT_TZ
+    applySlotsForCurrentUser(set => {
+      displayedWeekDates.forEach(d => {
+        const { y, m, d: dayNum } = parseDateParts(d)
+        const dow = new Date(Date.UTC(y, m - 1, dayNum, 12, 0, 0)).getUTCDay()
+        if (dow >= 1 && dow <= 5) {
+          makeRangeSlots(d, Math.max(startHour, 13), Math.min(endHour, 17), baseTz).forEach(s =>
+            set.add(s)
+          )
+        }
+      })
+      return set
+    })
+    if (onNotify) {
+      onNotify('Filled weekday afternoons (1–5 PM) and auto-saved.')
     }
   }
 
-  function handleAddResponderSubmit(e) {
+  function handleClearMyTimes() {
+    applySlotsForCurrentUser(() => new Set())
+    if (onNotify) {
+      onNotify(`Cleared ${activePersonName}'s marked hours.`, { type: 'info' })
+    }
+  }
+
+  function handleAddGuestSubmit(e) {
     e.preventDefault()
-    const trimmed = newPersonInput.trim()
+    const trimmed = guestInput.trim()
     if (!trimmed) return
     const uid = toUserId(trimmed)
     setLocalSlotsByUser(prev => ({
       ...prev,
       [uid]: prev[uid] || new Set(),
     }))
-    setActivePersonName(trimmed)
-    setNewPersonInput('')
-    setShowAddPerson(false)
+    setGuestOverrideName(trimmed)
+    setGuestInput('')
+    setShowGuestForm(false)
     setGridMode('mine')
-    setFeedback({ text: `Now editing ${trimmed}'s availability.` })
+    setSpotlightUserId(null)
+    if (onNotify) {
+      onNotify(`Now marking availability as guest "${trimmed}".`)
+    }
   }
 
-  async function handleSaveAvailability() {
-    setSaving(true)
-    const freeArr = Array.from(myFreeSlots)
-    const updated = await saveSchedulerResponse(activePoll.id, {
-      userId: currentUserId,
-      userName: activePersonName,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
-      freeSlots: freeArr,
-      busySlots: [],
-    })
-    setSaving(false)
-
-    if (updated && updated.id) {
-      setPolls(prev => prev.map(p => (p.id === updated.id ? updated : p)))
-    } else {
-      // Persist in local poll state when backend is offline
-      setPolls(prev =>
-        prev.map(p => {
-          if (p.id !== activePoll.id) return p
-          const others = (p.responses || []).filter(r => r.userId !== currentUserId)
-          return {
-            ...p,
-            responses: [
-              { userId: currentUserId, userName: activePersonName, freeSlots: freeArr },
-              ...others,
-            ],
-          }
-        })
-      )
+  async function handleCopyShareLink() {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?poll=${encodeURIComponent(activePoll.id)}`
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+    } catch {
+      // Clipboard fallback ignored
     }
-
-    setFeedback({
-      text: `Saved ${activePersonName}'s availability (${freeArr.length} slots).`,
-    })
+    if (onNotify) {
+      onNotify('Copied poll invite link to clipboard!')
+    }
   }
 
   async function handleCreatePollSubmit(e) {
     e.preventDefault()
     if (!newPollTitle.trim()) return
 
-    const monday = getMondayOfDate(newPollDate || BASE_MONDAY)
-    const weekDates = getWeekDatesFromStart(monday)
+    const startDay = getWeekStartOfDate(newPollDate || BASE_MONDAY, weekStartsOn)
+    const weekDates = getWeekDatesFromStart(startDay)
     const payload = {
       title: newPollTitle.trim(),
       location: newPollLocation.trim() || 'TBD',
@@ -534,17 +724,20 @@ export default function AvailabilityView({
 
     setPolls(prev => [pollObj, ...prev])
     setSelectedPollId(pollObj.id)
-    setWeekStartMonday(monday)
-    setMobileDay(monday)
+    setWeekAnchorDate(startDay)
+    setMobileDay(startDay)
     setNewPollTitle('')
     setNewPollLocation('')
     setShowNewPollForm(false)
-    setFeedback({ text: `Created availability poll "${pollObj.title}".` })
+    setGridMode('mine')
+    if (onNotify) {
+      onNotify(`Created poll "${pollObj.title}". Click or drag when you're free!`)
+    }
   }
 
   async function handleScheduleSlot(slotIso) {
     if (!slotIso) return
-    setSaving(true)
+    setBookingBusy(true)
     const endIso = new Date(new Date(slotIso).getTime() + durationMins * 60 * 1000).toISOString()
     const eventId = `collab_evt_${activePoll.id}_${new Date(slotIso).getTime()}`
 
@@ -558,13 +751,12 @@ export default function AvailabilityView({
       userId: currentUserId,
       userName: activePersonName,
     })
-    setSaving(false)
+    setBookingBusy(false)
 
     if (res && res.booked && res.poll) {
       setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
       if (onEventBooked) await onEventBooked()
     } else {
-      // Offline / static mode fallback: add directly to local poll & Calendar state!
       const localEv = {
         id: eventId,
         clubId: activePoll.hostClubId || 'demo_ucsc_csclub',
@@ -586,27 +778,30 @@ export default function AvailabilityView({
       }
     }
 
-    setFeedback({
-      text: `Scheduled "${activePoll.title}" on Calendar for ${formatSlotLocal(slotIso, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })}.`,
-      showCalendarLink: true,
-    })
+    if (onNotify) {
+      onNotify(
+        `Scheduled "${activePoll.title}" for ${formatTimeFromIso(slotIso, use24h, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })}`,
+        {
+          actionLabel: onOpenCalendar ? 'Open Calendar' : undefined,
+          onAction: onOpenCalendar,
+        }
+      )
+    }
   }
 
   async function handleCancelScheduledSlot(slotIso, existingEvent) {
-    setSaving(true)
+    setBookingBusy(true)
     const eventId = existingEvent?.id
     const res = await unbookSchedulerSlot(activePoll.id, {
       eventId,
       start: slotIso,
       userId: currentUserId,
     })
-    setSaving(false)
+    setBookingBusy(false)
 
     if (res && res.poll) {
       setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
@@ -629,70 +824,101 @@ export default function AvailabilityView({
       }
     }
 
-    setFeedback({ text: 'Removed scheduled meeting from Calendar.' })
+    if (onNotify) {
+      onNotify('Removed scheduled meeting from Calendar.', { type: 'info' })
+    }
   }
 
   return (
     <div className="space-y-5">
-      {/* ── Top Poll Selector & Actions Card ── */}
-      <Card className="p-4 sm:p-6 select-none" delay={1}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 pb-4 mb-4 border-b border-[var(--border)]">
-          <div className="flex-1 min-w-0">
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)] mb-1.5">
-              Active Availability Poll
-            </label>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-              <select
-                value={selectedPollId}
-                onChange={e => setSelectedPollId(e.target.value)}
-                className="w-full sm:w-auto sm:min-w-[280px] max-w-full min-h-[44px] px-3.5 py-2 rounded-xl text-base sm:text-sm font-semibold bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {polls.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {cleanText(p.title)}
-                  </option>
-                ))}
-              </select>
+      {/* ── 1. Clean Poll Switcher & Meeting Setup Bar ── */}
+      <Card className="p-4 sm:p-5" delay={1}>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+          {/* Poll Pills */}
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            {polls.map(p => {
+              const isSelected = p.id === activePoll.id
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPollId(p.id)
+                    setSpotlightUserId(null)
+                  }}
+                  className={`px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold border cursor-pointer transition-all truncate max-w-full ${
+                    isSelected
+                      ? 'bg-[var(--blue)] text-white border-[var(--blue)] shadow-2xs'
+                      : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
+                  }`}
+                >
+                  {cleanText(p.title)}
+                </button>
+              )
+            })}
 
-              {activePoll.location && (
-                <BubbleTag label={activePoll.location} color="teal" size="md" />
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setShowNewPollForm(prev => !prev)}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] text-xs sm:text-sm font-semibold cursor-pointer transition-colors"
+              className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                showNewPollForm
+                  ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]'
+                  : 'bg-transparent text-[var(--blue-ink)] border-dashed border-[var(--border-strong)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)]'
+              }`}
             >
-              {showNewPollForm ? <X size={15} /> : <Plus size={15} />}
+              {showNewPollForm ? <X size={14} /> : <Plus size={14} />}
               <span>{showNewPollForm ? 'Cancel' : 'New Poll'}</span>
             </button>
+          </div>
+
+          {/* Right Controls: Meeting Duration + Share Link */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {activePoll.location && (
+              <BubbleTag label={activePoll.location} color="teal" size="md" />
+            )}
+
+            <div className="inline-flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+              <span className="text-[11px] font-semibold text-[var(--text-muted)] px-2">
+                Length:
+              </span>
+              {[30, 60, 90, 120].map(mins => (
+                <button
+                  key={mins}
+                  type="button"
+                  onClick={() => setDurationMins(mins)}
+                  className={`px-2.5 min-h-[28px] rounded-lg text-xs font-semibold cursor-pointer border-none transition-colors ${
+                    durationMins === mins
+                      ? 'bg-[var(--bg-card)] text-[var(--blue-ink)] shadow-2xs'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {mins === 30 ? '30m' : `${mins / 60}h`}
+                </button>
+              ))}
+            </div>
 
             <button
               type="button"
-              disabled={saving}
-              onClick={handleSaveAvailability}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={handleCopyShareLink}
+              className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
             >
-              <Check size={15} />
-              <span>Save Availability</span>
+              <Share2 size={13} className="text-[var(--blue)]" />
+              <span>Share</span>
             </button>
           </div>
         </div>
 
-        {/* New Poll Form */}
+        {/* New Poll Drawer */}
         {showNewPollForm && (
           <form
             onSubmit={handleCreatePollSubmit}
-            className="mb-4 p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-3.5 fade-in"
+            className="mt-4 pt-4 border-t border-[var(--border)] space-y-3.5 fade-in"
           >
-            <div className="text-sm font-bold text-[var(--text)]">Create Availability Poll</div>
+            <div className="text-sm font-bold text-[var(--text)]">Create New Availability Poll</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  Poll Title
+                  Meeting Title
                 </label>
                 <input
                   type="text"
@@ -700,7 +926,7 @@ export default function AvailabilityView({
                   value={newPollTitle}
                   onChange={e => setNewPollTitle(e.target.value)}
                   placeholder="e.g. Officer Weekly Sync"
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
 
@@ -712,20 +938,20 @@ export default function AvailabilityView({
                   type="date"
                   value={newPollDate}
                   onChange={e => setNewPollDate(e.target.value)}
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  Location (optional)
+                  Location or Room
                 </label>
                 <input
                   type="text"
                   value={newPollLocation}
                   onChange={e => setNewPollLocation(e.target.value)}
                   placeholder="e.g. Baskin 152 or Zoom"
-                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                 />
               </div>
             </div>
@@ -740,171 +966,161 @@ export default function AvailabilityView({
             </div>
           </form>
         )}
-
-        {/* Responders Bar */}
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-[var(--text-muted)] inline-flex items-center gap-1.5">
-              <Users size={14} className="text-[var(--blue)]" />
-              <span>Responders ({allParticipants.length}) — Select a name to edit their hours:</span>
-            </span>
-
-            <button
-              type="button"
-              onClick={() => setShowAddPerson(prev => !prev)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-            >
-              <UserPlus size={13} />
-              <span>{showAddPerson ? 'Cancel' : 'Add Responder'}</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {allParticipants.map(p => {
-              const isCurrent = p.userId === currentUserId
-              return (
-                <button
-                  key={p.userId}
-                  type="button"
-                  onClick={() => handleSelectResponder(p)}
-                  className={`px-3 min-h-[34px] rounded-full text-xs font-semibold cursor-pointer border transition-all ${
-                    isCurrent
-                      ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                      : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
-                  }`}
-                >
-                  {p.userName} ({(p.freeSlots || []).length})
-                </button>
-              )
-            })}
-          </div>
-
-          {showAddPerson && (
-            <form
-              onSubmit={handleAddResponderSubmit}
-              className="flex flex-col sm:flex-row gap-2 pt-1 fade-in"
-            >
-              <input
-                type="text"
-                autoFocus
-                required
-                value={newPersonInput}
-                onChange={e => setNewPersonInput(e.target.value)}
-                placeholder="Enter responder's name"
-                className="flex-1 min-h-[44px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              />
-              <button
-                type="submit"
-                className="px-4 min-h-[44px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer"
-              >
-                Switch to Responder
-              </button>
-            </form>
-          )}
-        </div>
-
-        {/* Single Clean Feedback Toast */}
-        {feedback && (
-          <div className="mt-4 px-4 py-3 rounded-xl bg-[var(--green-light)] border border-[var(--green)]/25 text-[var(--green-ink)] text-xs sm:text-sm font-medium flex flex-wrap items-center justify-between gap-2 fade-in">
-            <div className="flex flex-wrap items-center gap-3">
-              <span>{feedback.text}</span>
-              {feedback.showCalendarLink && onOpenCalendar && (
-                <button
-                  type="button"
-                  onClick={onOpenCalendar}
-                  className="inline-flex items-center gap-1 font-bold underline bg-transparent border-none text-[var(--green-ink)] cursor-pointer"
-                >
-                  <span>View in Calendar</span>
-                  <ArrowRight size={13} />
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setFeedback(null)}
-              aria-label="Dismiss message"
-              className="bg-transparent border-none text-[var(--green-ink)] cursor-pointer p-1"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
       </Card>
 
-      {/* ── Main Availability Grid + Best Times Sidebar ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-5 items-start">
-        {/* LEFT: Interactive Availability Grid */}
+      {/* ── 2. Main Interactive Grid + Right Best-Windows & Responders Panel ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.68fr_1fr] gap-5 items-start">
+        {/* LEFT: Intuitive Auto-Saving Availability Grid */}
         <Card className="p-4 sm:p-6 select-none" delay={2}>
-          {/* Grid Toolbar: Week Switcher + Mode Toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-[var(--border)]">
+          {/* Mode & Week Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-3.5 border-b border-[var(--border)]">
+            {/* Segmented Step Switcher */}
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] self-start">
+              <button
+                type="button"
+                onClick={() => {
+                  setGridMode('mine')
+                  setSpotlightUserId(null)
+                }}
+                className={`px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                  gridMode === 'mine'
+                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                1. Mark My Times ({myFreeSlots.size})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGridMode('group')}
+                className={`px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                  gridMode === 'group'
+                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                2. Group Heatmap ({allParticipants.length})
+              </button>
+            </div>
+
+            {/* Week Navigation */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setWeekStartMonday(prev => addDaysToYmd(prev, -7))}
+                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}
                 aria-label="Previous week"
                 className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-sm font-bold text-[var(--text)] px-1">{weekLabel}</span>
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] px-1">{weekLabel}</span>
               <button
                 type="button"
-                onClick={() => setWeekStartMonday(prev => addDaysToYmd(prev, 7))}
+                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}
                 aria-label="Next week"
                 className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
               >
                 <ChevronRight size={16} />
               </button>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setGridMode('mine')}
-                  className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    gridMode === 'mine'
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  My Times ({myFreeSlots.size})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGridMode('group')}
-                  className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    gridMode === 'group'
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  Group Overlap
-                </button>
-              </div>
-
-              {gridMode === 'mine' && myFreeSlots.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLocalSlotsByUser(prev => ({ ...prev, [currentUserId]: new Set() }))
-                  }
-                  className="px-2.5 min-h-[34px] rounded-lg bg-transparent text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
           </div>
 
-          <p className="text-xs text-[var(--text-muted)] mb-3.5">
-            {gridMode === 'mine'
-              ? `Editing ${activePersonName}'s availability — tap or drag time slots when free.`
-              : `Showing group overlap across ${allParticipants.length} responders — tap any slot to inspect.`}
-          </p>
+          {/* Contextual Sub-Toolbar: Identity + Quick Helpers + Auto-Save Indicator */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            {gridMode === 'mine' ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span>
+                  Marking as <strong className="text-[var(--text)]">{activePersonName}</strong>
+                </span>
+                {guestOverrideName ? (
+                  <button
+                    type="button"
+                    onClick={() => setGuestOverrideName('')}
+                    className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                  >
+                    Switch back to {defaultUserName}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowGuestForm(prev => !prev)}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                  >
+                    <UserPlus size={12} />
+                    <span>{showGuestForm ? 'Cancel' : 'Add Guest'}</span>
+                  </button>
+                )}
 
-          {/* ── MOBILE LAYOUT (< md): Day Picker + Thumb-Friendly Time Buttons (ZERO Scrollbars!) ── */}
-          <div className="md:hidden space-y-4">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--green-light)] text-[var(--green-ink)] text-[11px] font-semibold">
+                  <Check size={11} />
+                  <span>{autoSaveState === 'saving' ? 'Saving…' : 'Auto-saved'}</span>
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span>
+                  Darker green = more members free. Hover or click any slot to see who can make it.
+                </span>
+                {spotlightUserId && (
+                  <button
+                    type="button"
+                    onClick={() => setSpotlightUserId(null)}
+                    className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                  >
+                    Clear responder highlight
+                  </button>
+                )}
+              </div>
+            )}
+
+            {gridMode === 'mine' && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleFillWeekdayAfternoons}
+                  className="px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                >
+                  Fill 1–5 PM
+                </button>
+                {myFreeSlots.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearMyTimes}
+                    className="px-2.5 min-h-[30px] rounded-lg bg-transparent text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer"
+                  >
+                    Clear Mine
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Optional Add Guest Responder Bar */}
+          {showGuestForm && gridMode === 'mine' && (
+            <form
+              onSubmit={handleAddGuestSubmit}
+              className="mb-4 p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row gap-2 fade-in"
+            >
+              <input
+                type="text"
+                autoFocus
+                required
+                value={guestInput}
+                onChange={e => setGuestInput(e.target.value)}
+                placeholder="Teammate or guest name (e.g. Jordan Chen)"
+                className="flex-1 min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+              />
+              <button
+                type="submit"
+                className="px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer"
+              >
+                Mark Guest Hours
+              </button>
+            </form>
+          )}
+
+          {/* ── MOBILE VIEW (< md): 7-Day Selector + Chronological Top-to-Bottom Time Slots ── */}
+          <div className="md:hidden space-y-3.5">
             <div className="grid grid-cols-7 gap-1">
               {displayedWeekDates.map(ymd => {
                 const { y, m, d } = parseDateParts(ymd)
@@ -914,12 +1130,12 @@ export default function AvailabilityView({
                   timeZone: 'UTC',
                 })
                 const isSelected = mobileDay === ymd
-                const hasAnyFree = timeRows.some(r => {
+                const dayFreeCount = timeRows.filter(r => {
                   const iso = gridSlots[ymd]?.[`${r.hour}:${r.minute}`]
                   return gridMode === 'mine'
                     ? myFreeSlots.has(iso)
                     : (slotStatsMap[iso]?.availableCount || 0) > 0
-                })
+                }).length
 
                 return (
                   <button
@@ -942,7 +1158,7 @@ export default function AvailabilityView({
                     <span className="text-sm font-bold font-mono-num">{d}</span>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        hasAnyFree
+                        dayFreeCount > 0
                           ? isSelected
                             ? 'bg-white'
                             : 'bg-[var(--green)]'
@@ -954,20 +1170,26 @@ export default function AvailabilityView({
               })}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            {/* Chronological Single-Column List (Easy Top-to-Bottom Scanning, Zero Scrollbars) */}
+            <div className="flex flex-col gap-1.5">
               {timeRows.map(r => {
                 const iso = gridSlots[mobileDay]?.[`${r.hour}:${r.minute}`]
+                const endIso = iso
+                  ? new Date(new Date(iso).getTime() + 30 * 60 * 1000).toISOString()
+                  : ''
                 const isMine = myFreeSlots.has(iso)
                 const stat = slotStatsMap[iso]
                 const count = stat?.availableCount || 0
+                const otherCount = stat?.otherAvailableCount || 0
                 const isInspected = inspectedSlot?.iso === iso
+                const isSpotlit = spotlightSet ? spotlightSet.has(iso) : false
 
-                let btnClass =
+                let rowStyle =
                   'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)]'
                 if (gridMode === 'mine' && isMine) {
-                  btnClass = 'bg-[var(--green)] text-white border-[var(--green)]'
+                  rowStyle = 'bg-[var(--green)] text-white border-[var(--green)] shadow-2xs'
                 } else if (gridMode === 'group' && count > 0) {
-                  btnClass =
+                  rowStyle =
                     'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/40'
                 }
 
@@ -976,40 +1198,54 @@ export default function AvailabilityView({
                     key={iso}
                     type="button"
                     onClick={() => handleMobileSlotTap(iso)}
-                    className={`min-h-[44px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center justify-between gap-1.5 cursor-pointer transition-all ${btnClass} ${
+                    className={`w-full min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-all ${rowStyle} ${
                       isInspected && gridMode === 'group' ? 'ring-2 ring-[var(--blue)]' : ''
-                    }`}
+                    } ${isSpotlit ? 'ring-2 ring-[var(--blue)]' : ''}`}
                   >
                     <span className="font-mono-num">
-                      {formatSlotLocal(iso, { hour: 'numeric', minute: '2-digit' })}
+                      {formatTimeFromIso(iso, use24h)} – {formatTimeFromIso(endIso, use24h)}
                     </span>
-                    {gridMode === 'mine' ? (
-                      isMine ? (
-                        <Check size={14} className="shrink-0" />
-                      ) : (
-                        count > 0 && (
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            {count} free
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {stat?.scheduledEvent && (
+                        <span className="px-2 py-0.5 rounded-full bg-[var(--blue-light)] text-[var(--blue-ink)] text-[10px] font-bold">
+                          Scheduled
+                        </span>
+                      )}
+
+                      {gridMode === 'mine' ? (
+                        isMine ? (
+                          <span className="inline-flex items-center gap-1 font-bold">
+                            <Check size={14} /> Free
                           </span>
+                        ) : otherCount > 0 ? (
+                          <span className="text-[11px] text-[var(--text-muted)]">
+                            {otherCount} teammate{otherCount === 1 ? '' : 's'} free
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[var(--text-light)]">Tap if free</span>
                         )
-                      )
-                    ) : (
-                      <span className="text-[11px] font-bold">
-                        {count}/{allParticipants.length}
-                      </span>
-                    )}
+                      ) : (
+                        <span className="text-xs font-bold font-mono-num">
+                          {count}/{allParticipants.length} free
+                        </span>
+                      )}
+                    </div>
                   </button>
                 )
               })}
             </div>
           </div>
 
-          {/* ── DESKTOP / TABLET LAYOUT (md+): Full 7-Day Fixed Table (Fits 100% Width, ZERO Scrollbars) ── */}
-          <div className="hidden md:block">
+          {/* ── DESKTOP / TABLET VIEW (md+): Crisp 7-Day Interactive Grid ── */}
+          <div
+            className="hidden md:block"
+            onMouseLeave={() => setHoveredSlotIso(null)}
+          >
             <table className="w-full table-fixed border-collapse text-xs">
               <thead>
                 <tr>
-                  <th className="w-16 pb-2 pr-2 text-left text-[11px] font-semibold text-[var(--text-muted)]">
+                  <th className="w-[68px] pb-2.5 pr-2 text-right text-[11px] font-semibold text-[var(--text-muted)]">
                     Time
                   </th>
                   {displayedWeekDates.map(dateStr => {
@@ -1022,10 +1258,10 @@ export default function AvailabilityView({
                     return (
                       <th
                         key={dateStr}
-                        className="pb-2 px-0.5 text-center font-semibold text-[var(--text)]"
+                        className="pb-2.5 px-1 text-center font-semibold text-[var(--text)]"
                       >
-                        <div className="text-xs">{dayShort}</div>
-                        <div className="text-[10.5px] font-normal text-[var(--text-muted)]">
+                        <div className="text-xs font-bold">{dayShort}</div>
+                        <div className="text-[11px] font-normal text-[var(--text-muted)]">
                           {m}/{d}
                         </div>
                       </th>
@@ -1034,40 +1270,45 @@ export default function AvailabilityView({
                 </tr>
               </thead>
               <tbody>
-                {timeRows.map(r => {
+                {timeRows.map((r, rowIdx) => {
                   const sampleIso = gridSlots[displayedWeekDates[0]]?.[`${r.hour}:${r.minute}`]
-                  const timeLabel = sampleIso
-                    ? formatSlotLocal(sampleIso, { hour: 'numeric', minute: '2-digit' })
-                    : `${r.hour}:00`
+                  const timeLabel = sampleIso ? formatTimeFromIso(sampleIso, use24h) : `${r.hour}:00`
+                  const isFullHour = r.minute === 0
+                  const isLastRow = rowIdx === timeRows.length - 1
 
                   return (
                     <tr key={`${r.hour}:${r.minute}`}>
-                      <td className="pr-2 py-0.5 text-[10.5px] text-[var(--text-muted)] font-mono-num whitespace-nowrap">
-                        {r.minute === 0 ? timeLabel : ''}
+                      <td className="pr-2.5 py-0 text-right align-top text-[10.5px] text-[var(--text-muted)] font-mono-num whitespace-nowrap">
+                        {isFullHour ? (
+                          <span className="-mt-1.5 inline-block">{timeLabel}</span>
+                        ) : null}
                       </td>
                       {displayedWeekDates.map(dateStr => {
                         const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
                         const isMine = myFreeSlots.has(iso)
                         const stat = slotStatsMap[iso]
                         const count = stat?.availableCount || 0
+                        const otherCount = stat?.otherAvailableCount || 0
                         const ratio = stat?.ratio || 0
-                        const isSelected = inspectedSlot?.iso === iso
+                        const isInspected = inspectedSlot?.iso === iso
+                        const isSpotlit = spotlightSet ? spotlightSet.has(iso) : false
+                        const isBooked = Boolean(stat?.scheduledEvent)
 
                         let bg = 'var(--bg-surface)'
-                        let textColor = 'var(--text)'
+                        let textColor = 'var(--text-muted)'
 
                         if (gridMode === 'mine') {
                           if (isMine) {
                             bg = 'var(--green)'
                             textColor = '#ffffff'
-                          } else if (count > 0) {
+                          } else if (otherCount > 0) {
                             bg = 'var(--green-light)'
                             textColor = 'var(--green-ink)'
                           }
                         } else if (count > 0) {
-                          const alpha = (0.22 + ratio * 0.72).toFixed(2)
-                          bg = `rgba(34, 163, 82, ${alpha})`
-                          textColor = ratio > 0.5 ? '#ffffff' : 'var(--text)'
+                          const alpha = (0.18 + ratio * 0.74).toFixed(2)
+                          bg = `rgba(16, 185, 129, ${alpha})`
+                          textColor = ratio >= 0.55 ? '#ffffff' : 'var(--text)'
                         }
 
                         return (
@@ -1075,14 +1316,43 @@ export default function AvailabilityView({
                             key={iso}
                             onMouseDown={() => handleCellMouseDown(iso)}
                             onMouseEnter={() => handleCellMouseEnter(iso)}
-                            onClick={() => setSelectedSlotIso(iso)}
-                            className={`border border-[var(--border)] h-7 cursor-pointer text-center text-[10.5px] font-semibold transition-colors ${
-                              isSelected ? 'ring-2 ring-[var(--blue)] relative z-10' : ''
-                            }`}
+                            onClick={() => setPinnedSlotIso(iso)}
+                            title={`${formatTimeFromIso(iso, use24h, {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            })} — ${count}/${allParticipants.length} free`}
+                            className={`h-[26px] border-x border-[var(--border)] ${
+                              isFullHour
+                                ? 'border-t border-t-[var(--border-strong)]'
+                                : 'border-t border-dashed border-t-[var(--border)]'
+                            } ${isLastRow ? 'border-b border-b-[var(--border-strong)]' : ''}
+                              cursor-pointer text-center text-[10.5px] font-semibold transition-colors ${
+                                isSpotlit
+                                  ? 'ring-2 ring-[var(--blue)] relative z-10'
+                                  : isInspected && gridMode === 'group'
+                                    ? 'ring-1.5 ring-[var(--blue)] relative z-10'
+                                    : ''
+                              }`}
                             style={{ background: bg, color: textColor }}
                           >
-                            {gridMode === 'group' && count > 0 ? count : ''}
-                            {gridMode === 'mine' && isMine ? '✓' : ''}
+                            {isBooked ? (
+                              <span className="inline-block px-1 rounded bg-[var(--blue)] text-white text-[9.5px] font-bold leading-tight">
+                                Booked
+                              </span>
+                            ) : gridMode === 'mine' ? (
+                              isMine ? (
+                                '✓'
+                              ) : otherCount > 0 ? (
+                                <span className="text-[9.5px] opacity-80">{otherCount}</span>
+                              ) : (
+                                ''
+                              )
+                            ) : count > 0 ? (
+                              `${count}/${allParticipants.length}`
+                            ) : (
+                              ''
+                            )}
                           </td>
                         )
                       })}
@@ -1091,180 +1361,279 @@ export default function AvailabilityView({
                 })}
               </tbody>
             </table>
+
+            {/* Simple Visual Legend */}
+            <div className="mt-3.5 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
+              {gridMode === 'mine' ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded bg-[var(--green)] inline-block" />
+                    <span>You are free</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded bg-[var(--green-light)] border border-[var(--green)]/40 inline-block" />
+                    <span>Teammates free (number = count)</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span>Fewer</span>
+                  {[0.2, 0.42, 0.68, 0.92].map(a => (
+                    <span
+                      key={a}
+                      className="w-3.5 h-3.5 rounded inline-block"
+                      style={{ background: `rgba(16, 185, 129, ${a})` }}
+                    />
+                  ))}
+                  <span>Everyone free</span>
+                </div>
+              )}
+
+              {inspectedSlot && (
+                <span className="font-semibold text-[var(--text)] font-mono-num">
+                  {formatTimeFromIso(inspectedSlot.iso, use24h, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}{' '}
+                  · {inspectedSlot.availableCount}/{allParticipants.length} free
+                </span>
+              )}
+            </div>
           </div>
         </Card>
 
-        {/* RIGHT: Best Overlapping Times + Selected Slot Details */}
+        {/* RIGHT: 1) Merged Best Meeting Windows + 2) Responders & Slot Breakdown */}
         <div className="space-y-4">
-          {/* Selected Slot Inspector */}
+          {/* Card 1: Best Meeting Windows (Contiguous Ranges + 1-Click Schedule!) */}
           <Card className="p-4 sm:p-5" delay={3}>
-            <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
-                <Clock size={16} className="text-[var(--blue)] shrink-0" />
-                <h3 className="text-sm font-bold text-[var(--text)]">Selected Slot</h3>
+                <Sparkles size={16} className="text-[var(--yellow)] shrink-0" />
+                <h3 className="text-sm font-bold text-[var(--text)]">Best Meeting Windows</h3>
               </div>
-
-              {inspectedSlot && (
-                <BubbleTag
-                  label={`${inspectedSlot.availableCount} of ${allParticipants.length} Free`}
-                  color="green"
-                  size="sm"
-                />
-              )}
+              <BubbleTag
+                label={`${durationMins === 30 ? '30m' : `${durationMins / 60}h`} fit`}
+                color="blue"
+                size="sm"
+              />
             </div>
+            <p className="text-xs text-[var(--text-muted)] mb-3.5">
+              Top overlapping blocks where members can meet for at least{' '}
+              {durationMins === 30 ? '30 mins' : `${durationMins} mins`}.
+            </p>
 
-            {inspectedSlot ? (
-              <div className="space-y-3.5">
-                <div className="text-sm font-semibold text-[var(--text)]">
-                  {formatSlotLocal(inspectedSlot.iso, {
-                    weekday: 'long',
+            {bestMeetingWindows.length > 0 ? (
+              <div className="flex flex-col gap-2.5">
+                {bestMeetingWindows.map(win => {
+                  const dayLabel = formatTimeFromIso(win.startIso, use24h, {
+                    weekday: 'short',
                     month: 'short',
                     day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </div>
+                  }).replace(/,?\s*\d{1,2}:\d{2}.*$/, '')
+                  const startClock = formatTimeFromIso(win.startIso, use24h)
+                  const endClock = formatTimeFromIso(win.endIso, use24h)
+                  const isEveryone = win.availableCount === allParticipants.length
 
-                <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
-                  <div className="text-[11px] font-semibold text-[var(--text-muted)] mb-1.5">
-                    Available Responders
-                  </div>
-                  {inspectedSlot.availableUsers.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {inspectedSlot.availableUsers.map(u => (
+                  return (
+                    <div
+                      key={win.id}
+                      onMouseEnter={() => setHoveredSlotIso(win.startIso)}
+                      onMouseLeave={() => setHoveredSlotIso(null)}
+                      onClick={() => setPinnedSlotIso(win.startIso)}
+                      className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--blue)]/60 transition-colors space-y-2.5 cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs sm:text-[13px] font-bold text-[var(--text)]">
+                            {dayLabel} · {startClock} – {endClock}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
+                            {win.availableUsers.map(u => u.userName).join(', ')}
+                          </div>
+                        </div>
+
                         <BubbleTag
-                          key={u.userId}
-                          label={u.userName}
+                          label={
+                            isEveryone
+                              ? `All ${win.availableCount} Free`
+                              : `${win.availableCount}/${allParticipants.length} Free`
+                          }
                           color="green"
                           size="sm"
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-[var(--text-muted)]">
-                      No one marked free for this slot yet.
-                    </div>
-                  )}
-                </div>
-
-                {/* Duration + Clean Single Action (Add to Calendar OR Cancel if already scheduled) */}
-                <div className="pt-2 border-t border-[var(--border)] space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-[var(--text-muted)]">Duration</span>
-                    <div className="flex items-center gap-1">
-                      {[30, 60, 90, 120].map(mins => (
-                        <button
-                          key={mins}
-                          type="button"
-                          onClick={() => setDurationMins(mins)}
-                          className={`px-2.5 min-h-[30px] rounded-lg text-xs font-semibold cursor-pointer border transition-colors ${
-                            durationMins === mins
-                              ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                              : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)]'
-                          }`}
-                        >
-                          {mins === 30 ? '30m' : `${mins / 60}h`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {inspectedSlot.scheduledEvent ? (
-                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--blue-light)] border border-[var(--blue)]/30">
-                      <span className="text-xs font-semibold text-[var(--blue-ink)]">
-                        Scheduled on Calendar ✓
-                      </span>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() =>
-                          handleCancelScheduledSlot(
-                            inspectedSlot.iso,
-                            inspectedSlot.scheduledEvent
-                          )
-                        }
-                        className="inline-flex items-center gap-1 px-3 min-h-[34px] rounded-lg bg-[var(--red)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
-                      >
-                        <Trash2 size={12} />
-                        <span>Cancel</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => handleScheduleSlot(inspectedSlot.iso)}
-                      className="w-full min-h-[42px] px-4 rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 flex items-center justify-center gap-2 transition-opacity"
-                    >
-                      <CalendarPlus size={15} />
-                      <span>Schedule on Calendar ({durationMins}m)</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-[var(--text-muted)]">
-                Mark free times on the grid to see group overlap details.
-              </p>
-            )}
-          </Card>
-
-          {/* Best Overlapping Times Card */}
-          <Card className="p-4 sm:p-5" delay={4}>
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={15} className="text-[var(--yellow)] shrink-0" />
-              <h3 className="text-sm font-bold text-[var(--text)]">Best Times to Meet</h3>
-            </div>
-
-            {bestOverlaps.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {bestOverlaps.map(slot => {
-                  const isActive = inspectedSlot?.iso === slot.iso
-                  return (
-                    <button
-                      key={slot.iso}
-                      type="button"
-                      onClick={() => setSelectedSlotIso(slot.iso)}
-                      className={`w-full p-3 rounded-xl border text-left flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                        isActive
-                          ? 'bg-[var(--blue-light)] border-[var(--blue)]'
-                          : 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--border-strong)]'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-[var(--text)]">
-                          {formatSlotLocal(slot.iso, {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                        </div>
-                        <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-                          {slot.availableUsers.map(u => u.userName).join(', ')}
-                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {slot.scheduledEvent ? (
-                          <BubbleTag label="Scheduled" color="blue" size="sm" />
-                        ) : (
-                          <BubbleTag
-                            label={`${slot.availableCount}/${allParticipants.length}`}
-                            color="green"
-                            size="sm"
-                          />
-                        )}
-                      </div>
-                    </button>
+                      {win.scheduledEvent ? (
+                        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-subtle)]">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)]">
+                            <Check size={13} /> Scheduled on Calendar
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {onOpenCalendar && (
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  onOpenCalendar()
+                                }}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                              >
+                                <span>View</span>
+                                <ArrowRight size={12} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={bookingBusy}
+                              onClick={e => {
+                                e.stopPropagation()
+                                handleCancelScheduledSlot(
+                                  win.scheduledSlotIso,
+                                  win.scheduledEvent
+                                )
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer hover:opacity-85"
+                            >
+                              <Trash2 size={11} />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            disabled={bookingBusy}
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleScheduleSlot(win.startIso)
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
+                          >
+                            <CalendarPlus size={13} />
+                            <span>
+                              Schedule ({startClock},{' '}
+                              {durationMins === 30 ? '30m' : `${durationMins / 60}h`})
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
             ) : (
-              <p className="text-xs text-[var(--text-muted)] py-3">
-                No overlapping times marked for this week yet.
-              </p>
+              <div className="py-5 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
+                No {durationMins}-minute overlapping block found yet for this week. Mark more hours
+                or switch Length to 30m.
+              </div>
+            )}
+          </Card>
+
+          {/* Card 2: Responders Spotlight & Selected Slot Breakdown */}
+          <Card className="p-4 sm:p-5 space-y-4" delay={4}>
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <Users size={15} className="text-[var(--blue)] shrink-0" />
+                  <h3 className="text-sm font-bold text-[var(--text)]">
+                    Responders ({allParticipants.length})
+                  </h3>
+                </div>
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  Click to highlight
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {allParticipants.map(p => {
+                  const isSpotlit = spotlightUserId === p.userId
+                  const isMe = p.userId === currentUserId
+                  return (
+                    <button
+                      key={p.userId}
+                      type="button"
+                      onClick={() =>
+                        setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
+                      }
+                      className={`px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-all ${
+                        isSpotlit
+                          ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
+                          : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
+                      }`}
+                    >
+                      {p.userName}
+                      {isMe ? ' (You)' : ''} · {(p.freeSlots || []).length}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Hovered / Selected Single-Slot Breakdown */}
+            {inspectedSlot && (
+              <div className="pt-3.5 border-t border-[var(--border)] space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--text)]">
+                    <Clock size={13} className="text-[var(--blue)]" />
+                    {formatTimeFromIso(inspectedSlot.iso, use24h, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
+
+                  {!inspectedSlot.scheduledEvent && (
+                    <button
+                      type="button"
+                      disabled={bookingBusy}
+                      onClick={() => handleScheduleSlot(inspectedSlot.iso)}
+                      className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                    >
+                      Schedule this slot &rarr;
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+                    <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--green-ink)] mb-1">
+                      Free ({inspectedSlot.availableUsers.length})
+                    </div>
+                    {inspectedSlot.availableUsers.length > 0 ? (
+                      <div className="space-y-0.5 text-[11.5px] text-[var(--text)]">
+                        {inspectedSlot.availableUsers.map(u => (
+                          <div key={u.userId} className="truncate">
+                            ✓ {u.userName}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-[var(--text-light)]">None</div>
+                    )}
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+                    <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--text-muted)] mb-1">
+                      Busy ({inspectedSlot.unavailableUsers.length})
+                    </div>
+                    {inspectedSlot.unavailableUsers.length > 0 ? (
+                      <div className="space-y-0.5 text-[11.5px] text-[var(--text-muted)]">
+                        {inspectedSlot.unavailableUsers.map(u => (
+                          <div key={u.userId} className="truncate">
+                            — {u.userName}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-[var(--green-ink)] font-medium">
+                        Everyone free!
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </Card>
         </div>

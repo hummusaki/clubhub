@@ -10,12 +10,19 @@ import googleCalendarService from './services/googleCalendar.js';
 import websiteService from './services/website.js';
 
 export async function seedDatabase() {
-  getDb();
+  const db = getDb();
   const result = importCollectorFile();
-  await discordService.syncDiscord();
-  await emailService.syncEmail();
-  await googleCalendarService.syncCalendar();
-  await websiteService.syncWebsite();
+  const realClubCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%'").get()?.c || 0;
+  const hasLiveData = realClubCount > 0 || Boolean(process.env.IG_ACCESS_TOKEN);
+
+  if (process.env.DISCORD_BOT_TOKEN || !hasLiveData) {
+    await discordService.syncDiscord();
+  }
+  if (!hasLiveData) {
+    await emailService.syncEmail();
+    await googleCalendarService.syncCalendar();
+    await websiteService.syncWebsite();
+  }
 
   if (result.imported) {
     console.log(

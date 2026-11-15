@@ -10,6 +10,8 @@
     "server": "node --no-warnings server/index.js",
     "sync:static": "node --no-warnings server/exportStatic.js",
     "sync:push": "bash scripts/local-sync-and-push.sh",
+    "ig:login": ".venv/bin/python3 collector/scripts/setup_ig_session.py",
+    "ig:extend-token": "node --no-warnings collector/scripts/extend_meta_token.mjs",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {

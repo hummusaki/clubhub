@@ -265,3 +265,60 @@ export function SearchBox({
     </div>
   )
 }
+
+// ── Floating Non-Layout-Shifting Toast Viewport ──
+export function ToastViewport({ toast, onDismiss }) {
+  if (!toast) return null
+  const tone = toast.type === 'error' ? 'red' : toast.type === 'info' ? 'blue' : 'green'
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed top-4 right-4 left-4 sm:left-auto sm:right-6 sm:max-w-sm z-[120] pointer-events-none flex justify-end"
+    >
+      <div
+        className="pointer-events-auto w-full sm:w-auto rounded-2xl bg-[var(--bg-card)] border px-4 py-3
+          shadow-[var(--shadow-lg)] flex items-center justify-between gap-3 fade-in"
+        style={{
+          borderColor: `var(--${tone})`,
+        }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ background: `var(--${tone})` }}
+          />
+          <div className="min-w-0">
+            <div className="text-xs sm:text-[13px] font-semibold text-[var(--text)] leading-snug">
+              {toast.text}
+            </div>
+            {toast.actionLabel && toast.onAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.onAction()
+                  if (onDismiss) onDismiss()
+                }}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
+              >
+                <span>{toast.actionLabel} &rarr;</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss notification"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-light)] hover:text-[var(--text)] hover:bg-[var(--bg-surface)] bg-transparent border-none cursor-pointer shrink-0 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -285,8 +285,8 @@ export function upsertCollectorData(data = {}) {
       followers         = CASE WHEN excluded.followers > 0 THEN excluded.followers ELSE clubs.followers END,
       lastPostAt        = COALESCE(excluded.lastPostAt, clubs.lastPostAt),
       email             = COALESCE(excluded.email, clubs.email),
-      syncStatus        = COALESCE(excluded.syncStatus, clubs.syncStatus),
-      syncNote          = excluded.syncNote,
+      syncStatus        = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN 'synced' ELSE COALESCE(excluded.syncStatus, clubs.syncStatus) END,
+      syncNote          = CASE WHEN clubs.syncStatus = 'synced' AND excluded.syncStatus = 'unavailable' THEN clubs.syncNote ELSE excluded.syncNote END,
       updatedAt         = datetime('now')
   `);
 
@@ -496,12 +496,18 @@ export function upsertCollectorData(data = {}) {
 
 // ── Load from collector JSON file (output/clubhub-data.json or fixtures/sample-output.json) ──
 export function importCollectorFile(customFilePath = null) {
+  const db = getDb();
+  const realClubCount = db.stmt("SELECT COUNT(*) AS c FROM clubs WHERE id NOT LIKE 'demo_%'").get()?.c || 0;
   const targetPath =
     customFilePath ||
-    (fs.existsSync(COLLECTOR_OUTPUT_PATH) ? COLLECTOR_OUTPUT_PATH : COLLECTOR_SAMPLE_PATH);
+    (fs.existsSync(COLLECTOR_OUTPUT_PATH)
+      ? COLLECTOR_OUTPUT_PATH
+      : realClubCount === 0
+        ? COLLECTOR_SAMPLE_PATH
+        : null);
 
-  if (!fs.existsSync(targetPath)) {
-    return { imported: false, reason: `No collector file found at ${targetPath}` };
+  if (!targetPath || !fs.existsSync(targetPath)) {
+    return { imported: false, reason: 'No collector output file to import' };
   }
 
   const data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));

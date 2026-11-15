@@ -35,7 +35,7 @@ export async function fetchClub(handle, { igUserId, accessToken, version = 'v26.
       break
     } catch (err) {
       const reason = err.cause?.code || err.cause?.message || err.name || err.message
-      if (attempt >= 3) {
+      if (attempt >= 3 || err.cause?.code === 'ENOTFOUND') {
         throw new InstagramError(`@${handle}: could not reach Instagram (${reason}). Check Wi-Fi, VPN or ad blocker.`, { code: 'NETWORK', handle })
       }
       await new Promise(r => setTimeout(r, 1500 * attempt))

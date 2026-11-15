@@ -1,6 +1,6 @@
 [
   {
-    "name": "8th Rank Society: UC Santa Cruz Women's Chess Club",
+    "name": "8th Rank Society",
     "instagram": "8thrankchess.ucsc",
     "category": "gaming",
     "email": "8thrankucsc@gmail.com"
@@ -24,6 +24,12 @@
     "email": "alay.ucsc@gmail.com"
   },
   {
+    "name": "Alpha Epsilon Pi (AEPi)",
+    "instagram": "aepi.ucsc",
+    "category": "greek",
+    "email": "tmai6@ucsc.edu"
+  },
+  {
     "name": "alpha Kappa Delta Phi (aKDPhi)",
     "instagram": "ucsc_akdphi",
     "category": "greek",
@@ -34,6 +40,12 @@
     "instagram": "ucscakpsi",
     "category": "greek",
     "email": "ucsc.akpsi@gmail.com"
+  },
+  {
+    "name": "Alpha Phi Omega",
+    "instagram": "apo_ucsc",
+    "category": "greek",
+    "email": "agn.apo.vpm@gmail.com"
   },
   {
     "name": "Alpha Psi",
@@ -226,11 +238,11 @@
     "instagram": "enviroslug",
     "category": "service & advocacy",
     "email": "eslp@ucsc.edu",
-    "extraEmails": [
-      "sec2001@ucsc.edu"
-    ],
     "alsoKnownAs": [
       "Student Environmental Center (SEC)"
+    ],
+    "extraEmails": [
+      "sec2001@ucsc.edu"
     ]
   },
   {
@@ -348,7 +360,7 @@
     "email": "niangeor@ucsc.edu"
   },
   {
-    "name": "Isang Himig (IH)",
+    "name": "Isang Himing (IH)",
     "instagram": "isanghimig",
     "category": "cultural",
     "email": "isanghimig.ucsc@gmail.com"
@@ -583,7 +595,7 @@
   },
   {
     "name": "Santa Cruz Fighting Game Community",
-    "instagram": "santacruzfgc",
+    "instagram": "santacruzfc",
     "category": "gaming",
     "email": "aiqle@ucsc.edu"
   },
@@ -618,6 +630,12 @@
     "email": "president.ucscsopi@gmail.com"
   },
   {
+    "name": "Sigma Phi Zeta",
+    "instagram": "sigmaphizeta_fraternity",
+    "category": "greek",
+    "email": "ucscsigmaphizeta@gmail.com"
+  },
+  {
     "name": "Sigma Pi Alpha Sorority, Inc.",
     "instagram": "ucsantacruzellas",
     "category": "greek",
@@ -636,7 +654,7 @@
     "email": "mleonov@ucsc.edu"
   },
   {
-    "name": "Slug Anime & Manga Association (SAMA)",
+    "name": "Slug Anime & Manga Association",
     "instagram": "sluganimeucsc",
     "category": "media & arts",
     "email": "sluganime@ucsc.edu"
@@ -666,7 +684,7 @@
     "email": "srgeucsc@gmail.com"
   },
   {
-    "name": "Slug'n Boots",
+    "name": "Slug' n Boots",
     "instagram": "slugnboots",
     "category": "other",
     "email": "slugnboots@gmail.com"

@@ -3,11 +3,88 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html {
+        background-color: #F6F8FB;
+        color: #0F172A;
+        color-scheme: light;
+      }
+      html.dark {
+        background-color: #0D1117;
+        color: #EEF2F8;
+        color-scheme: dark;
+      }
+      body {
+        background-color: inherit;
+        color: inherit;
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var isDark = null;
+          var reduceMotion = false;
+
+          var rawSettings = localStorage.getItem('clubhub_user_settings_v1');
+          var settings = rawSettings ? JSON.parse(rawSettings) : null;
+          if (settings && settings.reduceMotion) {
+            reduceMotion = true;
+          }
+
+          var rawUser = localStorage.getItem('clubhub_auth_user');
+          var parsedUser = rawUser ? JSON.parse(rawUser) : null;
+          var rawMap = localStorage.getItem('clubhub_account_themes_v1');
+          var themeMap = rawMap ? JSON.parse(rawMap) : {};
+          var lastAcct = localStorage.getItem('clubhub_last_active_account_v1');
+
+          if (settings && settings.themeMode === 'system') {
+            isDark =
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } else if (parsedUser && parsedUser.email) {
+            var emailKey = 'email:' + String(parsedUser.email).toLowerCase();
+            if (typeof parsedUser.darkMode === 'boolean') {
+              isDark = parsedUser.darkMode;
+            } else if (typeof themeMap[emailKey] === 'boolean') {
+              isDark = themeMap[emailKey];
+            }
+          }
+
+          if (isDark === null && lastAcct && typeof themeMap[lastAcct] === 'boolean') {
+            isDark = themeMap[lastAcct];
+          }
+
+          if (isDark === null && settings && (settings.themeMode === 'dark' || settings.themeMode === 'light')) {
+            isDark = settings.themeMode === 'dark';
+          }
+
+          if (isDark === null) {
+            var guest = localStorage.getItem('clubhub_guest_dark_v1');
+            if (guest === 'true') isDark = true;
+            else if (guest === 'false') isDark = false;
+          }
+
+          var root = document.documentElement;
+          if (isDark) {
+            root.classList.add('dark');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+          }
+          if (reduceMotion) {
+            root.classList.add('reduce-motion');
+          }
+        } catch (e) {
+          // Ignore storage read errors
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/clubhub-logo.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <title>ClubHub — Campus Dashboard</title>
+    <title>ClubHub — Campus Workspace</title>
   </head>
   <body>
     <div id="root"></div>

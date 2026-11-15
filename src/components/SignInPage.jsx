@@ -1155,6 +1155,23 @@ export default function SignInPage({
                 </form>
               ) : (
                 <>
+                  {error && (
+                    <div className="flex items-start justify-between gap-2.5 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3.5 py-2.5 rounded-xl border border-[var(--red)]/25 fade-in">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">{error}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setError('')}
+                        aria-label="Dismiss error"
+                        className="bg-transparent border-none text-[var(--red-ink)] opacity-75 hover:opacity-100 cursor-pointer p-0.5 shrink-0"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
                   {/* ── 1. Real Google OAuth Button (Above Normal Login Fields) ── */}
                   <button
                     type="button"
@@ -1287,13 +1304,6 @@ export default function SignInPage({
                         </button>
                       </div>
                     </div>
-
-                    {error && (
-                      <div className="flex items-center gap-2 text-xs text-[var(--red-ink)] bg-[var(--red-light)] px-3.5 py-2.5 rounded-xl border border-[var(--red)]/20">
-                        <AlertCircle size={14} className="shrink-0" />
-                        <span>{error}</span>
-                      </div>
-                    )}
 
                     {/* Clerk Smart Bot Protection Mount Point */}
                     <div id="clerk-captcha" />

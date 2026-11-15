@@ -1,8 +1,7 @@
 import { dark as clerkDarkTheme } from '@clerk/themes'
 
 /**
- * Custom styling for Clerk components matching ClubHub's Google-Bubble theme.
- * Adapts seamlessly between warm cappuccino dark mode and pastel light mode.
+ * Custom styling for Clerk components matching ClubHub's Midnight Slate & Porcelain palette.
  */
 export function getClerkAppearance(isDark = false) {
   return {
@@ -14,14 +13,14 @@ export function getClerkAppearance(isDark = false) {
       showOptionalFields: false,
     },
     variables: {
-      colorPrimary: '#7BAAF7',
-      colorText: isDark ? '#EDE8E1' : '#3C3226',
-      colorTextSecondary: isDark ? '#A89E92' : '#8A7E72',
-      colorBackground: isDark ? '#3E3930' : '#FFFFFF',
-      colorInputBackground: isDark ? '#36322A' : '#FAF7F3',
-      colorInputText: isDark ? '#EDE8E1' : '#3C3226',
+      colorPrimary: isDark ? '#60A5FA' : '#3B82F6',
+      colorText: isDark ? '#EEF2F8' : '#0F172A',
+      colorTextSecondary: isDark ? '#94A3B8' : '#475569',
+      colorBackground: isDark ? '#151C26' : '#FFFFFF',
+      colorInputBackground: isDark ? '#1B2432' : '#F1F5F9',
+      colorInputText: isDark ? '#EEF2F8' : '#0F172A',
       borderRadius: '16px',
-      fontFamily: "'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     elements: {
       rootBox: {
@@ -29,70 +28,69 @@ export function getClerkAppearance(isDark = false) {
         maxWidth: '440px',
       },
       card: {
-        backgroundColor: isDark ? '#3E3930' : '#FFFFFF',
-        border: `1px solid ${isDark ? '#524D44' : '#E8E0D8'}`,
+        backgroundColor: isDark ? '#151C26' : '#FFFFFF',
+        border: `1px solid ${isDark ? '#263346' : '#E2E8F0'}`,
         borderRadius: '24px',
         boxShadow: isDark
-          ? '0 16px 40px rgba(0, 0, 0, 0.45)'
-          : '0 16px 40px rgba(60, 50, 38, 0.08)',
+          ? '0 16px 40px rgba(2, 6, 23, 0.55)'
+          : '0 16px 40px rgba(15, 23, 42, 0.08)',
         padding: '2.25rem 2rem',
       },
       headerTitle: {
         fontSize: '24px',
         fontWeight: '700',
-        color: isDark ? '#EDE8E1' : '#3C3226',
+        color: isDark ? '#EEF2F8' : '#0F172A',
         letterSpacing: '-0.02em',
       },
       headerSubtitle: {
         fontSize: '13px',
-        color: isDark ? '#A89E92' : '#8A7E72',
+        color: isDark ? '#94A3B8' : '#475569',
         marginTop: '4px',
       },
       formFieldLabel: {
         fontSize: '12px',
         fontWeight: '600',
-        color: isDark ? '#EDE8E1' : '#3C3226',
+        color: isDark ? '#EEF2F8' : '#0F172A',
         marginBottom: '5px',
       },
       formFieldInput: {
         borderRadius: '12px',
-        backgroundColor: isDark ? '#36322A' : '#FAF7F3',
-        border: `1px solid ${isDark ? '#524D44' : '#E8E0D8'}`,
-        color: isDark ? '#EDE8E1' : '#3C3226',
+        backgroundColor: isDark ? '#1B2432' : '#F1F5F9',
+        border: `1px solid ${isDark ? '#263346' : '#E2E8F0'}`,
+        color: isDark ? '#EEF2F8' : '#0F172A',
         fontSize: '14px',
         padding: '0.7rem 0.9rem',
         transition: 'all 0.2s ease',
         '&:focus': {
-          borderColor: '#7BAAF7',
-          boxShadow: '0 0 0 3px rgba(123, 170, 247, 0.25)',
+          borderColor: '#60A5FA',
+          boxShadow: '0 0 0 3px rgba(96, 165, 250, 0.22)',
         },
       },
-      // Styling for 6-digit email OTP verification codes
       otpCodeFieldInput: {
         borderRadius: '12px',
-        backgroundColor: isDark ? '#36322A' : '#FAF7F3',
-        border: `1.5px solid ${isDark ? '#524D44' : '#E8E0D8'}`,
-        color: isDark ? '#EDE8E1' : '#3C3226',
+        backgroundColor: isDark ? '#1B2432' : '#F1F5F9',
+        border: `1.5px solid ${isDark ? '#263346' : '#E2E8F0'}`,
+        color: isDark ? '#EEF2F8' : '#0F172A',
         fontSize: '20px',
         fontWeight: '700',
         height: '52px',
         '&:focus': {
-          borderColor: '#7BAAF7',
-          boxShadow: '0 0 0 3px rgba(123, 170, 247, 0.25)',
+          borderColor: '#60A5FA',
+          boxShadow: '0 0 0 3px rgba(96, 165, 250, 0.22)',
         },
       },
       formButtonPrimary: {
-        backgroundColor: '#7BAAF7',
+        backgroundColor: '#3B82F6',
         borderRadius: '9999px',
         fontSize: '14px',
         fontWeight: '600',
         height: '42px',
         textTransform: 'none',
-        boxShadow: '0 3px 10px rgba(123, 170, 247, 0.35)',
+        boxShadow: '0 3px 10px rgba(59, 130, 246, 0.35)',
         transition: 'all 0.2s ease',
         '&:hover': {
-          backgroundColor: '#689bf0',
-          boxShadow: '0 4px 14px rgba(123, 170, 247, 0.45)',
+          backgroundColor: '#2563EB',
+          boxShadow: '0 4px 14px rgba(59, 130, 246, 0.45)',
           transform: 'translateY(-1px)',
         },
         '&:active': {
@@ -100,27 +98,27 @@ export function getClerkAppearance(isDark = false) {
         },
       },
       footerActionLink: {
-        color: '#7BAAF7',
+        color: isDark ? '#60A5FA' : '#2563EB',
         fontWeight: '600',
         '&:hover': {
           textDecoration: 'underline',
         },
       },
       footerActionText: {
-        color: isDark ? '#A89E92' : '#8A7E72',
+        color: isDark ? '#94A3B8' : '#475569',
         fontSize: '13px',
       },
       formResendCodeLink: {
-        color: '#7BAAF7',
+        color: isDark ? '#60A5FA' : '#2563EB',
         fontWeight: '600',
       },
       identityPreview: {
-        backgroundColor: isDark ? '#36322A' : '#FAF7F3',
-        border: `1px solid ${isDark ? '#524D44' : '#E8E0D8'}`,
+        backgroundColor: isDark ? '#1B2432' : '#F1F5F9',
+        border: `1px solid ${isDark ? '#263346' : '#E2E8F0'}`,
         borderRadius: '14px',
       },
       identityPreviewText: {
-        color: isDark ? '#EDE8E1' : '#3C3226',
+        color: isDark ? '#EEF2F8' : '#0F172A',
       },
     },
   }
@@ -133,10 +131,10 @@ export function getUserButtonAppearance(isDark = false) {
   return {
     baseTheme: isDark ? clerkDarkTheme : undefined,
     variables: {
-      colorPrimary: '#7BAAF7',
-      colorText: isDark ? '#EDE8E1' : '#3C3226',
-      colorBackground: isDark ? '#3E3930' : '#FFFFFF',
-      fontFamily: "'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      colorPrimary: isDark ? '#60A5FA' : '#3B82F6',
+      colorText: isDark ? '#EEF2F8' : '#0F172A',
+      colorBackground: isDark ? '#151C26' : '#FFFFFF',
+      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     },
     elements: {
       userButtonAvatarBox: {
@@ -146,18 +144,17 @@ export function getUserButtonAppearance(isDark = false) {
       },
       userButtonTrigger: {
         '&:focus': {
-          boxShadow: '0 0 0 2px #7BAAF7',
+          boxShadow: '0 0 0 2px #60A5FA',
         },
       },
       userButtonPopoverCard: {
-        backgroundColor: isDark ? '#3E3930' : '#FFFFFF',
-        border: `1px solid ${isDark ? '#524D44' : '#E8E0D8'}`,
+        backgroundColor: isDark ? '#151C26' : '#FFFFFF',
+        border: `1px solid ${isDark ? '#263346' : '#E2E8F0'}`,
         borderRadius: '20px',
         boxShadow: isDark
-          ? '0 16px 40px rgba(0, 0, 0, 0.45)'
-          : '0 16px 40px rgba(60, 50, 38, 0.12)',
+          ? '0 16px 40px rgba(2, 6, 23, 0.55)'
+          : '0 16px 40px rgba(15, 23, 42, 0.12)',
       },
     },
   }
 }
-

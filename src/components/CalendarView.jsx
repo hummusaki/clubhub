@@ -35,10 +35,30 @@ function addDaysYmd(ymd, delta) {
   return toLocalYmd(dt)
 }
 
-function getSundayOfDate(ymd) {
+function getWeekStartOfDate(ymd, weekStartsOn = 'sunday') {
   const dt = parseYmdLocal(ymd)
-  dt.setDate(dt.getDate() - dt.getDay())
+  const dow = dt.getDay()
+  if (weekStartsOn === 'monday') {
+    const diff = dow === 0 ? -6 : 1 - dow
+    dt.setDate(dt.getDate() + diff)
+  } else {
+    dt.setDate(dt.getDate() - dow)
+  }
   return toLocalYmd(dt)
+}
+
+function formatEventBadgeTime(item, use24h = false) {
+  if (!item.startIso) return item.time
+  const dt = new Date(item.startIso)
+  if (Number.isNaN(dt.getTime())) return item.time
+  return dt.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: !use24h,
+  })
 }
 
 const DEFAULT_FOCUS_DATE = '2026-11-15'
@@ -46,6 +66,7 @@ const DEFAULT_FOCUS_DATE = '2026-11-15'
 export default function CalendarView({
   items,
   clubs = [],
+  userSettings = {},
   searchQuery = '',
   compact = false,
   onOpenCalendar,
@@ -53,12 +74,24 @@ export default function CalendarView({
   onDeleteEvent,
   rsvpMap = {},
   onToggleRsvp,
+  onNotify,
 }) {
-  const [viewMode, setViewMode] = useState('agenda') // 'agenda' | 'week' | 'month'
+  const use24h = userSettings?.timeFormat === '24h'
+  const weekStartsOn = userSettings?.weekStartsOn === 'monday' ? 'monday' : 'sunday'
+  const isCompactDensity = Boolean(userSettings?.compactCards)
+
+  const [viewMode, setViewMode] = useState(
+    () => userSettings?.defaultCalendarView || 'agenda'
+  ) // 'agenda' | 'week' | 'month'
   const [agendaFilter, setAgendaFilter] = useState('all') // 'all' | 'going'
-  const [weekStart, setWeekStart] = useState(() => getSundayOfDate(DEFAULT_FOCUS_DATE))
+  const [weekAnchor, setWeekAnchor] = useState(DEFAULT_FOCUS_DATE)
   const [monthState, setMonthState] = useState({ year: 2026, month: 10 }) // 10 = Nov
   const [selectedDate, setSelectedDate] = useState('2026-11-17')
+
+  const weekStart = useMemo(
+    () => getWeekStartOfDate(weekAnchor, weekStartsOn),
+    [weekAnchor, weekStartsOn]
+  )
 
   // Add Event modal/drawer state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -125,10 +158,12 @@ export default function CalendarView({
 
   const monthCells = useMemo(() => {
     const first = new Date(monthState.year, monthState.month, 1, 12, 0, 0)
-    const startDow = first.getDay()
-    const gridStart = new Date(monthState.year, monthState.month, 1 - startDow, 12, 0, 0)
+    const rawDow = first.getDay()
+    const startOffset =
+      weekStartsOn === 'monday' ? (rawDow === 0 ? 6 : rawDow - 1) : rawDow
+    const gridStart = new Date(monthState.year, monthState.month, 1 - startOffset, 12, 0, 0)
     const daysInMonth = new Date(monthState.year, monthState.month + 1, 0).getDate()
-    const totalCells = startDow + daysInMonth > 35 ? 42 : 35
+    const totalCells = startOffset + daysInMonth > 35 ? 42 : 35
 
     return Array.from({ length: totalCells }, (_, i) => {
       const dt = new Date(
@@ -145,7 +180,7 @@ export default function CalendarView({
         inMonth: dt.getMonth() === monthState.month,
       }
     })
-  }, [monthState])
+  }, [monthState, weekStartsOn])
 
   function handlePrev() {
     if (viewMode === 'month') {
@@ -154,7 +189,7 @@ export default function CalendarView({
       setSelectedDate(toLocalYmd(dt))
     } else if (viewMode === 'week') {
       const nextW = addDaysYmd(weekStart, -7)
-      setWeekStart(nextW)
+      setWeekAnchor(nextW)
       setSelectedDate(nextW)
       const dt = parseYmdLocal(nextW)
       setMonthState({ year: dt.getFullYear(), month: dt.getMonth() })
@@ -168,7 +203,7 @@ export default function CalendarView({
       setSelectedDate(toLocalYmd(dt))
     } else if (viewMode === 'week') {
       const nextW = addDaysYmd(weekStart, 7)
-      setWeekStart(nextW)
+      setWeekAnchor(nextW)
       setSelectedDate(nextW)
       const dt = parseYmdLocal(nextW)
       setMonthState({ year: dt.getFullYear(), month: dt.getMonth() })
@@ -176,8 +211,7 @@ export default function CalendarView({
   }
 
   function handleToday() {
-    const sun = getSundayOfDate(DEFAULT_FOCUS_DATE)
-    setWeekStart(sun)
+    setWeekAnchor(DEFAULT_FOCUS_DATE)
     setMonthState({ year: 2026, month: 10 })
     setSelectedDate('2026-11-17')
   }
@@ -225,6 +259,9 @@ export default function CalendarView({
     setEventTitle('')
     setEventLocation('')
     setShowAddForm(false)
+    if (onNotify) {
+      onNotify(`Added "${eventTitle.trim()}" to Calendar.`)
+    }
   }
 
   function renderEventRow(item, isLast = false) {
@@ -244,7 +281,11 @@ export default function CalendarView({
           )}
         </div>
 
-        <div className="flex-1 min-w-0 rounded-[var(--radius-sm)] p-3.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors">
+        <div
+          className={`flex-1 min-w-0 rounded-[var(--radius-sm)] ${
+            isCompactDensity ? 'p-2.5' : 'p-3.5'
+          } bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
             <div className="min-w-0">
               {clubName && (
@@ -258,7 +299,7 @@ export default function CalendarView({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-              <BubbleTag label={item.time} color={c} size="sm" />
+              <BubbleTag label={formatEventBadgeTime(item, use24h)} color={c} size="sm" />
             </div>
           </div>
 
@@ -684,6 +725,7 @@ export default function CalendarView({
                                 ? new Date(ev.startIso).toLocaleTimeString('en-US', {
                                     hour: 'numeric',
                                     minute: '2-digit',
+                                    hour12: !use24h,
                                   })
                                 : ev.time
                             }
@@ -711,7 +753,10 @@ export default function CalendarView({
         <div className="space-y-4">
           <div>
             <div className="grid grid-cols-7 gap-1 sm:gap-1.5 text-center text-[11px] font-semibold text-[var(--text-muted)] mb-1.5">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              {(weekStartsOn === 'monday'
+                ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+              ).map(d => (
                 <div key={d} className="py-1">
                   <span className="hidden sm:inline">{d}</span>
                   <span className="sm:hidden">{d[0]}</span>

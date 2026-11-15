@@ -4,13 +4,18 @@ import {
   Check,
   Plus,
   Mail,
+  Copy,
+  Clock,
+  Users,
+  Shield,
   ArrowRight,
+  UserPlus,
   X,
 } from 'lucide-react'
 import {
   clubs as defaultClubs,
-  boardMembers,
-  memberActivity,
+  boardMembers as initialOfficers,
+  memberActivity as initialMembers,
 } from '../data/sampleData'
 import { Card, ClubAvatar, Avatar, BubbleTag, IconBadge, cleanText } from './ui'
 import { PlatformIcon } from './icons'
@@ -33,10 +38,35 @@ const SOURCE_META = {
   website:         { label: 'Website',   color: 'teal' },
 }
 
+const CUSTOM_ROSTER_STORAGE_KEY = 'clubhub_custom_roster_v1'
+
+function loadCustomRoster() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_ROSTER_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    if (parsed && Array.isArray(parsed.officers) && Array.isArray(parsed.members)) {
+      return parsed
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return { officers: [], members: [] }
+}
+
+function clubMatchesFilter(personClubName, personClubId, selectedClubFilter) {
+  if (!selectedClubFilter || selectedClubFilter === 'all') return true
+  if (personClubId && String(personClubId) === String(selectedClubFilter)) return true
+  const pLower = String(personClubName || '').toLowerCase()
+  const fLower = String(selectedClubFilter).toLowerCase()
+  if (pLower && fLower && (pLower.includes(fLower) || fLower.includes(pLower))) return true
+  return false
+}
+
 export default function ClubsHub({
   items,
   clubsData,
   hubDict = {},
+  userSettings = {},
   onToggleJoin,
   searchQuery = '',
   compact = false,
@@ -44,12 +74,29 @@ export default function ClubsHub({
   onRefresh,
   localPosts: externalLocalPosts,
   onAddLocalPost,
+  onNotify,
 }) {
   const [section, setSection] = useState('myclubs') // 'myclubs' | 'discover' | 'updates' | 'directory'
   const [category, setCategory] = useState('All')
   const [selectedSource, setSelectedSource] = useState('all')
 
-  // Post Update form state (works online & offline)
+  // Directory filters & state
+  const [roleFilter, setRoleFilter] = useState('all') // 'all' | 'officers' | 'members'
+  const [directoryClubFilter, setDirectoryClubFilter] = useState('all')
+  const [copiedEmailId, setCopiedEmailId] = useState(null)
+  const [customRoster, setCustomRoster] = useState(loadCustomRoster)
+
+  // Add Person to Directory form
+  const [showAddPersonForm, setShowAddPersonForm] = useState(false)
+  const [personName, setPersonName] = useState('')
+  const [personEmail, setPersonEmail] = useState('')
+  const [personType, setPersonType] = useState('officer') // 'officer' | 'member'
+  const [personRoleTitle, setPersonRoleTitle] = useState('')
+  const [personClubId, setPersonClubId] = useState('demo_ucsc_csclub')
+  const [personMajor, setPersonMajor] = useState('')
+  const [personOfficeHours, setPersonOfficeHours] = useState('')
+
+  // Post Update form state
   const [showPostForm, setShowPostForm] = useState(false)
   const [postClubId, setPostClubId] = useState('demo_ucsc_csclub')
   const [postSource, setPostSource] = useState('discord')
@@ -58,6 +105,7 @@ export default function ClubsHub({
   const [internalLocalPosts, setInternalLocalPosts] = useState([])
 
   const localPosts = externalLocalPosts ?? internalLocalPosts
+  const isCompactDensity = Boolean(userSettings?.compactCards)
 
   const allClubs = useMemo(() => {
     if (items && items.length > 0) return items
@@ -91,6 +139,7 @@ export default function ClubsHub({
   }, [allClubs, joinedClubs, section, category, searchQuery])
 
   const feedPosts = useMemo(() => {
+    const channels = userSettings?.channels || {}
     const combined = [...localPosts]
     for (const club of Object.values(hubDict || {})) {
       for (const post of club.posts || []) {
@@ -103,7 +152,15 @@ export default function ClubsHub({
     }
 
     return combined.filter(post => {
-      if (selectedSource !== 'all' && post.source !== selectedSource) return false
+      const src = String(post.source || '').toLowerCase()
+      if (selectedSource === 'all') {
+        if (src.includes('instagram') && channels.instagram === false) return false
+        if (src.includes('discord') && channels.discord === false) return false
+        if (src.includes('email') && channels.email === false) return false
+      } else if (post.source !== selectedSource) {
+        return false
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         return (
@@ -114,30 +171,152 @@ export default function ClubsHub({
       }
       return true
     })
-  }, [hubDict, localPosts, selectedSource, searchQuery])
+  }, [hubDict, localPosts, selectedSource, searchQuery, userSettings?.channels])
 
-  const filteredBoard = useMemo(() => {
-    if (!searchQuery.trim()) return boardMembers
-    const q = searchQuery.toLowerCase()
-    return boardMembers.filter(
-      m =>
-        m.name.toLowerCase().includes(q) ||
-        m.role.toLowerCase().includes(q) ||
-        (m.club || '').toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q)
-    )
-  }, [searchQuery])
+  const allOfficers = useMemo(
+    () => [...customRoster.officers, ...initialOfficers],
+    [customRoster.officers]
+  )
+
+  const allMembers = useMemo(
+    () => [...customRoster.members, ...initialMembers],
+    [customRoster.members]
+  )
+
+  const filteredOfficers = useMemo(() => {
+    return allOfficers.filter(m => {
+      if (directoryClubFilter !== 'all') {
+        const selectedClub = allClubs.find(c => String(c.id) === String(directoryClubFilter))
+        const matchById = String(m.clubId || '') === String(directoryClubFilter)
+        const matchByName =
+          selectedClub &&
+          clubMatchesFilter(m.club, m.clubId, selectedClub.name)
+        if (!matchById && !matchByName) return false
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        return (
+          m.name.toLowerCase().includes(q) ||
+          m.role.toLowerCase().includes(q) ||
+          (m.club || '').toLowerCase().includes(q) ||
+          (m.major || '').toLowerCase().includes(q) ||
+          m.email.toLowerCase().includes(q)
+        )
+      }
+      return true
+    })
+  }, [allOfficers, directoryClubFilter, allClubs, searchQuery])
 
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return memberActivity
-    const q = searchQuery.toLowerCase()
-    return memberActivity.filter(
-      m =>
-        m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) ||
-        m.clubs.some(c => c.label.toLowerCase().includes(q))
-    )
-  }, [searchQuery])
+    return allMembers.filter(m => {
+      if (directoryClubFilter !== 'all') {
+        const selectedClub = allClubs.find(c => String(c.id) === String(directoryClubFilter))
+        const inSelectedClub = (m.clubs || []).some(
+          c =>
+            String(c.clubId || '') === String(directoryClubFilter) ||
+            (selectedClub &&
+              clubMatchesFilter(c.label, c.clubId, selectedClub.name))
+        )
+        if (!inSelectedClub) return false
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        return (
+          m.name.toLowerCase().includes(q) ||
+          (m.role || '').toLowerCase().includes(q) ||
+          (m.major || '').toLowerCase().includes(q) ||
+          m.email.toLowerCase().includes(q) ||
+          (m.clubs || []).some(c => c.label.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+  }, [allMembers, directoryClubFilter, allClubs, searchQuery])
+
+  async function handleCopyEmail(personId, emailAddr) {
+    try {
+      await navigator.clipboard.writeText(emailAddr)
+    } catch {
+      // Ignore clipboard fallback
+    }
+    setCopiedEmailId(personId)
+    setTimeout(() => {
+      setCopiedEmailId(prev => (prev === personId ? null : prev))
+    }, 2000)
+    if (onNotify) {
+      onNotify(`Copied ${emailAddr}`)
+    }
+  }
+
+  function handleOpenClubRoster(clubId) {
+    setSection('directory')
+    setDirectoryClubFilter(String(clubId))
+    setRoleFilter('all')
+  }
+
+  function handleAddPersonSubmit(e) {
+    e.preventDefault()
+    const cleanName = personName.trim()
+    const cleanEmail = personEmail.trim()
+    if (!cleanName || !cleanEmail) return
+
+    const clubObj = allClubs.find(c => String(c.id) === String(personClubId))
+    const clubLabel = clubObj ? cleanText(clubObj.name) : 'Campus Club'
+    const initials = cleanName
+      .split(' ')
+      .filter(Boolean)
+      .map(w => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'MB'
+
+    const nextRoster = { ...customRoster }
+    if (personType === 'officer') {
+      const newOfficer = {
+        id: `custom_off_${Date.now()}`,
+        name: cleanName,
+        initials,
+        role: personRoleTitle.trim() || 'Officer',
+        club: clubLabel,
+        clubId: String(personClubId),
+        major: personMajor.trim() || 'UCSC Undergraduate',
+        color: 'blue',
+        email: cleanEmail,
+        office: personOfficeHours.trim() || 'By appointment',
+      }
+      nextRoster.officers = [newOfficer, ...nextRoster.officers]
+    } else {
+      const newMember = {
+        id: `custom_mem_${Date.now()}`,
+        name: cleanName,
+        initials,
+        email: cleanEmail,
+        role: personRoleTitle.trim() || 'Active Member',
+        major: personMajor.trim() || 'UCSC Undergraduate',
+        avatarBg: 'linear-gradient(135deg, var(--blue), var(--teal))',
+        clubs: [{ label: clubLabel, clubId: String(personClubId), color: 'blue' }],
+        joined: 'Nov 2026',
+      }
+      nextRoster.members = [newMember, ...nextRoster.members]
+    }
+
+    setCustomRoster(nextRoster)
+    try {
+      localStorage.setItem(CUSTOM_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster))
+    } catch {
+      // Ignore storage errors
+    }
+
+    setPersonName('')
+    setPersonEmail('')
+    setPersonRoleTitle('')
+    setPersonMajor('')
+    setPersonOfficeHours('')
+    setShowAddPersonForm(false)
+    if (onNotify) {
+      onNotify(`Added ${cleanName} to ${clubLabel} directory.`)
+    }
+  }
 
   async function handlePostUpdateSubmit(e) {
     e.preventDefault()
@@ -174,6 +353,9 @@ export default function ClubsHub({
     setPostTitle('')
     setPostSummary('')
     setShowPostForm(false)
+    if (onNotify) {
+      onNotify(`Published update to ${clubLabel} feed.`)
+    }
   }
 
   function renderClubCard(club) {
@@ -181,7 +363,9 @@ export default function ClubsHub({
     return (
       <div
         key={club.id}
-        className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between gap-3.5 transition-all hover:border-[var(--border-strong)]"
+        className={`${
+          isCompactDensity ? 'p-3.5 gap-2.5' : 'p-4 gap-3.5'
+        } rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between transition-all hover:border-[var(--border-strong)]`}
       >
         <div>
           <div className="flex items-start justify-between gap-3 mb-2.5">
@@ -200,7 +384,17 @@ export default function ClubsHub({
             {onToggleJoin && (
               <button
                 type="button"
-                onClick={() => onToggleJoin(club.id)}
+                onClick={() => {
+                  onToggleJoin(club.id)
+                  if (onNotify) {
+                    onNotify(
+                      isJoined
+                        ? `Left ${cleanText(club.name)}`
+                        : `Joined ${cleanText(club.name)}!`,
+                      { type: isJoined ? 'info' : 'success' }
+                    )
+                  }
+                }}
                 className={`inline-flex items-center gap-1 px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border shrink-0 transition-colors ${
                   isJoined
                     ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent hover:opacity-85'
@@ -231,9 +425,22 @@ export default function ClubsHub({
           </div>
         </div>
 
-        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center gap-1.5 text-xs text-[var(--text-muted)] min-w-0">
-          <Calendar size={13} className="text-[var(--text-light)] shrink-0" />
-          <span className="truncate">{cleanText(club.schedule || 'Weekly meetings')}</span>
+        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs text-[var(--text-muted)] min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Calendar size={13} className="text-[var(--text-light)] shrink-0" />
+            <span className="truncate">{cleanText(club.schedule || 'Weekly meetings')}</span>
+          </div>
+
+          {!compact && (
+            <button
+              type="button"
+              onClick={() => handleOpenClubRoster(club.id)}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
+            >
+              <span>Roster</span>
+              <ArrowRight size={12} />
+            </button>
+          )}
         </div>
       </div>
     )
@@ -275,17 +482,19 @@ export default function ClubsHub({
     )
   }
 
-  // ── 2. FULL CLUBS HUB PAGE ────────────────────────────────────────
+  const totalDirectoryPeople = filteredOfficers.length + filteredMembers.length
+
+  // ── 2. FULL CLUBS & COMMUNITY PAGE ────────────────────────────────
   return (
     <Card className="p-4 sm:p-6" delay={2}>
-      {/* Sub-navigation Tabs (Wrapping cleanly — ZERO horizontal scrollbars on mobile!) */}
+      {/* Sub-navigation Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-5 border-b border-[var(--border)]">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
             { id: 'myclubs',   label: `My Clubs (${joinedClubs.length})` },
             { id: 'discover',  label: `Discover (${allClubs.length})` },
             { id: 'updates',   label: 'Club Feed' },
-            { id: 'directory', label: 'Officers & Members' },
+            { id: 'directory', label: `Officers & Members (${allOfficers.length + allMembers.length})` },
           ].map(tab => {
             const isActive = section === tab.id
             return (
@@ -305,7 +514,7 @@ export default function ClubsHub({
           })}
         </div>
 
-        {/* Contextual Action or Category Filter */}
+        {/* Contextual Toolbar Action */}
         {(section === 'myclubs' || section === 'discover') && (
           <div className="flex flex-wrap items-center gap-1.5">
             {CATEGORY_FILTERS.map(cat => (
@@ -333,6 +542,17 @@ export default function ClubsHub({
           >
             {showPostForm ? <X size={14} /> : <Plus size={14} />}
             <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
+          </button>
+        )}
+
+        {section === 'directory' && (
+          <button
+            type="button"
+            onClick={() => setShowAddPersonForm(prev => !prev)}
+            className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+          >
+            {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
+            <span>{showAddPersonForm ? 'Cancel' : 'Add Member / Officer'}</span>
           </button>
         )}
       </div>
@@ -372,7 +592,6 @@ export default function ClubsHub({
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
       {section === 'updates' && (
         <div className="space-y-4">
-          {/* Wrapping Channel Filter Pills (No horizontal scrollbar!) */}
           <div className="flex flex-wrap items-center gap-1.5">
             {SOURCE_FILTERS.map(src => {
               const isActive = selectedSource === src.id
@@ -517,72 +736,388 @@ export default function ClubsHub({
         </div>
       )}
 
-      {/* ── SECTION 4: OFFICERS & MEMBERS DIRECTORY ── */}
+      {/* ── SECTION 4: REFINED OFFICERS & MEMBERS DIRECTORY ── */}
       {section === 'directory' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Club Officers */}
-          <div>
-            <h3 className="text-sm font-bold text-[var(--text)] mb-3">Club Officers</h3>
-            <div className="flex flex-col gap-2.5">
-              {filteredBoard.map(m => (
-                <div
-                  key={m.id}
-                  className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-between gap-3"
+        <div className="space-y-5">
+          {/* Role Segmented Toggle + Club Filter Pills */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] self-start">
+              {[
+                { id: 'all',      label: `All (${totalDirectoryPeople})` },
+                { id: 'officers', label: `Officers (${filteredOfficers.length})` },
+                { id: 'members',  label: `Members (${filteredMembers.length})` },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setRoleFilter(tab.id)}
+                  className={`px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                    roleFilter === tab.id
+                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar initials={m.initials} bg={`var(--${m.color})`} size={34} />
-                    <div className="min-w-0">
-                      <div className="font-semibold text-sm text-[var(--text)] truncate">
-                        {m.name}
-                      </div>
-                      <div className="text-xs text-[var(--text-muted)] truncate">
-                        {m.club ? `${m.club} · ` : ''}{m.role}
-                      </div>
-                    </div>
-                  </div>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-                  <a
-                    href={`mailto:${m.email}`}
-                    className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] no-underline shrink-0 transition-colors"
+            {/* Club Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setDirectoryClubFilter('all')}
+                className={`px-3 min-h-[32px] rounded-full text-xs font-semibold border cursor-pointer transition-colors ${
+                  directoryClubFilter === 'all'
+                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                }`}
+              >
+                All Clubs
+              </button>
+              {allClubs.slice(0, 6).map(c => {
+                const active = String(directoryClubFilter) === String(c.id)
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() =>
+                      setDirectoryClubFilter(prev =>
+                        String(prev) === String(c.id) ? 'all' : String(c.id)
+                      )
+                    }
+                    className={`px-3 min-h-[32px] rounded-full text-xs font-semibold border cursor-pointer transition-colors ${
+                      active
+                        ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                    }`}
                   >
-                    <Mail size={13} className="text-[var(--blue)]" />
-                    <span>Email</span>
-                  </a>
-                </div>
-              ))}
+                    {cleanText(c.name)}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Active Members */}
-          <div>
-            <h3 className="text-sm font-bold text-[var(--text)] mb-3">Active Members</h3>
-            <div className="flex flex-col gap-2.5">
-              {filteredMembers.map(m => (
-                <div
-                  key={m.id}
-                  className="p-3.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar initials={m.initials} bg={m.avatarBg} size={34} />
-                    <div className="min-w-0">
-                      <div className="font-semibold text-sm text-[var(--text)] truncate">
-                        {m.name}
-                      </div>
-                      <div className="text-xs text-[var(--text-muted)] truncate">
-                        {m.role} · Joined {m.joined}
-                      </div>
-                    </div>
-                  </div>
+          {/* Add Officer / Member Form */}
+          {showAddPersonForm && (
+            <form
+              onSubmit={handleAddPersonSubmit}
+              className="p-4 sm:p-5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] space-y-4 fade-in"
+            >
+              <div className="text-sm font-bold text-[var(--text)]">Add to Club Directory</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={personName}
+                    onChange={e => setPersonName(e.target.value)}
+                    placeholder="e.g. Jordan Chen"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                </div>
 
-                  <div className="flex flex-wrap justify-end gap-1 shrink-0">
-                    {m.clubs.map(c => (
-                      <BubbleTag key={c.label} label={c.label} color={c.color} size="sm" />
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Campus Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={personEmail}
+                    onChange={e => setPersonEmail(e.target.value)}
+                    placeholder="jchen@ucsc.edu"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Club
+                  </label>
+                  <select
+                    value={personClubId}
+                    onChange={e => setPersonClubId(e.target.value)}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  >
+                    {allClubs.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {cleanText(c.name)}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
-              ))}
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Directory Group
+                  </label>
+                  <select
+                    value={personType}
+                    onChange={e => setPersonType(e.target.value)}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  >
+                    <option value="officer">Executive Officer / Lead</option>
+                    <option value="member">Club Member</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    Role / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={personRoleTitle}
+                    onChange={e => setPersonRoleTitle(e.target.value)}
+                    placeholder={personType === 'officer' ? 'e.g. Events Chair' : 'e.g. Project Member'}
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                    {personType === 'officer' ? 'Office Hours & Room' : 'Major & Class Year'}
+                  </label>
+                  <input
+                    type="text"
+                    value={personType === 'officer' ? personOfficeHours : personMajor}
+                    onChange={e =>
+                      personType === 'officer'
+                        ? setPersonOfficeHours(e.target.value)
+                        : setPersonMajor(e.target.value)
+                    }
+                    placeholder={
+                      personType === 'officer'
+                        ? 'e.g. Thu 2–4 PM · Baskin 152'
+                        : "e.g. Computer Science '27"
+                    }
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPersonForm(false)}
+                  className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
+                >
+                  Save to Directory
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* 1. Club Leadership & Officers */}
+          {(roleFilter === 'all' || roleFilter === 'officers') && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Shield size={15} className="text-[var(--blue)]" />
+                <h3 className="text-sm font-bold text-[var(--text)]">
+                  Club Leadership & Officers
+                </h3>
+                <BubbleTag label={`${filteredOfficers.length}`} color="blue" size="sm" />
+              </div>
+
+              {filteredOfficers.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                  {filteredOfficers.map(m => {
+                    const isCopied = copiedEmailId === m.id
+                    return (
+                      <div
+                        key={m.id}
+                        className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors flex flex-col justify-between gap-3.5"
+                      >
+                        <div className="space-y-2.5">
+                          <div className="flex items-start justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar
+                                initials={m.initials}
+                                bg={`linear-gradient(135deg, var(--${m.color || 'blue'}), var(--purple))`}
+                                size={40}
+                              />
+                              <div className="min-w-0">
+                                <div className="font-bold text-sm text-[var(--text)] truncate">
+                                  {m.name}
+                                </div>
+                                <div className="text-xs font-semibold text-[var(--blue-ink)] truncate">
+                                  {m.club}
+                                </div>
+                              </div>
+                            </div>
+
+                            <BubbleTag
+                              label={m.role}
+                              color={m.color || 'blue'}
+                              size="sm"
+                            />
+                          </div>
+
+                          <div className="space-y-1 text-xs text-[var(--text-muted)]">
+                            {m.major && <div className="truncate">{m.major}</div>}
+                            {m.office && (
+                              <div className="flex items-center gap-1.5 text-[var(--text)] font-medium">
+                                <Clock size={12} className="text-[var(--teal)] shrink-0" />
+                                <span className="truncate">Office Hours: {m.office}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
+                            {m.email}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyEmail(m.id, m.email)}
+                              title="Copy email address"
+                              className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check size={12} className="text-[var(--green)]" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} className="text-[var(--text-muted)]" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+
+                            <a
+                              href={`mailto:${m.email}`}
+                              title={`Email ${m.name}`}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-90 no-underline transition-opacity"
+                            >
+                              <Mail size={14} />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] rounded-xl border border-[var(--border)]">
+                  No officers match the current club or search filter.
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* 2. Active Club Members */}
+          {(roleFilter === 'all' || roleFilter === 'members') && (
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-2">
+                <Users size={15} className="text-[var(--teal)]" />
+                <h3 className="text-sm font-bold text-[var(--text)]">Active Members</h3>
+                <BubbleTag label={`${filteredMembers.length}`} color="teal" size="sm" />
+              </div>
+
+              {filteredMembers.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                  {filteredMembers.map(m => {
+                    const isCopied = copiedEmailId === m.id
+                    return (
+                      <div
+                        key={m.id}
+                        className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors flex flex-col justify-between gap-3"
+                      >
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Avatar initials={m.initials} bg={m.avatarBg} size={38} />
+                            <div className="min-w-0">
+                              <div className="font-bold text-sm text-[var(--text)] truncate">
+                                {m.name}
+                              </div>
+                              <div className="text-xs text-[var(--text-muted)] truncate">
+                                {m.role} · Since {m.joined}
+                              </div>
+                            </div>
+                          </div>
+
+                          {m.major && (
+                            <div className="text-xs text-[var(--text-muted)] truncate">
+                              {m.major}
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap gap-1.5">
+                            {(m.clubs || []).map(c => (
+                              <button
+                                key={c.label}
+                                type="button"
+                                onClick={() => {
+                                  if (c.clubId) setDirectoryClubFilter(String(c.clubId))
+                                }}
+                                className="bg-transparent border-none p-0 cursor-pointer"
+                              >
+                                <BubbleTag label={c.label} color={c.color || 'blue'} size="sm" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+                          <span className="text-xs text-[var(--text-muted)] font-mono-num truncate">
+                            {m.email}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyEmail(m.id, m.email)}
+                              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold text-[var(--text)] cursor-pointer transition-colors"
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check size={12} className="text-[var(--green)]" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} className="text-[var(--text-muted)]" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+
+                            <a
+                              href={`mailto:${m.email}`}
+                              title={`Email ${m.name}`}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] text-[var(--blue-ink)] no-underline transition-colors"
+                            >
+                              <Mail size={14} />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] rounded-xl border border-[var(--border)]">
+                  No members match the current club or search filter.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>

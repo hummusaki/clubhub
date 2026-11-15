@@ -5,104 +5,104 @@
 }
 
 /* ═══════════════════════════════════════════════
-   ClubHub — Crisp & Airy Palette
+   ClubHub — Crisp Porcelain & Midnight Slate Palette
    ═══════════════════════════════════════════════ */
 
 :root {
-  /* Surfaces — bright, airy porcelain & crisp white */
-  --bg:            #F7F6F3;
-  --bg-surface:    #FBFBF9;
-  --bg-subtle:     #F2F0EC;
+  /* Surfaces — clean cool porcelain & crisp white */
+  --bg:            #F6F8FB;
+  --bg-surface:    #F1F5F9;
+  --bg-subtle:     #E8EEF5;
   --bg-card:       #FFFFFF;
   --bg-glass:      rgba(255, 255, 255, 0.9);
-  --border:        #EAE6DF;
-  --border-subtle: #F2EFE9;
-  --border-strong: #DCD6CC;
+  --border:        #E2E8F0;
+  --border-subtle: #EDF2F7;
+  --border-strong: #CBD5E1;
 
   /* Text */
-  --text:          #26211B;
-  --text-muted:    #736A5F;
-  --text-light:    #A3998E;
+  --text:          #0F172A;
+  --text-muted:    #475569;
+  --text-light:    #94A3B8;
 
-  /* Accents — airy pastels + rich readable inks */
-  --blue:          #528DF4;
-  --blue-ink:      #255BC2;
-  --blue-light:    #ECF3FF;
+  /* Accents — vibrant, legible & modern */
+  --blue:          #3B82F6;
+  --blue-ink:      #1D4ED8;
+  --blue-light:    #EFF6FF;
 
-  --red:           #E46F6F;
-  --red-ink:       #B83838;
-  --red-light:     #FDEEEE;
+  --red:           #EF4444;
+  --red-ink:       #B91C1C;
+  --red-light:     #FEF2F2;
 
-  --yellow:        #E8B243;
-  --yellow-ink:    #96660E;
-  --yellow-light:  #FFF8E5;
+  --yellow:        #F59E0B;
+  --yellow-ink:    #B45309;
+  --yellow-light:  #FFFBEB;
 
-  --green:         #53B773;
-  --green-ink:     #22773D;
-  --green-light:   #E9F8EE;
+  --green:         #10B981;
+  --green-ink:     #047857;
+  --green-light:   #ECFDF5;
 
-  --purple:        #967BD0;
-  --purple-ink:    #5E40A0;
-  --purple-light:  #F3EEFD;
+  --purple:        #8B5CF6;
+  --purple-ink:   #6D28D9;
+  --purple-light:  #F5F3FF;
 
-  --teal:          #4BB5AC;
-  --teal-ink:      #1B7870;
-  --teal-light:    #E7F7F5;
+  --teal:          #14B8A6;
+  --teal-ink:      #0F766E;
+  --teal-light:    #F0FDFA;
 
   /* Shadows & radii */
-  --shadow-xs:     0 1px 2px rgba(38, 33, 27, 0.035);
-  --shadow:        0 1px 3px rgba(38, 33, 27, 0.045), 0 4px 12px -2px rgba(38, 33, 27, 0.035);
-  --shadow-md:     0 8px 24px -4px rgba(38, 33, 27, 0.08), 0 2px 6px -1px rgba(38, 33, 27, 0.04);
-  --shadow-lg:     0 16px 36px -6px rgba(38, 33, 27, 0.12), 0 4px 12px -2px rgba(38, 33, 27, 0.05);
+  --shadow-xs:     0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow:        0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
+  --shadow-md:     0 8px 24px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  --shadow-lg:     0 16px 36px -6px rgba(15, 23, 42, 0.14), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
   --radius:        18px;
   --radius-sm:     12px;
   --radius-xs:     8px;
   --radius-pill:   9999px;
 }
 
-/* ── Dark mode (warm slate-espresso, balanced contrast) ── */
+/* ── Dark mode (crisp cool midnight slate — zero brown/mud tones) ── */
 .dark {
-  --bg:            #1F1C18;
-  --bg-surface:    #27231E;
-  --bg-subtle:     #2F2A24;
-  --bg-card:       #2E2923;
-  --bg-glass:      rgba(46, 41, 35, 0.9);
-  --border:        #433D35;
-  --border-subtle: #38332C;
-  --border-strong: #574F45;
+  --bg:            #0D1117;
+  --bg-card:       #151C26;
+  --bg-surface:    #1B2432;
+  --bg-subtle:     #222E40;
+  --bg-glass:      rgba(21, 28, 38, 0.9);
+  --border:        #263346;
+  --border-subtle: #1D2838;
+  --border-strong: #374863;
 
-  --text:          #F4F0EA;
-  --text-muted:    #B2A89D;
-  --text-light:    #82796E;
+  --text:          #EEF2F8;
+  --text-muted:    #94A3B8;
+  --text-light:    #64748B;
 
-  --blue:          #7BAAF7;
-  --blue-ink:      #A3C4FA;
-  --blue-light:    rgba(123, 170, 247, 0.15);
+  --blue:          #60A5FA;
+  --blue-ink:      #93C5FD;
+  --blue-light:    rgba(96, 165, 250, 0.15);
 
-  --red:           #E88E8E;
-  --red-ink:       #F5B0B0;
-  --red-light:     rgba(232, 142, 142, 0.15);
+  --red:           #F87171;
+  --red-ink:       #FCA5A5;
+  --red-light:     rgba(248, 113, 113, 0.15);
 
-  --yellow:        #F3CC72;
-  --yellow-ink:    #F8DD9A;
-  --yellow-light:  rgba(243, 204, 114, 0.15);
+  --yellow:        #FBBF24;
+  --yellow-ink:    #FCD34D;
+  --yellow-light:  rgba(251, 191, 36, 0.15);
 
-  --green:         #81C995;
-  --green-ink:     #A3DDB3;
-  --green-light:   rgba(129, 201, 149, 0.15);
+  --green:         #34D399;
+  --green-ink:     #6EE7B7;
+  --green-light:   rgba(52, 211, 153, 0.15);
 
-  --purple:        #B39DDB;
-  --purple-ink:    #CEC0EB;
-  --purple-light:  rgba(179, 157, 219, 0.15);
+  --purple:        #A78BFA;
+  --purple-ink:    #C4B5FD;
+  --purple-light:  rgba(167, 139, 250, 0.15);
 
-  --teal:          #80CBC4;
-  --teal-ink:      #A6DFDA;
-  --teal-light:    rgba(128, 203, 196, 0.15);
+  --teal:          #2DD4BF;
+  --teal-ink:      #5EEAD4;
+  --teal-light:    rgba(45, 212, 191, 0.15);
 
-  --shadow-xs:     0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow:        0 2px 6px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.18);
-  --shadow-md:     0 10px 26px -4px rgba(0, 0, 0, 0.38), 0 3px 8px rgba(0, 0, 0, 0.24);
-  --shadow-lg:     0 20px 44px -8px rgba(0, 0, 0, 0.52);
+  --shadow-xs:     0 1px 2px rgba(2, 6, 23, 0.35);
+  --shadow:        0 2px 8px rgba(2, 6, 23, 0.35), 0 1px 2px rgba(2, 6, 23, 0.24);
+  --shadow-md:     0 10px 28px -4px rgba(2, 6, 23, 0.5), 0 3px 8px rgba(2, 6, 23, 0.3);
+  --shadow-lg:     0 20px 46px -8px rgba(2, 6, 23, 0.65);
 }
 
 /* ── Base ── */
@@ -116,18 +116,22 @@
   html,
   body {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {
     font-family: 'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
-    transition: background 0.3s ease, color 0.3s ease;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.01em;
+  }
+
+  /* Only enable smooth color transitions AFTER initial mount so page load never flashes white */
+  html.theme-ready body {
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   /* Prevent mobile form controls from stretching containers or showing unwanted scrollbars */
@@ -162,7 +166,15 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.fade-in { animation: fadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.fade-in { animation: fadeInUp 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+html.reduce-motion *,
+html.reduce-motion .fade-in {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
