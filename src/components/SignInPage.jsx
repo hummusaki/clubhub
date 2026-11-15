@@ -15,8 +15,12 @@ import {
   Loader2,
   ExternalLink,
   X,
+  Users,
+  Megaphone,
+  Calendar,
+  Clock,
 } from 'lucide-react'
-import { ClubHubLogo } from './ui'
+import { ClubHubLogo, IconBadge } from './ui'
 
 const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
 const STORED_GOOGLE_CLIENT_ID_KEY = 'clubhub_google_client_id'
@@ -148,12 +152,14 @@ function ClerkAuthBridge({ bridgeRef, onReady }) {
 }
 
 /**
- * Balanced, Mouse-Activated Light Wave Canvas Background.
- * Flows smoothly in idle state and visibly ripples, bends, and illuminates
- * with fluid travelling crests when activated by cursor or touch movement.
+ * Zero-Latency Direct-Tracking Light Wave Canvas Background.
+ * Locks cursor illumination, crest highlights, and shallow-water wave wakes 1:1
+ * to the live pointer position on every frame with zero tracking lag.
  */
 function LightWaveBackground({ dark }) {
   const canvasRef = useRef(null)
+  const darkRef = useRef(dark)
+  darkRef.current = dark
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -161,69 +167,134 @@ function LightWaveBackground({ dark }) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const prefersReduced =
-      typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const mediaQuery =
+      typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null
 
-    const NODE_COUNT = 78
+    function isReducedMotion() {
+      return (
+        Boolean(mediaQuery?.matches) ||
+        (typeof document !== 'undefined' &&
+          document.documentElement.classList.contains('reduce-motion'))
+      )
+    }
+
+    const NODE_COUNT = 128
+    const OVERSCAN = 80
+    const SPONGE_NODES = 14
+
     const WAVE_CONFIGS = [
       {
-        yRatio: 0.35,
-        freq: 1.65,
-        speed: 0.42,
+        yRatio: 0.34,
+        depth: 0.78,
+        freq: 1.45,
+        speed: 0.36,
         phase: 0.2,
-        tension: 0.125,
-        spring: 0.018,
-        damping: 0.912,
-        lightColor: [82, 141, 244],   // Sky Blue
-        darkColor: [123, 170, 247],
+        tension: 0.29,
+        spring: 0.0062,
+        dampingRate: 0.0295,
+        viscosity: 0.17,
+        lightColor: [74, 126, 232],   // Soft Cobalt
+        darkColor: [68, 134, 255],    // Electric Azure
       },
       {
-        yRatio: 0.5,
-        freq: 1.32,
-        speed: -0.33,
-        phase: 1.8,
-        tension: 0.115,
-        spring: 0.017,
-        damping: 0.915,
-        lightColor: [150, 123, 208],  // Soft Violet
-        darkColor: [179, 157, 219],
+        yRatio: 0.49,
+        depth: 0.94,
+        freq: 1.18,
+        speed: -0.29,
+        phase: 1.85,
+        tension: 0.32,
+        spring: 0.006,
+        dampingRate: 0.0282,
+        viscosity: 0.165,
+        lightColor: [134, 110, 210],  // Soft Iris
+        darkColor: [162, 112, 255],   // Vivid Violet
       },
       {
-        yRatio: 0.65,
-        freq: 1.88,
-        speed: 0.37,
-        phase: 3.4,
-        tension: 0.12,
-        spring: 0.018,
-        damping: 0.912,
-        lightColor: [75, 181, 172],   // Aqua Teal
-        darkColor: [128, 203, 196],
+        yRatio: 0.64,
+        depth: 1.0,
+        freq: 1.62,
+        speed: 0.33,
+        phase: 3.45,
+        tension: 0.31,
+        spring: 0.0064,
+        dampingRate: 0.029,
+        viscosity: 0.165,
+        lightColor: [56, 166, 158],   // Soft Sea-Glass Teal
+        darkColor: [25, 214, 194],    // Vivid Cyan-Teal
       },
       {
         yRatio: 0.79,
-        freq: 1.48,
-        speed: -0.28,
-        phase: 5.0,
-        tension: 0.11,
-        spring: 0.017,
-        damping: 0.916,
-        lightColor: [232, 178, 67],   // Warm Sunlight Gold
-        darkColor: [243, 204, 114],
+        depth: 0.85,
+        freq: 1.3,
+        speed: -0.25,
+        phase: 5.05,
+        tension: 0.27,
+        spring: 0.0058,
+        dampingRate: 0.03,
+        viscosity: 0.175,
+        lightColor: [216, 160, 58],   // Soft Honey Gold
+        darkColor: [255, 182, 42],    // Vivid Golden Amber
       },
     ]
+
+    let width = window.innerWidth || 1200
+    let height = window.innerHeight || 800
+    let dpr = Math.min(window.devicePixelRatio || 1, 2)
 
     const waves = WAVE_CONFIGS.map(cfg => ({
       ...cfg,
       disp: new Float32Array(NODE_COUNT),
       vel: new Float32Array(NODE_COUNT),
       nextVel: new Float32Array(NODE_COUNT),
+      sway: new Float32Array(NODE_COUNT),
+      fx: width * 0.5,
+      fy: height * 0.5,
+      fvx: 0,
+      fvy: 0,
+      smoothEnergy: 0,
     }))
 
-    let width = window.innerWidth || 1200
-    let height = window.innerHeight || 800
-    let dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const ptsX = new Float32Array(NODE_COUNT)
+    const ptsY = new Float32Array(NODE_COUNT)
+    const ptsUnderY = new Float32Array(NODE_COUNT)
+
+    const pointer = {
+      rawX: width * 0.5,
+      rawY: height * 0.5,
+      prevX: width * 0.5,
+      prevY: height * 0.5,
+      bufX: width * 0.5,
+      bufY: height * 0.5,
+      glowX: width * 0.5,
+      glowY: height * 0.5,
+      velX: 0,
+      velY: 0,
+      targetActivation: 0,
+      activation: 0,
+      inside: false,
+      lastEventAt: 0,
+      lastRippleAt: 0,
+    }
+
+    const ripples = []
+    let darkMix = darkRef.current ? 1 : 0
+
+    function clampToViewport() {
+      pointer.rawX = Math.max(0, Math.min(width, pointer.rawX))
+      pointer.rawY = Math.max(0, Math.min(height, pointer.rawY))
+      pointer.prevX = Math.max(0, Math.min(width, pointer.prevX))
+      pointer.prevY = Math.max(0, Math.min(height, pointer.prevY))
+      pointer.bufX = pointer.rawX
+      pointer.bufY = pointer.rawY
+      pointer.glowX = pointer.rawX
+      pointer.glowY = pointer.rawY
+      for (let i = 0; i < waves.length; i++) {
+        waves[i].fx = pointer.rawX
+        waves[i].fy = pointer.rawY
+      }
+    }
 
     function resize() {
       width = window.innerWidth || 1200
@@ -232,246 +303,463 @@ function LightWaveBackground({ dark }) {
       canvas.width = Math.floor(width * dpr)
       canvas.height = Math.floor(height * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      clampToViewport()
     }
 
     resize()
 
-    const pointer = {
-      x: width * 0.5,
-      y: height * 0.5,
-      smoothX: width * 0.5,
-      smoothY: height * 0.5,
-      prevX: width * 0.5,
-      prevY: height * 0.5,
-      activation: 0,
-      inside: false,
+    function syncEntryPosition(x, y) {
+      pointer.rawX = x
+      pointer.rawY = y
+      pointer.prevX = x
+      pointer.prevY = y
+      pointer.bufX = x
+      pointer.bufY = y
+      pointer.glowX = x
+      pointer.glowY = y
+      pointer.velX = 0
+      pointer.velY = 0
+      for (let i = 0; i < waves.length; i++) {
+        waves[i].fx = x
+        waves[i].fy = y
+        waves[i].fvx = 0
+        waves[i].fvy = 0
+      }
+      pointer.inside = true
     }
 
-    function exciteWaves(px, py, vx, vy, boost = 1) {
-      if (prefersReduced) return
-      const speed = Math.hypot(vx, vy)
-      if (speed < 0.2) return
-
-      const energyGain = Math.min(1, (speed / 34) * boost)
-      pointer.activation = Math.min(1, pointer.activation + energyGain * 0.26)
-
-      const normX = Math.max(0, Math.min(1, px / Math.max(1, width)))
-      const centerNode = normX * (NODE_COUNT - 1)
-      const radiusNodes = Math.max(5, NODE_COUNT * 0.105)
-
-      const clampedVy = Math.max(-18, Math.min(18, vy))
-      const sweep = (vx >= 0 ? 1 : -1) * Math.min(10, speed * 0.22)
-      const signedImpulse = (clampedVy * 0.3 + sweep * 0.55) * boost
-
-      waves.forEach((w, wIdx) => {
-        const waveY = height * w.yRatio
-        const distY = Math.abs(py - waveY)
-        const verticalReach = height * 0.58
-        const yFalloff = Math.max(0.2, 1 - distY / verticalReach)
-        const layerSign = wIdx % 2 === 0 ? 1 : -0.82
-
-        const startIdx = Math.max(1, Math.floor(centerNode - radiusNodes * 2.5))
-        const endIdx = Math.min(NODE_COUNT - 2, Math.ceil(centerNode + radiusNodes * 2.5))
-
-        for (let i = startIdx; i <= endIdx; i++) {
-          const d = (i - centerNode) / radiusNodes
-          const gaussian = Math.exp(-0.5 * d * d)
-          const wavePacket = gaussian * (1 - 0.26 * d)
-          w.vel[i] += signedImpulse * yFalloff * layerSign * wavePacket * 0.115
-        }
+    function queueBufferedDroplet(x, y, strength = 1) {
+      if (isReducedMotion()) return
+      const now = performance.now()
+      if (now - pointer.lastRippleAt < 150) return
+      pointer.lastRippleAt = now
+      if (ripples.length >= 4) ripples.shift()
+      ripples.push({
+        x,
+        y,
+        age: 0,
+        duration: 0.2,
+        strength,
       })
+      pointer.targetActivation = Math.min(0.72, pointer.targetActivation + 0.14 * strength)
     }
 
     function onMouseMove(e) {
+      const now = performance.now()
       const x = e.clientX
       const y = e.clientY
       if (!pointer.inside) {
-        pointer.prevX = x
-        pointer.prevY = y
-        pointer.smoothX = x
-        pointer.smoothY = y
-        pointer.inside = true
+        syncEntryPosition(x, y)
+      } else {
+        pointer.rawX = x
+        pointer.rawY = y
       }
-      const vx = x - pointer.prevX
-      const vy = y - pointer.prevY
-      pointer.x = x
-      pointer.y = y
-      pointer.prevX = x
-      pointer.prevY = y
-      exciteWaves(x, y, vx, vy, 1)
+      pointer.lastEventAt = now
     }
 
     function onMouseDown(e) {
-      exciteWaves(e.clientX, e.clientY, 0, -16, 1.15)
-      pointer.activation = Math.min(1, pointer.activation + 0.38)
+      if (!pointer.inside) {
+        syncEntryPosition(e.clientX, e.clientY)
+      }
+      pointer.lastEventAt = performance.now()
+      queueBufferedDroplet(e.clientX, e.clientY, 1)
+    }
+
+    function onMouseOut(e) {
+      if (!e.relatedTarget) {
+        pointer.inside = false
+      }
+    }
+
+    function onWindowBlur() {
+      pointer.inside = false
+    }
+
+    function onTouchStart(e) {
+      if (!e.touches || e.touches.length === 0) return
+      const t = e.touches[0]
+      syncEntryPosition(t.clientX, t.clientY)
+      pointer.lastEventAt = performance.now()
+      queueBufferedDroplet(t.clientX, t.clientY, 0.85)
     }
 
     function onTouchMove(e) {
       if (!e.touches || e.touches.length === 0) return
       const t = e.touches[0]
       if (!pointer.inside) {
-        pointer.prevX = t.clientX
-        pointer.prevY = t.clientY
-        pointer.smoothX = t.clientX
-        pointer.smoothY = t.clientY
-        pointer.inside = true
+        syncEntryPosition(t.clientX, t.clientY)
+      } else {
+        pointer.rawX = t.clientX
+        pointer.rawY = t.clientY
       }
-      const vx = t.clientX - pointer.prevX
-      const vy = t.clientY - pointer.prevY
-      pointer.x = t.clientX
-      pointer.y = t.clientY
-      pointer.prevX = t.clientX
-      pointer.prevY = t.clientY
-      exciteWaves(t.clientX, t.clientY, vx, vy, 0.9)
+      pointer.lastEventAt = performance.now()
     }
 
-    function onTouchStart(e) {
-      if (!e.touches || e.touches.length === 0) return
-      const t = e.touches[0]
-      pointer.x = t.clientX
-      pointer.y = t.clientY
-      pointer.prevX = t.clientX
-      pointer.prevY = t.clientY
-      pointer.inside = true
-      exciteWaves(t.clientX, t.clientY, 0, -12, 0.95)
+    function onTouchEnd() {
+      pointer.inside = false
+    }
+
+    function traceForwardCurve(xs, ys) {
+      ctx.moveTo(xs[0], ys[0])
+      for (let i = 0; i < NODE_COUNT - 1; i++) {
+        const midX = (xs[i] + xs[i + 1]) * 0.5
+        const midY = (ys[i] + ys[i + 1]) * 0.5
+        ctx.quadraticCurveTo(xs[i], ys[i], midX, midY)
+      }
+      ctx.lineTo(xs[NODE_COUNT - 1], ys[NODE_COUNT - 1])
+    }
+
+    function traceReverseCurve(xs, ys) {
+      ctx.lineTo(xs[NODE_COUNT - 1], ys[NODE_COUNT - 1])
+      for (let i = NODE_COUNT - 1; i > 0; i--) {
+        const midX = (xs[i] + xs[i - 1]) * 0.5
+        const midY = (ys[i] + ys[i - 1]) * 0.5
+        ctx.quadraticCurveTo(xs[i], ys[i], midX, midY)
+      }
+      ctx.lineTo(xs[0], ys[0])
     }
 
     let rafId = null
     const t0 = performance.now()
+    let prevNow = t0
 
     function render(now) {
+      const dt = Math.min(0.05, Math.max(0.001, (now - prevNow) * 0.001))
+      prevNow = now
+      const dt60 = dt * 60
       const elapsed = (now - t0) * 0.001
+      const reduced = isReducedMotion()
 
-      pointer.smoothX += (pointer.x - pointer.smoothX) * 0.115
-      pointer.smoothY += (pointer.y - pointer.smoothY) * 0.115
-      pointer.activation *= 0.966
+      // Smoothly cross-fade palette when light/dark theme toggles
+      const targetDark = darkRef.current ? 1 : 0
+      darkMix += (targetDark - darkMix) * (1 - Math.exp(-dt * 9))
+
+      // Direct 1:1 cursor position tracking (zero position lag)
+      const prevX = pointer.prevX
+      const prevY = pointer.prevY
+      const moveX = pointer.rawX - prevX
+      const moveY = pointer.rawY - prevY
+      pointer.prevX = pointer.rawX
+      pointer.prevY = pointer.rawY
+      pointer.bufX = pointer.rawX
+      pointer.bufY = pointer.rawY
+      pointer.glowX = pointer.rawX
+      pointer.glowY = pointer.rawY
+
+      // Low-pass filtered velocity prevents 60Hz/120Hz sub-frame mouse event strobing
+      const rawVx = Math.max(-2400, Math.min(2400, moveX / dt))
+      const rawVy = Math.max(-2400, Math.min(2400, moveY / dt))
+      const velAlpha = 1 - Math.exp(-dt * 14)
+      pointer.velX += (rawVx - pointer.velX) * velAlpha
+      pointer.velY += (rawVy - pointer.velY) * velAlpha
+
+      // Steady, flicker-free illumination while cursor is on page (decoupled from per-frame delta spikes)
+      const smoothSpeed = reduced ? 0 : Math.hypot(pointer.velX, pointer.velY)
+      const steadyTarget =
+        !reduced && pointer.inside ? 0.46 + 0.14 * Math.tanh(smoothSpeed / 950) : 0
+      const envRate = steadyTarget > pointer.targetActivation ? 7.5 : 2.6
+      pointer.targetActivation +=
+        (steadyTarget - pointer.targetActivation) * (1 - Math.exp(-dt * envRate))
+      pointer.activation +=
+        (pointer.targetActivation - pointer.activation) * (1 - Math.exp(-dt * 8.0))
+
+      // Advance buffered click/touch droplets
+      for (let r = ripples.length - 1; r >= 0; r--) {
+        ripples[r].age += dt
+        if (ripples[r].age >= ripples[r].duration) {
+          ripples.splice(r, 1)
+        }
+      }
 
       ctx.clearRect(0, 0, width, height)
 
-      // 1. Mouse-Activated Radial Light Bloom
-      if (pointer.activation > 0.01) {
-        const bloomRadius = Math.min(width, height) * 0.52
-        const bloomAlpha = (dark ? 0.13 : 0.165) * pointer.activation
+      // 1. Buffered Radial Light Bloom (gentle in light mode, vivid in dark mode)
+      if (pointer.activation > 0.008) {
+        const bloomRadius = Math.min(width, height) * 0.55
+        const bloomAlpha = (0.118 + 0.072 * darkMix) * pointer.activation
+        const r1 = Math.round(74 + (68 - 74) * darkMix)
+        const g1 = Math.round(126 + (134 - 126) * darkMix)
+        const b1 = Math.round(232 + (255 - 232) * darkMix)
+        const r2 = Math.round(134 + (162 - 134) * darkMix)
+        const g2 = Math.round(110 + (112 - 110) * darkMix)
+        const b2 = Math.round(210 + (255 - 210) * darkMix)
+
         const radial = ctx.createRadialGradient(
-          pointer.smoothX,
-          pointer.smoothY,
+          pointer.glowX,
+          pointer.glowY,
           0,
-          pointer.smoothX,
-          pointer.smoothY,
+          pointer.glowX,
+          pointer.glowY,
           bloomRadius
         )
-        if (dark) {
-          radial.addColorStop(0, `rgba(123, 170, 247, ${bloomAlpha.toFixed(3)})`)
-          radial.addColorStop(0.55, `rgba(179, 157, 219, ${(bloomAlpha * 0.44).toFixed(3)})`)
-          radial.addColorStop(1, 'rgba(31, 28, 24, 0)')
-        } else {
-          radial.addColorStop(0, `rgba(82, 141, 244, ${bloomAlpha.toFixed(3)})`)
-          radial.addColorStop(0.55, `rgba(150, 123, 208, ${(bloomAlpha * 0.44).toFixed(3)})`)
-          radial.addColorStop(1, 'rgba(247, 246, 243, 0)')
-        }
+        radial.addColorStop(0, `rgba(${r1}, ${g1}, ${b1}, ${bloomAlpha.toFixed(3)})`)
+        radial.addColorStop(0.55, `rgba(${r2}, ${g2}, ${b2}, ${(bloomAlpha * 0.44).toFixed(3)})`)
+        radial.addColorStop(1, `rgba(${r2}, ${g2}, ${b2}, 0)`)
         ctx.fillStyle = radial
         ctx.fillRect(0, 0, width, height)
       }
 
-      // 2. Step Coupled Wave Physics & Render Luminous Light Ribbons
-      const stepX = width / (NODE_COUNT - 1)
-      const ptsX = new Float32Array(NODE_COUNT)
-      const ptsY = new Float32Array(NODE_COUNT)
+      // 2. Stage 2 Per-Layer Fluid Coupling & Shallow-Water Wave Simulation
+      const totalSpan = width + OVERSCAN * 2
+      const stepX = totalSpan / (NODE_COUNT - 1)
+      const wakeBaseRadius = Math.max(84, width * 0.088)
+      const swayDecay = Math.exp(-dt * 6.8)
+      const subSteps = Math.min(4, Math.max(1, Math.ceil(dt * 120)))
+      const h = dt60 / subSteps
 
-      waves.forEach(w => {
-        for (let i = 1; i < NODE_COUNT - 1; i++) {
-          const laplacian = w.disp[i - 1] + w.disp[i + 1] - 2 * w.disp[i]
-          w.nextVel[i] = w.vel[i] + laplacian * w.tension - w.disp[i] * w.spring
-        }
-        for (let i = 1; i < NODE_COUNT - 1; i++) {
-          const smoothedVel =
-            w.nextVel[i] * 0.95 + (w.nextVel[i - 1] + w.nextVel[i + 1]) * 0.025
-          w.vel[i] = smoothedVel * w.damping
-          w.disp[i] = Math.max(-36, Math.min(36, w.disp[i] + w.vel[i]))
-        }
-        w.disp[0] = w.disp[1] * 0.5
-        w.disp[NODE_COUNT - 1] = w.disp[NODE_COUNT - 2] * 0.5
+      for (let wIdx = 0; wIdx < waves.length; wIdx++) {
+        const w = waves[wIdx]
+        const waveY = height * w.yRatio
 
+        // Direct 1:1 per-layer cursor coupling (zero depth lag)
+        w.fx = pointer.rawX
+        w.fy = pointer.rawY
+        w.fvx = pointer.velX
+        w.fvy = pointer.velY
+
+        for (let i = 0; i < NODE_COUNT; i++) {
+          w.sway[i] *= swayDecay
+        }
+
+        if (!reduced) {
+          const moveDist = Math.hypot(moveX, moveY)
+          const layerSpeed = Math.hypot(w.fvx, w.fvy)
+          if (moveDist > 0.15 && layerSpeed > 2) {
+            const ux = Math.tanh(w.fvx / 620)
+            const uy = Math.tanh(w.fvy / 520)
+            const sigmaY = height * 0.28
+            const wakeRadius = wakeBaseRadius * (1.16 - 0.2 * w.depth)
+            const strength = 0.52 * (0.86 + 0.22 * w.depth)
+
+            const segSteps = Math.min(6, Math.max(1, Math.ceil(moveDist / (wakeRadius * 0.65))))
+            const stepWeight = 1 / segSteps
+
+            for (let s = 1; s <= segSteps; s++) {
+              const t = s / segSteps
+              const sampleX = prevX + moveX * t
+              const sampleY = prevY + moveY * t
+              const dyWave = sampleY - waveY
+              const yFalloff = 0.16 + 0.84 * Math.exp(-0.5 * (dyWave / sigmaY) ** 2)
+
+              const centerIdx = (sampleX + OVERSCAN) / stepX
+              const spanIdx = (wakeRadius * 3.1) / stepX
+              const startIdx = Math.max(1, Math.floor(centerIdx - spanIdx))
+              const endIdx = Math.min(NODE_COUNT - 2, Math.ceil(centerIdx + spanIdx))
+
+              for (let i = startIdx; i <= endIdx; i++) {
+                const nodeX = -OVERSCAN + i * stepX
+                const d = (nodeX - sampleX) / wakeRadius
+                const g = Math.exp(-0.5 * d * d)
+
+                // Bow-wave crest ahead of horizontal travel + smooth vertical drag wake
+                const horizWake = (-ux * d * 0.88 - Math.abs(ux) * (1 - d * d) * 0.18) * g
+                const vertWake = uy * g * 1.06
+
+                // Local energy headroom cushion prevents blowup on repeated scrubbing
+                const localE = Math.abs(w.disp[i]) / 28 + Math.abs(w.vel[i]) / 2.2
+                const headroom = 1 / (1 + localE * localE * 1.65)
+
+                w.vel[i] +=
+                  (vertWake + horizWake) * strength * yFalloff * headroom * stepWeight * dt60
+                w.sway[i] = Math.max(
+                  -9.5,
+                  Math.min(9.5, w.sway[i] + ux * g * yFalloff * 0.52 * stepWeight * dt60)
+                )
+              }
+            }
+          }
+
+          // Smooth bell-envelope droplet pulses on click/tap
+          for (let r = 0; r < ripples.length; r++) {
+            const rip = ripples[r]
+            const env = Math.sin((rip.age / rip.duration) * Math.PI)
+            const dyWave = rip.y - waveY
+            const sigmaY = height * 0.3
+            const yFalloff = 0.2 + 0.8 * Math.exp(-0.5 * (dyWave / sigmaY) ** 2)
+            const dropRadius = wakeBaseRadius * 0.72
+            const centerIdx = (rip.x + OVERSCAN) / stepX
+            const spanIdx = (dropRadius * 3.0) / stepX
+            const startIdx = Math.max(1, Math.floor(centerIdx - spanIdx))
+            const endIdx = Math.min(NODE_COUNT - 2, Math.ceil(centerIdx + spanIdx))
+
+            for (let i = startIdx; i <= endIdx; i++) {
+              const nodeX = -OVERSCAN + i * stepX
+              const d = (nodeX - rip.x) / dropRadius
+              const packet = (1 - 0.45 * d * d) * Math.exp(-0.5 * d * d)
+              const localE = Math.abs(w.disp[i]) / 30 + Math.abs(w.vel[i]) / 2.4
+              const headroom = 1 / (1 + localE * localE * 1.5)
+              w.vel[i] -= env * rip.strength * yFalloff * packet * headroom * 0.39 * dt60
+            }
+          }
+        }
+      }
+
+      // Step coupled viscous wave PDE with subtle inter-ribbon sympathy
+      for (let sub = 0; sub < subSteps; sub++) {
+        for (let wIdx = 0; wIdx < waves.length; wIdx++) {
+          const w = waves[wIdx]
+          const prevW = wIdx > 0 ? waves[wIdx - 1] : null
+          const nextW = wIdx < waves.length - 1 ? waves[wIdx + 1] : null
+          const damp = Math.exp(-w.dampingRate * h)
+
+          for (let i = 1; i < NODE_COUNT - 1; i++) {
+            const u = w.disp[i]
+            const lapU = w.disp[i - 1] + w.disp[i + 1] - 2 * u
+            const lapV = w.vel[i - 1] + w.vel[i + 1] - 2 * w.vel[i]
+            const restoring = w.spring * u + 0.0000038 * u * u * u
+
+            let sympathy = 0
+            if (prevW) sympathy += (prevW.disp[i] - u) * 0.001
+            if (nextW) sympathy += (nextW.disp[i] - u) * 0.001
+
+            w.nextVel[i] =
+              (w.vel[i] + (lapU * w.tension - restoring + lapV * w.viscosity + sympathy) * h) *
+              damp
+          }
+        }
+
+        for (let wIdx = 0; wIdx < waves.length; wIdx++) {
+          const w = waves[wIdx]
+          for (let i = 1; i < NODE_COUNT - 1; i++) {
+            let edgeDamp = 1
+            if (i < SPONGE_NODES) {
+              const ratio = 1 - i / SPONGE_NODES
+              edgeDamp = 1 - 0.18 * ratio * ratio * h
+            } else if (i > NODE_COUNT - 1 - SPONGE_NODES) {
+              const ratio = 1 - (NODE_COUNT - 1 - i) / SPONGE_NODES
+              edgeDamp = 1 - 0.18 * ratio * ratio * h
+            }
+            w.vel[i] = w.nextVel[i] * edgeDamp
+            const nextU = w.disp[i] + w.vel[i] * h
+            w.disp[i] = 68 * Math.tanh(nextU / 68)
+          }
+          w.disp[0] = w.disp[1] * 0.68
+          w.disp[NODE_COUNT - 1] = w.disp[NODE_COUNT - 2] * 0.68
+        }
+      }
+
+      // 3. Render Liquid Silk Ribbons, Atmospheric Curtains & Specular Filaments
+      const haloSpan = Math.max(220, width * 0.28)
+
+      for (let wIdx = 0; wIdx < waves.length; wIdx++) {
+        const w = waves[wIdx]
         const baseY = height * w.yRatio
-        const baseAmp = prefersReduced ? 4 : 6.5 + pointer.activation * 11.5
+
+        // Measure rolling wave energy so glowing crests stay luminous while propagating
+        let energySum = 0
+        for (let i = SPONGE_NODES; i < NODE_COUNT - SPONGE_NODES; i += 2) {
+          energySum += Math.abs(w.disp[i])
+        }
+        const avgDisp = energySum / ((NODE_COUNT - SPONGE_NODES * 2) * 0.5)
+        const targetWaveEnergy = Math.min(1, avgDisp / 11)
+        w.smoothEnergy += (targetWaveEnergy - w.smoothEnergy) * (1 - Math.exp(-dt * 8.5))
+
+        const activeBoost = Math.min(1, pointer.activation * 0.72 + w.smoothEnergy * 0.45)
+        const baseAmp = reduced ? 4 : 8.2 + activeBoost * 4.8
 
         for (let i = 0; i < NODE_COUNT; i++) {
           const u = i / (NODE_COUNT - 1)
-          const x = i * stepX
-          const harmonic =
-            Math.sin(u * Math.PI * 2 * w.freq + elapsed * w.speed + w.phase) * baseAmp +
-            Math.cos(u * Math.PI * 2 * (w.freq * 0.58) - elapsed * (w.speed * 0.68) + w.phase) *
-            (baseAmp * 0.38)
+          const xBase = -OVERSCAN + i * stepX
+          const phaseWarp = Math.sin(u * Math.PI * 2.1 + elapsed * 0.2 + w.phase) * 0.28
+          const theta = u * Math.PI * 2 * w.freq + elapsed * w.speed + w.phase + phaseWarp
 
-          ptsX[i] = x
+          const h1 = Math.sin(theta)
+          const h2 =
+            Math.cos(
+              u * Math.PI * 2 * (w.freq * 0.54) - elapsed * (w.speed * 0.63) + w.phase * 1.3
+            ) * 0.42
+          const h3 =
+            Math.sin(
+              u * Math.PI * 2 * (w.freq * 0.27) + elapsed * (w.speed * 0.31) + w.phase * 0.7
+            ) * 0.22
+          const harmonic = (h1 + h2 + h3) * baseAmp
+
+          const slope =
+            i > 0 && i < NODE_COUNT - 1 ? (w.disp[i + 1] - w.disp[i - 1]) * 0.5 : 0
+          const orbitalSway = reduced
+            ? 0
+            : Math.max(
+                -stepX * 0.36,
+                Math.min(stepX * 0.36, -slope * 0.28 + w.sway[i] + Math.cos(theta) * 2.2)
+              )
+
+          ptsX[i] = xBase + orbitalSway
           ptsY[i] = baseY + harmonic + w.disp[i]
+
+          const ribbonTwist =
+            13 +
+            Math.sin(u * Math.PI * 3.0 - elapsed * (w.speed * 0.82) + w.phase * 1.65) * 7.2 +
+            w.disp[i] * 0.34
+          ptsUnderY[i] = baseY + harmonic * 0.84 + w.disp[i] * 0.58 + ribbonTwist
         }
 
-        const [r, g, b] = dark ? w.darkColor : w.lightColor
-        const activeBoost = pointer.activation
+        const r = Math.round(w.lightColor[0] + (w.darkColor[0] - w.lightColor[0]) * darkMix)
+        const g = Math.round(w.lightColor[1] + (w.darkColor[1] - w.lightColor[1]) * darkMix)
+        const b = Math.round(w.lightColor[2] + (w.darkColor[2] - w.lightColor[2]) * darkMix)
 
-        // Trace smooth curve
+        // A. Deep Atmospheric Curtain Fill (softer in light mode, richer in dark mode)
         ctx.beginPath()
-        ctx.moveTo(ptsX[0], ptsY[0])
-        for (let i = 0; i < NODE_COUNT - 1; i++) {
-          const midX = (ptsX[i] + ptsX[i + 1]) * 0.5
-          const midY = (ptsY[i] + ptsY[i + 1]) * 0.5
-          ctx.quadraticCurveTo(ptsX[i], ptsY[i], midX, midY)
-        }
-        ctx.lineTo(ptsX[NODE_COUNT - 1], ptsY[NODE_COUNT - 1])
-
-        // Luminous Wave Curtain Fill
-        const curtainHeight = Math.max(120, height * 0.22)
-        const fillGrad = ctx.createLinearGradient(0, baseY - 36, 0, baseY + curtainHeight)
-        const topAlpha = (dark ? 0.062 : 0.082) + activeBoost * (dark ? 0.095 : 0.11)
+        traceForwardCurve(ptsX, ptsY)
+        const curtainHeight = Math.max(125, height * 0.23)
+        const fillGrad = ctx.createLinearGradient(0, baseY - 44, 0, baseY + curtainHeight)
+        const topAlpha =
+          0.052 + darkMix * 0.034 + activeBoost * (0.072 + darkMix * 0.038)
         fillGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${topAlpha.toFixed(3)})`)
-        fillGrad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${(topAlpha * 0.3).toFixed(3)})`)
+        fillGrad.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, ${(topAlpha * 0.32).toFixed(3)})`)
         fillGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
 
         ctx.save()
-        ctx.lineTo(width, baseY + curtainHeight + 65)
-        ctx.lineTo(0, baseY + curtainHeight + 65)
+        ctx.lineTo(width + OVERSCAN, baseY + curtainHeight + 65)
+        ctx.lineTo(-OVERSCAN, baseY + curtainHeight + 65)
         ctx.closePath()
         ctx.fillStyle = fillGrad
         ctx.fill()
         ctx.restore()
 
-        // Re-trace crest for luminous filament
+        // B. Twisting Liquid Silk Ribbon Body (between primary crest & undertow contour)
         ctx.beginPath()
-        ctx.moveTo(ptsX[0], ptsY[0])
-        for (let i = 0; i < NODE_COUNT - 1; i++) {
-          const midX = (ptsX[i] + ptsX[i + 1]) * 0.5
-          const midY = (ptsY[i] + ptsY[i + 1]) * 0.5
-          ctx.quadraticCurveTo(ptsX[i], ptsY[i], midX, midY)
-        }
-        ctx.lineTo(ptsX[NODE_COUNT - 1], ptsY[NODE_COUNT - 1])
+        traceForwardCurve(ptsX, ptsY)
+        traceReverseCurve(ptsX, ptsUnderY)
+        ctx.closePath()
+        const ribbonAlpha =
+          0.032 + darkMix * 0.022 + activeBoost * (0.048 + darkMix * 0.024)
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${ribbonAlpha.toFixed(3)})`
+        ctx.fill()
 
-        const cursorNormX = Math.max(0.05, Math.min(0.95, pointer.smoothX / Math.max(1, width)))
-        const spread = 0.24
-        const leftStop = Math.max(0, cursorNormX - spread)
-        const rightStop = Math.min(1, cursorNormX + spread)
+        // C. Luminous Wave Crest Halo & Specular Filament
+        ctx.beginPath()
+        traceForwardCurve(ptsX, ptsY)
 
-        const baseStrokeAlpha = (dark ? 0.18 : 0.23) + activeBoost * 0.18
-        const peakStrokeAlpha = Math.min(0.82, baseStrokeAlpha + activeBoost * 0.38)
+        const baseStrokeAlpha = 0.175 + darkMix * 0.085 + activeBoost * 0.16
+        const peakStrokeAlpha = Math.min(0.84, baseStrokeAlpha + activeBoost * 0.34)
+        const midStrokeAlpha = baseStrokeAlpha + (peakStrokeAlpha - baseStrokeAlpha) * 0.52
 
-        const strokeGrad = ctx.createLinearGradient(0, 0, width, 0)
-        strokeGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.52).toFixed(3)})`)
-        strokeGrad.addColorStop(leftStop, `rgba(${r}, ${g}, ${b}, ${baseStrokeAlpha.toFixed(3)})`)
-        strokeGrad.addColorStop(cursorNormX, `rgba(${r}, ${g}, ${b}, ${peakStrokeAlpha.toFixed(3)})`)
-        strokeGrad.addColorStop(rightStop, `rgba(${r}, ${g}, ${b}, ${baseStrokeAlpha.toFixed(3)})`)
-        strokeGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, ${(baseStrokeAlpha * 0.52).toFixed(3)})`)
+        const strokeGrad = ctx.createLinearGradient(
+          pointer.glowX - haloSpan,
+          0,
+          pointer.glowX + haloSpan,
+          0
+        )
+        const edgeRgba = `rgba(${r}, ${g}, ${b}, ${baseStrokeAlpha.toFixed(3)})`
+        const midRgba = `rgba(${r}, ${g}, ${b}, ${midStrokeAlpha.toFixed(3)})`
+        const peakRgba = `rgba(${r}, ${g}, ${b}, ${peakStrokeAlpha.toFixed(3)})`
+        strokeGrad.addColorStop(0, edgeRgba)
+        strokeGrad.addColorStop(0.25, midRgba)
+        strokeGrad.addColorStop(0.5, peakRgba)
+        strokeGrad.addColorStop(0.75, midRgba)
+        strokeGrad.addColorStop(1, edgeRgba)
 
-        // Soft outer light halo
+        // Soft outer liquid halo
         ctx.strokeStyle = strokeGrad
-        ctx.lineWidth = 3.8 + activeBoost * 3.2
-        ctx.globalAlpha = 0.22 + activeBoost * 0.24
+        ctx.lineWidth = 4.2 + activeBoost * 3.2
+        ctx.globalAlpha = 0.22 + activeBoost * 0.23
         ctx.stroke()
 
-        // Crisp inner light wave filament
+        // Crisp inner light filament
         ctx.globalAlpha = 1
-        ctx.lineWidth = 1.35 + activeBoost * 0.65
+        ctx.lineWidth = 1.35 + activeBoost * 0.6
         ctx.stroke()
-      })
+      }
 
       rafId = requestAnimationFrame(render)
     }
@@ -479,8 +767,12 @@ function LightWaveBackground({ dark }) {
     window.addEventListener('resize', resize, { passive: true })
     window.addEventListener('mousemove', onMouseMove, { passive: true })
     window.addEventListener('mousedown', onMouseDown, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('mouseout', onMouseOut, { passive: true })
+    window.addEventListener('blur', onWindowBlur, { passive: true })
     window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true })
 
     rafId = requestAnimationFrame(render)
 
@@ -489,10 +781,14 @@ function LightWaveBackground({ dark }) {
       window.removeEventListener('resize', resize)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mousedown', onMouseDown)
-      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('mouseout', onMouseOut)
+      window.removeEventListener('blur', onWindowBlur)
       window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+      window.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [dark])
+  }, [])
 
   return (
     <canvas
@@ -534,6 +830,11 @@ export default function SignInPage({
       loadGoogleGsiScript().catch(() => { })
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.title = verificationStep ? 'Verify Email · ClubHub' : 'Sign In · ClubHub'
+  }, [verificationStep])
 
   async function handleClerkReady(clerk) {
     if (typeof window === 'undefined') return
@@ -1040,53 +1341,72 @@ export default function SignInPage({
         </div>
       </header>
 
-      {/* ── Main Content Stage (Mobile-First, Clean & Uncluttered) ── */}
+      {/* ── Main Content Stage ── */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-12 py-4 sm:py-8">
-        <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
-          {/* ── Left Column: Concise Editorial Intro ── */}
-          <div className="lg:col-span-6 text-center lg:text-left space-y-3 sm:space-y-4 fade-in">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/20">
-              <GraduationCap size={14} />
-              <span>UCSC Campus Community</span>
-            </div>
+        <div className="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-7 lg:gap-9 items-center">
+          {/* ── Left Column: Low-Opacity Backdrop & Plain Description ── */}
+          <div className="lg:col-span-6 fade-in">
+            <div
+              className="rounded-[24px] bg-[var(--bg-card)]/45 backdrop-blur-md
+                border border-[var(--border)]/55
+                p-5 sm:p-7 text-center lg:text-left space-y-3.5 sm:space-y-4"
+            >
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--blue-light)]/80 text-[var(--blue-ink)] border border-[var(--blue)]/25">
+                <GraduationCap size={14} />
+                <span>UC Santa Cruz</span>
+              </div>
 
-            <h1 className="text-2xl sm:text-4xl lg:text-[42px] font-extrabold tracking-tight text-[var(--text)] leading-[1.14]">
-              Every campus club,{' '}
-              <span
-                className="bg-clip-text text-transparent"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(135deg, var(--blue) 0%, var(--purple) 55%, var(--teal) 100%)',
-                }}
-              >
-                moving in sync.
-              </span>
-            </h1>
-
-            <p className="text-xs sm:text-sm lg:text-[15px] text-[var(--text-muted)] leading-relaxed max-w-md mx-auto lg:mx-0">
-              Discover student organizations, sync Discord &amp; Instagram announcements, and RSVP
-              to campus events in one place.
-            </p>
-
-            {/* Subtle Desktop Pill Highlights */}
-            <div className="hidden lg:flex flex-wrap items-center gap-2 pt-2">
-              {['40+ Active Clubs', 'Discord & IG Auto-Sync', '1-Click Event RSVP'].map(label => (
+              <h1 className="text-2xl sm:text-3xl lg:text-[36px] font-extrabold tracking-tight text-[var(--text)] leading-[1.16]">
+                Everything happening across{' '}
                 <span
-                  key={label}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[var(--bg-card)]/80 backdrop-blur-sm border border-[var(--border)] text-[var(--text-muted)]"
+                  className="bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(135deg, var(--blue) 0%, var(--purple) 52%, var(--teal) 100%)',
+                  }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--blue)]" />
-                  {label}
+                  UCSC student clubs.
                 </span>
-              ))}
+              </h1>
+
+              <p className="text-[13.5px] sm:text-[14.5px] text-[var(--text-muted)] leading-relaxed max-w-lg mx-auto lg:mx-0">
+                Explore campus organizations, follow announcements from Discord and Instagram, and
+                coordinate event RSVPs and group availability.
+              </p>
+
+              {/* Compact 2x2 Feature Highlights */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-2.5 pt-1 text-left">
+                {[
+                  { title: 'Club Directory', color: 'blue', Icon: Users },
+                  { title: 'Discord & IG Feed', color: 'purple', Icon: Megaphone },
+                  { title: 'Events & RSVPs', color: 'teal', Icon: Calendar },
+                  { title: 'Group Availability', color: 'green', Icon: Clock },
+                ].map(({ title, color, Icon }) => (
+                  <div
+                    key={title}
+                    style={{
+                      borderLeftWidth: '3px',
+                      borderLeftColor: `var(--${color})`,
+                    }}
+                    className="rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 bg-[var(--bg-tile)]/45 border border-[var(--border)]/60 flex items-center gap-2 sm:gap-2.5"
+                  >
+                    <IconBadge color={color} size={28} radius={8}>
+                      <Icon size={14} />
+                    </IconBadge>
+                    <span className="text-[11.5px] sm:text-xs font-semibold text-[var(--text)] leading-tight">
+                      {title}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* ── Right Column: Clean Login Card (Google OAuth Above Normal Login Fields) ── */}
           <div className="lg:col-span-6 flex justify-center lg:justify-end w-full fade-in">
             <div
-              className="w-full max-w-[410px] rounded-[24px] bg-[var(--bg-card)]/90 backdrop-blur-xl
-                border border-[var(--border)] shadow-[var(--shadow-lg)] p-5 sm:p-7 space-y-5"
+              className="w-full max-w-[410px] rounded-[24px] bg-[var(--bg-tile)]/90 backdrop-blur-xl
+                border border-[var(--border-tile)] shadow-[var(--shadow-lg)] p-5 sm:p-7 space-y-5"
             >
               {/* Card Header */}
               <div>
@@ -1096,7 +1416,7 @@ export default function SignInPage({
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
                   {verificationStep
                     ? `Enter the code sent to ${email}`
-                    : 'Sign in or create your account in one step'}
+                    : 'Sign in or create an account'}
                 </p>
               </div>
 

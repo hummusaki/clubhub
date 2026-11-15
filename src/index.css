@@ -5,104 +5,118 @@
 }
 
 /* ═══════════════════════════════════════════════
-   ClubHub — Crisp Porcelain & Midnight Slate Palette
+   ClubHub — Soft Alabaster & Vivid Midnight Palette
    ═══════════════════════════════════════════════ */
 
 :root {
-  /* Surfaces — clean cool porcelain & crisp white */
-  --bg:            #F6F8FB;
-  --bg-surface:    #F1F5F9;
-  --bg-subtle:     #E8EEF5;
-  --bg-card:       #FFFFFF;
-  --bg-glass:      rgba(255, 255, 255, 0.9);
-  --border:        #E2E8F0;
-  --border-subtle: #EDF2F7;
-  --border-strong: #CBD5E1;
+  /* Surfaces — gentle low-glare alabaster mist & elevated content tiles */
+  --bg:                #ECEEF2;
+  --bg-card:           #F5F6F9;
+  --bg-tile:           #FCFDFE;
+  --bg-tile-hover:     #FFFFFF;
+  --bg-surface:        #E7ECF3;
+  --bg-subtle:         #DDE4EE;
+  --bg-glass:          rgba(245, 246, 249, 0.88);
 
-  /* Text */
-  --text:          #0F172A;
-  --text-muted:    #475569;
-  --text-light:    #94A3B8;
+  --border:            #D8E0EB;
+  --border-tile:       #C9D3E1;
+  --border-subtle:     #E1E7F0;
+  --border-strong:     #B2C0D3;
 
-  /* Accents — vibrant, legible & modern */
-  --blue:          #3B82F6;
-  --blue-ink:      #1D4ED8;
-  --blue-light:    #EFF6FF;
+  /* Text — soft deep charcoal instead of harsh black */
+  --text:              #1E293B;
+  --text-muted:        #55637A;
+  --text-light:        #8291A7;
 
-  --red:           #EF4444;
-  --red-ink:       #B91C1C;
-  --red-light:     #FEF2F2;
+  /* Accents — calm, refined & harmonious in light mode */
+  --blue:              #4676EC;
+  --blue-ink:          #2A52B5;
+  --blue-light:        #E4ECFB;
 
-  --yellow:        #F59E0B;
-  --yellow-ink:    #B45309;
-  --yellow-light:  #FFFBEB;
+  --red:               #DC5B5B;
+  --red-ink:           #AB3232;
+  --red-light:         #FAE8E8;
 
-  --green:         #10B981;
-  --green-ink:     #047857;
-  --green-light:   #ECFDF5;
+  --yellow:            #D8901C;
+  --yellow-ink:        #925B07;
+  --yellow-light:      #FAF0DC;
 
-  --purple:        #8B5CF6;
-  --purple-ink:   #6D28D9;
-  --purple-light:  #F5F3FF;
+  --green:             #219A72;
+  --green-ink:         #13684B;
+  --green-light:       #E1F4EC;
 
-  --teal:          #14B8A6;
-  --teal-ink:      #0F766E;
-  --teal-light:    #F0FDFA;
+  --purple:            #7B61DF;
+  --purple-ink:        #5438B2;
+  --purple-light:      #ECE8FB;
 
-  /* Shadows & radii */
-  --shadow-xs:     0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow:        0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
-  --shadow-md:     0 8px 24px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
-  --shadow-lg:     0 16px 36px -6px rgba(15, 23, 42, 0.14), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
-  --radius:        18px;
-  --radius-sm:     12px;
-  --radius-xs:     8px;
-  --radius-pill:   9999px;
+  --teal:              #1E9B91;
+  --teal-ink:          #126760;
+  --teal-light:        #E0F4F2;
+
+  /* Shadows, specular highlights & radii */
+  --badge-highlight:   rgba(255, 255, 255, 0.65);
+  --shadow-xs:         0 1px 2px rgba(30, 41, 59, 0.04);
+  --shadow-tile:       0 1px 3px rgba(30, 41, 59, 0.06), 0 4px 10px -3px rgba(30, 41, 59, 0.05);
+  --shadow-tile-hover: 0 8px 18px -5px rgba(30, 41, 59, 0.11), 0 2px 5px -1px rgba(30, 41, 59, 0.05);
+  --shadow:            0 1px 3px rgba(30, 41, 59, 0.05), 0 6px 16px -4px rgba(30, 41, 59, 0.05);
+  --shadow-md:         0 10px 26px -6px rgba(30, 41, 59, 0.08), 0 3px 8px -2px rgba(30, 41, 59, 0.04);
+  --shadow-lg:         0 18px 38px -8px rgba(30, 41, 59, 0.12), 0 4px 12px -2px rgba(30, 41, 59, 0.05);
+  --radius:            18px;
+  --radius-sm:         13px;
+  --radius-xs:         8px;
+  --radius-pill:       9999px;
 }
 
-/* ── Dark mode (crisp cool midnight slate — zero brown/mud tones) ── */
+/* ── Dark mode (vivid deep midnight with punchy jewel/electric accents & crisp stepped tiles) ── */
 .dark {
-  --bg:            #0D1117;
-  --bg-card:       #151C26;
-  --bg-surface:    #1B2432;
-  --bg-subtle:     #222E40;
-  --bg-glass:      rgba(21, 28, 38, 0.9);
-  --border:        #263346;
-  --border-subtle: #1D2838;
-  --border-strong: #374863;
+  --bg:                #080C14;
+  --bg-card:           #0F1624;
+  --bg-tile:           #172236;
+  --bg-tile-hover:     #1E2C45;
+  --bg-surface:        #131D2F;
+  --bg-subtle:         #1E2D47;
+  --bg-glass:          rgba(15, 22, 36, 0.88);
 
-  --text:          #EEF2F8;
-  --text-muted:    #94A3B8;
-  --text-light:    #64748B;
+  --border:            #233350;
+  --border-tile:       #304770;
+  --border-subtle:     #1D2B44;
+  --border-strong:     #47669C;
 
-  --blue:          #60A5FA;
-  --blue-ink:      #93C5FD;
-  --blue-light:    rgba(96, 165, 250, 0.15);
+  --text:              #F4F7FF;
+  --text-muted:        #9FB1CE;
+  --text-light:        #6D82A6;
 
-  --red:           #F87171;
-  --red-ink:       #FCA5A5;
-  --red-light:     rgba(248, 113, 113, 0.15);
+  --blue:              #4482FF;
+  --blue-ink:          #8AB6FF;
+  --blue-light:        rgba(68, 130, 255, 0.21);
 
-  --yellow:        #FBBF24;
-  --yellow-ink:    #FCD34D;
-  --yellow-light:  rgba(251, 191, 36, 0.15);
+  --red:               #FF5A6B;
+  --red-ink:           #FF99A4;
+  --red-light:         rgba(255, 90, 107, 0.21);
 
-  --green:         #34D399;
-  --green-ink:     #6EE7B7;
-  --green-light:   rgba(52, 211, 153, 0.15);
+  --yellow:            #FFB224;
+  --yellow-ink:        #FFD46B;
+  --yellow-light:      rgba(255, 178, 36, 0.20);
 
-  --purple:        #A78BFA;
-  --purple-ink:    #C4B5FD;
-  --purple-light:  rgba(167, 139, 250, 0.15);
+  --green:             #15C47E;
+  --green-ink:         #62F5B7;
+  --green-light:       rgba(21, 196, 126, 0.21);
 
-  --teal:          #2DD4BF;
-  --teal-ink:      #5EEAD4;
-  --teal-light:    rgba(45, 212, 191, 0.15);
+  --purple:            #9D6BFF;
+  --purple-ink:        #C9ACFF;
+  --purple-light:      rgba(157, 107, 255, 0.22);
 
-  --shadow-xs:     0 1px 2px rgba(2, 6, 23, 0.35);
-  --shadow:        0 2px 8px rgba(2, 6, 23, 0.35), 0 1px 2px rgba(2, 6, 23, 0.24);
-  --shadow-md:     0 10px 28px -4px rgba(2, 6, 23, 0.5), 0 3px 8px rgba(2, 6, 23, 0.3);
-  --shadow-lg:     0 20px 46px -8px rgba(2, 6, 23, 0.65);
+  --teal:              #19D4C0;
+  --teal-ink:          #68F7E6;
+  --teal-light:        rgba(25, 212, 192, 0.20);
+
+  --badge-highlight:   rgba(255, 255, 255, 0.16);
+  --shadow-xs:         0 1px 2px rgba(2, 5, 15, 0.45);
+  --shadow-tile:       inset 0 1px 0 rgba(255, 255, 255, 0.065), 0 4px 14px -2px rgba(2, 5, 15, 0.58), 0 1px 3px rgba(2, 5, 15, 0.42);
+  --shadow-tile-hover: inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 10px 24px -4px rgba(2, 5, 15, 0.72), 0 0 0 1px rgba(68, 130, 255, 0.2);
+  --shadow:            inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 4px 16px -2px rgba(2, 5, 15, 0.52), 0 1px 3px rgba(2, 5, 15, 0.36);
+  --shadow-md:         inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 30px -4px rgba(2, 5, 15, 0.66), 0 4px 10px rgba(2, 5, 15, 0.4);
+  --shadow-lg:         inset 0 1px 0 rgba(255, 255, 255, 0.075), 0 22px 48px -8px rgba(2, 5, 15, 0.78);
 }
 
 /* ── Base ── */
@@ -121,12 +135,19 @@
 
   body {
     font-family: 'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
+    background-color: var(--bg);
+    background-image: radial-gradient(ellipse 90% 55% at 50% -12%, rgba(70, 118, 236, 0.05), transparent 68%);
     color: var(--text);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     letter-spacing: -0.01em;
+  }
+
+  html.dark body {
+    background-image:
+      radial-gradient(ellipse 80% 48% at 18% -8%, rgba(68, 130, 255, 0.14), transparent 60%),
+      radial-gradient(ellipse 70% 44% at 84% -6%, rgba(157, 107, 255, 0.11), transparent 56%);
   }
 
   /* Only enable smooth color transitions AFTER initial mount so page load never flashes white */
@@ -174,6 +195,34 @@ html.reduce-motion .fade-in {
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
+}
+
+/* ── Distinct Elevated Content Tiles ── */
+@layer components {
+  .content-tile {
+    background-color: var(--bg-tile);
+    border: 1px solid var(--border-tile);
+    box-shadow: var(--shadow-tile);
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .content-tile:hover {
+    background-color: var(--bg-tile-hover);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-tile-hover);
+  }
+
+  .content-tile-interactive:hover {
+    transform: translateY(-1.5px);
+  }
+}
+
+html.reduce-motion .content-tile-interactive:hover {
+  transform: none !important;
 }
 
 /* ── Compact Card Density Global Tokens ── */

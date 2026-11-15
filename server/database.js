@@ -212,6 +212,14 @@ function initSchema(db) {
       updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- 7. CALENDAR SYNC PROFILES (private live subscription state for Google & Apple Calendar feeds)
+    CREATE TABLE IF NOT EXISTS calendar_sync_profiles (
+      token       TEXT PRIMARY KEY,
+      accountKey  TEXT,
+      payload     TEXT NOT NULL,
+      updatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Indexes for fast lookups, filtering, and sorting
     CREATE INDEX IF NOT EXISTS idx_clubs_name           ON clubs(name);
     CREATE INDEX IF NOT EXISTS idx_clubs_category       ON clubs(category);
@@ -700,6 +708,39 @@ export function getDictionary({ namespace, clubId, source, prefix, q } = {}) {
     out[row.key] = safeParseJSON(row.value);
   }
   return out;
+}
+
+// ── Live Calendar Sync Profile Helpers (for /api/calendar/feed/:token.ics) ──
+export function saveCalendarSyncProfile(token, payload = {}, accountKey = null) {
+  const db = getDb();
+  const cleanToken = String(token || '').replace(/\.ics$/i, '').trim();
+  if (!cleanToken) return null;
+  const jsonPayload = JSON.stringify(payload ?? {});
+  db.stmt(`
+    INSERT INTO calendar_sync_profiles (token, accountKey, payload, updatedAt)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(token) DO UPDATE SET
+      accountKey = COALESCE(excluded.accountKey, calendar_sync_profiles.accountKey),
+      payload    = excluded.payload,
+      updatedAt  = datetime('now')
+  `).run(cleanToken, accountKey || null, jsonPayload);
+  return { token: cleanToken, accountKey: accountKey || null, payload };
+}
+
+export function getCalendarSyncProfile(token) {
+  const db = getDb();
+  const cleanToken = String(token || '').replace(/\.ics$/i, '').trim();
+  if (!cleanToken) return null;
+  const row = db
+    .stmt('SELECT token, accountKey, payload, updatedAt FROM calendar_sync_profiles WHERE token = ?')
+    .get(cleanToken);
+  if (!row) return null;
+  return {
+    token: row.token,
+    accountKey: row.accountKey,
+    updatedAt: row.updatedAt,
+    payload: safeParseJSON(row.payload) || {},
+  };
 }
 
 // ── Concise Row Formatters (convert SQLite ints/JSON to JS types) ───

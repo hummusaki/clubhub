@@ -1,5 +1,5 @@
 import { stats as defaultStats } from '../data/sampleData'
-import { Card, IconBadge } from './ui'
+import { IconBadge } from './ui'
 import { StatIcon } from './icons'
 
 export default function StatCards({
@@ -24,17 +24,21 @@ export default function StatCards({
   return (
     <div
       className={`grid grid-cols-2 lg:grid-cols-4 ${
-        isCompact ? 'gap-2.5 sm:gap-3 mb-3.5 sm:mb-4' : 'gap-3 sm:gap-4 mb-5 sm:mb-6'
+        isCompact ? 'gap-3 sm:gap-3.5 mb-3.5 sm:mb-4' : 'gap-3.5 sm:gap-4.5 mb-5 sm:mb-6'
       }`}
     >
       {stats.map((stat, i) => (
-        <Card
+        <div
           key={stat.label}
-          delay={i + 1}
           onClick={stat.navTarget && onNav ? () => onNav(stat.navTarget) : undefined}
-          className={`${
-            isCompact ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'
-          } flex items-center hover:border-[var(--blue)]/40`}
+          style={{
+            animationDelay: `${(i + 1) * 0.04}s`,
+            borderTopWidth: '3px',
+            borderTopColor: `var(--${stat.color})`,
+          }}
+          className={`content-tile content-tile-interactive rounded-[var(--radius)] fade-in ${
+            stat.navTarget && onNav ? 'cursor-pointer' : ''
+          } ${isCompact ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'} flex items-center`}
         >
           <IconBadge color={stat.color} size={isCompact ? 34 : 42} radius={isCompact ? 10 : 13}>
             <StatIcon name={stat.icon} size={isCompact ? 18 : 22} />
@@ -56,7 +60,7 @@ export default function StatCards({
               {stat.label}
             </div>
           </div>
-        </Card>
+        </div>
       ))}
     </div>
   )

@@ -12,9 +12,11 @@ import {
   CalendarPlus,
   Share2,
   ArrowRight,
+  MapPin,
+  RotateCcw,
   X,
 } from 'lucide-react'
-import { Card, BubbleTag, cleanText } from './ui'
+import { Card, BubbleTag, Avatar, cleanText } from './ui'
 import {
   getSchedulerPolls,
   createSchedulerPoll,
@@ -26,6 +28,26 @@ import {
 const BASE_MONDAY = '2026-11-16'
 const DEFAULT_TZ = 'America/Los_Angeles'
 const LOCAL_SLOTS_STORAGE_KEY = 'clubhub_availability_user_slots_v2'
+
+const RESPONDER_GRADIENTS = [
+  'linear-gradient(135deg, var(--blue), var(--teal))',
+  'linear-gradient(135deg, var(--purple), var(--blue))',
+  'linear-gradient(135deg, var(--teal), var(--green))',
+  'linear-gradient(135deg, var(--yellow), var(--red))',
+  'linear-gradient(135deg, var(--green), var(--blue))',
+]
+
+function getInitials(name) {
+  return (
+    String(name || 'MB')
+      .split(' ')
+      .filter(Boolean)
+      .map(w => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'MB'
+  )
+}
 
 function parseDateParts(dateStr) {
   const [y, m, d] = String(dateStr).split('-').map(Number)
@@ -213,8 +235,10 @@ export default function AvailabilityView({
   onAddLocalEvent,
   onRemoveLocalEvent,
   onOpenCalendar,
+  onPageContextChange,
   onNotify,
 }) {
+  const isCompact = Boolean(userSettings?.compactCards)
   const use24h = userSettings?.timeFormat === '24h'
   const weekStartsOn = userSettings?.weekStartsOn === 'sunday' ? 'sunday' : 'monday'
 
@@ -224,6 +248,12 @@ export default function AvailabilityView({
     user?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
     user?.email?.split('@')[0] ||
     'Jane Doe'
+
+  const signedInUserId = useMemo(() => toUserId(defaultUserName), [defaultUserName])
+  const signedInAvatarBg =
+    userSettings?.avatarBg ||
+    user?.avatarBg ||
+    'linear-gradient(135deg, var(--blue), var(--purple))'
 
   const [polls, setPolls] = useState([FALLBACK_POLL])
   const [selectedPollId, setSelectedPollId] = useState(FALLBACK_POLL.id)
@@ -257,8 +287,9 @@ export default function AvailabilityView({
   const [dragAdding, setDragAdding] = useState(true)
   const [autoSaveState, setAutoSaveState] = useState('saved') // 'saving' | 'saved'
 
-  // Hovered or clicked slot for inspection
+  // Hovered or clicked slot & contiguous window range for full-block grid highlighting
   const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
+  const [hoveredWindowRange, setHoveredWindowRange] = useState(null) // { startMs, endMs }
   const [pinnedSlotIso, setPinnedSlotIso] = useState(null)
   const [durationMins, setDurationMins] = useState(60)
   const [bookingBusy, setBookingBusy] = useState(false)
@@ -274,6 +305,21 @@ export default function AvailabilityView({
   const activePoll = useMemo(
     () => polls.find(p => p.id === selectedPollId) || polls[0] || FALLBACK_POLL,
     [polls, selectedPollId]
+  )
+
+  useEffect(() => {
+    if (!onPageContextChange) return
+    const pollTitle = cleanText(activePoll?.title || '')
+    onPageContextChange({
+      nav: 'availability',
+      label: pollTitle ? `${pollTitle}${gridMode === 'group' ? ' (Heatmap)' : ''}` : null,
+      modal: showNewPollForm ? 'new_poll' : null,
+    })
+  }, [onPageContextChange, activePoll?.title, gridMode, showNewPollForm])
+
+  const defaultPollWeekStart = useMemo(
+    () => getWeekStartOfDate(activePoll.dates?.[0] || BASE_MONDAY, weekStartsOn),
+    [activePoll.dates, weekStartsOn]
   )
 
   const weekStartYmd = useMemo(
@@ -379,75 +425,121 @@ export default function AvailabilityView({
     return matrix
   }, [displayedWeekDates, activePoll.baseTimezone, timeRows])
 
-  // Combine poll responders + current user's live slots
+  // Combine poll responders + current user's live slots + avatar gradients
   const allParticipants = useMemo(() => {
     const map = new Map()
+    let colorIdx = 0
 
     for (const r of activePoll.responses || []) {
       const cleanName = cleanText(r.userName || 'Member').replace(/\s*\([^)]*\)\s*$/, '')
       const uid = r.userId || toUserId(cleanName)
       const localOverride = localSlotsByUser[uid]
+      const isSignedUser = uid === signedInUserId
       map.set(uid, {
         userId: uid,
         userName: cleanName,
+        initials: getInitials(cleanName),
+        avatarBg: isSignedUser
+          ? signedInAvatarBg
+          : RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
         clubName: r.clubName || '',
+        isGuest: false,
         freeSlots: localOverride ? Array.from(localOverride) : r.freeSlots || [],
       })
     }
 
-    if (!map.has(currentUserId)) {
-      map.set(currentUserId, {
-        userId: currentUserId,
-        userName: activePersonName,
+    if (!map.has(signedInUserId)) {
+      const userSlotSet = localSlotsByUser[signedInUserId] || new Set()
+      map.set(signedInUserId, {
+        userId: signedInUserId,
+        userName: defaultUserName,
+        initials: getInitials(defaultUserName),
+        avatarBg: signedInAvatarBg,
         clubName: 'You',
-        freeSlots: Array.from(myFreeSlots),
+        isGuest: false,
+        freeSlots: Array.from(userSlotSet),
       })
     } else {
-      const existing = map.get(currentUserId)
-      map.set(currentUserId, {
+      const existing = map.get(signedInUserId)
+      map.set(signedInUserId, {
         ...existing,
-        userName: activePersonName,
-        freeSlots: localSlotsByUser[currentUserId]
-          ? Array.from(localSlotsByUser[currentUserId])
+        userName: defaultUserName,
+        initials: getInitials(defaultUserName),
+        avatarBg: signedInAvatarBg,
+        freeSlots: localSlotsByUser[signedInUserId]
+          ? Array.from(localSlotsByUser[signedInUserId])
           : existing.freeSlots,
       })
     }
 
     for (const [uid, slotSet] of Object.entries(localSlotsByUser)) {
-      if (!map.has(uid) && slotSet.size > 0) {
+      if (!map.has(uid) && (slotSet.size > 0 || uid === currentUserId)) {
+        const prettyName =
+          uid === currentUserId && guestOverrideName
+            ? guestOverrideName
+            : uid
+                .replace(/^user_/, '')
+                .split('_')
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ')
         map.set(uid, {
           userId: uid,
-          userName: uid
-            .replace(/^user_/, '')
-            .split('_')
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' '),
+          userName: prettyName,
+          initials: getInitials(prettyName),
+          avatarBg: RESPONDER_GRADIENTS[colorIdx++ % RESPONDER_GRADIENTS.length],
           clubName: 'Guest',
+          isGuest: true,
           freeSlots: Array.from(slotSet),
         })
       }
     }
 
     return Array.from(map.values())
-  }, [activePoll.responses, localSlotsByUser, currentUserId, activePersonName, myFreeSlots])
+  }, [
+    activePoll.responses,
+    localSlotsByUser,
+    signedInUserId,
+    defaultUserName,
+    signedInAvatarBg,
+    currentUserId,
+    guestOverrideName,
+  ])
 
-  const scheduledEventsBySlot = useMemo(() => {
-    const bySlot = {}
+  const activeParticipant = useMemo(
+    () =>
+      allParticipants.find(p => p.userId === currentUserId) || {
+        userName: activePersonName,
+        initials: getInitials(activePersonName),
+        avatarBg: signedInAvatarBg,
+      },
+    [allParticipants, currentUserId, activePersonName, signedInAvatarBg]
+  )
+
+  const { scheduledEventsBySlot, campusEventsBySlot } = useMemo(() => {
+    const bookedBySlot = {}
+    const campusBySlot = {}
     const allEvs = [...(activePoll.calendarEvents || []), ...(Array.isArray(events) ? events : [])]
     const seen = new Set()
 
     for (const ev of allEvs) {
       const idStr = String(ev?.id || '')
-      if (!ev?.start || seen.has(idStr) || !idStr.startsWith('collab_evt_')) continue
+      if (!ev?.start || seen.has(idStr)) continue
       seen.add(idStr)
       const sMs = new Date(ev.start).getTime()
+      if (Number.isNaN(sMs)) continue
       const eMs = ev.end ? new Date(ev.end).getTime() : sMs + 60 * 60 * 1000
+      const isCollab = idStr.startsWith('collab_evt_')
+
       for (let t = sMs; t < eMs; t += 30 * 60 * 1000) {
         const iso = new Date(t).toISOString()
-        bySlot[iso] = ev
+        if (isCollab) {
+          bookedBySlot[iso] = ev
+        } else if (!campusBySlot[iso]) {
+          campusBySlot[iso] = ev
+        }
       }
     }
-    return bySlot
+    return { scheduledEventsBySlot: bookedBySlot, campusEventsBySlot: campusBySlot }
   }, [activePoll.calendarEvents, events])
 
   const slotStatsMap = useMemo(() => {
@@ -462,6 +554,7 @@ export default function AvailabilityView({
         const otherAvailableCount = availableUsers.filter(p => p.userId !== currentUserId).length
         stats[iso] = {
           iso,
+          ms: new Date(iso).getTime(),
           dateStr: d,
           availableUsers,
           unavailableUsers,
@@ -469,13 +562,22 @@ export default function AvailabilityView({
           otherAvailableCount,
           ratio: availableUsers.length / total,
           scheduledEvent: scheduledEventsBySlot[iso] || null,
+          campusConflict: campusEventsBySlot[iso] || null,
         }
       }
     }
     return stats
-  }, [displayedWeekDates, timeRows, gridSlots, allParticipants, currentUserId, scheduledEventsBySlot])
+  }, [
+    displayedWeekDates,
+    timeRows,
+    gridSlots,
+    allParticipants,
+    currentUserId,
+    scheduledEventsBySlot,
+    campusEventsBySlot,
+  ])
 
-  // Merge contiguous 30-min slots into real human-readable meeting windows that fit `durationMins`!
+  // Merge contiguous 30-min slots into ranked meeting windows that fit `durationMins`
   const bestMeetingWindows = useMemo(() => {
     const requiredSlots = Math.max(1, Math.round(durationMins / 30))
     const windows = []
@@ -485,7 +587,6 @@ export default function AvailabilityView({
         .map(r => gridSlots[d]?.[`${r.hour}:${r.minute}`])
         .filter(Boolean)
 
-      // Walk through the day and group contiguous runs with identical high participant sets
       let i = 0
       while (i < dayIsos.length) {
         const startIso = dayIsos[i]
@@ -518,7 +619,6 @@ export default function AvailabilityView({
           const windowEndMs = windowStartMs + runLength * 30 * 60 * 1000
           const windowEndIso = new Date(windowEndMs).toISOString()
 
-          // Check if any slot inside this window already has a scheduled event
           let existingScheduled = null
           let existingSlotIso = startIso
           for (let k = i; k < j; k += 1) {
@@ -535,6 +635,8 @@ export default function AvailabilityView({
             dateStr: d,
             startIso,
             endIso: windowEndIso,
+            startMs: windowStartMs,
+            endMs: windowEndMs,
             totalMinutes: runLength * 30,
             availableCount: startStat.availableCount,
             availableUsers: startStat.availableUsers,
@@ -635,22 +737,25 @@ export default function AvailabilityView({
     }
   }
 
-  function handleFillWeekdayAfternoons() {
+  function handleFillWeekdayRange(rangeStartH, rangeEndH, labelText) {
     const baseTz = activePoll.baseTimezone || DEFAULT_TZ
     applySlotsForCurrentUser(set => {
       displayedWeekDates.forEach(d => {
         const { y, m, d: dayNum } = parseDateParts(d)
         const dow = new Date(Date.UTC(y, m - 1, dayNum, 12, 0, 0)).getUTCDay()
         if (dow >= 1 && dow <= 5) {
-          makeRangeSlots(d, Math.max(startHour, 13), Math.min(endHour, 17), baseTz).forEach(s =>
-            set.add(s)
-          )
+          makeRangeSlots(
+            d,
+            Math.max(startHour, rangeStartH),
+            Math.min(endHour, rangeEndH),
+            baseTz
+          ).forEach(s => set.add(s))
         }
       })
       return set
     })
     if (onNotify) {
-      onNotify('Filled weekday afternoons (1–5 PM) and auto-saved.')
+      onNotify(`Filled weekday ${labelText} and auto-saved.`)
     }
   }
 
@@ -676,7 +781,7 @@ export default function AvailabilityView({
     setGridMode('mine')
     setSpotlightUserId(null)
     if (onNotify) {
-      onNotify(`Now marking availability as guest "${trimmed}".`)
+      onNotify(`Now marking availability as "${trimmed}".`)
     }
   }
 
@@ -829,12 +934,15 @@ export default function AvailabilityView({
     }
   }
 
+  const topWindow = bestMeetingWindows[0] || null
+  const isDefaultWeek = weekStartYmd === defaultPollWeekStart
+
   return (
-    <div className="space-y-5">
-      {/* ── 1. Clean Poll Switcher & Meeting Setup Bar ── */}
-      <Card className="p-4 sm:p-5" delay={1}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-          {/* Poll Pills */}
+    <div className={isCompact ? 'space-y-3.5' : 'space-y-4 sm:space-y-5'}>
+      {/* ── 1. Unified Poll, Week & Meeting Controls Card ── */}
+      <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={1}>
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          {/* Left: Poll Selector Pills + New Poll */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             {polls.map(p => {
               const isSelected = p.id === activePoll.id
@@ -845,8 +953,11 @@ export default function AvailabilityView({
                   onClick={() => {
                     setSelectedPollId(p.id)
                     setSpotlightUserId(null)
+                    if (p.dates?.[0]) {
+                      setWeekAnchorDate(getWeekStartOfDate(p.dates[0], weekStartsOn))
+                    }
                   }}
-                  className={`px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold border cursor-pointer transition-all truncate max-w-full ${
+                  className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold border cursor-pointer transition-all truncate max-w-full ${
                     isSelected
                       ? 'bg-[var(--blue)] text-white border-[var(--blue)] shadow-2xs'
                       : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
@@ -860,7 +971,7 @@ export default function AvailabilityView({
             <button
               type="button"
               onClick={() => setShowNewPollForm(prev => !prev)}
-              className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                 showNewPollForm
                   ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]'
                   : 'bg-transparent text-[var(--blue-ink)] border-dashed border-[var(--border-strong)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)]'
@@ -871,15 +982,46 @@ export default function AvailabilityView({
             </button>
           </div>
 
-          {/* Right Controls: Meeting Duration + Share Link */}
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {activePoll.location && (
-              <BubbleTag label={activePoll.location} color="teal" size="md" />
-            )}
-
+          {/* Right: Week Stepper + Duration Selector + Share */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Week Navigation Stepper */}
             <div className="inline-flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
-              <span className="text-[11px] font-semibold text-[var(--text-muted)] px-2">
-                Length:
+              <button
+                type="button"
+                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}
+                aria-label="Previous week"
+                className="w-7 h-7 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs font-bold text-[var(--text)] px-2 whitespace-nowrap">
+                {weekLabel}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}
+                aria-label="Next week"
+                className="w-7 h-7 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
+              >
+                <ChevronRight size={14} />
+              </button>
+              {!isDefaultWeek && (
+                <button
+                  type="button"
+                  onClick={() => setWeekAnchorDate(defaultPollWeekStart)}
+                  title="Jump back to poll week"
+                  className="inline-flex items-center gap-1 px-2 h-7 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11px] font-semibold border-none cursor-pointer"
+                >
+                  <RotateCcw size={11} />
+                  <span>Poll Week</span>
+                </button>
+              )}
+            </div>
+
+            {/* Meeting Length Segmented Control */}
+            <div className="inline-flex items-center gap-0.5 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+              <span className="text-[11px] font-semibold text-[var(--text-muted)] px-1.5 hidden sm:inline">
+                Duration
               </span>
               {[30, 60, 90, 120].map(mins => (
                 <button
@@ -906,6 +1048,67 @@ export default function AvailabilityView({
               <span>Share</span>
             </button>
           </div>
+        </div>
+
+        {/* Summary Strip: Location + Avatar Stack + Top Match Preview */}
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2.5 ${
+            isCompact ? 'mt-2.5 pt-2.5' : 'mt-3.5 pt-3'
+          } border-t border-[var(--border-subtle)] text-xs`}
+        >
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            {activePoll.location && (
+              <span className="inline-flex items-center gap-1.5 text-[var(--text-muted)] font-medium">
+                <MapPin size={13} className="text-[var(--teal)] shrink-0" />
+                <span>{cleanText(activePoll.location)}</span>
+              </span>
+            )}
+
+            <div className="inline-flex items-center gap-2">
+              <div className="flex items-center -space-x-1.5">
+                {allParticipants.slice(0, 5).map(p => (
+                  <div
+                    key={p.userId}
+                    title={`${p.userName} (${(p.freeSlots || []).length} slots)`}
+                    className="rounded-full ring-2 ring-[var(--bg-card)]"
+                  >
+                    <Avatar initials={p.initials} bg={p.avatarBg} size={22} />
+                  </div>
+                ))}
+              </div>
+              <span className="text-[var(--text-muted)] font-medium">
+                {allParticipants.length}{' '}
+                {allParticipants.length === 1 ? 'responder' : 'responders'}
+              </span>
+            </div>
+          </div>
+
+          {topWindow && (
+            <button
+              type="button"
+              onMouseEnter={() =>
+                setHoveredWindowRange({ startMs: topWindow.startMs, endMs: topWindow.endMs })
+              }
+              onMouseLeave={() => setHoveredWindowRange(null)}
+              onClick={() => {
+                setPinnedSlotIso(topWindow.startIso)
+                setGridMode('group')
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--green-light)] text-[var(--green-ink)] text-[11.5px] font-semibold border border-[var(--green)]/25 cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              <Sparkles size={12} />
+              <span>
+                Top Match:{' '}
+                {formatTimeFromIso(topWindow.startIso, use24h, {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                }).replace(/,?\s*\d{1,2}:\d{2}.*$/, '')}{' '}
+                · {formatTimeFromIso(topWindow.startIso, use24h)} (
+                {topWindow.availableCount}/{allParticipants.length} free)
+              </span>
+            </button>
+          )}
         </div>
 
         {/* New Poll Drawer */}
@@ -968,159 +1171,123 @@ export default function AvailabilityView({
         )}
       </Card>
 
-      {/* ── 2. Main Interactive Grid + Right Best-Windows & Responders Panel ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1.68fr_1fr] gap-5 items-start">
-        {/* LEFT: Intuitive Auto-Saving Availability Grid */}
-        <Card className="p-4 sm:p-6 select-none" delay={2}>
-          {/* Mode & Week Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-3.5 border-b border-[var(--border)]">
-            {/* Segmented Step Switcher */}
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)] self-start">
+      {/* ── 2. Balanced 2-Column Workspace: Interactive Schedule + Sticky Right Rail ── */}
+      <div
+        className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_336px] xl:grid-cols-[minmax(0,1fr)_364px] ${
+          isCompact ? 'gap-3.5' : 'gap-4 sm:gap-5'
+        } items-start`}
+      >
+        {/* LEFT: Streamlined 7-Day Availability Schedule */}
+        <Card className={`${isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-5'} select-none`} delay={2}>
+          {/* Single Clean Grid Control Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3.5 mb-3.5 border-b border-[var(--border)]">
+            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
               <button
                 type="button"
                 onClick={() => {
                   setGridMode('mine')
                   setSpotlightUserId(null)
                 }}
-                className={`px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                className={`px-3 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
                   gridMode === 'mine'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                1. Mark My Times ({myFreeSlots.size})
+                Mark My Times ({myFreeSlots.size})
               </button>
               <button
                 type="button"
                 onClick={() => setGridMode('group')}
-                className={`px-3.5 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
+                className={`px-3 min-h-[34px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
                   gridMode === 'group'
                     ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                     : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                2. Group Heatmap ({allParticipants.length})
+                Group Heatmap ({allParticipants.length})
               </button>
             </div>
 
-            {/* Week Navigation */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}
-                aria-label="Previous week"
-                className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-xs sm:text-sm font-bold text-[var(--text)] px-1">{weekLabel}</span>
-              <button
-                type="button"
-                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}
-                aria-label="Next week"
-                className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Contextual Sub-Toolbar: Identity + Quick Helpers + Auto-Save Indicator */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             {gridMode === 'mine' ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
-                <span>
-                  Marking as <strong className="text-[var(--text)]">{activePersonName}</strong>
-                </span>
-                {guestOverrideName ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--text)]">
+                  <Avatar
+                    initials={activeParticipant.initials}
+                    bg={activeParticipant.avatarBg}
+                    size={22}
+                  />
+                  <span className="font-semibold max-w-[120px] truncate">
+                    {activePersonName}
+                  </span>
+                  {guestOverrideName && (
+                    <button
+                      type="button"
+                      onClick={() => setGuestOverrideName('')}
+                      className="text-[11px] font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                    >
+                      (Switch to You)
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleFillWeekdayRange(9, 12, 'mornings (9 AM–12 PM)')}
+                  className="px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                >
+                  + Mornings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFillWeekdayRange(13, 17, 'afternoons (1–5 PM)')}
+                  className="px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+                >
+                  + Afternoons
+                </button>
+                {myFreeSlots.size > 0 && (
                   <button
                     type="button"
-                    onClick={() => setGuestOverrideName('')}
-                    className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                    onClick={handleClearMyTimes}
+                    className="px-2 min-h-[28px] rounded-lg bg-transparent text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer"
                   >
-                    Switch back to {defaultUserName}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowGuestForm(prev => !prev)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-                  >
-                    <UserPlus size={12} />
-                    <span>{showGuestForm ? 'Cancel' : 'Add Guest'}</span>
+                    Clear
                   </button>
                 )}
 
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--green-light)] text-[var(--green-ink)] text-[11px] font-semibold">
                   <Check size={11} />
-                  <span>{autoSaveState === 'saving' ? 'Saving…' : 'Auto-saved'}</span>
+                  <span>{autoSaveState === 'saving' ? 'Saving…' : 'Saved'}</span>
                 </span>
               </div>
             ) : (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
-                <span>
-                  Darker green = more members free. Hover or click any slot to see who can make it.
-                </span>
+              <div className="flex flex-wrap items-center gap-2.5 text-[11.5px] text-[var(--text-muted)]">
+                <div className="inline-flex items-center gap-1.5">
+                  <span>Fewer</span>
+                  {[0.2, 0.42, 0.68, 0.92].map(a => (
+                    <span
+                      key={a}
+                      className="w-3.5 h-3.5 rounded inline-block"
+                      style={{ background: `rgba(16, 185, 129, ${a})` }}
+                    />
+                  ))}
+                  <span>All free</span>
+                </div>
                 {spotlightUserId && (
                   <button
                     type="button"
                     onClick={() => setSpotlightUserId(null)}
                     className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                   >
-                    Clear responder highlight
-                  </button>
-                )}
-              </div>
-            )}
-
-            {gridMode === 'mine' && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleFillWeekdayAfternoons}
-                  className="px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-                >
-                  Fill 1–5 PM
-                </button>
-                {myFreeSlots.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearMyTimes}
-                    className="px-2.5 min-h-[30px] rounded-lg bg-transparent text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer"
-                  >
-                    Clear Mine
+                    Clear highlight
                   </button>
                 )}
               </div>
             )}
           </div>
 
-          {/* Optional Add Guest Responder Bar */}
-          {showGuestForm && gridMode === 'mine' && (
-            <form
-              onSubmit={handleAddGuestSubmit}
-              className="mb-4 p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row gap-2 fade-in"
-            >
-              <input
-                type="text"
-                autoFocus
-                required
-                value={guestInput}
-                onChange={e => setGuestInput(e.target.value)}
-                placeholder="Teammate or guest name (e.g. Jordan Chen)"
-                className="flex-1 min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              />
-              <button
-                type="submit"
-                className="px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer"
-              >
-                Mark Guest Hours
-              </button>
-            </form>
-          )}
-
           {/* ── MOBILE VIEW (< md): 7-Day Selector + Chronological Top-to-Bottom Time Slots ── */}
-          <div className="md:hidden space-y-3.5">
+          <div className="md:hidden space-y-3">
             <div className="grid grid-cols-7 gap-1">
               {displayedWeekDates.map(ymd => {
                 const { y, m, d } = parseDateParts(ymd)
@@ -1170,7 +1337,6 @@ export default function AvailabilityView({
               })}
             </div>
 
-            {/* Chronological Single-Column List (Easy Top-to-Bottom Scanning, Zero Scrollbars) */}
             <div className="flex flex-col gap-1.5">
               {timeRows.map(r => {
                 const iso = gridSlots[mobileDay]?.[`${r.hour}:${r.minute}`]
@@ -1198,7 +1364,9 @@ export default function AvailabilityView({
                     key={iso}
                     type="button"
                     onClick={() => handleMobileSlotTap(iso)}
-                    className={`w-full min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-all ${rowStyle} ${
+                    className={`w-full ${
+                      isCompact ? 'min-h-[38px] py-1.5' : 'min-h-[44px] py-2'
+                    } px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-all ${rowStyle} ${
                       isInspected && gridMode === 'group' ? 'ring-2 ring-[var(--blue)]' : ''
                     } ${isSpotlit ? 'ring-2 ring-[var(--blue)]' : ''}`}
                   >
@@ -1237,157 +1405,207 @@ export default function AvailabilityView({
             </div>
           </div>
 
-          {/* ── DESKTOP / TABLET VIEW (md+): Crisp 7-Day Interactive Grid ── */}
+          {/* ── DESKTOP / TABLET VIEW (md+): Framed Modern 7-Day Schedule Grid ── */}
           <div
             className="hidden md:block"
             onMouseLeave={() => setHoveredSlotIso(null)}
           >
-            <table className="w-full table-fixed border-collapse text-xs">
-              <thead>
-                <tr>
-                  <th className="w-[68px] pb-2.5 pr-2 text-right text-[11px] font-semibold text-[var(--text-muted)]">
-                    Time
-                  </th>
-                  {displayedWeekDates.map(dateStr => {
-                    const { y, m, d } = parseDateParts(dateStr)
-                    const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-                    const dayShort = dt.toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      timeZone: 'UTC',
-                    })
-                    return (
-                      <th
-                        key={dateStr}
-                        className="pb-2.5 px-1 text-center font-semibold text-[var(--text)]"
-                      >
-                        <div className="text-xs font-bold">{dayShort}</div>
-                        <div className="text-[11px] font-normal text-[var(--text-muted)]">
-                          {m}/{d}
-                        </div>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {timeRows.map((r, rowIdx) => {
-                  const sampleIso = gridSlots[displayedWeekDates[0]]?.[`${r.hour}:${r.minute}`]
-                  const timeLabel = sampleIso ? formatTimeFromIso(sampleIso, use24h) : `${r.hour}:00`
-                  const isFullHour = r.minute === 0
-                  const isLastRow = rowIdx === timeRows.length - 1
-
-                  return (
-                    <tr key={`${r.hour}:${r.minute}`}>
-                      <td className="pr-2.5 py-0 text-right align-top text-[10.5px] text-[var(--text-muted)] font-mono-num whitespace-nowrap">
-                        {isFullHour ? (
-                          <span className="-mt-1.5 inline-block">{timeLabel}</span>
-                        ) : null}
-                      </td>
-                      {displayedWeekDates.map(dateStr => {
+            <div className="rounded-2xl border border-[var(--border)] overflow-hidden bg-[var(--bg-card)]">
+              <table className="w-full table-fixed border-collapse text-xs">
+                <thead>
+                  <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)]">
+                    <th className="w-[68px] py-2.5 px-2 text-right text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-light)] border-r border-[var(--border)]">
+                      Time
+                    </th>
+                    {displayedWeekDates.map((dateStr, colIdx) => {
+                      const { y, m, d } = parseDateParts(dateStr)
+                      const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+                      const dayShort = dt.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        timeZone: 'UTC',
+                      })
+                      const dayMarkedCount = timeRows.filter(r => {
                         const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
-                        const isMine = myFreeSlots.has(iso)
-                        const stat = slotStatsMap[iso]
-                        const count = stat?.availableCount || 0
-                        const otherCount = stat?.otherAvailableCount || 0
-                        const ratio = stat?.ratio || 0
-                        const isInspected = inspectedSlot?.iso === iso
-                        const isSpotlit = spotlightSet ? spotlightSet.has(iso) : false
-                        const isBooked = Boolean(stat?.scheduledEvent)
+                        return gridMode === 'mine'
+                          ? myFreeSlots.has(iso)
+                          : (slotStatsMap[iso]?.availableCount || 0) === allParticipants.length
+                      }).length
 
-                        let bg = 'var(--bg-surface)'
-                        let textColor = 'var(--text-muted)'
+                      return (
+                        <th
+                          key={dateStr}
+                          className={`py-2 px-1 text-center ${
+                            colIdx < 6 ? 'border-r border-[var(--border)]' : ''
+                          }`}
+                        >
+                          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                            {dayShort}
+                          </div>
+                          <div className="mt-0.5 flex items-center justify-center gap-1">
+                            <span className="text-sm font-extrabold font-mono-num text-[var(--text)]">
+                              {m}/{d}
+                            </span>
+                            {dayMarkedCount > 0 && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-[var(--green)]"
+                                title={
+                                  gridMode === 'mine'
+                                    ? `${dayMarkedCount} slots marked`
+                                    : `${dayMarkedCount} full-overlap slots`
+                                }
+                              />
+                            )}
+                          </div>
+                        </th>
+                      )
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeRows.map((r, rowIdx) => {
+                    const sampleIso = gridSlots[displayedWeekDates[0]]?.[`${r.hour}:${r.minute}`]
+                    const timeLabel = sampleIso
+                      ? formatTimeFromIso(sampleIso, use24h)
+                      : `${r.hour}:00`
+                    const isFullHour = r.minute === 0
+                    const isFirstRow = rowIdx === 0
 
-                        if (gridMode === 'mine') {
-                          if (isMine) {
-                            bg = 'var(--green)'
-                            textColor = '#ffffff'
-                          } else if (otherCount > 0) {
-                            bg = 'var(--green-light)'
-                            textColor = 'var(--green-ink)'
+                    return (
+                      <tr key={`${r.hour}:${r.minute}`}>
+                        <td
+                          className={`pr-2 py-0 text-right align-middle text-[10.5px] text-[var(--text-muted)] font-mono-num whitespace-nowrap bg-[var(--bg-surface)]/55 border-r border-[var(--border)] ${
+                            !isFirstRow
+                              ? isFullHour
+                                ? 'border-t border-t-[var(--border)]'
+                                : 'border-t border-dashed border-t-[var(--border-subtle)]'
+                              : ''
+                          }`}
+                        >
+                          {isFullHour ? timeLabel : ''}
+                        </td>
+                        {displayedWeekDates.map((dateStr, colIdx) => {
+                          const iso = gridSlots[dateStr]?.[`${r.hour}:${r.minute}`]
+                          const isMine = myFreeSlots.has(iso)
+                          const stat = slotStatsMap[iso]
+                          const slotMs = stat?.ms || 0
+                          const count = stat?.availableCount || 0
+                          const otherCount = stat?.otherAvailableCount || 0
+                          const ratio = stat?.ratio || 0
+                          const isInspected = inspectedSlot?.iso === iso
+                          const isSpotlit = spotlightSet ? spotlightSet.has(iso) : false
+                          const isInHoveredWindow = Boolean(
+                            hoveredWindowRange &&
+                              slotMs >= hoveredWindowRange.startMs &&
+                              slotMs < hoveredWindowRange.endMs
+                          )
+                          const isBooked = Boolean(stat?.scheduledEvent)
+                          const campusConflict = stat?.campusConflict
+
+                          let bg = 'transparent'
+                          let textColor = 'var(--text-muted)'
+
+                          if (gridMode === 'mine') {
+                            if (isMine) {
+                              bg = 'var(--green)'
+                              textColor = '#ffffff'
+                            } else if (otherCount > 0) {
+                              bg = 'var(--green-light)'
+                              textColor = 'var(--green-ink)'
+                            }
+                          } else if (count > 0) {
+                            const alpha = (0.18 + ratio * 0.74).toFixed(2)
+                            bg = `rgba(16, 185, 129, ${alpha})`
+                            textColor = ratio >= 0.55 ? '#ffffff' : 'var(--text)'
                           }
-                        } else if (count > 0) {
-                          const alpha = (0.18 + ratio * 0.74).toFixed(2)
-                          bg = `rgba(16, 185, 129, ${alpha})`
-                          textColor = ratio >= 0.55 ? '#ffffff' : 'var(--text)'
-                        }
 
-                        return (
-                          <td
-                            key={iso}
-                            onMouseDown={() => handleCellMouseDown(iso)}
-                            onMouseEnter={() => handleCellMouseEnter(iso)}
-                            onClick={() => setPinnedSlotIso(iso)}
-                            title={`${formatTimeFromIso(iso, use24h, {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })} — ${count}/${allParticipants.length} free`}
-                            className={`h-[26px] border-x border-[var(--border)] ${
-                              isFullHour
-                                ? 'border-t border-t-[var(--border-strong)]'
-                                : 'border-t border-dashed border-t-[var(--border)]'
-                            } ${isLastRow ? 'border-b border-b-[var(--border-strong)]' : ''}
-                              cursor-pointer text-center text-[10.5px] font-semibold transition-colors ${
-                                isSpotlit
-                                  ? 'ring-2 ring-[var(--blue)] relative z-10'
+                          const conflictNote = campusConflict
+                            ? ` · Campus event: ${cleanText(campusConflict.title || 'Club Event')}`
+                            : ''
+
+                          return (
+                            <td
+                              key={iso}
+                              onMouseDown={() => handleCellMouseDown(iso)}
+                              onMouseEnter={() => handleCellMouseEnter(iso)}
+                              onClick={() => setPinnedSlotIso(iso)}
+                              title={`${formatTimeFromIso(iso, use24h, {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                              })} — ${count}/${allParticipants.length} free${conflictNote}`}
+                              className={`relative ${
+                                isCompact ? 'h-[21px]' : 'h-[26px]'
+                              } ${colIdx < 6 ? 'border-r border-[var(--border)]' : ''} ${
+                                !isFirstRow
+                                  ? isFullHour
+                                    ? 'border-t border-t-[var(--border-strong)]'
+                                    : 'border-t border-dashed border-t-[var(--border-subtle)]'
+                                  : ''
+                              } cursor-pointer text-center text-[10.5px] font-semibold transition-colors ${
+                                isInHoveredWindow || isSpotlit
+                                  ? 'ring-2 ring-inset ring-[var(--blue)] z-10'
                                   : isInspected && gridMode === 'group'
-                                    ? 'ring-1.5 ring-[var(--blue)] relative z-10'
-                                    : ''
+                                    ? 'ring-1.5 ring-inset ring-[var(--blue)] z-10'
+                                    : 'hover:brightness-95'
                               }`}
-                            style={{ background: bg, color: textColor }}
-                          >
-                            {isBooked ? (
-                              <span className="inline-block px-1 rounded bg-[var(--blue)] text-white text-[9.5px] font-bold leading-tight">
-                                Booked
-                              </span>
-                            ) : gridMode === 'mine' ? (
-                              isMine ? (
-                                '✓'
-                              ) : otherCount > 0 ? (
-                                <span className="text-[9.5px] opacity-80">{otherCount}</span>
+                              style={{ background: bg, color: textColor }}
+                            >
+                              {campusConflict && !isBooked && (
+                                <span
+                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--yellow)]"
+                                  aria-hidden="true"
+                                />
+                              )}
+
+                              {isBooked ? (
+                                <span className="inline-block px-1.5 rounded bg-[var(--blue)] text-white text-[9.5px] font-bold leading-tight">
+                                  Booked
+                                </span>
+                              ) : gridMode === 'mine' ? (
+                                isMine ? (
+                                  '✓'
+                                ) : otherCount > 0 ? (
+                                  <span className="text-[9.5px] opacity-80 font-mono-num">
+                                    {otherCount}
+                                  </span>
+                                ) : (
+                                  ''
+                                )
+                              ) : count > 0 ? (
+                                <span className="font-mono-num text-[10px]">
+                                  {count}/{allParticipants.length}
+                                </span>
                               ) : (
                                 ''
-                              )
-                            ) : count > 0 ? (
-                              `${count}/${allParticipants.length}`
-                            ) : (
-                              ''
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-            {/* Simple Visual Legend */}
-            <div className="mt-3.5 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
-              {gridMode === 'mine' ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-[var(--green)] inline-block" />
-                    <span>You are free</span>
-                  </span>
+            {/* Clean Footer Legend */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded bg-[var(--green)] inline-block" />
+                  <span>{gridMode === 'mine' ? 'You are free' : 'High group overlap'}</span>
+                </span>
+                {gridMode === 'mine' && (
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded bg-[var(--green-light)] border border-[var(--green)]/40 inline-block" />
-                    <span>Teammates free (number = count)</span>
+                    <span>Teammates free</span>
                   </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span>Fewer</span>
-                  {[0.2, 0.42, 0.68, 0.92].map(a => (
-                    <span
-                      key={a}
-                      className="w-3.5 h-3.5 rounded inline-block"
-                      style={{ background: `rgba(16, 185, 129, ${a})` }}
-                    />
-                  ))}
-                  <span>Everyone free</span>
-                </div>
-              )}
+                )}
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[var(--yellow)] inline-block" />
+                  <span>Club event on calendar</span>
+                </span>
+              </div>
 
               {inspectedSlot && (
                 <span className="font-semibold text-[var(--text)] font-mono-num">
@@ -1403,29 +1621,28 @@ export default function AvailabilityView({
           </div>
         </Card>
 
-        {/* RIGHT: 1) Merged Best Meeting Windows + 2) Responders & Slot Breakdown */}
-        <div className="space-y-4">
-          {/* Card 1: Best Meeting Windows (Contiguous Ranges + 1-Click Schedule!) */}
-          <Card className="p-4 sm:p-5" delay={3}>
+        {/* RIGHT STICKY RAIL: 1) Ranked Best Meeting Windows + 2) Team Responders & Slot Inspector */}
+        <div className={`lg:sticky lg:top-5 ${isCompact ? 'space-y-3.5' : 'space-y-4'}`}>
+          {/* Card 1: Ranked Best Meeting Windows */}
+          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={3}>
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-[var(--yellow)] shrink-0" />
                 <h3 className="text-sm font-bold text-[var(--text)]">Best Meeting Windows</h3>
               </div>
               <BubbleTag
-                label={`${durationMins === 30 ? '30m' : `${durationMins / 60}h`} fit`}
+                label={`${durationMins === 30 ? '30m' : `${durationMins / 60}h`} min`}
                 color="blue"
                 size="sm"
               />
             </div>
-            <p className="text-xs text-[var(--text-muted)] mb-3.5">
-              Top overlapping blocks where members can meet for at least{' '}
-              {durationMins === 30 ? '30 mins' : `${durationMins} mins`}.
+            <p className="text-xs text-[var(--text-muted)] mb-3">
+              Hover a window to preview its full block on the schedule.
             </p>
 
             {bestMeetingWindows.length > 0 ? (
               <div className="flex flex-col gap-2.5">
-                {bestMeetingWindows.map(win => {
+                {bestMeetingWindows.map((win, idx) => {
                   const dayLabel = formatTimeFromIso(win.startIso, use24h, {
                     weekday: 'short',
                     month: 'short',
@@ -1434,42 +1651,92 @@ export default function AvailabilityView({
                   const startClock = formatTimeFromIso(win.startIso, use24h)
                   const endClock = formatTimeFromIso(win.endIso, use24h)
                   const isEveryone = win.availableCount === allParticipants.length
+                  const pct = Math.round(
+                    (win.availableCount / Math.max(1, allParticipants.length)) * 100
+                  )
 
                   return (
                     <div
                       key={win.id}
-                      onMouseEnter={() => setHoveredSlotIso(win.startIso)}
-                      onMouseLeave={() => setHoveredSlotIso(null)}
+                      onMouseEnter={() => {
+                        setHoveredSlotIso(win.startIso)
+                        setHoveredWindowRange({ startMs: win.startMs, endMs: win.endMs })
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredSlotIso(null)
+                        setHoveredWindowRange(null)
+                      }}
                       onClick={() => setPinnedSlotIso(win.startIso)}
-                      className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--blue)]/60 transition-colors space-y-2.5 cursor-pointer"
+                      style={{
+                        borderLeftWidth: '3.5px',
+                        borderLeftColor: win.scheduledEvent
+                          ? 'var(--blue)'
+                          : idx === 0
+                            ? 'var(--green)'
+                            : 'var(--teal)',
+                      }}
+                      className={`content-tile content-tile-interactive ${
+                        isCompact ? 'p-2.5 space-y-2' : 'p-3.5 space-y-2.5'
+                      } rounded-xl hover:border-[var(--blue)] cursor-pointer`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs sm:text-[13px] font-bold text-[var(--text)]">
-                            {dayLabel} · {startClock} – {endClock}
-                          </div>
-                          <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">
-                            {win.availableUsers.map(u => u.userName).join(', ')}
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num ${
+                                idx === 0
+                                  ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
+                                  : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                              }`}
+                            >
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs sm:text-[13px] font-bold text-[var(--text)] truncate">
+                              {dayLabel} · {startClock} – {endClock}
+                            </span>
                           </div>
                         </div>
 
                         <BubbleTag
                           label={
                             isEveryone
-                              ? `All ${win.availableCount} Free`
-                              : `${win.availableCount}/${allParticipants.length} Free`
+                              ? `All ${win.availableCount}`
+                              : `${win.availableCount}/${allParticipants.length}`
                           }
-                          color="green"
+                          color={isEveryone ? 'green' : 'blue'}
                           size="sm"
                         />
                       </div>
 
-                      {win.scheduledEvent ? (
-                        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-subtle)]">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--blue-ink)]">
-                            <Check size={13} /> Scheduled on Calendar
+                      {/* Overlap Progress Bar */}
+                      <div className="w-full h-1.5 rounded-full bg-[var(--bg-subtle)] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[var(--green)] transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+
+                      {/* Responder Avatars + Schedule Action */}
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex items-center -space-x-1.5 shrink-0">
+                            {win.availableUsers.slice(0, 4).map(u => (
+                              <div
+                                key={u.userId}
+                                title={u.userName}
+                                className="rounded-full ring-1 ring-[var(--bg-surface)]"
+                              >
+                                <Avatar initials={u.initials} bg={u.avatarBg} size={20} />
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-[11px] text-[var(--text-muted)] truncate">
+                            {win.availableUsers.map(u => u.userName.split(' ')[0]).join(', ')}
                           </span>
-                          <div className="flex items-center gap-2">
+                        </div>
+
+                        {win.scheduledEvent ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             {onOpenCalendar && (
                               <button
                                 type="button"
@@ -1477,10 +1744,10 @@ export default function AvailabilityView({
                                   e.stopPropagation()
                                   onOpenCalendar()
                                 }}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                               >
-                                <span>View</span>
-                                <ArrowRight size={12} />
+                                <span>Calendar</span>
+                                <ArrowRight size={11} />
                               </button>
                             )}
                             <button
@@ -1493,15 +1760,13 @@ export default function AvailabilityView({
                                   win.scheduledEvent
                                 )
                               }}
-                              className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer hover:opacity-85"
+                              className="inline-flex items-center gap-1 px-2 min-h-[28px] rounded-lg bg-[var(--red-light)] text-[var(--red-ink)] text-[11px] font-semibold border-none cursor-pointer hover:opacity-85"
                             >
                               <Trash2 size={11} />
                               <span>Cancel</span>
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-end pt-1">
+                        ) : (
                           <button
                             type="button"
                             disabled={bookingBusy}
@@ -1509,16 +1774,13 @@ export default function AvailabilityView({
                               e.stopPropagation()
                               handleScheduleSlot(win.startIso)
                             }}
-                            className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
+                            className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--blue)] text-white text-[11.5px] font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity shrink-0"
                           >
-                            <CalendarPlus size={13} />
-                            <span>
-                              Schedule ({startClock},{' '}
-                              {durationMins === 30 ? '30m' : `${durationMins / 60}h`})
-                            </span>
+                            <CalendarPlus size={12} />
+                            <span>Schedule</span>
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -1526,30 +1788,63 @@ export default function AvailabilityView({
             ) : (
               <div className="py-5 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
                 No {durationMins}-minute overlapping block found yet for this week. Mark more hours
-                or switch Length to 30m.
+                or switch Duration to 30m.
               </div>
             )}
           </Card>
 
-          {/* Card 2: Responders Spotlight & Selected Slot Breakdown */}
-          <Card className="p-4 sm:p-5 space-y-4" delay={4}>
+          {/* Card 2: Team Responders & Slot Breakdown */}
+          <Card
+            className={`${isCompact ? 'p-3.5 sm:p-4 space-y-3' : 'p-4 sm:p-5 space-y-4'}`}
+            delay={4}
+          >
             <div>
-              <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center justify-between gap-2 mb-2.5">
                 <div className="flex items-center gap-2">
                   <Users size={15} className="text-[var(--blue)] shrink-0" />
                   <h3 className="text-sm font-bold text-[var(--text)]">
                     Responders ({allParticipants.length})
                   </h3>
                 </div>
-                <span className="text-[11px] text-[var(--text-muted)]">
-                  Click to highlight
-                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setShowGuestForm(prev => !prev)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  {showGuestForm ? <X size={12} /> : <UserPlus size={12} />}
+                  <span>{showGuestForm ? 'Close' : 'Add Guest'}</span>
+                </button>
               </div>
+
+              {showGuestForm && (
+                <form
+                  onSubmit={handleAddGuestSubmit}
+                  className="mb-3 p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex gap-2 fade-in"
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    required
+                    value={guestInput}
+                    onChange={e => setGuestInput(e.target.value)}
+                    placeholder="Teammate name…"
+                    className="flex-1 min-h-[36px] px-3 py-1.5 rounded-lg bg-[var(--bg-card)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 min-h-[36px] rounded-lg bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    Mark Hours
+                  </button>
+                </form>
+              )}
 
               <div className="flex flex-wrap gap-1.5">
                 {allParticipants.map(p => {
                   const isSpotlit = spotlightUserId === p.userId
-                  const isMe = p.userId === currentUserId
+                  const isEditing = p.userId === currentUserId
+                  const isSignedYou = p.userId === signedInUserId
                   return (
                     <button
                       key={p.userId}
@@ -1557,14 +1852,23 @@ export default function AvailabilityView({
                       onClick={() =>
                         setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
                       }
-                      className={`px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-all ${
+                      title="Click to spotlight responder's free times"
+                      className={`inline-flex items-center gap-1.5 pl-1.5 pr-2.5 min-h-[30px] rounded-full text-xs font-semibold cursor-pointer border transition-all ${
                         isSpotlit
                           ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                          : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
+                          : isEditing
+                            ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
+                            : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
                       }`}
                     >
-                      {p.userName}
-                      {isMe ? ' (You)' : ''} · {(p.freeSlots || []).length}
+                      <Avatar initials={p.initials} bg={p.avatarBg} size={20} />
+                      <span className="truncate max-w-[115px]">
+                        {p.userName}
+                        {isSignedYou ? ' (You)' : ''}
+                      </span>
+                      <span className="text-[10.5px] opacity-75 font-mono-num">
+                        {(p.freeSlots || []).length}
+                      </span>
                     </button>
                   )
                 })}
@@ -1573,7 +1877,7 @@ export default function AvailabilityView({
 
             {/* Hovered / Selected Single-Slot Breakdown */}
             {inspectedSlot && (
-              <div className="pt-3.5 border-t border-[var(--border)] space-y-2.5">
+              <div className="pt-3 border-t border-[var(--border)] space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--text)]">
                     <Clock size={13} className="text-[var(--blue)]" />
@@ -1591,13 +1895,19 @@ export default function AvailabilityView({
                       onClick={() => handleScheduleSlot(inspectedSlot.iso)}
                       className="text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                     >
-                      Schedule this slot &rarr;
+                      Schedule slot &rarr;
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+                {inspectedSlot.campusConflict && (
+                  <div className="px-2.5 py-1.5 rounded-lg bg-[var(--yellow-light)] text-[var(--yellow-ink)] text-[11px] font-medium">
+                    Club event: {cleanText(inspectedSlot.campusConflict.title || 'Scheduled Event')}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2.5 text-xs">
+                  <div className="p-2.5 rounded-xl content-tile">
                     <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--green-ink)] mb-1">
                       Free ({inspectedSlot.availableUsers.length})
                     </div>
@@ -1614,7 +1924,7 @@ export default function AvailabilityView({
                     )}
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
+                  <div className="p-2.5 rounded-xl content-tile">
                     <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--text-muted)] mb-1">
                       Busy ({inspectedSlot.unavailableUsers.length})
                     </div>

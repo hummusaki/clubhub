@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Calendar,
   Check,
@@ -82,6 +82,7 @@ export default function ClubsHub({
   onRefresh,
   localPosts: externalLocalPosts,
   onAddLocalPost,
+  onPageContextChange,
   onNotify,
 }) {
   const allClubs = useMemo(() => {
@@ -143,6 +144,36 @@ export default function ClubsHub({
 
   const localPosts = externalLocalPosts ?? internalLocalPosts
   const isCompactDensity = Boolean(userSettings?.compactCards)
+
+  useEffect(() => {
+    if (compact || !onPageContextChange) return
+    let label = `My Clubs (${joinedClubs.length})`
+    if (section === 'discover') {
+      if (category !== 'All') {
+        const catMeta = getClubCategoryMeta(category)
+        label = `Discover · ${catMeta.shortLabel || catMeta.label}`
+      } else {
+        label = 'Discover Clubs'
+      }
+    } else if (section === 'updates') {
+      label = 'Club Updates'
+    } else if (section === 'directory') {
+      label = 'Club Directory'
+    }
+    onPageContextChange({
+      nav: 'clubs',
+      label,
+      modal: showPostForm ? 'post' : showAddPersonForm ? 'person' : null,
+    })
+  }, [
+    compact,
+    onPageContextChange,
+    section,
+    category,
+    joinedClubs.length,
+    showPostForm,
+    showAddPersonForm,
+  ])
 
   const categoryFilters = useMemo(() => {
     const pool = section === 'discover' ? allClubs : joinedClubs
@@ -432,12 +463,18 @@ export default function ClubsHub({
 
   function renderClubCard(club) {
     const isJoined = Boolean(club.joined)
+    const catMeta = getClubCategoryMeta(club.category)
+    const accentColor = catMeta?.color || 'blue'
     return (
       <div
         key={club.id}
-        className={`${
+        style={{
+          borderTopWidth: '3px',
+          borderTopColor: `var(--${accentColor})`,
+        }}
+        className={`content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2' : 'p-4 gap-3.5'
-        } rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between transition-all hover:border-[var(--border-strong)]`}
+        } rounded-[var(--radius-sm)] flex flex-col justify-between`}
       >
         <div>
           <div className={`flex items-start justify-between gap-2.5 ${isCompactDensity ? 'mb-1.5' : 'mb-2.5'}`}>
@@ -955,13 +992,17 @@ export default function ClubsHub({
           )}
 
           {feedPosts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {feedPosts.map(post => {
                 const meta = SOURCE_META[post.source] || SOURCE_META.instagram
                 return (
                   <div
                     key={post.id}
-                    className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-start gap-3"
+                    style={{
+                      borderLeftWidth: '3.5px',
+                      borderLeftColor: `var(--${meta.color})`,
+                    }}
+                    className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex items-start gap-3"
                   >
                     <IconBadge color={meta.color} size={36} radius={10} className="mt-0.5">
                       <PlatformIcon type={post.source} size={18} />
@@ -1194,13 +1235,18 @@ export default function ClubsHub({
               </div>
 
               {filteredOfficers.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filteredOfficers.map(m => {
                     const isCopied = copiedEmailId === m.id
+                    const officerColor = m.color || 'blue'
                     return (
                       <div
                         key={m.id}
-                        className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors flex flex-col justify-between gap-3.5"
+                        style={{
+                          borderTopWidth: '3px',
+                          borderTopColor: `var(--${officerColor})`,
+                        }}
+                        className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex flex-col justify-between gap-3.5"
                       >
                         <div className="space-y-2.5">
                           <div className="flex items-start justify-between gap-2.5">
@@ -1294,13 +1340,17 @@ export default function ClubsHub({
               </div>
 
               {filteredMembers.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filteredMembers.map(m => {
                     const isCopied = copiedEmailId === m.id
                     return (
                       <div
                         key={m.id}
-                        className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors flex flex-col justify-between gap-3"
+                        style={{
+                          borderTopWidth: '3px',
+                          borderTopColor: 'var(--teal)',
+                        }}
+                        className="content-tile content-tile-interactive p-4 rounded-[var(--radius-sm)] flex flex-col justify-between gap-3"
                       >
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-3 min-w-0">

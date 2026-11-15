@@ -11,7 +11,7 @@ import ClubsHub from './components/ClubsHub'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Card, IconBadge, Avatar, ToastViewport, cleanText } from './components/ui'
+import { Card, IconBadge, ToastViewport, cleanText } from './components/ui'
 import { categorizeClub, getClubCategoryMeta } from './utils/clubCategories'
 import {
   clubs as initialClubs,
@@ -29,7 +29,28 @@ import {
   createEvent,
   deleteEvent,
   getStaticSnapshot,
+  syncCalendarFeedProfile,
 } from './api/client'
+import {
+  DEFAULT_CALENDAR_SYNC_SETTINGS,
+  normalizeCalendarSyncSettings,
+  extractGoingEventIds,
+  filterEventsForCalendarSync,
+  buildIcsCalendar,
+  downloadIcsFile,
+  getOrCreateCalendarSyncToken,
+  isLocalhostUrl,
+} from './utils/calendarSync'
+import {
+  getEffectiveGoogleClientId,
+  saveGoogleClientId,
+  getStoredGoogleCalSyncMeta,
+  saveStoredGoogleCalSyncMeta,
+  clearStoredGoogleCalSyncMeta,
+  requestGoogleCalendarAccessToken,
+  pushEventsToGoogleCalendar,
+} from './utils/googleCalendarSync'
+import { buildDashboardPageTitle } from './utils/pageTitle'
 
 const AUTH_USER_STORAGE_KEY = 'clubhub_auth_user'
 const EMAIL_ACCOUNTS_KEY = 'clubhub_registered_accounts_v2'
@@ -90,6 +111,7 @@ const DEFAULT_USER_SETTINGS = {
     instagram: true,
     email: true,
   },
+  calendarSync: DEFAULT_CALENDAR_SYNC_SETTINGS,
 }
 
 function getStoredUserSettings() {
@@ -104,6 +126,7 @@ function getStoredUserSettings() {
         ...DEFAULT_USER_SETTINGS.channels,
         ...(parsed?.channels || {}),
       },
+      calendarSync: normalizeCalendarSyncSettings(parsed?.calendarSync),
     }
   } catch {
     return DEFAULT_USER_SETTINGS
@@ -400,6 +423,7 @@ function MainDashboard({
   }, [isDemo, hasClerkKey, user?.id, accountEmail])
 
   const [activeNav, setActiveNav] = useState('overview')
+  const [pageSubContext, setPageSubContext] = useState(null)
   const [clubsInitialSection, setClubsInitialSection] = useState(null)
   const [calendarInitialView, setCalendarInitialView] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -662,6 +686,9 @@ function MainDashboard({
       setCalendarInitialView(null)
     }
     setActiveNav(nextNav)
+    if (nextNav === 'overview' || nextNav === 'settings') {
+      setPageSubContext(null)
+    }
     if (nextNav === 'availability' || nextNav === 'settings') {
       setSearchQuery('')
     }
@@ -893,19 +920,388 @@ function MainDashboard({
     user?.email?.split('@')[0] ||
     (isDemo ? 'Demo Guest' : 'Student')
 
-  const userInitials =
-    userDisplayName
-      .split(' ')
-      .filter(Boolean)
-      .map(w => w[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase() || 'ST'
+  // ── Calendar Integration, Live Joined-Club Sync & Browser Tab Title ──
+  const calSyncSettings = useMemo(
+    () => normalizeCalendarSyncSettings(userSettings?.calendarSync),
+    [userSettings?.calendarSync]
+  )
 
-  const userAvatarGradient =
-    userSettings?.avatarBg ||
-    user?.avatarBg ||
-    'linear-gradient(135deg, var(--blue), var(--purple))'
+  const [syncToken, setSyncToken] = useState(() => getOrCreateCalendarSyncToken(accountKey))
+  const [feedState, setFeedState] = useState({
+    mode: 'static',
+    feedHttpUrl: '',
+    feedWebcalUrl: '',
+  })
+  const [googleLiveMeta, setGoogleLiveMeta] = useState(() =>
+    getStoredGoogleCalSyncMeta(accountKey)
+  )
+  const [googleSyncBusy, setGoogleSyncBusy] = useState(false)
+  const [googleClientIdVersion, setGoogleClientIdVersion] = useState(0)
+  const googleTokenRef = useRef(null)
+
+  const hasGoogleClientId = useMemo(
+    () => Boolean(getEffectiveGoogleClientId()),
+    [googleClientIdVersion]
+  )
+
+  useEffect(() => {
+    setSyncToken(getOrCreateCalendarSyncToken(accountKey))
+    setGoogleLiveMeta(getStoredGoogleCalSyncMeta(accountKey))
+    googleTokenRef.current = null
+  }, [accountKey])
+
+  const joinedClubsList = useMemo(
+    () => effectiveClubs.filter(c => Boolean(c.joined)),
+    [effectiveClubs]
+  )
+
+  const goingEventIds = useMemo(
+    () => Array.from(extractGoingEventIds(rsvpMap, effectiveSchedule)),
+    [rsvpMap, effectiveSchedule]
+  )
+
+  const syncedCalendarEvents = useMemo(
+    () =>
+      filterEventsForCalendarSync(effectiveSchedule, {
+        joinedClubIds,
+        rsvpIds: goingEventIds,
+        rsvpMap,
+        settings: calSyncSettings,
+      }),
+    [effectiveSchedule, joinedClubIds, goingEventIds, rsvpMap, calSyncSettings]
+  )
+
+  const feedFallbackEvents = useMemo(
+    () =>
+      effectiveSchedule.map(ev => ({
+        id: ev.id,
+        clubId: ev.clubId || null,
+        clubName: ev.club || 'ClubHub',
+        title: ev.event || 'Club Event',
+        start: ev.startIso,
+        end: ev.endIso || null,
+        allDay: Boolean(ev.allDay),
+        location: ev.location || 'Campus / TBD',
+        permalink: ev.permalink || null,
+        isCustom: Boolean(ev.isCustom),
+        isBookedCollab: Boolean(ev.isBookedCollab),
+      })),
+    [effectiveSchedule]
+  )
+
+  const flushCalendarFeedProfile = useCallback(
+    async (overrideToken = null) => {
+      const activeToken = overrideToken || syncToken
+      if (!activeToken) return { ok: false, mode: 'static', feedHttpUrl: '', feedWebcalUrl: '' }
+      const res = await syncCalendarFeedProfile(activeToken, {
+        accountKey,
+        displayName: userDisplayName,
+        joinedClubIds,
+        rsvpIds: goingEventIds,
+        customEvents: localAddedEvents,
+        fallbackEvents: feedFallbackEvents,
+        removedEventIds: Array.from(removedEventIds),
+        settings: calSyncSettings,
+      })
+      setFeedState({
+        mode: res.mode || 'static',
+        feedHttpUrl: res.feedHttpUrl || '',
+        feedWebcalUrl: res.feedWebcalUrl || '',
+      })
+      return res
+    },
+    [
+      syncToken,
+      accountKey,
+      userDisplayName,
+      joinedClubIds,
+      goingEventIds,
+      localAddedEvents,
+      feedFallbackEvents,
+      removedEventIds,
+      calSyncSettings,
+    ]
+  )
+
+  // Keep the live webcal:// / .ics subscription feed automatically synced whenever joined clubs, RSVPs, or settings change
+  useEffect(() => {
+    flushCalendarFeedProfile()
+  }, [flushCalendarFeedProfile])
+
+  const handleDownloadFilteredIcs = useCallback(() => {
+    const ics = buildIcsCalendar(syncedCalendarEvents, {
+      settings: calSyncSettings,
+      rsvpIds: goingEventIds,
+      rsvpMap,
+      joinedCount,
+    })
+    downloadIcsFile(ics, 'clubhub-calendar.ics')
+    showToast(
+      `Downloaded clubhub-calendar.ics (${syncedCalendarEvents.length} ${
+        syncedCalendarEvents.length === 1 ? 'event' : 'events'
+      })!`
+    )
+  }, [syncedCalendarEvents, calSyncSettings, goingEventIds, rsvpMap, joinedCount, showToast])
+
+  const handleSubscribeApple = useCallback(async () => {
+    const res = await flushCalendarFeedProfile()
+    const webcalUrl = res.feedWebcalUrl || feedState.feedWebcalUrl
+    if (webcalUrl && typeof window !== 'undefined') {
+      window.location.assign(webcalUrl)
+      showToast(
+        `Opening Apple Calendar live subscription (${syncedCalendarEvents.length} ${
+          syncedCalendarEvents.length === 1 ? 'event' : 'events'
+        }) — auto-updates with your joined clubs!`,
+        {
+          actionLabel: 'Download .ics file',
+          onAction: handleDownloadFilteredIcs,
+        }
+      )
+      return
+    }
+    handleDownloadFilteredIcs()
+  }, [
+    flushCalendarFeedProfile,
+    feedState.feedWebcalUrl,
+    syncedCalendarEvents.length,
+    showToast,
+    handleDownloadFilteredIcs,
+  ])
+
+  const handleIntegrateGoogle = useCallback(
+    async ({ forceImport = false } = {}) => {
+      const res = await flushCalendarFeedProfile()
+      const webcalUrl = res.feedWebcalUrl || feedState.feedWebcalUrl
+      const httpUrl = res.feedHttpUrl || feedState.feedHttpUrl
+
+      if (!forceImport && webcalUrl && !isLocalhostUrl(httpUrl || webcalUrl)) {
+        const gcalSubUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
+        window.open(gcalSubUrl, '_blank', 'noopener,noreferrer')
+        showToast('Opening Google Calendar live subscription!')
+        return
+      }
+
+      const ics = buildIcsCalendar(syncedCalendarEvents, {
+        settings: calSyncSettings,
+        rsvpIds: goingEventIds,
+        rsvpMap,
+        joinedCount,
+      })
+      downloadIcsFile(ics, 'clubhub-calendar.ics')
+      window.open(
+        'https://calendar.google.com/calendar/u/0/r/settings/export',
+        '_blank',
+        'noopener,noreferrer'
+      )
+      showToast(
+        `Exported ${syncedCalendarEvents.length} synced ${
+          syncedCalendarEvents.length === 1 ? 'event' : 'events'
+        } — drop clubhub-calendar.ics into Google Calendar Import!`
+      )
+    },
+    [
+      flushCalendarFeedProfile,
+      feedState.feedWebcalUrl,
+      feedState.feedHttpUrl,
+      syncedCalendarEvents,
+      calSyncSettings,
+      goingEventIds,
+      rsvpMap,
+      joinedCount,
+      showToast,
+    ]
+  )
+
+  const handleConnectOrSyncGoogleLive = useCallback(
+    async ({ silent = false } = {}) => {
+      const clientId = getEffectiveGoogleClientId()
+      if (!clientId) {
+        if (!silent) handleIntegrateGoogle()
+        return
+      }
+      setGoogleSyncBusy(true)
+      try {
+        let tokenData = googleTokenRef.current
+        if (!tokenData || !tokenData.accessToken || Date.now() >= tokenData.expiresAt) {
+          if (silent) {
+            setGoogleSyncBusy(false)
+            return
+          }
+          tokenData = await requestGoogleCalendarAccessToken(clientId)
+          googleTokenRef.current = tokenData
+        }
+
+        const storedMeta = getStoredGoogleCalSyncMeta(accountKey)
+        const syncRes = await pushEventsToGoogleCalendar({
+          accessToken: tokenData.accessToken,
+          events: syncedCalendarEvents,
+          settings: calSyncSettings,
+          joinedCount,
+          storedCalendarId: storedMeta?.calendarId || null,
+        })
+
+        const nextMeta = {
+          connected: true,
+          calendarId: syncRes.calendarId,
+          calendarTitle: syncRes.calendarTitle,
+          lastSyncedAt: syncRes.syncedAt,
+          syncedCount: syncRes.syncedCount,
+        }
+        saveStoredGoogleCalSyncMeta(accountKey, nextMeta)
+        setGoogleLiveMeta(nextMeta)
+
+        if (!silent) {
+          showToast(
+            `Synced ${syncRes.syncedCount} ${
+              syncRes.syncedCount === 1 ? 'event' : 'events'
+            } to Google Calendar ("${syncRes.calendarTitle}")!`,
+            {
+              actionLabel: 'Open Google Calendar',
+              onAction: () =>
+                window.open('https://calendar.google.com', '_blank', 'noopener,noreferrer'),
+            }
+          )
+        }
+      } catch (err) {
+        if (!silent) {
+          showToast(`Google Calendar sync failed: ${err.message || 'Authorization cancelled'}`, {
+            type: 'error',
+          })
+        }
+      } finally {
+        setGoogleSyncBusy(false)
+      }
+    },
+    [
+      accountKey,
+      syncedCalendarEvents,
+      calSyncSettings,
+      joinedCount,
+      handleIntegrateGoogle,
+      showToast,
+    ]
+  )
+
+  // Auto-push club membership, RSVP, and setting changes to connected Google Calendar in the background
+  useEffect(() => {
+    if (
+      !googleLiveMeta?.connected ||
+      !calSyncSettings.autoSync ||
+      !googleTokenRef.current?.accessToken
+    ) {
+      return
+    }
+    const timer = setTimeout(() => {
+      handleConnectOrSyncGoogleLive({ silent: true })
+    }, 750)
+    return () => clearTimeout(timer)
+  }, [
+    googleLiveMeta?.connected,
+    calSyncSettings.autoSync,
+    syncedCalendarEvents,
+    handleConnectOrSyncGoogleLive,
+  ])
+
+  const handleDisconnectGoogleLive = useCallback(() => {
+    googleTokenRef.current = null
+    clearStoredGoogleCalSyncMeta(accountKey)
+    setGoogleLiveMeta(null)
+    showToast('Disconnected live Google Calendar auto-sync.', { type: 'info' })
+  }, [accountKey, showToast])
+
+  const handleSaveGoogleClientId = useCallback(nextId => {
+    saveGoogleClientId(nextId)
+    setGoogleClientIdVersion(v => v + 1)
+  }, [])
+
+  const handleRegenerateFeedToken = useCallback(async () => {
+    const nextTok = getOrCreateCalendarSyncToken(accountKey, true)
+    setSyncToken(nextTok)
+    await flushCalendarFeedProfile(nextTok)
+    showToast('Generated a new private calendar subscription URL.', { type: 'info' })
+  }, [accountKey, flushCalendarFeedProfile, showToast])
+
+  const handleQuickGoogleClick = useCallback(() => {
+    if (googleLiveMeta?.connected || hasGoogleClientId) {
+      handleConnectOrSyncGoogleLive()
+      return
+    }
+    handleIntegrateGoogle()
+  }, [
+    googleLiveMeta?.connected,
+    hasGoogleClientId,
+    handleConnectOrSyncGoogleLive,
+    handleIntegrateGoogle,
+  ])
+
+  const calendarIntegration = useMemo(
+    () => ({
+      syncSettings: calSyncSettings,
+      syncedEvents: syncedCalendarEvents,
+      joinedClubs: joinedClubsList,
+      feedWebcalUrl: feedState.feedWebcalUrl,
+      feedHttpUrl: feedState.feedHttpUrl,
+      feedMode: feedState.mode,
+      onSubscribeApple: handleSubscribeApple,
+      onIntegrateGoogle: handleIntegrateGoogle,
+      onQuickGoogleClick: handleQuickGoogleClick,
+      onConnectGoogleLive: handleConnectOrSyncGoogleLive,
+      onDisconnectGoogleLive: handleDisconnectGoogleLive,
+      onDownloadIcs: handleDownloadFilteredIcs,
+      onRegenerateFeedToken: handleRegenerateFeedToken,
+      onBrowseClubs: () => handleNavigate('clubs', { section: 'discover' }),
+      googleLiveMeta,
+      googleSyncBusy,
+      hasGoogleClientId,
+      onSaveGoogleClientId: handleSaveGoogleClientId,
+    }),
+    [
+      calSyncSettings,
+      syncedCalendarEvents,
+      joinedClubsList,
+      feedState.feedWebcalUrl,
+      feedState.feedHttpUrl,
+      feedState.mode,
+      handleSubscribeApple,
+      handleIntegrateGoogle,
+      handleQuickGoogleClick,
+      googleLiveMeta,
+      hasGoogleClientId,
+      handleConnectOrSyncGoogleLive,
+      handleDisconnectGoogleLive,
+      handleDownloadFilteredIcs,
+      handleRegenerateFeedToken,
+      googleSyncBusy,
+      handleSaveGoogleClientId,
+    ]
+  )
+
+  const visibleOverviewUpcomingCount = useMemo(() => {
+    if (!calSyncSettings.inAppRsvpOnly) return personalizedSchedule.length
+    return personalizedSchedule.filter(ev =>
+      rsvpMap[ev.id] !== undefined ? Boolean(rsvpMap[ev.id]) : Boolean(ev.rsvp)
+    ).length
+  }, [calSyncSettings.inAppRsvpOnly, personalizedSchedule, rsvpMap])
+
+  // Synchronize browser tab page title with the live state of ClubHub
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.title = buildDashboardPageTitle({
+      activeNav,
+      subContext: pageSubContext,
+      searchQuery,
+      upcomingCount: visibleOverviewUpcomingCount,
+      joinedCount,
+      inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+    })
+  }, [
+    activeNav,
+    pageSubContext,
+    searchQuery,
+    visibleOverviewUpcomingCount,
+    joinedCount,
+    calSyncSettings.inAppRsvpOnly,
+  ])
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
@@ -943,8 +1339,9 @@ function MainDashboard({
             userSettings={userSettings}
             isDemo={isDemo}
             onExitDemo={onExitDemo}
+            onSignOut={onSignOut}
             announcements={personalizedAnnouncements}
-            upcomingCount={personalizedSchedule.length}
+            upcomingCount={visibleOverviewUpcomingCount}
           />
 
           {/* ── 1. OVERVIEW ── */}
@@ -953,7 +1350,7 @@ function MainDashboard({
               <StatCards
                 items={effectiveStats}
                 joinedCount={joinedCount}
-                eventsCount={personalizedSchedule.length}
+                eventsCount={visibleOverviewUpcomingCount}
                 linksCount={totalLinksCount}
                 userSettings={userSettings}
                 onNav={target =>
@@ -973,6 +1370,9 @@ function MainDashboard({
                   items={personalizedSchedule}
                   clubs={effectiveClubs}
                   userSettings={userSettings}
+                  onUpdateSettings={onUpdateSettings}
+                  calendarIntegration={calendarIntegration}
+                  onPageContextChange={setPageSubContext}
                   searchQuery={searchQuery}
                   rsvpMap={rsvpMap}
                   onToggleRsvp={handleToggleRsvp}
@@ -992,9 +1392,13 @@ function MainDashboard({
               <Card
                 delay={4}
                 onClick={() => handleNavigate('availability')}
-                className={`${
+                style={{
+                  borderLeftWidth: '3.5px',
+                  borderLeftColor: 'var(--green)',
+                }}
+                className={`content-tile content-tile-interactive ${
                   isCompactDensity ? 'p-3 sm:p-3.5 gap-2.5' : 'p-4 sm:p-5 gap-3.5'
-                } flex flex-col sm:flex-row sm:items-center justify-between hover:border-[var(--blue)]/40`}
+                } flex flex-col sm:flex-row sm:items-center justify-between`}
               >
                 <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3.5'} min-w-0`}>
                   <IconBadge color="green" size={isCompactDensity ? 34 : 42} radius={isCompactDensity ? 10 : 13}>
@@ -1041,6 +1445,9 @@ function MainDashboard({
               clubs={effectiveClubs}
               initialView={calendarInitialView}
               userSettings={userSettings}
+              onUpdateSettings={onUpdateSettings}
+              calendarIntegration={calendarIntegration}
+              onPageContextChange={setPageSubContext}
               searchQuery={searchQuery}
               rsvpMap={rsvpMap}
               onToggleRsvp={handleToggleRsvp}
@@ -1061,6 +1468,7 @@ function MainDashboard({
               onAddLocalEvent={handleAddLocalCollabEvent}
               onRemoveLocalEvent={handleRemoveLocalCollabEvent}
               onOpenCalendar={() => handleNavigate('calendar')}
+              onPageContextChange={setPageSubContext}
               onNotify={showToast}
             />
           )}
@@ -1079,6 +1487,7 @@ function MainDashboard({
               onRefresh={loadBackendData}
               localPosts={localClubPosts}
               onAddLocalPost={handleAddLocalClubPost}
+              onPageContextChange={setPageSubContext}
               onNotify={showToast}
             />
           )}
@@ -1095,6 +1504,7 @@ function MainDashboard({
               onAddLocalLink={handleAddLocalLink}
               pinnedOverrides={pinnedLinkOverrides}
               onTogglePinOverride={handleTogglePinOverride}
+              onPageContextChange={setPageSubContext}
               onNotify={showToast}
             />
           )}
@@ -1110,6 +1520,7 @@ function MainDashboard({
               onUpdateSettings={onUpdateSettings}
               onSetThemeMode={onSetExplicitThemeMode}
               events={effectiveSchedule}
+              calendarIntegration={calendarIntegration}
               onResetLocalData={handleResetLocalData}
               onSignOut={onSignOut}
               onExitDemo={onExitDemo}
@@ -1118,49 +1529,6 @@ function MainDashboard({
           )}
         </div>
       </main>
-
-      {/* ── Fixed Bottom-Right User Card (Live-Synced With Profile & Identity) ── */}
-      {(onSignOut || (isDemo && onExitDemo)) && (
-        <div
-          className="fixed bottom-[74px] lg:bottom-5 right-3.5 lg:right-6 z-40 inline-flex items-center
-            p-1.5 rounded-full bg-[var(--bg-card)]/95 backdrop-blur-md border border-[var(--border)]
-            shadow-[var(--shadow-md)] select-none"
-        >
-          <button
-            type="button"
-            onClick={() => handleNavigate('settings')}
-            title="Profile & Identity settings"
-            className="inline-flex items-center gap-2 pl-1 pr-2.5 h-8 rounded-full bg-transparent
-              hover:bg-[var(--bg-surface)] border-none cursor-pointer transition-colors"
-          >
-            <Avatar initials={userInitials} bg={userAvatarGradient} size={28} />
-            <div className="text-left leading-tight hidden xs:block max-w-[128px]">
-              <div className="text-xs font-semibold text-[var(--text)] truncate">
-                {userDisplayName}
-              </div>
-              {userSettings?.major?.trim() && (
-                <div className="text-[10px] text-[var(--text-muted)] truncate">
-                  {userSettings.major.trim()}
-                </div>
-              )}
-            </div>
-          </button>
-
-          <div className="w-px h-4 bg-[var(--border)] mx-0.5" />
-
-          <button
-            type="button"
-            onClick={isDemo ? onExitDemo : onSignOut}
-            title={isDemo ? 'Exit preview and sign in' : 'Sign out of ClubHub'}
-            className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-transparent
-              hover:bg-[var(--red-light)] text-xs font-semibold text-[var(--text-muted)]
-              hover:text-[var(--red-ink)] border-none cursor-pointer transition-colors"
-          >
-            <LogOut size={13.5} />
-            <span>{isDemo ? 'Exit' : 'Log Out'}</span>
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1438,6 +1806,15 @@ function ClerkAppWrapper({
     }
   }
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (isOAuthCallback && !isSignedIn) {
+      document.title = 'Completing Sign-In · ClubHub'
+    } else if (!isSignedIn && !localUser && !isLoaded && !loadTimedOut) {
+      document.title = 'Loading… · ClubHub'
+    }
+  }, [isOAuthCallback, isSignedIn, localUser, isLoaded, loadTimedOut])
+
   const baseUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}${window.location.pathname}`
@@ -1700,6 +2077,9 @@ export default function App({ hasClerkKey = Boolean(DEFAULT_CLERK_KEY) }) {
         ...prev,
         ...patch,
         channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
+        calendarSync: patch.calendarSync
+          ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
+          : prev.calendarSync,
       }
       saveStoredUserSettings(next)
       return next

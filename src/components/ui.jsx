@@ -90,10 +90,10 @@ export function IconBadge({
         width: size,
         height: size,
         borderRadius: radius,
-        background: `linear-gradient(145deg, var(--${color}-light), color-mix(in srgb, var(--${color}-light) 68%, var(--bg-card)))`,
+        background: `linear-gradient(145deg, var(--${color}-light), color-mix(in srgb, var(--${color}-light) 74%, var(--bg-tile)))`,
         color: `var(--${color}-ink, var(--${color}))`,
-        border: `1px solid color-mix(in srgb, var(--${color}) 22%, transparent)`,
-        boxShadow: `inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 2px 5px -1px color-mix(in srgb, var(--${color}) 14%, transparent)`,
+        border: `1px solid color-mix(in srgb, var(--${color}) 28%, transparent)`,
+        boxShadow: `inset 0 1px 0 var(--badge-highlight), 0 2px 6px -1px color-mix(in srgb, var(--${color}) 18%, transparent)`,
       }}
     >
       {children}
@@ -114,7 +114,7 @@ export function ClubAvatar({ club, size = 42, className = '' }) {
         height: size,
         background: bg,
         boxShadow:
-          'inset 0 1px 1px rgba(255, 255, 255, 0.42), 0 3px 8px -2px rgba(38, 33, 27, 0.18)',
+          'inset 0 1px 1px rgba(255, 255, 255, 0.36), 0 3px 9px -2px rgba(15, 23, 42, 0.24)',
       }}
     >
       <ClubEmblemSvg
@@ -138,6 +138,7 @@ export function BubbleTag({ label, color = 'blue', size = 'md', dot = false, ico
       style={{
         background: `var(--${color}-light)`,
         color: `var(--${color}-ink, var(--${color}))`,
+        border: `1px solid color-mix(in srgb, var(--${color}) 24%, transparent)`,
       }}
     >
       {dot && (

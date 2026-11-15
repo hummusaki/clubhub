@@ -14,6 +14,12 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Card, Avatar, BubbleTag, cleanText } from './ui'
+import CalendarSyncModal from './CalendarSyncModal'
+import {
+  buildIcsCalendar,
+  downloadIcsFile,
+  normalizeCalendarSyncSettings,
+} from '../utils/calendarSync'
 
 const AVATAR_GRADIENTS = [
   { id: 'blue-purple', label: 'Ocean',   css: 'linear-gradient(135deg, var(--blue), var(--purple))' },
@@ -24,12 +30,6 @@ const AVATAR_GRADIENTS = [
   { id: 'green-blue',  label: 'Meadow',  css: 'linear-gradient(135deg, var(--green), var(--blue))' },
 ]
 
-function formatIcsDate(isoStr) {
-  const dt = new Date(isoStr)
-  if (Number.isNaN(dt.getTime())) return ''
-  return dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
-}
-
 export default function SettingsView({
   user = null,
   isDemo = false,
@@ -39,6 +39,7 @@ export default function SettingsView({
   onUpdateSettings,
   onSetThemeMode,
   events = [],
+  calendarIntegration = null,
   onResetLocalData,
   onSignOut,
   onExitDemo,
@@ -107,52 +108,25 @@ export default function SettingsView({
     })
   }
 
-  function handleExportIcs() {
-    const validEvents = (events || []).filter(ev => ev.startIso || ev.start)
-    const nowStamp = formatIcsDate(new Date().toISOString())
-    const lines = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//ClubHub Campus Workspace//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-    ]
+  const calSyncSettings = normalizeCalendarSyncSettings(userSettings?.calendarSync)
 
-    validEvents.forEach((ev, idx) => {
-      const startIso = ev.startIso || ev.start
-      const startStr = formatIcsDate(startIso)
-      if (!startStr) return
-      const endIso =
-        ev.endIso ||
-        ev.end ||
-        new Date(new Date(startIso).getTime() + 60 * 60 * 1000).toISOString()
-      const endStr = formatIcsDate(endIso)
-      const summary = cleanText(ev.event || ev.title || 'Club Event').replace(/[,;\\]/g, ' ')
-      const club = cleanText(ev.club || ev.clubName || 'ClubHub').replace(/[,;\\]/g, ' ')
-      const loc = cleanText(ev.location || 'TBD').replace(/[,;\\]/g, ' ')
-
-      lines.push('BEGIN:VEVENT')
-      lines.push(`UID:clubhub-${ev.id || idx}@ucsc.edu`)
-      lines.push(`DTSTAMP:${nowStamp}`)
-      lines.push(`DTSTART:${startStr}`)
-      lines.push(`DTEND:${endStr}`)
-      lines.push(`SUMMARY:${club}: ${summary}`)
-      lines.push(`LOCATION:${loc}`)
-      lines.push('END:VEVENT')
+  function handleUpdateCalendarSync(patch) {
+    onUpdateSettings({
+      calendarSync: {
+        ...calSyncSettings,
+        ...patch,
+      },
     })
+  }
 
-    lines.push('END:VCALENDAR')
-
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'clubhub-schedule.ics'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
+  function handleExportIcs() {
+    if (calendarIntegration?.onDownloadIcs) {
+      calendarIntegration.onDownloadIcs()
+      return
+    }
+    const validEvents = (events || []).filter(ev => ev.startIso || ev.start)
+    const ics = buildIcsCalendar(validEvents, { settings: calSyncSettings })
+    downloadIcsFile(ics, 'clubhub-schedule.ics')
     if (onNotify) {
       onNotify(`Exported ${validEvents.length} events to clubhub-schedule.ics`)
     }
@@ -272,8 +246,8 @@ export default function SettingsView({
           </label>
           <div className={`grid grid-cols-1 sm:grid-cols-3 ${isCompact ? 'gap-2' : 'gap-3'}`}>
             {[
-              { id: 'light',  label: 'Light',  desc: 'Crisp porcelain', icon: Sun },
-              { id: 'dark',   label: 'Dark',   desc: 'Midnight slate',  icon: Moon },
+              { id: 'light',  label: 'Light',  desc: 'Soft alabaster', icon: Sun },
+              { id: 'dark',   label: 'Dark',   desc: 'Vivid midnight', icon: Moon },
               { id: 'system', label: 'System', desc: 'Match device OS', icon: Monitor },
             ].map(opt => {
               const Icon = opt.icon
@@ -285,8 +259,8 @@ export default function SettingsView({
                   onClick={() => onSetThemeMode(opt.id)}
                   className={`${rowPad} rounded-xl border text-left flex items-center justify-between gap-3 cursor-pointer transition-all ${
                     isSelected
-                      ? 'bg-[var(--blue-light)] border-[var(--blue)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border)] hover:border-[var(--border-strong)]'
+                      ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-2xs'
+                      : 'content-tile content-tile-interactive'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -307,8 +281,8 @@ export default function SettingsView({
         </div>
 
         {/* Toggle Rows: Compact Cards & Reduce Motion */}
-        <div className={`${isCompact ? 'space-y-2' : 'space-y-3'} pt-1`}>
-          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
+        <div className={`${isCompact ? 'space-y-2.5' : 'space-y-3'} pt-1`}>
+          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl content-tile`}>
             <div>
               <div className="text-sm font-semibold text-[var(--text)]">Compact Card Density</div>
               <div className="text-xs text-[var(--text-muted)]">
@@ -336,7 +310,7 @@ export default function SettingsView({
             </button>
           </div>
 
-          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
+          <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl content-tile`}>
             <div>
               <div className="text-sm font-semibold text-[var(--text)]">Reduce Motion</div>
               <div className="text-xs text-[var(--text-muted)]">
@@ -441,6 +415,33 @@ export default function SettingsView({
         </div>
       </Card>
 
+      {/* ── 3b. Google & Apple Calendar Integration & Sync Rules ── */}
+      {calendarIntegration && (
+        <CalendarSyncModal
+          variant="card"
+          syncSettings={calSyncSettings}
+          onUpdateSyncSettings={handleUpdateCalendarSync}
+          syncedEvents={calendarIntegration.syncedEvents}
+          joinedClubs={calendarIntegration.joinedClubs}
+          feedWebcalUrl={calendarIntegration.feedWebcalUrl}
+          feedHttpUrl={calendarIntegration.feedHttpUrl}
+          feedMode={calendarIntegration.feedMode}
+          onSubscribeApple={calendarIntegration.onSubscribeApple}
+          onIntegrateGoogle={calendarIntegration.onIntegrateGoogle}
+          onConnectGoogleLive={calendarIntegration.onConnectGoogleLive}
+          onDisconnectGoogleLive={calendarIntegration.onDisconnectGoogleLive}
+          onDownloadIcs={calendarIntegration.onDownloadIcs}
+          onRegenerateFeedToken={calendarIntegration.onRegenerateFeedToken}
+          onBrowseClubs={calendarIntegration.onBrowseClubs}
+          googleLiveMeta={calendarIntegration.googleLiveMeta}
+          googleSyncBusy={calendarIntegration.googleSyncBusy}
+          hasGoogleClientId={calendarIntegration.hasGoogleClientId}
+          onSaveGoogleClientId={calendarIntegration.onSaveGoogleClientId}
+          isCompact={isCompact}
+          onNotify={onNotify}
+        />
+      )}
+
       {/* ── 4. Notifications & Feed Channels ── */}
       <Card className={`${cardPad} ${isCompact ? 'space-y-2.5' : 'space-y-3.5'}`} delay={4}>
         <div className={`flex items-center gap-2.5 ${isCompact ? 'pb-2.5' : 'pb-3.5'} border-b border-[var(--border)]`}>
@@ -476,7 +477,7 @@ export default function SettingsView({
           return (
             <div
               key={ch.key}
-              className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}
+              className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl content-tile`}
             >
               <div>
                 <div className="text-sm font-semibold text-[var(--text)]">{ch.title}</div>
@@ -503,7 +504,7 @@ export default function SettingsView({
           )
         })}
 
-        <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]`}>
+        <div className={`flex items-center justify-between gap-4 ${rowPad} rounded-xl content-tile`}>
           <div>
             <div className="text-sm font-semibold text-[var(--text)]">
               Urgent-Only Notification Badge

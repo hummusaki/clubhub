@@ -54,8 +54,8 @@ export default function Announcements({
         </div>
 
         {announcements.length > 0 ? (
-          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3.5'}`}>
-            {announcements.slice(0, isCompact ? 7 : 5).map((item, i, arr) => {
+          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}`}>
+            {announcements.slice(0, isCompact ? 7 : 5).map(item => {
               const color = item.color || 'blue'
               const isDiscord = item.source === 'discord'
               const isStory = item.source === 'instagram_story'
@@ -63,10 +63,12 @@ export default function Announcements({
               return (
                 <div
                   key={item.id}
-                  className={`flex items-start ${isCompact ? 'gap-2.5' : 'gap-3'} ${
-                    i < arr.length - 1
-                      ? `${isCompact ? 'pb-2.5' : 'pb-3.5'} border-b border-[var(--border)]`
-                      : ''
+                  style={{
+                    borderLeftWidth: '3.5px',
+                    borderLeftColor: `var(--${color})`,
+                  }}
+                  className={`content-tile content-tile-interactive rounded-[var(--radius-sm)] flex items-start ${
+                    isCompact ? 'p-2.5 gap-2.5' : 'p-3.5 gap-3'
                   }`}
                 >
                   <IconBadge
@@ -85,7 +87,7 @@ export default function Announcements({
                   </IconBadge>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
                       <BubbleTag label={item.type} color={color} size="sm" />
                       <span className="text-[11px] text-[var(--text-light)]">{item.time}</span>
                     </div>

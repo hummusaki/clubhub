@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   ExternalLink,
   Plus,
@@ -246,6 +246,7 @@ export default function LinksResources({
   onAddLocalLink,
   pinnedOverrides: externalPinnedOverrides,
   onTogglePinOverride,
+  onPageContextChange,
   onNotify,
 }) {
   const isCompact = Boolean(userSettings?.compactCards)
@@ -351,6 +352,21 @@ export default function LinksResources({
     if (filterTab === 'Pinned') return scopedLinks.filter(l => l.isPinned)
     return scopedLinks.filter(l => l.sectionId === filterTab)
   }, [scopedLinks, filterTab])
+
+  useEffect(() => {
+    if (!onPageContextChange) return
+    let label = null
+    if (filterTab === 'Pinned') {
+      label = `Pinned (${sectionCounts.Pinned || 0})`
+    } else if (filterTab !== 'All') {
+      label = SECTION_MAP[filterTab]?.shortLabel || SECTION_MAP[filterTab]?.label || filterTab
+    }
+    onPageContextChange({
+      nav: 'links',
+      label,
+      modal: showAdd ? 'add' : null,
+    })
+  }, [onPageContextChange, filterTab, sectionCounts.Pinned, showAdd])
 
   const pinnedShelfLinks = useMemo(
     () => (filterTab === 'All' ? filteredLinks.filter(l => l.isPinned) : []),
@@ -483,20 +499,25 @@ export default function LinksResources({
   }
 
   const cardGridClass = isCompact
-    ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2'
-    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3'
+    ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5'
+    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4'
 
   function renderResourceCard(link, { hideClubName = false } = {}) {
     const isCopied = copiedId === link.id
+    const accent = link.color || 'blue'
     return (
       <a
         key={link.id}
         href={link.url}
         target={/^mailto:/i.test(link.url) ? undefined : '_blank'}
         rel={/^mailto:/i.test(link.url) ? undefined : 'noreferrer'}
-        className={`group flex items-center justify-between ${
+        style={{
+          borderLeftWidth: '3.5px',
+          borderLeftColor: `var(--${accent})`,
+        }}
+        className={`content-tile content-tile-interactive group flex items-center justify-between ${
           isCompact ? 'gap-2.5 p-2.5' : 'gap-3 p-3.5'
-        } rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)]/40 no-underline transition-all min-w-0`}
+        } rounded-[var(--radius-sm)] hover:border-[var(--blue)] no-underline min-w-0`}
       >
         <div className={`flex items-center ${isCompact ? 'gap-2.5' : 'gap-3'} min-w-0 flex-1`}>
           <IconBadge

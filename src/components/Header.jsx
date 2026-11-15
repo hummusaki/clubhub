@@ -15,6 +15,7 @@ export default function Header({
   userSettings = {},
   isDemo = false,
   onExitDemo,
+  onSignOut,
   announcements = null,
   upcomingCount = 0,
 }) {
@@ -226,10 +227,7 @@ export default function Header({
           <div className="hidden lg:flex items-center gap-2.5 relative">
             <button
               type="button"
-              onClick={() => {
-                setUserMenuOpen(false)
-                setNotifOpen(o => !o)
-              }}
+              onClick={() => setNotifOpen(o => !o)}
               aria-label="Notifications"
               className="w-[42px] h-[42px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)]
                 flex items-center justify-center cursor-pointer hover:border-[var(--blue)]
@@ -246,30 +244,14 @@ export default function Header({
                 </span>
               )}
             </button>
-
-            {(user || isDemo) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifOpen(false)
-                  setUserMenuOpen(o => !o)
-                }}
-                title={`${displayName} — Account menu`}
-                aria-label="Account menu"
-                className="flex items-center gap-2 pl-2 pr-2.5 h-[42px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
-              >
-                <Avatar initials={initials} bg={avatarGradient} size={28} />
-                <ChevronDown size={14} className="text-[var(--text-muted)]" />
-              </button>
-            )}
           </div>
         </div>
       </div>
 
-      {/* ── User Account Dropdown (Profile, Settings & Log Out) ── */}
+      {/* ── Mobile User Account Dropdown (< lg, when left Sidebar is hidden) ── */}
       {userMenuOpen && (user || isDemo) && (
         <div
-          className="fixed lg:absolute right-3 top-[58px] lg:right-0 lg:top-full lg:mt-2
+          className="lg:hidden fixed right-3 top-[58px]
             w-[235px] rounded-[var(--radius)] bg-[var(--bg-card)] border border-[var(--border)]
             shadow-[var(--shadow-lg)] p-2 z-[95] fade-in"
         >

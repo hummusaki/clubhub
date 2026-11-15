@@ -114,3 +114,67 @@ export const unbookSchedulerSlot = (pollId, data) =>
     body: JSON.stringify(data),
   });
 
+// ── 6. Live Calendar Sync Feed (/api/calendar & Vite Dev Fallback) ──
+function toWebcalUrl(httpUrl) {
+  if (!httpUrl) return '';
+  return String(httpUrl).replace(/^https?:\/\//i, 'webcal://');
+}
+
+export async function syncCalendarFeedProfile(token, payload = {}) {
+  const cleanToken = String(token || '').replace(/\.ics$/i, '').trim();
+  if (!cleanToken) return { ok: false, mode: 'local', feedHttpUrl: '', feedWebcalUrl: '' };
+
+  // 1. Try primary Express SQLite API server first
+  const apiRes = await fetchJSON(`/calendar/profile/${encodeURIComponent(cleanToken)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+  if (apiRes && apiRes.ok) {
+    const baseOrigin = API_BASE.replace(/\/api\/?$/, '');
+    const feedHttpUrl = `${baseOrigin}/api/calendar/feed/${encodeURIComponent(cleanToken)}.ics`;
+    return {
+      ok: true,
+      mode: 'server',
+      feedHttpUrl,
+      feedWebcalUrl: toWebcalUrl(feedHttpUrl),
+      updatedAt: apiRes.updatedAt,
+    };
+  }
+
+  // 2. Try Vite dev/preview server feed endpoint when running `npm run dev` without Express
+  if (typeof window !== 'undefined') {
+    try {
+      const devUrl = `${window.location.origin}/__clubhub_cal/profile/${encodeURIComponent(cleanToken)}`;
+      const res = await fetch(devUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.ok) {
+          const feedHttpUrl = `${window.location.origin}/__clubhub_cal/feed/${encodeURIComponent(cleanToken)}.ics`;
+          return {
+            ok: true,
+            mode: 'dev-feed',
+            feedHttpUrl,
+            feedWebcalUrl: toWebcalUrl(feedHttpUrl),
+            updatedAt: data.updatedAt,
+          };
+        }
+      }
+    } catch {
+      // Static hosting without server middleware — graceful local .ics / Google OAuth mode
+    }
+  }
+
+  return {
+    ok: false,
+    mode: 'static',
+    feedHttpUrl: '',
+    feedWebcalUrl: '',
+  };
+}
+
+

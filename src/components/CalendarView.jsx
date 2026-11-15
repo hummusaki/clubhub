@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   MapPin,
   Clock,
@@ -9,13 +9,23 @@ import {
   Check,
   ArrowRight,
   Calendar as CalendarIcon,
+  CalendarPlus,
   ExternalLink,
   History,
+  SlidersHorizontal,
   X,
 } from 'lucide-react'
 import { todaySchedule as defaultSchedule } from '../data/sampleData'
 import { Card, BubbleTag, IconBadge, cleanText } from './ui'
 import { ScheduleEventIcon } from './icons'
+import CalendarSyncModal, {
+  GoogleCalendarLogo,
+  AppleCalendarLogo,
+} from './CalendarSyncModal'
+import {
+  buildGoogleCalendarTemplateUrl,
+  normalizeCalendarSyncSettings,
+} from '../utils/calendarSync'
 
 function toLocalYmd(dateInput) {
   const dt = dateInput instanceof Date ? dateInput : new Date(dateInput)
@@ -75,6 +85,9 @@ export default function CalendarView({
   clubs = [],
   initialView = null,
   userSettings = {},
+  onUpdateSettings,
+  calendarIntegration = null,
+  onPageContextChange,
   searchQuery = '',
   compact = false,
   onOpenCalendar,
@@ -87,6 +100,11 @@ export default function CalendarView({
   const use24h = userSettings?.timeFormat === '24h'
   const weekStartsOn = userSettings?.weekStartsOn === 'monday' ? 'monday' : 'sunday'
   const isCompactDensity = Boolean(userSettings?.compactCards)
+  const calSyncSettings = useMemo(
+    () => normalizeCalendarSyncSettings(userSettings?.calendarSync),
+    [userSettings?.calendarSync]
+  )
+  const inAppRsvpOnly = calSyncSettings.inAppRsvpOnly
 
   const nowRef = useMemo(() => new Date(), [])
   const todayYmd = useMemo(() => toLocalYmd(nowRef), [nowRef])
@@ -100,7 +118,7 @@ export default function CalendarView({
     () => initialView || userSettings?.defaultCalendarView || 'month'
   ) // 'month' | 'week' | 'agenda'
   const [clubScope, setClubScope] = useState('myclubs') // 'myclubs' | 'all'
-  const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all' | 'going'
+  const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all'
   const [weekAnchor, setWeekAnchor] = useState(todayYmd)
   const [monthState, setMonthState] = useState(() => ({
     year: nowRef.getFullYear(),
@@ -113,8 +131,9 @@ export default function CalendarView({
     [weekAnchor, weekStartsOn]
   )
 
-  // Add Event modal/drawer state
+  // Add Event & Calendar Sync Settings modal state
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showSyncModal, setShowSyncModal] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
   const [eventClubId, setEventClubId] = useState(clubs[0]?.id || 'demo_ucsc_csclub')
   const [eventDate, setEventDate] = useState(todayYmd)
@@ -151,8 +170,8 @@ export default function CalendarView({
     })
   }, [baseEvents, rsvpMap, nowRef, todayYmd])
 
-  // Events after applying Club Scope + Search (used across Month, Week, and Agenda counts)
-  const scopedEvents = useMemo(() => {
+  // Events after applying Club Scope + Search
+  const clubAndSearchEvents = useMemo(() => {
     return enrichedEvents.filter(ev => {
       if (
         !compact &&
@@ -174,16 +193,25 @@ export default function CalendarView({
     })
   }, [enrichedEvents, joinedClubIdSet, clubScope, compact, searchQuery])
 
+  const rsvpGoingCountInScope = useMemo(
+    () => clubAndSearchEvents.filter(ev => ev.isGoing).length,
+    [clubAndSearchEvents]
+  )
+
+  // Events after applying optional in-app "Only show RSVP'd events" setting
+  const scopedEvents = useMemo(() => {
+    if (!inAppRsvpOnly) return clubAndSearchEvents
+    return clubAndSearchEvents.filter(ev => ev.isGoing)
+  }, [clubAndSearchEvents, inAppRsvpOnly])
+
   const agendaCounts = useMemo(() => {
     let upcoming = 0
     let past = 0
-    let going = 0
     for (const ev of scopedEvents) {
       if (ev.isPast) past += 1
       else upcoming += 1
-      if (ev.isGoing) going += 1
     }
-    return { upcoming, past, all: scopedEvents.length, going }
+    return { upcoming, past, all: scopedEvents.length }
   }, [scopedEvents])
 
   const filtered = useMemo(() => {
@@ -199,9 +227,6 @@ export default function CalendarView({
       return scopedEvents
         .filter(ev => ev.isPast)
         .sort((a, b) => b.startMs - a.startMs)
-    }
-    if (agendaFilter === 'going') {
-      return scopedEvents.filter(ev => ev.isGoing)
     }
     return scopedEvents
   }, [scopedEvents, agendaFilter, viewMode, compact])
@@ -323,6 +348,49 @@ export default function CalendarView({
     return `${s1} – ${s2}`
   }, [viewMode, monthState, weekDates])
 
+  function handleUpdateCalendarSync(patch) {
+    if (!onUpdateSettings) return
+    onUpdateSettings({
+      calendarSync: {
+        ...calSyncSettings,
+        ...patch,
+      },
+    })
+  }
+
+  // Report live Calendar sub-view state up so the browser tab title reflects the exact view/period
+  useEffect(() => {
+    if (!onPageContextChange) return
+    if (compact) {
+      onPageContextChange({
+        nav: 'overview',
+        label: null,
+        modal: showSyncModal ? 'sync' : null,
+      })
+      return
+    }
+    let label = periodLabel
+    if (viewMode === 'agenda') {
+      if (agendaFilter === 'past') label = `Past Events (${agendaCounts.past})`
+      else if (agendaFilter === 'all') label = `All Events (${agendaCounts.all})`
+      else label = `Upcoming (${agendaCounts.upcoming})`
+    }
+    onPageContextChange({
+      nav: 'calendar',
+      label,
+      modal: showSyncModal ? 'sync' : showAddForm ? 'add' : null,
+    })
+  }, [
+    compact,
+    onPageContextChange,
+    viewMode,
+    periodLabel,
+    agendaFilter,
+    agendaCounts,
+    showSyncModal,
+    showAddForm,
+  ])
+
   async function handleSubmitNewEvent(e) {
     e.preventDefault()
     if (!eventTitle.trim() || !eventDate) return
@@ -373,9 +441,13 @@ export default function CalendarView({
         </div>
 
         <div
-          className={`flex-1 min-w-0 rounded-[var(--radius-sm)] ${
+          style={{
+            borderLeftWidth: '3.5px',
+            borderLeftColor: `var(--${c})`,
+          }}
+          className={`content-tile content-tile-interactive flex-1 min-w-0 rounded-[var(--radius-sm)] ${
             isCompactDensity ? 'p-2.5' : 'p-3.5'
-          } bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-colors`}
+          }`}
         >
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1.5">
             <div className="min-w-0">
@@ -434,6 +506,23 @@ export default function CalendarView({
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
+              {!compact && (
+                <a
+                  href={buildGoogleCalendarTemplateUrl(item, {
+                    titlePrefixClub: calSyncSettings.titlePrefixClub,
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Add this event to Google Calendar"
+                  aria-label="Add this event to Google Calendar"
+                  className={`inline-flex items-center justify-center ${
+                    isCompactDensity ? 'w-[26px] h-[26px]' : 'w-8 h-8'
+                  } rounded-full bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] hover:border-[var(--blue)] no-underline transition-colors`}
+                >
+                  <CalendarPlus size={13} />
+                </a>
+              )}
+
               {onToggleRsvp && (
                 <button
                   type="button"
@@ -471,6 +560,34 @@ export default function CalendarView({
     )
   }
 
+  const renderSyncModal = calendarIntegration ? (
+    <CalendarSyncModal
+      variant="modal"
+      open={showSyncModal}
+      onClose={() => setShowSyncModal(false)}
+      syncSettings={calSyncSettings}
+      onUpdateSyncSettings={handleUpdateCalendarSync}
+      syncedEvents={calendarIntegration.syncedEvents}
+      joinedClubs={calendarIntegration.joinedClubs}
+      feedWebcalUrl={calendarIntegration.feedWebcalUrl}
+      feedHttpUrl={calendarIntegration.feedHttpUrl}
+      feedMode={calendarIntegration.feedMode}
+      onSubscribeApple={calendarIntegration.onSubscribeApple}
+      onIntegrateGoogle={calendarIntegration.onIntegrateGoogle}
+      onConnectGoogleLive={calendarIntegration.onConnectGoogleLive}
+      onDisconnectGoogleLive={calendarIntegration.onDisconnectGoogleLive}
+      onDownloadIcs={calendarIntegration.onDownloadIcs}
+      onRegenerateFeedToken={calendarIntegration.onRegenerateFeedToken}
+      onBrowseClubs={calendarIntegration.onBrowseClubs}
+      googleLiveMeta={calendarIntegration.googleLiveMeta}
+      googleSyncBusy={calendarIntegration.googleSyncBusy}
+      hasGoogleClientId={calendarIntegration.hasGoogleClientId}
+      onSaveGoogleClientId={calendarIntegration.onSaveGoogleClientId}
+      isCompact={isCompactDensity}
+      onNotify={onNotify}
+    />
+  ) : null
+
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
     const preview = filtered.slice(0, isCompactDensity ? 6 : 4)
@@ -481,16 +598,19 @@ export default function CalendarView({
       >
         <div>
           <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-bold text-[var(--text)]">Upcoming Schedule</h2>
               <BubbleTag label={`${filtered.length}`} color="blue" size="sm" />
+              {inAppRsvpOnly && (
+                <BubbleTag label="RSVP'd Only" color="green" size="sm" dot />
+              )}
             </div>
 
             {onOpenCalendar && (
               <button
                 type="button"
                 onClick={onOpenCalendar}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
               >
                 <span>Full Calendar</span>
                 <ArrowRight size={13} />
@@ -503,11 +623,63 @@ export default function CalendarView({
               {preview.map((item, idx) => renderEventRow(item, idx === preview.length - 1))}
             </div>
           ) : (
-            <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-              No matching events found.
+            <div className="py-7 text-center text-sm text-[var(--text-muted)] space-y-2">
+              <div>
+                {inAppRsvpOnly
+                  ? "No RSVP'd upcoming events yet."
+                  : 'No matching events found.'}
+              </div>
+              {inAppRsvpOnly && onUpdateSettings && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
+                  className="px-3 min-h-[30px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
+                >
+                  Show all upcoming events
+                </button>
+              )}
             </div>
           )}
         </div>
+
+        {calendarIntegration && (
+          <div className="mt-3.5 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-[var(--text-muted)]">
+              Sync {calendarIntegration.syncedEvents.length} {calendarIntegration.syncedEvents.length === 1 ? 'event' : 'events'}
+              {calSyncSettings.rsvpOnly ? " (RSVP'd)" : ''}
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => calendarIntegration.onQuickGoogleClick()}
+                className="inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+              >
+                <GoogleCalendarLogo size={13.5} />
+                <span>Google</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => calendarIntegration.onSubscribeApple()}
+                className="inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+              >
+                <AppleCalendarLogo size={12.5} />
+                <span>Apple</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(true)}
+                title="Calendar sync settings"
+                aria-label="Calendar sync settings"
+                className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
+              >
+                <SlidersHorizontal size={12.5} />
+                <span>Sync Settings</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {renderSyncModal}
       </Card>
     )
   }
@@ -522,85 +694,148 @@ export default function CalendarView({
 
   return (
     <Card className="p-4 sm:p-6" delay={2}>
-      {/* Top Toolbar: View Switcher + Add Event */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-[var(--border)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border)]">
-            {[
-              { id: 'month', label: 'Full Calendar' },
-              { id: 'week', label: 'Week' },
-              { id: 'agenda', label: 'Agenda' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setViewMode(tab.id)}
-                className={`px-3.5 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                  viewMode === tab.id
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {joinedClubIdSet.size > 0 && (
-            <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+      {/* Top Toolbar: View Switcher, Club/RSVP Filters & External Calendar Integration */}
+      <div className="flex flex-col gap-3 pb-4 mb-4 border-b border-[var(--border)]">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center bg-[var(--bg-subtle)] p-1 rounded-xl border border-[var(--border)]">
               {[
-                { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
-                { id: 'all', label: 'All Campus' },
-              ].map(opt => (
+                { id: 'month', label: 'Full Calendar' },
+                { id: 'week', label: 'Week' },
+                { id: 'agenda', label: 'Agenda' },
+              ].map(tab => (
                 <button
-                  key={opt.id}
+                  key={tab.id}
                   type="button"
-                  onClick={() => setClubScope(opt.id)}
-                  className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    clubScope === opt.id
+                  onClick={() => setViewMode(tab.id)}
+                  className={`px-3.5 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                    viewMode === tab.id
                       ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                       : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
-                  {opt.label}
+                  {tab.label}
                 </button>
               ))}
             </div>
-          )}
 
-          {viewMode === 'agenda' && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: 'upcoming', label: `Upcoming (${agendaCounts.upcoming})` },
-                { id: 'past', label: `Past Events (${agendaCounts.past})` },
-                { id: 'all', label: `All (${agendaCounts.all})` },
-                { id: 'going', label: `Going (${agendaCounts.going})` },
-              ].map(f => (
+            {joinedClubIdSet.size > 0 && (
+              <div className="inline-flex items-center bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border)]">
+                {[
+                  { id: 'myclubs', label: `My Clubs (${joinedClubIdSet.size})` },
+                  { id: 'all', label: 'All Campus' },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setClubScope(opt.id)}
+                    className={`px-3 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      clubScope === opt.id
+                        ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
+                        : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {onUpdateSettings && (
+              <button
+                type="button"
+                onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: !inAppRsvpOnly })}
+                title="Only show events you have RSVP'd to on the calendar"
+                className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold cursor-pointer border transition-colors ${
+                  inAppRsvpOnly
+                    ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/35'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                }`}
+              >
+                <Check size={13} className={inAppRsvpOnly ? 'opacity-100' : 'opacity-55'} />
+                <span>RSVP&apos;d Only ({rsvpGoingCountInScope})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Google Calendar, Apple Calendar, Sync Settings & Add Event Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            {calendarIntegration && (
+              <>
                 <button
-                  key={f.id}
                   type="button"
-                  onClick={() => setAgendaFilter(f.id)}
-                  className={`px-3 min-h-[34px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
-                    agendaFilter === f.id
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                  onClick={() => calendarIntegration.onQuickGoogleClick()}
+                  className="inline-flex items-center gap-2 px-3.5 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
+                >
+                  <GoogleCalendarLogo size={15} />
+                  <span>Google Calendar</span>
+                  {calendarIntegration.googleLiveMeta?.connected && (
+                    <span className="w-2 h-2 rounded-full bg-[var(--green)]" title="Live Auto-Sync Connected" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => calendarIntegration.onSubscribeApple()}
+                  className="inline-flex items-center gap-2 px-3.5 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)] cursor-pointer transition-colors"
+                >
+                  <AppleCalendarLogo size={14} />
+                  <span>Apple Calendar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSyncModal(true)}
+                  title="Configure how Google & Apple Calendar integration works"
+                  className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                    calSyncSettings.rsvpOnly
+                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
+                      : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
                   }`}
                 >
-                  {f.label}
+                  <SlidersHorizontal size={14} />
+                  <span>Sync Settings</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-[var(--bg-card)] text-[10.5px] font-mono-num text-[var(--text)] border border-[var(--border-subtle)]">
+                    {calendarIntegration.syncedEvents.length}
+                  </span>
                 </button>
-              ))}
-            </div>
-          )}
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowAddForm(prev => !prev)}
+              className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              {showAddForm ? <X size={15} /> : <Plus size={15} />}
+              <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAddForm(prev => !prev)}
-          className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity self-start sm:self-auto"
-        >
-          {showAddForm ? <X size={15} /> : <Plus size={15} />}
-          <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
-        </button>
+        {/* Agenda Sub-Filters (Shown only in Agenda View) */}
+        {viewMode === 'agenda' && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {[
+              { id: 'upcoming', label: `Upcoming (${agendaCounts.upcoming})` },
+              { id: 'past', label: `Past Events (${agendaCounts.past})` },
+              { id: 'all', label: `All (${agendaCounts.all})` },
+            ].map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setAgendaFilter(f.id)}
+                className={`px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
+                  agendaFilter === f.id
+                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Add Event Form (Comfortable 44px fields, clear labels, no raw IDs) */}
@@ -761,14 +996,23 @@ export default function CalendarView({
           {filtered.length > 0 ? (
             filtered.map((item, idx) => renderEventRow(item, idx === filtered.length - 1))
           ) : (
-            <div className="py-10 text-center">
+            <div className="py-10 text-center space-y-2.5">
               <CalendarIcon size={28} className="mx-auto text-[var(--text-light)] mb-2" />
               <div className="text-sm font-semibold text-[var(--text)]">No events to display</div>
-              <p className="text-xs text-[var(--text-muted)] mt-1">
-                {agendaFilter === 'going'
-                  ? 'RSVP to any upcoming club meeting to see it here.'
+              <p className="text-xs text-[var(--text-muted)]">
+                {inAppRsvpOnly
+                  ? 'No RSVP\'d events match this view yet.'
                   : 'Try clearing your search or adding a new event.'}
               </p>
+              {inAppRsvpOnly && onUpdateSettings && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
+                  className="px-3.5 min-h-[32px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
+                >
+                  Show all events
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -875,7 +1119,11 @@ export default function CalendarView({
                       return (
                         <div
                           key={ev.id}
-                          className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-1 min-w-0"
+                          style={{
+                            borderLeftWidth: '3px',
+                            borderLeftColor: `var(--${c})`,
+                          }}
+                          className="content-tile p-2 rounded-lg flex flex-col gap-1 min-w-0"
                         >
                           <span className="text-[11px] font-bold text-[var(--text)] leading-snug line-clamp-2">
                             {cleanText(ev.event)}
@@ -989,19 +1237,30 @@ export default function CalendarView({
 
                     {/* Desktop event pills (Past & Upcoming) */}
                     <div className="hidden sm:flex flex-col gap-1 w-full mt-1.5 min-w-0">
-                      {dayEvs.slice(0, 3).map(ev => (
-                        <div
-                          key={ev.id}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold truncate border ${
-                            ev.isPast
-                              ? 'bg-[var(--bg-card)]/70 border-[var(--border-subtle)] text-[var(--text-muted)]'
-                              : 'bg-[var(--bg-card)] border-[var(--blue)]/25 text-[var(--text)]'
-                          }`}
-                          title={`${cleanText(ev.club)}: ${cleanText(ev.event)}`}
-                        >
-                          {cleanText(ev.club ? `${ev.club} · ${ev.event}` : ev.event)}
-                        </div>
-                      ))}
+                      {dayEvs.slice(0, 3).map(ev => {
+                        const pillColor = ev.color === 'muted' || !ev.color ? 'blue' : ev.color
+                        return (
+                          <div
+                            key={ev.id}
+                            style={
+                              ev.isPast
+                                ? undefined
+                                : {
+                                    borderLeftWidth: '2.5px',
+                                    borderLeftColor: `var(--${pillColor})`,
+                                  }
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold truncate border ${
+                              ev.isPast
+                                ? 'bg-[var(--bg-card)]/75 border-[var(--border-subtle)] text-[var(--text-muted)]'
+                                : 'bg-[var(--bg-tile)] border-[var(--border-tile)] text-[var(--text)] shadow-2xs'
+                            }`}
+                            title={`${cleanText(ev.club)}: ${cleanText(ev.event)}`}
+                          >
+                            {cleanText(ev.club ? `${ev.club} · ${ev.event}` : ev.event)}
+                          </div>
+                        )
+                      })}
                       {dayEvs.length > 3 && (
                         <span className="text-[10px] font-medium text-[var(--blue-ink)] pl-0.5">
                           +{dayEvs.length - 3} more
@@ -1063,13 +1322,28 @@ export default function CalendarView({
                 )}
               </div>
             ) : (
-              <div className="text-xs text-[var(--text-muted)] py-4 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                No events recorded for {selectedDateLabel}. Select another date on the calendar or switch to All Campus to explore past and upcoming club events.
+              <div className="text-xs text-[var(--text-muted)] py-4 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {inAppRsvpOnly
+                    ? `No RSVP'd events on ${selectedDateLabel}. Toggle off "RSVP'd Only" to browse all club meetings and mark Going.`
+                    : `No events recorded for ${selectedDateLabel}. Select another date on the calendar or switch to All Campus to explore past and upcoming club events.`}
+                </span>
+                {inAppRsvpOnly && onUpdateSettings && (
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
+                    className="px-3 min-h-[30px] rounded-full bg-[var(--bg-card)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)] shrink-0"
+                  >
+                    Show all events
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
       )}
+
+      {renderSyncModal}
     </Card>
   )
 }
