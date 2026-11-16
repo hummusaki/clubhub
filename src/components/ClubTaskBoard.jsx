@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { applyTaskPatch, createTaskBoardWrites, reconcileTask } from '../utils/taskBoardWrites'
+import Select from './Select'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, useReducer } from 'react'
 import {
   Plus,
   Check,
@@ -32,6 +34,14 @@ import {
   ClubAvatar,
   IconBadge,
   cleanText,
+  Button,
+  IconButton,
+  ModalDialog,
+  ActionDisclosure,
+  ActionItem,
+  PageToolbar,
+  SegmentedControl,
+  FilterChip,
 } from './ui'
 import {
   getClubTasksBoard,
@@ -218,6 +228,25 @@ function createSeedDemoBoard(clubId, clubName) {
   }
 }
 
+function TaskCompletionButton({ checked, locked, pending, label, onClick }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={checked}
+      aria-busy={pending || undefined}
+      aria-disabled={locked || undefined}
+      onClick={() => { if (!locked) onClick() }}
+      className="ui-touch task-completion relative mt-0.5 size-[22px] inline-grid place-items-center shrink-0 rounded-lg bg-transparent border-none cursor-pointer"
+    >
+      <span aria-hidden="true" className="task-completion-mark">
+        <Check size={13} strokeWidth={2.75} />
+      </span>
+      {pending && <Loader2 size={10} aria-hidden="true" className="task-completion-progress motion-safe:animate-spin" />}
+    </button>
+  )
+}
+
 function DueDateBadge({
   dueDate,
   dueTime = '',
@@ -280,7 +309,7 @@ function DueDateBadge({
         onClick={onClick}
         title={title || 'Edit due date, time, or reminder'}
         style={toneStyles}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold font-mono-num shrink-0 cursor-pointer hover:brightness-95 transition-all"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold font-mono-num shrink-0 cursor-pointer hover:brightness-95 transition-colors"
       >
         {content}
       </button>
@@ -302,6 +331,7 @@ function MemberTaskReminderModal({
   reminderDefaults,
   dueLabel,
   busy,
+  saveBlocked,
   sendingNow,
   onSave,
   onSendNow,
@@ -328,37 +358,14 @@ function MemberTaskReminderModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[115] modal-backdrop flex items-center justify-center p-3 sm:p-5"
-      onClick={onClose}
+    <ModalDialog
+      title="Personal Reminder"
+      subtitle={`${cleanText(task?.title)} · ${dueLabel}`}
+      icon={<Bell size={16} />}
+      maxWidth="max-w-md"
+      onClose={onClose}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Personal task reminder"
-        className="modal-panel w-full max-w-md p-5 space-y-4 fade-in"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-sm font-extrabold text-[var(--text)]">
-              <Bell size={15} className="text-[var(--blue)] shrink-0" />
-              <span>Personal Reminder</span>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
-              {cleanText(task?.title)} · {dueLabel}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close reminder dialog"
-            className="w-8 h-8 rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0"
-          >
-            <X size={15} />
-          </button>
-        </div>
-
+      <div className="space-y-4">
         <div className="space-y-3.5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -390,17 +397,13 @@ function MemberTaskReminderModal({
                 <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
                   When to remind
                 </label>
-                <select
+                <Select
+                  aria-label="Remind me"
                   value={offsetMinutes}
-                  onChange={e => setOffsetMinutes(Number(e.target.value))}
+                  onValueChange={nextValue => setOffsetMinutes(Number(nextValue))}
                   className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-                >
-                  {REMINDER_OFFSET_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={REMINDER_OFFSET_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }))}
+                />
               </div>
 
               <div>
@@ -442,9 +445,13 @@ function MemberTaskReminderModal({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[var(--border)]">
-          <button
-            type="button"
-            disabled={sendingNow || busy}
+          <Button
+            variant="outlined-neutral"
+            size="sm"
+            icon={<Send size={12} />}
+            pending={sendingNow}
+            pendingLabel="Sending…"
+            disabled={busy}
             onClick={() =>
               onSendNow({
                 ...task,
@@ -456,32 +463,32 @@ function MemberTaskReminderModal({
                 },
               })
             }
-            className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--blue-light)] text-xs font-semibold text-[var(--text)] hover:text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
           >
-            <Send size={12} />
-            <span>{sendingNow ? 'Sending…' : 'Send now'}</span>
-          </button>
+            Send now
+          </Button>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="text"
+              size="sm"
               onClick={onClose}
-              className="px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
             >
               Cancel
-            </button>
-            <button
-              type="button"
-              disabled={busy}
+            </Button>
+            <Button
+              variant="filled"
+              size="sm"
+              disabled={saveBlocked || sendingNow}
+              pending={busy}
+              pendingLabel="Saving…"
               onClick={() => onSave({ enabled, offsetMinutes, channels })}
-              className="px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
             >
               Save
-            </button>
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   )
 }
 
@@ -510,7 +517,12 @@ function ColorPickerDots({ value, onChange }) {
   )
 }
 
-export default function ClubTaskBoard({
+export default function ClubTaskBoard(props) {
+  const sessionKey = JSON.stringify([props.isDemo, props.accountKey, props.user?.id])
+  return <TaskBoard key={sessionKey} {...props} />
+}
+
+function TaskBoard({
   user = null,
   accountKey = 'guest',
   accountEmail = '',
@@ -520,6 +532,7 @@ export default function ClubTaskBoard({
   joinedClubIds = [],
   initialClubId = '',
   onClubJoined,
+  onSyncMemberships,
   onOpenClubsRbac,
   onBrowseClubs,
   onOpenSettings,
@@ -690,8 +703,25 @@ export default function ClubTaskBoard({
     reminderDefaults,
   ])
 
-  const [boardData, setBoardData] = useState(null)
-  const [clubPeople, setClubPeople] = useState(null)
+  const [boardState, setBoardState] = useState(null)
+  const [peopleState, setPeopleState] = useState(null)
+  const [, renderPending] = useReducer(count => count + 1, 0)
+  const scope = useMemo(() => ({
+    loadSeq: 0,
+    writes: createTaskBoardWrites(renderPending),
+    uncertain: new Set(),
+  }), [selectedClubId])
+  const activeScope = useRef(null)
+  const boardData = boardState?.scope === scope ? boardState.data : null
+  const clubPeople = peopleState?.scope === scope ? peopleState.data : null
+  const { writes } = scope
+  const setBoardData = useCallback(update => {
+    if (activeScope.current !== scope) return
+    setBoardState(prev => ({
+      scope,
+      data: typeof update === 'function' ? update(prev?.scope === scope ? prev.data : null) : update,
+    }))
+  }, [scope])
   const [loading, setLoading] = useState(false)
   const [notMember, setNotMember] = useState(false)
   const [offlineLocalMode, setOfflineLocalMode] = useState(false)
@@ -713,7 +743,6 @@ export default function ClubTaskBoard({
     emailServerReady: false,
     webhookMasked: '',
   })
-  const [remindingTaskId, setRemindingTaskId] = useState('')
 
   const syncChannelDraftsFromPrefs = useCallback(() => {
     const localPrefs = getLocalIntegrationPrefs(prefsAccountKey)
@@ -821,11 +850,11 @@ export default function ClubTaskBoard({
 
   // Quick-add state per personal section: { [sectionId]: { title, notes, showNote, priority, dueDate, dueTime, remind } }
   const [quickDrafts, setQuickDrafts] = useState({})
-  const [quickAddBusySecId, setQuickAddBusySecId] = useState('')
 
   // Inline click-to-rename state for personal to-dos
   const [inlineEditingId, setInlineEditingId] = useState(null)
   const [inlineEditTitle, setInlineEditTitle] = useState('')
+  const renameDrafts = useRef(new Map())
 
   // Task Modal & Member Reminder Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -833,7 +862,33 @@ export default function ClubTaskBoard({
   const [editingTask, setEditingTask] = useState(null)
   const [modalDefaultSectionId, setModalDefaultSectionId] = useState('')
   const [memberReminderTask, setMemberReminderTask] = useState(null)
-  const [actionBusy, setActionBusy] = useState(false)
+  const modalInstance = useRef(null)
+  const sectionInstance = useRef(null)
+  const reminderInstance = useRef(null)
+
+  useLayoutEffect(() => {
+    const controller = new AbortController()
+    scope.signal = controller.signal
+    activeScope.current = scope
+    setSectionCreatorMode(null)
+    setInlineEditingId(null)
+    setModalOpen(false)
+    setEditingTask(null)
+    setModalPersonalOnly(false)
+    setMemberReminderTask(null)
+    setNotMember(false)
+    setOfflineLocalMode(false)
+    setLoading(Boolean(selectedClubId))
+    renameDrafts.current.clear()
+    modalInstance.current = null
+    sectionInstance.current = null
+    reminderInstance.current = null
+    return () => {
+      activeScope.current = null
+      controller.abort()
+      scope.loadSeq += 1
+    }
+  }, [scope, selectedClubId])
 
   const selectedClub = useMemo(
     () => resolveMemberClubMatch(selectedClubId),
@@ -860,21 +915,30 @@ export default function ClubTaskBoard({
     [normSelectedClubId]
   )
 
-  const loadSeqRef = useRef(0)
   const selectedClubName = selectedClub?.name || ''
   const isLocallyMember = Boolean(selectedClub)
 
-  const loadBoard = useCallback(async () => {
+  const loadBoard = useCallback(async function load() {
+    if (activeScope.current !== scope) return
     if (!selectedClubId || !canUseBoard) {
-      setBoardData(null)
-      setClubPeople(null)
-      setNotMember(false)
-      setOfflineLocalMode(false)
+      setLoading(false)
+      return
+    }
+    if (writes.busy) {
+      writes.whenIdle(load)
       return
     }
 
     const cid = normalizeClubId(selectedClubId)
-    const seq = ++loadSeqRef.current
+    const seq = ++scope.loadSeq
+    const version = writes.revision
+    const current = () => activeScope.current === scope && seq === scope.loadSeq
+    const canApply = () => {
+      if (!current()) return false
+      if (writes.canApplyRead(version)) return true
+      writes.whenIdle(load)
+      return false
+    }
 
     if (isDemo) {
       if (!demoBoardsRef.current.has(cid)) {
@@ -882,7 +946,6 @@ export default function ClubTaskBoard({
       }
       setNotMember(false)
       setOfflineLocalMode(false)
-      setClubPeople(null)
       setBoardData(demoBoardsRef.current.get(cid))
       setLoading(false)
       return
@@ -890,35 +953,31 @@ export default function ClubTaskBoard({
 
     setLoading(true)
     try {
-      let [tasksRes, peopleRes] = await Promise.all([
-        getClubTasksBoard(selectedClubId),
-        getClubPeopleAndGroups(selectedClubId),
-      ])
+      const loadPeople = () => getClubPeopleAndGroups(selectedClubId, scope.signal).then(people => {
+        if (current() && people?.ok) setPeopleState({ scope, data: people })
+      }).catch(() => {})
+      void loadPeople()
+      let tasksRes = await getClubTasksBoard(selectedClubId, scope.signal)
+      if (!canApply()) return
 
-      if (seq !== loadSeqRef.current) return
-
-      // Reconcile local joinedClubIds with backend memberships if dev server restarted in-memory DB
+      // Reconcile local membership after an in-memory dev server restart.
       if (
         !tasksRes?.ok &&
         tasksRes?.status === 403 &&
         tasksRes?.code === 'NOT_CLUB_MEMBER' &&
-        isLocallyMember
+        isLocallyMember &&
+        onSyncMemberships
       ) {
-        const syncedJoin = await joinWorkspaceClub(selectedClubId)
-        if (seq !== loadSeqRef.current) return
-        if (syncedJoin?.ok) {
-          ;[tasksRes, peopleRes] = await Promise.all([
-            getClubTasksBoard(selectedClubId),
-            getClubPeopleAndGroups(selectedClubId),
-          ])
-          if (seq !== loadSeqRef.current) return
-        }
+        await onSyncMemberships(selectedClubId)
+        if (!canApply()) return
+        void loadPeople()
+        tasksRes = await getClubTasksBoard(selectedClubId, scope.signal)
+        if (!canApply()) return
       }
-
-      if (peopleRes?.ok) setClubPeople(peopleRes)
 
       if (!tasksRes?.ok) {
         if (tasksRes?.offline) {
+          if (scope.uncertain.size > 0) return
           const localPersonal = readOfflinePersonalBoard(accountKey, cid, effectiveUser?.id)
           setOfflineLocalMode(true)
           setNotMember(false)
@@ -961,6 +1020,7 @@ export default function ClubTaskBoard({
         return
       }
 
+      scope.uncertain.clear()
       setOfflineLocalMode(false)
       setNotMember(false)
       const fallbackPersonal = makeDefaultPersonalSection(cid, effectiveUser?.id)
@@ -972,29 +1032,29 @@ export default function ClubTaskBoard({
             : [fallbackPersonal],
         personalTasks: Array.isArray(tasksRes.personalTasks) ? tasksRes.personalTasks : [],
       })
+    } catch {
+      if (canApply()) onNotify?.('Could not refresh the task board.', { type: 'error' })
     } finally {
-      if (seq === loadSeqRef.current) {
-        setLoading(false)
-      }
+      if (current()) setLoading(false)
     }
   }, [
+    scope,
+    writes,
+    setBoardData,
     selectedClubId,
     selectedClubName,
     isLocallyMember,
+    onSyncMemberships,
     canUseBoard,
     isDemo,
     accountKey,
+    onNotify,
     effectiveUser?.id,
   ])
 
   useEffect(() => {
     loadBoard()
   }, [loadBoard])
-
-  useEffect(() => {
-    setSectionCreatorMode(null)
-    setInlineEditingId(null)
-  }, [selectedClubId])
 
   useEffect(() => {
     if (isDemo) return undefined
@@ -1006,9 +1066,11 @@ export default function ClubTaskBoard({
       ) {
         return
       }
+      const affectedClub = detail?.path?.match(/^\/clubs\/([^/]+)/)?.[1]
+      if (affectedClub && normalizeClubId(decodeURIComponent(affectedClub)) !== normSelectedClubId) return
       loadBoard()
     })
-  }, [isDemo, loadBoard])
+  }, [isDemo, loadBoard, normSelectedClubId])
 
   const effectiveTier = isBoard ? viewTier : 'member'
   const groupsMap = useMemo(() => {
@@ -1066,7 +1128,8 @@ export default function ClubTaskBoard({
   const todayYmd = useMemo(() => getLocalYmd(clockNow), [clockNow])
 
   const filteredPersonalTasks = useMemo(() => {
-    return allPersonalTasks.filter(t => {
+    return allPersonalTasks.filter(task => {
+      const t = taskForPlacement(task)
       if (hideDone && t.status === 'done') return false
       if (statusFilter !== 'all' && t.status !== statusFilter) return false
       if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false
@@ -1085,6 +1148,7 @@ export default function ClubTaskBoard({
     })
   }, [
     allPersonalTasks,
+    writes.revision,
     hideDone,
     statusFilter,
     priorityFilter,
@@ -1118,7 +1182,8 @@ export default function ClubTaskBoard({
   )
 
   const filteredTasks = useMemo(() => {
-    return accessibleClubTasks.filter(t => {
+    return accessibleClubTasks.filter(task => {
+      const t = taskForPlacement(task)
       if (onlyAssignedToMe && !isAssignedToMeOrMyGroup(t)) return false
       if (hideDone && isClubTaskDoneForViewer(t)) return false
       if (statusFilter !== 'all' && t.status !== statusFilter) return false
@@ -1139,6 +1204,7 @@ export default function ClubTaskBoard({
     })
   }, [
     accessibleClubTasks,
+    writes.revision,
     onlyAssignedToMe,
     isAssignedToMeOrMyGroup,
     hideDone,
@@ -1211,15 +1277,103 @@ export default function ClubTaskBoard({
     }
   }, [accessibleClubTasks, clockNow])
 
-  function applyServerBoardUpdate(res) {
-    setBoardData(prev => ({
-      ...(prev || {}),
-      permission: res.permission || prev?.permission,
-      sections: res.sections || prev?.sections || [],
-      tasks: res.tasks || prev?.tasks || [],
-      personalSections: res.personalSections || prev?.personalSections || personalSections,
-      personalTasks: res.personalTasks || prev?.personalTasks || [],
-    }))
+  function openTaskModal() {
+    modalInstance.current = {}
+    setModalOpen(true)
+  }
+
+  function openMemberReminder(task) {
+    reminderInstance.current = {}
+    setMemberReminderTask(task)
+  }
+
+  function isCurrentScope() {
+    return activeScope.current === scope
+  }
+
+  function applyTaskResult(res, taskId = res.task?.id || res.taskId, remove = false) {
+    setBoardData(prev => reconcileTask(prev, res, taskId, remove))
+  }
+
+  async function requestWrite(key, request, reconcile, stopQueue) {
+    if (!isCurrentScope()) return { skipped: true }
+    let res
+    try {
+      res = await request()
+    } catch {
+      res = { ok: false, outcomeUnknown: true }
+    }
+    if (!isCurrentScope()) return { skipped: true }
+    if (res?.ok) return res
+    if (res?.status === 403) void loadBoard()
+    if (res?.outcomeUnknown || res?.status >= 500 || !res) {
+      try {
+        const latest = await getClubTasksBoard(selectedClubId, scope.signal)
+        if (!isCurrentScope()) return { skipped: true }
+        if (latest?.ok) {
+          const reconciled = reconcile?.(latest)
+          if (reconciled) return reconciled
+        }
+      } catch {
+        // A later authoritative board load will unlock the affected operation.
+      }
+      if (!isCurrentScope()) return { skipped: true }
+      stopQueue?.()
+      scope.uncertain.add(key)
+      onNotify?.('Could not confirm the change. Refresh the task board before retrying.', {
+        type: 'error', actionLabel: 'Refresh', onAction: loadBoard,
+      })
+      return { ok: false, outcomeUnknown: true }
+    }
+    return res
+  }
+
+  function showWriteError(res, fallback) {
+    if (!res?.skipped && !res?.outcomeUnknown && isCurrentScope()) {
+      onNotify?.(res?.error || fallback, { type: 'error' })
+    }
+  }
+
+  function matchesTaskPatch(confirmed, expected) {
+    return Object.keys(expected).every(key =>
+      key === 'completedBy'
+        ? confirmed.completedBy?.some(c => c.userId === selfId) === expected.completedBy.some(c => c.userId === selfId)
+        : JSON.stringify(confirmed[key]) === JSON.stringify(expected[key])
+    )
+  }
+
+  function findTask(res, id) {
+    return [...(res.tasks || []), ...(res.personalTasks || [])].find(task => task.id === id)
+  }
+
+  function taskEntries(res) {
+    return [...(res?.tasks || []), ...(res?.personalTasks || [])]
+  }
+
+  function applyCreatedTask(res) {
+    if (res.task?.id || res.taskId) applyTaskResult(res)
+    else void loadBoard()
+  }
+
+  function isPending(key) {
+    return Boolean(writes.get(key))
+  }
+
+  function isLocked(key) {
+    return isPending(key) || scope.uncertain.has(key)
+  }
+
+  function taskKey(id) {
+    return `task:${id}`
+  }
+
+  function taskForPlacement(task) {
+    return writes.get(taskKey(task.id))?.anchor || task
+  }
+
+  function displayedTask(task) {
+    const entry = writes.get(taskKey(task.id))
+    return entry ? { ...task, ...entry.current?.overlay, ...entry.queued?.overlay } : task
   }
 
   function mutateLocalOrDemoBoard(mutator) {
@@ -1239,7 +1393,7 @@ export default function ClubTaskBoard({
   // Dispatch a reminder (manual or automatic due-time trigger) across Discord / Email / Browser
   const executeTaskReminderDispatch = useCallback(
     async (task, { isAutomatic = false } = {}) => {
-      if (!task) return
+      if (!task || !isCurrentScope()) return
       if (isDemo) {
         if (!isAutomatic && onNotify) {
           onNotify('Sign in to send live Discord and Email task reminders.', { type: 'info' })
@@ -1280,108 +1434,125 @@ export default function ClubTaskBoard({
         }
       }
 
-      if (!isAutomatic) setRemindingTaskId(task.id)
+      const key = taskKey(task.id)
+      if (isLocked(key) || isLocked(`section:${task.sectionId}`)) return
+      await writes.run(key, async () => {
+        const deliveredVia = []
+        let emailDraftOpened = false
+        let serverResults = {}
 
-      const deliveredVia = []
-      let serverResults = {}
-
-      if (!offlineLocalMode && selectedClubId) {
-        const srvRes = await sendClubTaskReminder(selectedClubId, task.id, {
-          channels,
-          webhookUrl: integrationSummary.discordWebhookUrl || undefined,
-          recipientEmail: integrationSummary.recipientEmail || undefined,
-          accountKey: prefsAccountKey,
-          url: taskUrl,
-          markAutoSent: isAutomatic,
-        })
-        if (srvRes?.ok) {
-          serverResults = srvRes.results || {}
-          applyServerBoardUpdate(srvRes)
-          if (serverResults.discord?.ok) deliveredVia.push('Discord')
-          if (serverResults.email?.ok) deliveredVia.push('Email')
-        }
-      }
-
-      // Client-side fallback for Discord Webhook / Email if server wasn't configured or offline
-      const taskCardPayload = {
-        id: task.id,
-        title: task.title,
-        notes: task.notes || '',
-        priority: task.priority || 'medium',
-        dueDate: task.dueDate || '',
-        dueTime: task.dueTime || '',
-        dueAtIso: dueDt ? dueDt.toISOString() : null,
-        dueLabel,
-        visibility: task.visibility,
-        isPersonal: Boolean(task.visibility === 'personal' || task.isPersonal),
-      }
-
-      if (channels.includes('discord') && !serverResults.discord?.ok) {
-        if (integrationSummary.discordWebhookUrl) {
-          try {
-            await dispatchDiscordNotification({
-              kind: 'task_reminder',
-              accountKey: prefsAccountKey,
-              webhookUrl: integrationSummary.discordWebhookUrl,
-              clubName: clubLabel,
-              title: task.title,
-              message: task.notes || '',
-              url: taskUrl,
-              task: taskCardPayload,
-            })
-            deliveredVia.push('Discord')
-          } catch (err) {
-            if (!isAutomatic && onNotify && channels.length === 1) {
-              onNotify(err?.message || 'Discord reminder failed.', { type: 'error' })
-            }
+        if (!offlineLocalMode && selectedClubId) {
+          const srvRes = await sendClubTaskReminder(selectedClubId, task.id, {
+            channels,
+            webhookUrl: integrationSummary.discordWebhookUrl || undefined,
+            recipientEmail: integrationSummary.recipientEmail || undefined,
+            accountKey: prefsAccountKey,
+            url: taskUrl,
+            markAutoSent: isAutomatic,
+          }, scope.signal).catch(() => ({ outcomeUnknown: true }))
+          if (!isCurrentScope()) return
+          if (srvRes?.outcomeUnknown || srvRes?.status >= 500) {
+            if (!isAutomatic) onNotify?.('Could not confirm reminder delivery.', { type: 'error' })
+            return
+          }
+          if (srvRes?.status === 401 || srvRes?.status === 403) {
+            if (!isAutomatic) showWriteError(srvRes, 'Could not send reminder.')
+            return
+          }
+          if (srvRes?.ok) {
+            serverResults = srvRes.results || {}
+            applyTaskResult(srvRes, task.id)
+            if (serverResults.discord?.ok) deliveredVia.push('Discord')
+            if (serverResults.email?.ok) deliveredVia.push('Email')
           }
         }
-      }
 
-      if (channels.includes('email') && !serverResults.email?.ok) {
-        if (integrationSummary.recipientEmail) {
-          try {
-            const emailOut = await dispatchEmailNotification(
-              {
+        // Client-side fallback for Discord Webhook / Email if server wasn't configured or offline
+        const taskCardPayload = {
+          id: task.id,
+          title: task.title,
+          notes: task.notes || '',
+          priority: task.priority || 'medium',
+          dueDate: task.dueDate || '',
+          dueTime: task.dueTime || '',
+          dueAtIso: dueDt ? dueDt.toISOString() : null,
+          dueLabel,
+          visibility: task.visibility,
+          isPersonal: Boolean(task.visibility === 'personal' || task.isPersonal),
+        }
+
+        if (channels.includes('discord') && (!serverResults.discord || /Provide a Discord Webhook URL|No destination Discord channel/.test(serverResults.discord.error || ''))) {
+          if (integrationSummary.discordWebhookUrl) {
+            try {
+              await dispatchDiscordNotification({
                 kind: 'task_reminder',
                 accountKey: prefsAccountKey,
-                to: integrationSummary.recipientEmail,
+                webhookUrl: integrationSummary.discordWebhookUrl,
                 clubName: clubLabel,
                 title: task.title,
                 message: task.notes || '',
                 url: taskUrl,
                 task: taskCardPayload,
-              },
-              { allowMailtoFallback: !isAutomatic }
-            )
-            if (emailOut?.ok) {
-              deliveredVia.push(emailOut.via === 'mailto' ? 'Email draft' : 'Email')
+              })
+              deliveredVia.push('Discord')
+            } catch (err) {
+              if (!isAutomatic && onNotify && channels.length === 1) {
+                onNotify(err?.message || 'Discord reminder failed.', { type: 'error' })
+              }
             }
-          } catch {
-            // Handled below if nothing delivered on manual send
           }
         }
-      }
 
-      if (!isAutomatic) {
-        setRemindingTaskId('')
-        if (deliveredVia.length > 0) {
-          if (onNotify) {
-            onNotify(`Sent task reminder via ${deliveredVia.join(' & ')}!`)
-          }
-        } else {
-          setShowReminderPanel(true)
-          if (onNotify) {
-            onNotify(
-              'Connect a Discord Webhook URL or Email below to send task reminders.',
-              { type: 'info' }
-            )
+        if (!isCurrentScope()) return
+        if (channels.includes('email') && (!serverResults.email || /Email outbound transport is not configured|No recipient email address configured/.test(serverResults.email.error || ''))) {
+          if (integrationSummary.recipientEmail) {
+            try {
+              const emailOut = await dispatchEmailNotification(
+                {
+                  kind: 'task_reminder',
+                  accountKey: prefsAccountKey,
+                  to: integrationSummary.recipientEmail,
+                  clubName: clubLabel,
+                  title: task.title,
+                  message: task.notes || '',
+                  url: taskUrl,
+                  task: taskCardPayload,
+                },
+                { allowMailtoFallback: !isAutomatic }
+              )
+              if (emailOut?.ok) {
+                if (emailOut.via === 'mailto') emailDraftOpened = true
+                else deliveredVia.push('Email')
+              }
+            } catch {
+              // Handled below if nothing delivered on manual send
+            }
           }
         }
-      }
+
+        if (!isAutomatic && isCurrentScope()) {
+          if (deliveredVia.length > 0) {
+            if (onNotify) {
+              onNotify(`Sent task reminder via ${deliveredVia.join(' & ')}!`)
+            }
+          } else if (emailDraftOpened) {
+            onNotify?.('Opened an email draft for the task reminder.', { type: 'info' })
+          } else {
+            setShowReminderPanel(true)
+            if (onNotify) {
+              onNotify(
+                'Connect a Discord Webhook URL or Email below to send task reminders.',
+                { type: 'info' }
+              )
+            }
+          }
+        }
+      }, { kind: 'reminder', anchor: task })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      scope,
+      loadBoard,
       isDemo,
       timeFormat,
       selectedClub?.name,
@@ -1405,7 +1576,7 @@ export default function ClubTaskBoard({
 
     for (const task of candidates) {
       if (!task.dueDate || !task.reminder?.enabled) continue
-      if (hasLocalReminderFired(task)) continue
+      if (hasLocalReminderFired(task) || isLocked(taskKey(task.id))) continue
 
       let remindMs = task.reminder.remindAtIso
         ? new Date(task.reminder.remindAtIso).getTime()
@@ -1497,7 +1668,8 @@ export default function ClubTaskBoard({
     const draft = getDraftForSection(pSec.id)
     const cleanTitle = String(draft.title || '').trim()
     const cleanNotes = String(draft.notes || '').trim()
-    if (!cleanTitle || quickAddBusySecId) return
+    const key = `quick:${pSec.id}`
+    if (!cleanTitle || isLocked(key) || isLocked(`section:${pSec.id}`)) return
 
     const cleanDate = draft.dueDate || ''
     const cleanTime = cleanDate ? normalizeTime24h(draft.dueTime || '') : ''
@@ -1541,13 +1713,12 @@ export default function ClubTaskBoard({
           personalTasks: [...(base.personalTasks || []), created],
         }
       })
-      setQuickDrafts(prev => ({ ...prev, [pSec.id]: makeBlankDraft() }))
+      setQuickDrafts(prev => prev[pSec.id] === draft ? { ...prev, [pSec.id]: makeBlankDraft() } : prev)
       if (onNotify) onNotify('Added to your to-do list!')
       return
     }
 
-    setQuickAddBusySecId(pSec.id)
-    const res = await createClubTask(selectedClubId, {
+    const payload = {
       title: cleanTitle,
       notes: cleanNotes,
       sectionId: pSec.id,
@@ -1561,12 +1732,16 @@ export default function ClubTaskBoard({
       visibility: 'personal',
       audience: 'personal',
       isPersonal: true,
+    }
+    const res = await writes.run(key, async () => {
+      const result = await requestWrite(key, () => createClubTask(selectedClubId, payload, scope.signal))
+      if (result?.ok) applyCreatedTask(result)
+      return result
     })
-    setQuickAddBusySecId('')
+    if (!isCurrentScope() || res?.skipped) return
 
     if (res?.ok) {
-      applyServerBoardUpdate(res)
-      setQuickDrafts(prev => ({ ...prev, [pSec.id]: makeBlankDraft() }))
+      setQuickDrafts(prev => prev[pSec.id] === draft ? { ...prev, [pSec.id]: makeBlankDraft() } : prev)
       if (onNotify) {
         onNotify(
           reminderPayload.enabled
@@ -1575,8 +1750,45 @@ export default function ClubTaskBoard({
         )
       }
     } else {
-      if (res?.status === 403) loadBoard()
-      if (onNotify) onNotify(res?.error || 'Could not add personal to-do.', { type: 'error' })
+      const isConstraintError =
+        res?.code === 'TASKS_CHECK_CONSTRAINT_VIOLATION' ||
+        /tasks_(audience|visibility)_check/i.test(res?.error || '')
+      if (isConstraintError) {
+        mutateLocalOrDemoBoard((base, cid) => {
+          const created = {
+            id: `local_ptsk_${cid}_${Date.now()}`,
+            clubId: cid,
+            sectionId: pSec.id,
+            title: cleanTitle,
+            notes: cleanNotes,
+            visibility: 'personal',
+            audience: 'personal',
+            isPersonal: true,
+            status: 'not_started',
+            priority: draft.priority || 'medium',
+            dueDate: cleanDate,
+            dueTime: cleanTime,
+            reminder: reminderPayload,
+            assignees: [],
+            groupIds: [],
+            completedBy: [],
+          }
+          return {
+            ...base,
+            personalTasks: [...(base.personalTasks || []), created],
+          }
+        })
+        setQuickDrafts(prev => prev[pSec.id] === draft ? { ...prev, [pSec.id]: makeBlankDraft() } : prev)
+        if (onNotify) {
+          onNotify(
+            'Saved to your local to-do list. Update your Supabase schema (tasks_audience_check) to sync to cloud.',
+            { type: 'warning' }
+          )
+        }
+        return
+      }
+
+      showWriteError(res, 'Could not add personal to-do.')
     }
   }
 
@@ -1590,42 +1802,49 @@ export default function ClubTaskBoard({
       channels,
       recipientEmail: integrationSummary.recipientEmail,
     })
-    setActionBusy(true)
-    await handleInlineTaskPatch(task, { reminder: nextReminder })
-    setActionBusy(false)
+    const instance = reminderInstance.current
+    const result = await handleInlineTaskPatch(task, { reminder: nextReminder })
+    if (!result?.ok || !isCurrentScope() || reminderInstance.current !== instance) return
     setMemberReminderTask(null)
-    if (onNotify) {
-      onNotify(
-        enabled
-          ? `Reminder set (${formatReminderOffsetLabel(offsetMinutes, true)})`
-          : 'Reminder turned off.',
-        { type: enabled ? 'success' : 'info' }
-      )
-    }
+    onNotify?.(
+      enabled ? `Reminder set (${formatReminderOffsetLabel(offsetMinutes, true)})` : 'Reminder turned off.',
+      { type: enabled ? 'success' : 'info' }
+    )
   }
 
   async function commitInlinePersonalRename(task) {
-    const trimmed = String(inlineEditTitle || '').trim()
+    const draft = renameDrafts.current.get(task.id)
+    if (!draft || draft.submitted) return
+    draft.submitted = true
+    const trimmed = draft.title.trim()
     setInlineEditingId(null)
-    if (!trimmed || trimmed === task.title) return
-    await handleInlineTaskPatch(task, { title: trimmed })
-  }
-
-  async function handleJoinCurrentClub() {
-    if (!selectedClubId || actionBusy) return
-    setActionBusy(true)
-    const res = await joinWorkspaceClub(selectedClubId)
-    setActionBusy(false)
-    if (res?.ok) {
-      if (onClubJoined) onClubJoined(selectedClubId, res)
-      if (onNotify) onNotify(`Joined ${cleanText(selectedClub?.name || 'club')}!`)
-      loadBoard()
-    } else if (onNotify) {
-      onNotify(res?.error || 'Could not join club.', { type: 'error' })
+    if (!trimmed || trimmed === task.title) {
+      renameDrafts.current.delete(task.id)
+      return
+    }
+    const result = await handleInlineTaskPatch(task, { title: trimmed })
+    if (isCurrentScope() && renameDrafts.current.get(task.id) === draft) {
+      if (result?.ok) renameDrafts.current.delete(task.id)
+      else draft.submitted = false
     }
   }
 
+  async function handleJoinCurrentClub() {
+    const key = 'membership'
+    if (!selectedClubId || isLocked(key)) return
+    const res = await writes.run(key, () => requestWrite(key, () => joinWorkspaceClub(selectedClubId, scope.signal)))
+    if (!isCurrentScope()) return
+    if (res?.ok) {
+      onClubJoined?.(selectedClubId, res)
+      onNotify?.(`Joined ${cleanText(selectedClub?.name || 'club')}!`)
+      void loadBoard()
+    } else showWriteError(res, 'Could not join club.')
+  }
+
   async function handleModalSave(payload) {
+    const key = editingTask?.id ? taskKey(editingTask.id) : 'create-task'
+    if (isLocked(key) || isLocked(`section:${payload.sectionId}`)) return
+    const instance = modalInstance.current
     const isPersonalPayload = Boolean(
       payload?.isPersonal ||
         payload?.visibility === 'personal' ||
@@ -1684,16 +1903,28 @@ export default function ClubTaskBoard({
       return
     }
 
-    setActionBusy(true)
-    const res = editingTask?.id
-      ? await updateClubTask(selectedClubId, editingTask.id, payload)
-      : await createClubTask(selectedClubId, payload)
-    setActionBusy(false)
+    const res = await writes.run(key, async () => {
+      const result = await requestWrite(key,
+        () => editingTask?.id
+          ? updateClubTask(selectedClubId, editingTask.id, payload, scope.signal)
+          : createClubTask(selectedClubId, payload, scope.signal),
+        latest => {
+          if (editingTask?.id) applyTaskResult(latest, editingTask.id)
+        })
+      if (result?.ok) {
+        if (editingTask?.id) applyTaskResult(result, editingTask.id)
+        else applyCreatedTask(result)
+      }
+      return result
+    }, { anchor: editingTask })
+    if (!isCurrentScope() || res?.skipped) return
+    const sameForm = modalInstance.current === instance
     if (res?.ok) {
-      applyServerBoardUpdate(res)
-      setModalOpen(false)
-      setEditingTask(null)
-      setModalPersonalOnly(false)
+      if (sameForm) {
+        setModalOpen(false)
+        setEditingTask(null)
+        setModalPersonalOnly(false)
+      }
       if (onNotify) {
         onNotify(
           editingTask?.id
@@ -1706,119 +1937,163 @@ export default function ClubTaskBoard({
         )
       }
     } else {
-      if (res?.status === 403) loadBoard()
-      if (onNotify) onNotify(res?.error || 'Permission denied.', { type: 'error' })
+      const isConstraintError =
+        res?.code === 'TASKS_CHECK_CONSTRAINT_VIOLATION' ||
+        /tasks_(audience|visibility)_check/i.test(res?.error || '')
+      if (isConstraintError && isPersonalPayload && sameForm) {
+        mutateLocalOrDemoBoard((base, cid) => {
+          const created = {
+            id: editingTask?.id || `local_ptsk_${cid}_${Date.now()}`,
+            clubId: cid,
+            sectionId: payload.sectionId || personalSections[0]?.id || '',
+            title: payload.title,
+            notes: payload.notes || '',
+            visibility: 'personal',
+            audience: 'personal',
+            isPersonal: true,
+            status: payload.status || 'not_started',
+            priority: payload.priority || 'medium',
+            dueDate: payload.dueDate || '',
+            dueTime: payload.dueDate ? payload.dueTime || '' : '',
+            reminder: payload.reminder || { enabled: false, offsetMinutes: 60, channels: ['discord', 'email'] },
+            assignees: [],
+            groupIds: [],
+            completedBy: [],
+          }
+          return {
+            ...base,
+            personalTasks: editingTask?.id
+              ? (base.personalTasks || []).map(t => (t.id === editingTask.id ? { ...t, ...created } : t))
+              : [...(base.personalTasks || []), created],
+          }
+        })
+        setModalOpen(false)
+        setEditingTask(null)
+        setModalPersonalOnly(false)
+        if (onNotify) {
+          onNotify(
+            'Saved to your local to-do list. Update your Supabase schema (tasks_audience_check) to sync to cloud.',
+            { type: 'warning' }
+          )
+        }
+        return
+      }
+
+      showWriteError(res, 'Could not save task.')
     }
   }
 
   async function handleInlineTaskPatch(task, patch) {
+    const key = taskKey(task.id)
     const isPersonalTask = task.visibility === 'personal' || task.isPersonal
+    if (scope.uncertain.has(key) || isLocked(`section:${task.sectionId}`)) return { skipped: true }
 
     if (isDemo || (offlineLocalMode && isPersonalTask)) {
-      mutateLocalOrDemoBoard(base => {
-        if (isPersonalTask) {
-          return {
-            ...base,
-            personalTasks: (base.personalTasks || []).map(t => {
-              if (t.id !== task.id) return t
-              const nextStatus = patch.toggleCompletedForSelf
-                ? t.status === 'done'
-                  ? 'not_started'
-                  : 'done'
-                : patch.status || t.status
-              return {
-                ...t,
-                ...(patch.title ? { title: patch.title } : {}),
-                ...(patch.priority ? { priority: patch.priority } : {}),
-                ...(patch.reminder ? { reminder: patch.reminder } : {}),
-                status: nextStatus,
-              }
-            }),
-          }
-        }
-        return {
-          ...base,
-          tasks: (base.tasks || []).map(t => {
-            if (t.id !== task.id) return t
-            if (patch.toggleCompletedForSelf) {
-              const hasSelf = (t.completedBy || []).some(c => c.userId === 'demo')
-              return {
-                ...t,
-                completedBy: hasSelf ? [] : [{ userId: 'demo' }],
-              }
-            }
-            return { ...t, ...patch }
-          }),
-        }
-      })
-      return
+      const field = isPersonalTask ? 'personalTasks' : 'tasks'
+      mutateLocalOrDemoBoard(base => ({
+        ...base,
+        [field]: (base[field] || []).map(item => item.id === task.id ? applyTaskPatch(item, patch, selfId) : item),
+      }))
+      return { ok: true }
     }
 
-    const res = await updateClubTask(selectedClubId, task.id, patch)
-    if (res?.ok) {
-      applyServerBoardUpdate(res)
-    } else {
-      if (res?.status === 403) loadBoard()
-      if (onNotify) onNotify(res?.error || 'Could not update task.', { type: 'error' })
-    }
+    const toggle = patch.toggleCompletedForSelf
+    const overlay = toggle
+      ? (isPersonalTask ? { status: applyTaskPatch(task, patch, selfId).status }
+        : { completedBy: applyTaskPatch(task, patch, selfId).completedBy })
+      : patch
+    const coalesce = !toggle && Object.keys(patch).every(field => field === 'status' || field === 'priority')
+    const result = await writes.run(key, async (nextPatch, stopQueue) => {
+      const focused = document.activeElement
+      const focusedRow = focused?.closest('[data-task-row]')
+      const focusedSection = focusedRow?.closest('[data-task-section]')
+      const res = await requestWrite(key, () => updateClubTask(selectedClubId, task.id, nextPatch, scope.signal), latest => {
+        const confirmed = findTask(latest, task.id)
+        if (!confirmed) return undefined
+        applyTaskResult({ task: confirmed }, task.id)
+        const desired = toggle ? overlay : nextPatch
+        if (matchesTaskPatch(confirmed, desired)) return { ok: true, task: confirmed }
+      }, stopQueue)
+      if (res?.ok) {
+        applyTaskResult(res, task.id)
+        if (focusedRow?.dataset.taskRow === task.id) {
+          requestAnimationFrame(() => {
+            if (isCurrentScope() && !focused?.isConnected && document.activeElement === document.body) {
+              focusedSection?.querySelector('[data-section-focus]')?.focus({ preventScroll: true })
+            }
+          })
+        }
+      } else showWriteError(res, 'Could not update task.')
+      return res
+    }, { patch, overlay, coalesce, anchor: task, kind: toggle ? 'completion' : patch.title ? 'rename' : undefined })
+    return result
+  }
+
+  async function deleteLiveTask(task) {
+    const key = taskKey(task.id)
+    if (isLocked(key)) return { skipped: true }
+    return writes.run(key, async () => {
+      const result = await requestWrite(key, () => deleteClubTask(selectedClubId, task.id, scope.signal),
+        latest => !findTask(latest, task.id) ? { ok: true } : undefined)
+      if (result?.ok) applyTaskResult(result, task.id, true)
+      return result
+    }, { anchor: task, kind: 'delete' })
   }
 
   async function handleDeleteTaskClick(task) {
-    const taskId = typeof task === 'string' ? task : task?.id
-    const isPersonalTask =
-      typeof task === 'object' && (task?.visibility === 'personal' || task?.isPersonal)
+    const isPersonalTask = task.visibility === 'personal' || task.isPersonal
+    if (isLocked(`section:${task.sectionId}`)) return
 
     if (isDemo || (offlineLocalMode && isPersonalTask)) {
       mutateLocalOrDemoBoard(base => ({
         ...base,
-        personalTasks: (base.personalTasks || []).filter(t => t.id !== taskId),
-        tasks: (base.tasks || []).filter(t => t.id !== taskId),
+        personalTasks: (base.personalTasks || []).filter(t => t.id !== task.id),
+        tasks: (base.tasks || []).filter(t => t.id !== task.id),
       }))
-      if (onNotify) onNotify(isPersonalTask ? 'To-do removed.' : 'Task deleted.', { type: 'info' })
+      onNotify?.(isPersonalTask ? 'To-do removed.' : 'Task deleted.', { type: 'info' })
       return
     }
 
-    const res = await deleteClubTask(selectedClubId, taskId)
-    if (res?.ok) {
-      applyServerBoardUpdate(res)
-      if (onNotify) onNotify(isPersonalTask ? 'To-do removed.' : 'Task deleted.', { type: 'info' })
-    } else if (onNotify) {
-      onNotify(res?.error || 'Could not delete task.', { type: 'error' })
-    }
+    const res = await deleteLiveTask(task)
+    if (!isCurrentScope()) return
+    if (res?.ok) onNotify?.(isPersonalTask ? 'To-do removed.' : 'Task deleted.', { type: 'info' })
+    else showWriteError(res, 'Could not delete task.')
   }
 
   async function handleClearCompletedPersonal(sectionId) {
-    const completedInSection = allPersonalTasks.filter(
-      t => t.sectionId === sectionId && t.status === 'done'
-    )
-    if (completedInSection.length === 0 || actionBusy) return
+    const key = `clear:${sectionId}`
+    const completed = allPersonalTasks.filter(t => t.sectionId === sectionId && t.status === 'done')
+    if (!completed.length || isLocked(key) || isLocked(`section:${sectionId}`) ||
+      completed.some(task => isLocked(taskKey(task.id)))) return
 
     if (isDemo || offlineLocalMode) {
-      const removeIds = new Set(completedInSection.map(t => t.id))
+      const ids = new Set(completed.map(t => t.id))
       mutateLocalOrDemoBoard(base => ({
         ...base,
-        personalTasks: (base.personalTasks || []).filter(t => !removeIds.has(t.id)),
+        personalTasks: (base.personalTasks || []).filter(t => !ids.has(t.id)),
       }))
-      if (onNotify) onNotify('Cleared completed to-dos.', { type: 'info' })
+      onNotify?.('Cleared completed to-dos.', { type: 'info' })
       return
     }
 
-    setActionBusy(true)
-    let latestRes = null
-    for (const item of completedInSection) {
-      const r = await deleteClubTask(selectedClubId, item.id)
-      if (r?.ok) latestRes = r
-    }
-    setActionBusy(false)
-    if (latestRes) {
-      applyServerBoardUpdate(latestRes)
-      if (onNotify) onNotify('Cleared completed to-dos.', { type: 'info' })
-    } else {
-      loadBoard()
-    }
+    await writes.run(key, async () => {
+      // Keep the batch bounded and acknowledge each confirmed removal.
+      let removed = 0
+      for (let index = 0; index < completed.length && isCurrentScope(); index += 3) {
+        const results = await Promise.all(completed.slice(index, index + 3).map(deleteLiveTask))
+        removed += results.filter(result => result?.ok).length
+      }
+      if (!isCurrentScope()) return
+      const remaining = completed.length - removed
+      const message = remaining
+        ? `Removed ${removed} of ${completed.length} completed to-dos. ${remaining} could not be confirmed.`
+        : 'Cleared completed to-dos.'
+      onNotify?.(message, { type: remaining ? 'error' : 'info' })
+    })
   }
 
   function openSectionCreator(mode) {
+    sectionInstance.current = {}
     if (sectionCreatorMode === mode) {
       setSectionCreatorMode(null)
       return
@@ -1835,7 +2110,9 @@ export default function ClubTaskBoard({
 
   async function handleCreateSection(e) {
     e.preventDefault()
-    if (!newSectionTitle.trim() || actionBusy) return
+    const key = `create-section:${sectionCreatorMode}`
+    if (!newSectionTitle.trim() || isLocked(key)) return
+    const instance = sectionInstance.current
     const targetVis = sectionCreatorMode === 'club' && isBoard ? newSectionVis : 'personal'
 
     if ((isDemo || offlineLocalMode) && targetVis === 'personal') {
@@ -1860,29 +2137,30 @@ export default function ClubTaskBoard({
       return
     }
 
-    setActionBusy(true)
-    const res = await createClubTaskSection(selectedClubId, {
+    const res = await writes.run(key, () => requestWrite(key, () => createClubTaskSection(selectedClubId, {
       title: newSectionTitle.trim(),
       color: newSectionColor,
       visibility: targetVis,
-    })
-    setActionBusy(false)
+    }, scope.signal)))
+    if (!isCurrentScope()) return
     if (res?.ok) {
-      applyServerBoardUpdate(res)
-      setNewSectionTitle('')
-      setSectionCreatorMode(null)
+      void loadBoard()
+      if (sectionInstance.current === instance) {
+        setNewSectionTitle('')
+        setSectionCreatorMode(null)
+      }
       if (onNotify) {
         onNotify(targetVis === 'personal' ? 'Created personal list!' : 'Created club section!')
       }
-    } else if (onNotify) {
-      onNotify(res?.error || 'Could not create section.', { type: 'error' })
-    }
+    } else showWriteError(res, 'Could not create section.')
   }
 
   async function handleRemoveSection(section) {
-    const sectionId = typeof section === 'string' ? section : section?.id
-    const isPersonalSec =
-      typeof section === 'object' && (section?.visibility === 'personal' || section?.isPersonal)
+    const sectionId = section.id
+    const key = `section:${sectionId}`
+    const isPersonalSec = section.visibility === 'personal' || section.isPersonal
+    if (isLocked(key) || isLocked(`quick:${sectionId}`) || isLocked(`clear:${sectionId}`) ||
+      taskEntries(boardData).some(task => task.sectionId === sectionId && isLocked(taskKey(task.id)))) return
 
     if ((isDemo || offlineLocalMode) && isPersonalSec) {
       mutateLocalOrDemoBoard(base => ({
@@ -1894,13 +2172,24 @@ export default function ClubTaskBoard({
       return
     }
 
-    const res = await deleteClubTaskSection(selectedClubId, sectionId)
-    if (res?.ok) {
-      applyServerBoardUpdate(res)
-      if (onNotify) onNotify('Deleted section.', { type: 'info' })
-    } else if (onNotify) {
-      onNotify(res?.error || 'Could not delete section.', { type: 'error' })
-    }
+    const res = await writes.run(key, async () => {
+      const result = await requestWrite(key, () => deleteClubTaskSection(selectedClubId, sectionId, scope.signal),
+        latest => ![...(latest.sections || []), ...(latest.personalSections || [])].some(s => s.id === sectionId)
+          ? { ok: true } : undefined)
+      if (result?.ok) {
+        const sectionsKey = isPersonalSec ? 'personalSections' : 'sections'
+        const tasksKey = isPersonalSec ? 'personalTasks' : 'tasks'
+        setBoardData(prev => ({
+          ...prev,
+          [sectionsKey]: prev[sectionsKey].filter(s => s.id !== sectionId),
+          [tasksKey]: prev[tasksKey].filter(task => task.sectionId !== sectionId),
+        }))
+      }
+      return result
+    })
+    if (!isCurrentScope()) return
+    if (res?.ok) onNotify?.('Deleted section.', { type: 'info' })
+    else showWriteError(res, 'Could not delete section.')
   }
 
   async function handleToggleBrowserDesktopAlerts() {
@@ -1940,215 +2229,131 @@ export default function ClubTaskBoard({
 
   if (!canUseBoard) {
     return (
-      <Card className="p-6 text-center space-y-2">
-        <Lock size={22} className="mx-auto text-[var(--blue)]" />
-        <h3 className="text-base font-bold text-[var(--text)]">Sign In to Access Club Task Boards</h3>
-        <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
-          Sign in with your account to view tasks for the clubs you&apos;re in, keep your own private to-do list per server, or manage your club&apos;s Board Task View.
-        </p>
-      </Card>
+      <div className="page-stack">
+        <PageToolbar title="Task board" />
+        <Card className="p-6 text-center space-y-2">
+          <Lock size={22} className="mx-auto text-[var(--blue)]" />
+          <h3 className="text-base font-bold text-[var(--text)]">Sign In to Access Club Task Boards</h3>
+          <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
+            Sign in with your account to view tasks for the clubs you&apos;re in, keep your own private to-do list per server, or manage your club&apos;s Board Task View.
+          </p>
+        </Card>
+      </div>
     )
   }
 
   // Strictly enforce: you can only see task boards for clubs you are in
   if (memberClubs.length === 0) {
     return (
-      <Card className="p-7 text-center space-y-3" delay={1}>
-        <div className="w-12 h-12 rounded-2xl bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center mx-auto">
-          <Users size={22} />
-        </div>
-        <div className="space-y-1">
-          <h3 className="text-base font-bold text-[var(--text)]">Join a Club to Unlock Its Task Board</h3>
-          <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
-            Task boards only show servers you&apos;re a member of. Once you join a club, you&apos;ll get its shared club checklist plus your own private to-do list for that server.
-          </p>
-        </div>
-        {(onBrowseClubs || onOpenClubsRbac) && (
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => (onBrowseClubs ? onBrowseClubs() : onOpenClubsRbac(''))}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <Compass size={14} />
-              <span>Browse &amp; Join Clubs</span>
-            </button>
+      <div className="page-stack">
+        <PageToolbar title="Task board" />
+        <Card className="p-7 text-center space-y-3" delay={1}>
+          <div className="w-12 h-12 rounded-2xl bg-[var(--blue-light)] text-[var(--blue-ink)] flex items-center justify-center mx-auto">
+            <Users size={22} />
           </div>
-        )}
-      </Card>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-[var(--text)]">Join a Club to Unlock Its Task Board</h3>
+            <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
+              Task boards only show servers you&apos;re a member of. Once you join a club, you&apos;ll get its shared club checklist plus your own private to-do list for that server.
+            </p>
+          </div>
+          {(onBrowseClubs || onOpenClubsRbac) && (
+            <div className="pt-1">
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<Compass size={14} />}
+                onClick={() => (onBrowseClubs ? onBrowseClubs() : onOpenClubsRbac(''))}
+              >
+                Browse &amp; Join Clubs
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
     )
   }
 
   const showPersonalZone = focusTab === 'all' || focusTab === 'personal'
   const showClubZone = focusTab === 'all' || focusTab === 'club'
 
+  const filterCount = advancedFilterCount + Number(hideDone) + Number(onlyAssignedToMe) + Number(Boolean(kpiQuickFilter))
+
   return (
-    <div className="space-y-5">
-      {/* ── Top Workspace Card: Joined Server Switcher + Active Server Header + Smart Focus/Filter Bar ── */}
-      <Card className="p-4 sm:p-5 space-y-4" delay={1}>
-        {/* Server Switcher Rail (only shown when member of 2+ clubs — zero redundant dual dropdowns) */}
-        {memberClubs.length > 1 && (
-          <div className="flex items-center justify-between gap-2 pb-3.5 border-b border-[var(--border-subtle)]">
-            <div className="mobile-pill-rail flex-1 min-w-0">
-              {memberClubs.map(c => {
-                const isSelected = normalizeClubId(c.id) === normalizeClubId(selectedClubId)
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedClubId(c.id)}
-                    className={`inline-flex items-center gap-2 pl-1.5 pr-3 min-h-[36px] rounded-xl text-xs font-semibold border shrink-0 cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)] shadow-2xs'
-                        : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'
-                    }`}
-                  >
-                    <ClubAvatar club={c} size={24} className="rounded-lg" />
-                    <span className="truncate max-w-[170px]">{cleanText(c.name)}</span>
-                  </button>
-                )
-              })}
-            </div>
+    <div className="page-stack">
+      <div className="space-y-2 dense-controls">
+        <PageToolbar title="Task board" actions={
+          <>
+            <ActionDisclosure label="Task settings" icon={<SlidersHorizontal size={14} />}>
+              {close => (
+                <>
+                  <ActionItem icon={<BellRing size={14} />} onClick={() => {
+                    setShowReminderPanel(value => !value)
+                    close()
+                  }}>
+                    {showReminderPanel ? 'Hide reminders' : 'Configure reminders'}
+                  </ActionItem>
+                  {scope.uncertain.size > 0 && (
+                    <ActionItem onClick={() => {
+                      close()
+                      void loadBoard()
+                    }}>
+                      Refresh task board
+                    </ActionItem>
+                  )}
+                  {onOpenClubsRbac && selectedClub && (
+                    <ActionItem icon={<Users size={14} />} onClick={() => {
+                      close()
+                      onOpenClubsRbac(selectedClub.id)
+                    }}>
+                      {isBoard ? 'Roster & groups' : 'Roles & groups'}
+                    </ActionItem>
+                  )}
+                </>
+              )}
+            </ActionDisclosure>
+            {isBoard && (
+              <Button size="sm" icon={<Plus size={14} />} onClick={() => {
+                setEditingTask(null)
+                setModalPersonalOnly(false)
+                setModalDefaultSectionId(visibleSections[0]?.id || '')
+                openTaskModal()
+              }}>
+                Create club task
+              </Button>
+            )}
+          </>
+        } />
 
-            {memberClubs.length > 6 && (
-              <select
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:max-w-full min-w-0">
+            <ClubAvatar club={selectedClub} size={28} />
+            {memberClubs.length > 1 ? (
+              <Select
                 value={selectedClub?.id || selectedClubId}
-                onChange={e => setSelectedClubId(e.target.value)}
-                aria-label="Jump to joined club server"
-                className="hidden sm:block min-h-[36px] px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] shrink-0"
-              >
-                {memberClubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setSelectedClubId}
+                aria-label="Task board club"
+                className="control-select min-w-0 max-w-full flex-1 sm:max-w-72"
+                search
+                searchPlaceholder="Search clubs…"
+                options={memberClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
+            ) : (
+              <span className="text-sm font-medium break-words min-w-0">{cleanText(selectedClub?.name)}</span>
             )}
           </div>
-        )}
-
-        {/* Active Server Identity & Primary Actions */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-          <div className="flex items-center gap-3 min-w-0">
-            <ClubAvatar club={selectedClub} size={44} />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-[var(--text)] truncate">
-                  {cleanText(selectedClub?.name || 'Club Server')}
-                </h2>
-                {boardData?.permission && (
-                  <BubbleTag
-                    label={
-                      isBoard
-                        ? `Board · ${cleanText(boardData.permission.roleTitle || 'Officer')}`
-                        : isDemo
-                          ? 'Demo Member'
-                          : 'Member'
-                    }
-                    color={isBoard ? 'purple' : 'blue'}
-                    size="sm"
-                  />
-                )}
-                {loading && boardData && boardData.clubId === normSelectedClubId && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--blue-light)] text-[var(--blue-ink)] animate-pulse">
-                    <Loader2 size={11} className="animate-spin text-[var(--blue)]" />
-                    <span>Syncing…</span>
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                {openPersonalCount === 0
-                  ? 'All caught up on personal to-dos'
-                  : `${openPersonalCount} personal ${openPersonalCount === 1 ? 'to-do' : 'to-dos'} left`}
-                {' · '}
-                {openClubCount === 0
-                  ? '0 open club tasks'
-                  : `${openClubCount} open club ${openClubCount === 1 ? 'task' : 'tasks'}`}
-              </p>
-            </div>
+          <div className="flex items-center flex-wrap gap-x-2 text-xs text-[var(--text-muted)]">
+            <span>{openPersonalCount} open personal · {openClubCount} open club</span>
+            {boardData?.permission && (
+              <span>{isBoard ? cleanText(boardData.permission.roleTitle || 'Officer') : isDemo ? 'Demo member' : 'Member'}</span>
+            )}
+            {activeReminderCount > 0 && <span>{activeReminderCount} active reminders</span>}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {isBoard && (
-              <div className="segmented-track w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setViewTierForCurrentClub('member')}
-                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    effectiveTier === 'member'
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <Users size={13} />
-                  <span>Member View</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewTierForCurrentClub('board')}
-                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    effectiveTier === 'board'
-                      ? 'bg-[var(--purple)] text-white shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <Shield size={13} />
-                  <span>Board View</span>
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowReminderPanel(v => !v)}
-              className={`inline-flex items-center justify-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                showReminderPanel || activeReminderCount > 0
-                  ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                  : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-              }`}
-            >
-              <BellRing size={13} />
-              <span>Reminders</span>
-              {activeReminderCount > 0 && (
-                <span className="px-1.5 rounded-full bg-[var(--blue)] text-white text-[10px] font-mono-num">
-                  {activeReminderCount}
-                </span>
-              )}
-              {(integrationSummary.discordReady || integrationSummary.emailReady) && (
-                <span
-                  className="w-2 h-2 rounded-full bg-[var(--green)]"
-                  title="Discord / Email channel ready"
-                />
-              )}
-            </button>
-
-            {onOpenClubsRbac && selectedClub && (
-              <button
-                type="button"
-                onClick={() => onOpenClubsRbac(selectedClub.id)}
-                className="inline-flex items-center justify-center gap-1.5 px-3 min-h-[38px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-              >
-                <Users size={13} />
-                <span>{isBoard ? 'Roster & Groups' : 'Roles & Groups'}</span>
-              </button>
-            )}
-
-            {isBoard && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingTask(null)
-                  setModalPersonalOnly(false)
-                  setModalDefaultSectionId(visibleSections[0]?.id || '')
-                  setModalOpen(true)
-                }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <Plus size={14} />
-                <span>New Club Task</span>
-              </button>
-            )}
-          </div>
+          {isBoard && (
+            <SegmentedControl size="sm" ariaLabel="Task board view" value={effectiveTier}
+              onChange={setViewTierForCurrentClub}
+              options={[{ value: 'member', label: 'Member view' }, { value: 'board', label: 'Board view' }]} />
+          )}
         </div>
 
         {/* Inline Discord & Email Reminder Settings Drawer */}
@@ -2156,7 +2361,7 @@ export default function ClubTaskBoard({
           <div className="content-tile p-3.5 sm:p-4 rounded-2xl space-y-3 fade-in">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-[var(--text)]">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text)]">
                   <BellRing size={13.5} className="text-[var(--blue)]" />
                   <span>Task Reminder Notifications (Discord &amp; Email)</span>
                 </div>
@@ -2179,8 +2384,8 @@ export default function ClubTaskBoard({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-1">
               {/* Left: Clean Labeled Default Lead Time & Checkboxes */}
               <div className="space-y-3 bg-[var(--bg-card)] p-3.5 rounded-xl border border-[var(--border)]">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Default Reminder Preferences
+                <div className="text-xs font-medium text-[var(--text-muted)]">
+                  Default reminder preferences
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -2188,22 +2393,16 @@ export default function ClubTaskBoard({
                     <label className="block text-[10.5px] font-semibold text-[var(--text-muted)] mb-1">
                       Default timing
                     </label>
-                    <select
+                    <Select
+                      aria-label="Default reminder timing"
                       value={reminderDefaults.defaultOffsetMinutes}
-                      onChange={e =>
-                        setReminderDefaults(prev => ({
-                          ...prev,
-                          defaultOffsetMinutes: Number(e.target.value),
-                        }))
-                      }
+                      onValueChange={nextValue => setReminderDefaults(prev => ({
+                        ...prev,
+                        defaultOffsetMinutes: nextValue,
+                      }))}
                       className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
-                    >
-                      {REMINDER_OFFSET_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={REMINDER_OFFSET_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }))}
+                    />
                   </div>
 
                   <div>
@@ -2261,8 +2460,8 @@ export default function ClubTaskBoard({
               {/* Right: Quick Discord Webhook + Email Destination Config */}
               <div className="space-y-2 bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border)]">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Notification Destinations
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    Notification destinations
                   </div>
                   <span className="text-[10.5px] font-semibold text-[var(--green-ink)]">
                     {integrationSummary.discordReady && integrationSummary.emailReady
@@ -2289,7 +2488,7 @@ export default function ClubTaskBoard({
                           ? serverIntegrationMeta.webhookMasked || 'Connected via server ✓'
                           : 'https://discord.com/api/webhooks/...'
                       }
-                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[#5865F2]"
+                      className="w-full min-h-[34px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--md-primary)]"
                     />
                   </div>
                   <div>
@@ -2307,18 +2506,18 @@ export default function ClubTaskBoard({
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="filled"
+                    size="sm"
                     onClick={async () => {
                       const ok = await handleSaveChannelPrefs()
                       if (ok && onNotify) {
                         onNotify('Saved reminder Discord & Email destinations!')
                       }
                     }}
-                    className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
                   >
                     Save Channels
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2332,18 +2531,18 @@ export default function ClubTaskBoard({
             {effectiveTier === 'board' && showClubZone && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="content-tile px-3 py-2.5 rounded-xl">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Club Tasks
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    Club tasks
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--text)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--text)] mt-0.5">
                     {kpis.total}
                   </div>
                 </div>
                 <div className="px-3 py-2.5 rounded-xl bg-[var(--green-light)] border border-[var(--green)]/30">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--green-ink)]">
+                  <div className="text-xs font-medium text-[var(--green-ink)]">
                     Completed
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--green-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--green-ink)] mt-0.5">
                     {kpis.done} ({kpis.pct}%)
                   </div>
                 </div>
@@ -2356,10 +2555,10 @@ export default function ClubTaskBoard({
                       : 'bg-[var(--red-light)]/80 border-[var(--red)]/30 hover:border-[var(--red)]'
                   }`}
                 >
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--red-ink)]">
+                  <div className="text-xs font-medium text-[var(--red-ink)]">
                     Blocked / Urgent
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--red-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--red-ink)] mt-0.5">
                     {kpis.stuck}
                   </div>
                 </button>
@@ -2372,10 +2571,10 @@ export default function ClubTaskBoard({
                       : 'bg-[var(--yellow-light)]/80 border-[var(--yellow)]/30 hover:border-[var(--yellow)]'
                   }`}
                 >
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--yellow-ink)]">
+                  <div className="text-xs font-medium text-[var(--yellow-ink)]">
                     Overdue
                   </div>
-                  <div className="text-base font-extrabold font-mono-num text-[var(--yellow-ink)] mt-0.5">
+                  <div className="text-base font-semibold font-mono-num text-[var(--yellow-ink)] mt-0.5">
                     {kpis.overdue}
                   </div>
                 </button>
@@ -2395,8 +2594,9 @@ export default function ClubTaskBoard({
                     <button
                       key={tab.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setFocusTab(tab.id)}
-                      className={`flex-1 md:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
+                      className={`flex-1 md:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-colors ${
                         active
                           ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
                           : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
@@ -2405,13 +2605,13 @@ export default function ClubTaskBoard({
                       <span>{tab.label}</span>
                       {tab.count !== undefined && (
                         <span
-                          className={`px-1.5 py-0.2 rounded-full text-[10.5px] font-mono-num ${
+                          className={`w-[calc(3ch+0.5rem)] text-center px-1 py-0.2 rounded-full text-[10.5px] tabular-nums ${
                             active
                               ? 'bg-[var(--bg-surface)] text-[var(--text)]'
                               : 'bg-[var(--bg-subtle)]/70 text-[var(--text-muted)]'
                           }`}
                         >
-                          {tab.count}
+                          {tab.count > 99 ? '99+' : tab.count}
                         </span>
                       )}
                     </button>
@@ -2419,9 +2619,9 @@ export default function ClubTaskBoard({
                 })}
               </div>
 
-              {/* Search + Quick Filter Pills */}
+              {/* Search and filters */}
               <div className="flex flex-wrap items-center gap-2 flex-1 md:justify-end">
-                <div className="relative flex-1 min-w-[170px] md:max-w-[250px]">
+                <div className="relative flex-1 min-w-0 md:max-w-[250px]">
                   <Search
                     size={13}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-light)] pointer-events-none"
@@ -2430,24 +2630,62 @@ export default function ClubTaskBoard({
                     type="text"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search tasks…"
-                    className="w-full min-h-[36px] pl-8 pr-7 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                    placeholder="Filter tasks"
+                    aria-label="Filter tasks"
+                    className="w-full min-h-[36px] max-sm:min-h-11 pl-8 pr-11 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      aria-label="Clear search"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0.5"
+                      aria-label="Clear task filter"
+                      className="ui-touch flex items-center justify-center absolute right-0 top-1/2 -translate-y-1/2 text-[var(--text-light)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer p-0.5"
                     >
                       <X size={13} />
                     </button>
                   )}
                 </div>
 
+                <button
+                  type="button"
+                  aria-expanded={showAdvancedFilters}
+                  aria-controls="task-board-filters"
+                  onKeyDown={e => {
+                    if (e.key === 'Escape' && showAdvancedFilters) {
+                      e.stopPropagation()
+                      setShowAdvancedFilters(false)
+                    }
+                  }}
+                  onClick={() => setShowAdvancedFilters(v => !v)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                    showAdvancedFilters || advancedFilterCount > 0
+                      ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
+                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  <SlidersHorizontal size={12} />
+                  <span>Filters</span>
+                  <span className={`min-w-[2ch] px-1.5 rounded-full tabular-nums bg-[var(--secondary-container)] text-[var(--on-secondary-container)] text-[10px] ${filterCount ? '' : 'invisible'}`}>
+                    {filterCount}
+                  </span>
+                </button>
+
+              </div>
+            </div>
+
+            {showAdvancedFilters && (
+              <div id="task-board-filters" className="section-pad bg-[var(--bg-card)] rounded-xl border border-[var(--border)] space-y-2"
+                onKeyDown={e => {
+                  if (e.key !== 'Escape') return
+                  e.stopPropagation()
+                  e.currentTarget.previousElementSibling?.querySelector('[aria-controls="task-board-filters"]')?.focus()
+                  setShowAdvancedFilters(false)
+                }}>
+                <div className="flex flex-wrap items-center gap-2">
                 {showClubZone && (assignedToMeCount > 0 || onlyAssignedToMe) && (
                   <button
                     type="button"
+                    aria-pressed={onlyAssignedToMe}
                     onClick={() => setOnlyAssignedToMe(v => !v)}
                     className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                       onlyAssignedToMe
@@ -2462,6 +2700,7 @@ export default function ClubTaskBoard({
 
                 <button
                   type="button"
+                  aria-pressed={hideDone}
                   onClick={() => setHideDone(v => !v)}
                   className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
                     hideDone
@@ -2470,24 +2709,6 @@ export default function ClubTaskBoard({
                   }`}
                 >
                   <span>Hide Done</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedFilters(v => !v)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                    showAdvancedFilters || advancedFilterCount > 0
-                      ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <SlidersHorizontal size={12} />
-                  <span>Filters</span>
-                  {advancedFilterCount > 0 && (
-                    <span className="px-1.5 rounded-full bg-[var(--blue)] text-white text-[10px] font-mono-num">
-                      {advancedFilterCount}
-                    </span>
-                  )}
                 </button>
 
                 {hasAnyActiveFilter && (
@@ -2499,61 +2720,51 @@ export default function ClubTaskBoard({
                     Reset
                   </button>
                 )}
-              </div>
-            </div>
-
-            {showAdvancedFilters && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 fade-in">
-                <select
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Select
                   value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
+                  onValueChange={setStatusFilter}
                   aria-label="Filter by status"
-                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)]"
-                >
-                  <option value="all">All Statuses</option>
-                  {Object.entries(TASK_STATUS_META).map(([k, m]) => (
-                    <option key={k} value={k}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)] [--select-width:10rem]"
+                  options={[
+                    { value: "all", label: "All Statuses" },
+                    ...Object.entries(TASK_STATUS_META).map(([k, m]) => ({ value: k, label: m.label })),
+                  ]}
+                />
+                <Select
                   value={priorityFilter}
-                  onChange={e => setPriorityFilter(e.target.value)}
+                  onValueChange={setPriorityFilter}
                   aria-label="Filter by priority"
-                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)]"
-                >
-                  <option value="all">All Priorities</option>
-                  {Object.entries(TASK_PRIORITY_META).map(([k, m]) => (
-                    <option key={k} value={k}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)] [--select-width:10rem]"
+                  options={[
+                    { value: "all", label: "All Priorities" },
+                    ...Object.entries(TASK_PRIORITY_META).map(([k, m]) => ({ value: k, label: m.label })),
+                  ]}
+                />
                 {(boardData.groups || []).length > 0 ? (
-                  <select
+                  <Select
                     value={groupFilter}
-                    onChange={e => setGroupFilter(e.target.value)}
+                    onValueChange={setGroupFilter}
                     aria-label="Filter by sub-group"
                     className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)]"
-                  >
-                    <option value="all">All Sub-Groups</option>
-                    {(boardData.groups || []).map(g => (
-                      <option key={g.id} value={g.id}>
-                        {cleanText(g.name)}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={[
+                      { value: "all", label: "All Sub-Groups" },
+                      ...boardData.groups || [].map(g => ({ value: g.id, label: cleanText(g.name) })),
+                    ]}
+                  />
                 ) : (
                   <div className="hidden sm:flex items-center px-3 text-[11px] text-[var(--text-light)]">
                     No sub-groups created on this server yet
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Loading Skeleton */}
       {loading && (!boardData || boardData.clubId !== normSelectedClubId) && (
@@ -2575,15 +2786,17 @@ export default function ClubTaskBoard({
           <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
             Confirm your membership on this server to load its shared task board and your personal to-do list.
           </p>
-          <button
-            type="button"
-            disabled={actionBusy}
+          <Button
+            variant="filled"
+            size="md"
+            leadingIcon={<UserPlus size={14} />}
+            disabled={scope.uncertain.has('membership')}
+            pending={isPending('membership')}
+            pendingLabel="Syncing…"
             onClick={handleJoinCurrentClub}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
           >
-            <UserPlus size={14} />
-            <span>{actionBusy ? 'Syncing…' : 'Confirm Membership'}</span>
-          </button>
+            Confirm Membership
+          </Button>
         </Card>
       )}
 
@@ -2591,35 +2804,28 @@ export default function ClubTaskBoard({
           ZONE 1: YOUR PERSONAL TO-DO LISTS (Private per user, isolated per server)
          ══════════════════════════════════════════════════════════════════════ */}
       {!notMember && boardData && showPersonalZone && (!loading || boardData.clubId === normSelectedClubId) && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <IconBadge color="green" size={30} radius={9}>
-                <Lock size={14} />
-              </IconBadge>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-extrabold text-[var(--text)]">
-                    Your Personal To-Dos
-                  </h3>
-                  <span className="text-[11px] font-medium text-[var(--green-ink)] bg-[var(--green-light)] px-2 py-0.5 rounded-full">
-                    Only visible to you
-                  </span>
-                </div>
-                <p className="text-[11.5px] text-[var(--text-muted)]">
-                  Jot down timed deadlines &amp; private reminders for yourself in {cleanText(selectedClub?.name || 'this server')}
-                </p>
-              </div>
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            <div>
+              <h2 className="text-sm font-semibold">Personal tasks</h2>
+              <span className="text-xs text-[var(--text-muted)]">Only visible to you</span>
             </div>
-
-            <button
-              type="button"
-              onClick={() => openSectionCreator('personal')}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-tile)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-            >
-              <FolderPlus size={13} />
-              <span>{sectionCreatorMode === 'personal' ? 'Cancel' : 'New Personal List'}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button variant="text-neutral" size="sm" className="!px-2"
+                reserveLabels={['New list', 'Close list form']}
+                onClick={() => openSectionCreator('personal')}>
+                {sectionCreatorMode === 'personal' ? 'Close list form' : 'New list'}
+              </Button>
+              <Button variant={isBoard ? 'outlined' : 'filled'} size="sm" className="!px-2"
+                onClick={() => {
+                  setEditingTask(null)
+                  setModalPersonalOnly(true)
+                  setModalDefaultSectionId(personalSections[0]?.id || '')
+                  openTaskModal()
+                }}>
+                Add personal task
+              </Button>
+            </div>
           </div>
 
           {sectionCreatorMode === 'personal' && (
@@ -2639,13 +2845,16 @@ export default function ClubTaskBoard({
                 />
                 <div className="flex items-center justify-between sm:justify-end gap-2">
                   <ColorPickerDots value={newSectionColor} onChange={setNewSectionColor} />
-                  <button
+                  <Button
+                    variant="filled"
+                    size="sm"
                     type="submit"
-                    disabled={actionBusy || !newSectionTitle.trim()}
-                    className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+                    disabled={scope.uncertain.has('create-section:personal') || !newSectionTitle.trim()}
+                    pending={isPending('create-section:personal')}
+                    pendingLabel="Creating…"
                   >
                     Create List
-                  </button>
+                  </Button>
                 </div>
               </form>
             </Card>
@@ -2658,8 +2867,10 @@ export default function ClubTaskBoard({
               totalInSec.length > 0 ? Math.round((doneInSecCount / totalInSec.length) * 100) : 0
 
             const matchingTasks = filteredPersonalTasks.filter(t => t.sectionId === pSec.id)
-            const activeItems = [...matchingTasks.filter(t => t.status !== 'done')].sort(
-              (a, b) => {
+            const activeItems = [...matchingTasks.filter(t => taskForPlacement(t).status !== 'done')].sort(
+              (left, right) => {
+                const a = taskForPlacement(left)
+                const b = taskForPlacement(right)
                 const aOver = isTaskOverdue(a, clockNow) ? 0 : 1
                 const bOver = isTaskOverdue(b, clockNow) ? 0 : 1
                 if (aOver !== bOver) return aOver - bOver
@@ -2676,7 +2887,7 @@ export default function ClubTaskBoard({
                 return 0
               }
             )
-            const completedItems = matchingTasks.filter(t => t.status === 'done')
+            const completedItems = matchingTasks.filter(t => taskForPlacement(t).status === 'done')
             const showCompleted =
               showCompletedPersonal[pSec.id] !== undefined
                 ? showCompletedPersonal[pSec.id]
@@ -2686,7 +2897,8 @@ export default function ClubTaskBoard({
             const accentInk = SECTION_INK_META[pSec.color] || SECTION_INK_META.green
             const isCollapsed = Boolean(collapsedSections[pSec.id])
             const draft = getDraftForSection(pSec.id)
-            const quickBusy = quickAddBusySecId === pSec.id
+            const quickBusy = isPending(`quick:${pSec.id}`)
+            const clearBusy = isPending(`clear:${pSec.id}`)
             const draftDueSummary = draft.dueDate
               ? formatSmartDueDate(draft.dueDate, draft.dueTime, false, {
                   now: clockNow,
@@ -2702,10 +2914,10 @@ export default function ClubTaskBoard({
             )
 
             return (
-              <Card key={pSec.id} className="overflow-visible p-0" delay={2}>
+              <Card key={pSec.id} className="overflow-visible p-0" data-task-section={pSec.id}>
                 {/* Personal List Header */}
                 <div
-                  className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] ${
+                  className={`flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-[var(--bg-surface)] ${
                     isCollapsed
                       ? 'rounded-[var(--radius)]'
                       : 'rounded-t-[var(--radius)] border-b border-[var(--border)]'
@@ -2714,8 +2926,9 @@ export default function ClubTaskBoard({
                 >
                   <button
                     type="button"
+                    data-section-focus
                     onClick={() => setCollapsedSections(p => ({ ...p, [pSec.id]: !p[pSec.id] }))}
-                    className="flex items-center gap-2 min-h-[32px] bg-transparent border-none cursor-pointer text-left flex-wrap"
+                    className="ui-touch flex items-center gap-2 min-h-[32px] bg-transparent border-none cursor-pointer text-left flex-wrap"
                   >
                     {isCollapsed ? (
                       <ChevronRight size={16} style={{ color: accentInk }} />
@@ -2723,7 +2936,7 @@ export default function ClubTaskBoard({
                       <ChevronDown size={16} style={{ color: accentInk }} />
                     )}
                     <CheckSquare size={15} style={{ color: accentInk }} />
-                    <span className="text-sm font-extrabold" style={{ color: accentInk }}>
+                    <span className="text-sm font-semibold" style={{ color: accentInk }}>
                       {cleanText(pSec.title)}
                     </span>
                     {totalInSec.length > 0 && (
@@ -2742,16 +2955,18 @@ export default function ClubTaskBoard({
                   </button>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {doneInSecCount > 0 && (
-                      <button
-                        type="button"
-                        disabled={actionBusy}
-                        onClick={() => handleClearCompletedPersonal(pSec.id)}
-                        className="px-2.5 min-h-[30px] rounded-lg bg-transparent hover:bg-[var(--bg-card)] text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-transparent hover:border-[var(--border)] cursor-pointer transition-colors"
-                      >
-                        Clear Done ({doneInSecCount})
-                      </button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="text-neutral"
+                      pending={clearBusy}
+                      ariaLabel={`Clear completed to-dos (${doneInSecCount})`}
+                      disabled={doneInSecCount === 0 || isLocked(`section:${pSec.id}`) ||
+                        totalInSec.some(task => task.status === 'done' && isLocked(taskKey(task.id))) && !clearBusy}
+                      className={`tabular-nums ${doneInSecCount === 0 && !clearBusy ? 'invisible' : ''}`}
+                      onClick={() => handleClearCompletedPersonal(pSec.id)}
+                    >
+                      Clear Done <span className="inline-block w-[5ch] text-left">({doneInSecCount > 99 ? '99+' : doneInSecCount})</span>
+                    </Button>
                     {!pSec.isDefaultPersonal && (
                       <button
                         type="button"
@@ -2767,13 +2982,256 @@ export default function ClubTaskBoard({
 
                 {!isCollapsed && (
                   <div>
+                    {/* Checklist Items */}
+                    {matchingTasks.length === 0 ? (
+                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center rounded-b-[var(--radius)]">
+                        {totalInSec.length === 0
+                          ? `Nothing on your ${cleanText(selectedClub?.name || 'server')} to-do list yet. Add a task below.`
+                          : 'No personal to-dos match your active filter.'}
+                      </div>
+                    ) : (
+                      <div className="task-rows divide-y divide-[var(--border-subtle)]">
+                        {activeItems.map(task => {
+                          const shown = displayedTask(task)
+                          const pending = isPending(taskKey(task.id))
+                          const locked = isLocked(taskKey(task.id)) || isLocked(`section:${pSec.id}`)
+                          const sMeta =
+                            TASK_STATUS_META[shown.status] || TASK_STATUS_META.not_started
+                          const pMeta =
+                            TASK_PRIORITY_META[shown.priority] || TASK_PRIORITY_META.medium
+                          const isInlineEditing = inlineEditingId === task.id
+                          const openPersonalEditor = () => {
+                            setEditingTask(task)
+                            setModalPersonalOnly(true)
+                            openTaskModal()
+                          }
+
+                          return (
+                            <div
+                              key={task.id}
+                              data-task-row={task.id}
+                              aria-busy={pending || undefined}
+                              className="group px-3.5 sm:px-4 py-3 hover:bg-[var(--bg-surface)]/55 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                            >
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <TaskCompletionButton
+                                  checked={shown.status === 'done'}
+                                  pending={writes.get(taskKey(task.id))?.kind === 'completion'}
+                                  locked={locked}
+                                  label={`Complete "${cleanText(task.title)}"`}
+                                  onClick={() => handleInlineTaskPatch(task, { toggleCompletedForSelf: true })}
+                                />
+
+                                <div className="min-w-0 flex-1">
+                                  {isInlineEditing ? (
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={inlineEditTitle}
+                                      onChange={e => {
+                                        setInlineEditTitle(e.target.value)
+                                        renameDrafts.current.get(task.id).title = e.target.value
+                                      }}
+                                      onBlur={() => commitInlinePersonalRename(task)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault()
+                                          commitInlinePersonalRename(task)
+                                        } else if (e.key === 'Escape') {
+                                          renameDrafts.current.delete(task.id)
+                                          setInlineEditingId(null)
+                                        }
+                                      }}
+                                      className="w-full min-h-[30px] px-2 py-0.5 rounded-lg bg-[var(--bg-card)] text-sm font-semibold text-[var(--text)] border border-[var(--blue)] outline-none"
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      aria-disabled={locked || undefined}
+                                      onClick={() => {
+                                        if (locked) return
+                                        const title = renameDrafts.current.get(task.id)?.title ?? shown.title
+                                        renameDrafts.current.set(task.id, { title, submitted: false })
+                                        setInlineEditingId(task.id)
+                                        setInlineEditTitle(title)
+                                      }}
+                                      title="Click to rename"
+                                      className="text-left font-semibold text-sm text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none cursor-text p-0 leading-snug break-words"
+                                    >
+                                      {cleanText(shown.title)}
+                                    </button>
+                                  )}
+
+                                  {task.notes && (
+                                    <p className="hidden sm:block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed line-clamp-2">
+                                      {cleanText(task.notes)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="task-row-controls flex flex-wrap items-center gap-1.5 shrink-0">
+                                <span className="task-due-slot">
+                                <DueDateBadge
+                                  dueDate={task.dueDate}
+                                  dueTime={task.dueTime}
+                                  reminder={task.reminder}
+                                  isDone={false}
+                                  now={clockNow}
+                                  timeFormat={timeFormat}
+                                  onClick={openPersonalEditor}
+                                  title="Click to edit due date, time, or reminder"
+                                />
+                                </span>
+
+                                <span
+                                  aria-hidden={shown.status === 'not_started' || undefined}
+                                    style={{
+                                      background: sMeta.bg,
+                                      color: sMeta.color,
+                                      border: `1px solid color-mix(in srgb, ${sMeta.dot} 30%, transparent)`,
+                                    }}
+                                    className={`task-status-slot inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold ${shown.status === 'not_started' ? 'invisible' : ''}`}
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: sMeta.dot }}
+                                    />
+                                    <span>{sMeta.label}</span>
+                                  </span>
+
+                                <span
+                                  aria-hidden={shown.priority === 'medium' || undefined}
+                                    style={{
+                                      background: pMeta.bg,
+                                      color: pMeta.color,
+                                      border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
+                                    }}
+                                    className={`task-priority-slot inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold ${shown.priority === 'medium' ? 'invisible' : ''}`}
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ background: pMeta.dot }}
+                                    />
+                                    <span>{pMeta.label}</span>
+                                  </span>
+
+                                <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    onClick={openPersonalEditor}
+                                    disabled={locked}
+                                    aria-label="Edit personal to-do details"
+                                    title="Edit due date, time, reminder, or priority"
+                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTaskClick(task)}
+                                    aria-disabled={locked || undefined}
+                                    aria-label="Delete personal to-do"
+                                    title="Delete to-do"
+                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+                                  >
+                                    {['rename', 'delete'].includes(writes.get(taskKey(task.id))?.kind)
+                                      ? <Loader2 size={12} className="motion-safe:animate-spin" />
+                                      : <Trash2 size={12} />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+
+                        {/* Collapsible Completed Personal To-Dos Drawer */}
+                        {completedItems.length > 0 && (
+                          <div className="bg-[var(--bg-surface)]/35">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowCompletedPersonal(prev => ({
+                                  ...prev,
+                                  [pSec.id]: !showCompleted,
+                                }))
+                              }
+                              className="w-full px-4 py-2 flex items-center justify-between text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {showCompleted ? (
+                                  <ChevronDown size={13} />
+                                ) : (
+                                  <ChevronRight size={13} />
+                                )}
+                                <span>Completed ({completedItems.length})</span>
+                              </span>
+                              <span className="text-[11px] text-[var(--text-light)]">
+                                {showCompleted ? 'Hide' : 'Show'}
+                              </span>
+                            </button>
+
+                            {showCompleted && (
+                              <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
+                                {completedItems.map(task => {
+                                  const shown = displayedTask(task)
+                                  const locked = clearBusy || isLocked(taskKey(task.id))
+                                  return (
+                                  <div
+                                    key={task.id}
+                                    data-task-row={task.id}
+                                    aria-busy={isPending(taskKey(task.id)) || undefined}
+                                    className="px-3.5 sm:px-4 py-2.5 flex items-center justify-between gap-2.5 opacity-80 hover:opacity-100 transition-opacity"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <TaskCompletionButton
+                                        checked={shown.status === 'done'}
+                                        pending={writes.get(taskKey(task.id))?.kind === 'completion'}
+                                        locked={locked}
+                                        label={`Mark "${cleanText(task.title)}" incomplete`}
+                                        onClick={() => handleInlineTaskPatch(task, { toggleCompletedForSelf: true })}
+                                      />
+                                      <span className="text-sm line-through text-[var(--text-muted)] truncate">
+                                        {cleanText(task.title)}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <DueDateBadge
+                                        dueDate={task.dueDate}
+                                        dueTime={task.dueTime}
+                                        isDone={true}
+                                        now={clockNow}
+                                        timeFormat={timeFormat}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => !locked && handleDeleteTaskClick(task)}
+                                        aria-disabled={locked || undefined}
+                                        aria-label="Delete completed to-do"
+                                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
+                                      >
+                                        {writes.get(taskKey(task.id))?.kind === 'delete'
+                                          ? <Loader2 size={12} className="motion-safe:animate-spin" />
+                                          : <Trash2 size={12} />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Clean 1-Line To-Do Composer + Optional Structured Schedule Drawer */}
                     <form
                       onSubmit={e => handleQuickAddPersonalTask(e, pSec)}
-                      className="p-3 sm:px-4 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] space-y-2.5"
+                      className="px-2 py-2 sm:px-3 bg-[var(--bg-card)] border-t border-[var(--border-subtle)] space-y-2.5"
                     >
-                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-                        <div className="flex items-center gap-2.5 flex-1 min-w-[200px]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-[160px]">
                           <span
                             className="w-5 h-5 rounded-md border border-dashed flex items-center justify-center shrink-0"
                             style={{ borderColor: accent, color: accentInk }}
@@ -2786,7 +3244,7 @@ export default function ClubTaskBoard({
                             onChange={e => updateDraftForSection(pSec.id, { title: e.target.value })}
                             placeholder={`Add a to-do for ${cleanText(selectedClub?.name || 'this server')}…`}
                             aria-label={`Add a to-do in ${cleanText(pSec.title)}`}
-                            className="flex-1 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
+                            className="flex-1 min-w-0 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--green)]"
                           />
                         </div>
 
@@ -2813,13 +3271,17 @@ export default function ClubTaskBoard({
                             />
                           </button>
 
-                          <button
+                          <Button
+                            variant="filled"
+                            size="md"
                             type="submit"
-                            disabled={quickBusy || !String(draft.title || '').trim()}
-                            className="px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-45 shrink-0 transition-opacity"
+                            disabled={scope.uncertain.has(`quick:${pSec.id}`) || !String(draft.title || '').trim()}
+                            pending={quickBusy}
+                            pendingLabel="Adding…"
+                            className="shrink-0"
                           >
-                            {quickBusy ? 'Adding…' : 'Add'}
-                          </button>
+                            Add
+                          </Button>
                         </div>
                       </div>
 
@@ -2882,24 +3344,21 @@ export default function ClubTaskBoard({
                               <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
                                 Reminder (Discord / Email)
                               </label>
-                              <select
+                              <Select
                                 value={String(draft.remindOffset)}
-                                onChange={e => {
-                                  const raw = e.target.value
+                                onValueChange={nextValue => {
+                                  const raw = nextValue
                                   updateDraftForSection(pSec.id, {
                                     remindOffset: raw === 'off' ? 'off' : Number(raw),
                                   })
                                 }}
                                 aria-label="Reminder timing"
                                 className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-                              >
-                                <option value="off">No reminder</option>
-                                {REMINDER_OFFSET_OPTIONS.map(opt => (
-                                  <option key={opt.value} value={String(opt.value)}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
+                                options={[
+                                  { value: "off", label: "No reminder" },
+                                  ...REMINDER_OFFSET_OPTIONS.map(opt => ({ value: String(opt.value), label: opt.label })),
+                                ]}
+                              />
                             </div>
                           </div>
 
@@ -2908,20 +3367,13 @@ export default function ClubTaskBoard({
                               <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
                                 Priority
                               </label>
-                              <select
+                              <Select
                                 value={draft.priority || 'medium'}
-                                onChange={e =>
-                                  updateDraftForSection(pSec.id, { priority: e.target.value })
-                                }
+                                onValueChange={nextValue => updateDraftForSection(pSec.id, { priority: nextValue })}
                                 aria-label="Priority"
                                 className="w-full min-h-[36px] px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-                              >
-                                {Object.entries(TASK_PRIORITY_META).map(([k, m]) => (
-                                  <option key={k} value={k}>
-                                    {m.label}
-                                  </option>
-                                ))}
-                              </select>
+                                options={Object.entries(TASK_PRIORITY_META).map(([k, m]) => ({ value: k, label: m.label }))}
+                              />
                             </div>
 
                             <div>
@@ -2963,236 +3415,6 @@ export default function ClubTaskBoard({
                       )}
                     </form>
 
-                    {/* Checklist Items */}
-                    {matchingTasks.length === 0 ? (
-                      <div className="px-4 py-6 text-xs text-[var(--text-muted)] text-center rounded-b-[var(--radius)]">
-                        {totalInSec.length === 0
-                          ? `Nothing on your ${cleanText(selectedClub?.name || 'server')} to-do list yet — type above and press Enter.`
-                          : 'No personal to-dos match your active filter.'}
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-[var(--border-subtle)] rounded-b-[var(--radius)] overflow-hidden">
-                        {activeItems.map(task => {
-                          const sMeta =
-                            TASK_STATUS_META[task.status] || TASK_STATUS_META.not_started
-                          const pMeta =
-                            TASK_PRIORITY_META[task.priority] || TASK_PRIORITY_META.medium
-                          const isInlineEditing = inlineEditingId === task.id
-                          const openPersonalEditor = () => {
-                            setEditingTask(task)
-                            setModalPersonalOnly(true)
-                            setModalOpen(true)
-                          }
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="group px-3.5 sm:px-4 py-3 hover:bg-[var(--bg-surface)]/55 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                            >
-                              <div className="flex items-start gap-3 min-w-0 flex-1">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleInlineTaskPatch(task, { toggleCompletedForSelf: true })
-                                  }
-                                  aria-label={`Complete "${cleanText(task.title)}"`}
-                                  className="mt-0.5 w-[22px] h-[22px] rounded-lg border-2 border-[var(--border-strong)] hover:border-[var(--green)] bg-[var(--bg-card)] text-transparent hover:text-[var(--green)] flex items-center justify-center shrink-0 cursor-pointer transition-all"
-                                >
-                                  <Check size={13} strokeWidth={2.75} />
-                                </button>
-
-                                <div className="min-w-0 flex-1">
-                                  {isInlineEditing ? (
-                                    <input
-                                      type="text"
-                                      autoFocus
-                                      value={inlineEditTitle}
-                                      onChange={e => setInlineEditTitle(e.target.value)}
-                                      onBlur={() => commitInlinePersonalRename(task)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault()
-                                          commitInlinePersonalRename(task)
-                                        } else if (e.key === 'Escape') {
-                                          setInlineEditingId(null)
-                                        }
-                                      }}
-                                      className="w-full min-h-[30px] px-2 py-0.5 rounded-lg bg-[var(--bg-card)] text-sm font-semibold text-[var(--text)] border border-[var(--blue)] outline-none"
-                                    />
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setInlineEditingId(task.id)
-                                        setInlineEditTitle(task.title)
-                                      }}
-                                      title="Click to rename"
-                                      className="text-left font-semibold text-sm text-[var(--text)] hover:text-[var(--blue-ink)] bg-transparent border-none cursor-text p-0 leading-snug break-words"
-                                    >
-                                      {cleanText(task.title)}
-                                    </button>
-                                  )}
-
-                                  {task.notes && (
-                                    <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed line-clamp-2">
-                                      {cleanText(task.notes)}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-1.5 pl-8 sm:pl-0 shrink-0">
-                                <DueDateBadge
-                                  dueDate={task.dueDate}
-                                  dueTime={task.dueTime}
-                                  reminder={task.reminder}
-                                  isDone={false}
-                                  now={clockNow}
-                                  timeFormat={timeFormat}
-                                  onClick={openPersonalEditor}
-                                  title="Click to edit due date, time, or reminder"
-                                />
-
-                                {task.status && task.status !== 'not_started' && (
-                                  <span
-                                    style={{
-                                      background: sMeta.bg,
-                                      color: sMeta.color,
-                                      border: `1px solid color-mix(in srgb, ${sMeta.dot} 30%, transparent)`,
-                                    }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
-                                  >
-                                    <span
-                                      className="w-1.5 h-1.5 rounded-full"
-                                      style={{ background: sMeta.dot }}
-                                    />
-                                    <span>{sMeta.label}</span>
-                                  </span>
-                                )}
-
-                                {task.priority && task.priority !== 'medium' && (
-                                  <span
-                                    style={{
-                                      background: pMeta.bg,
-                                      color: pMeta.color,
-                                      border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
-                                    }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold"
-                                  >
-                                    <span
-                                      className="w-1.5 h-1.5 rounded-full"
-                                      style={{ background: pMeta.dot }}
-                                    />
-                                    <span>{pMeta.label}</span>
-                                  </span>
-                                )}
-
-                                <div className="inline-flex items-center gap-1 sm:opacity-75 sm:group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={openPersonalEditor}
-                                    aria-label="Edit personal to-do details"
-                                    title="Edit due date, time, reminder, or priority"
-                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  >
-                                    <Pencil size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteTaskClick(task)}
-                                    aria-label="Delete personal to-do"
-                                    title="Delete to-do"
-                                    className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-
-                        {/* Collapsible Completed Personal To-Dos Drawer */}
-                        {completedItems.length > 0 && (
-                          <div className="bg-[var(--bg-surface)]/35">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowCompletedPersonal(prev => ({
-                                  ...prev,
-                                  [pSec.id]: !showCompleted,
-                                }))
-                              }
-                              className="w-full px-4 py-2 flex items-center justify-between text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none cursor-pointer"
-                            >
-                              <span className="inline-flex items-center gap-1.5">
-                                {showCompleted ? (
-                                  <ChevronDown size={13} />
-                                ) : (
-                                  <ChevronRight size={13} />
-                                )}
-                                <span>Completed ({completedItems.length})</span>
-                              </span>
-                              <span className="text-[11px] text-[var(--text-light)]">
-                                {showCompleted ? 'Hide' : 'Show'}
-                              </span>
-                            </button>
-
-                            {showCompleted && (
-                              <div className="divide-y divide-[var(--border-subtle)] border-t border-[var(--border-subtle)]">
-                                {completedItems.map(task => (
-                                  <div
-                                    key={task.id}
-                                    className="px-3.5 sm:px-4 py-2.5 flex items-center justify-between gap-2.5 opacity-80 hover:opacity-100 transition-opacity"
-                                  >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleInlineTaskPatch(task, {
-                                            toggleCompletedForSelf: true,
-                                          })
-                                        }
-                                        aria-label={`Mark "${cleanText(task.title)}" incomplete`}
-                                        style={{
-                                          background: 'var(--green)',
-                                          borderColor: 'var(--green)',
-                                          color: '#ffffff',
-                                        }}
-                                        className="w-[22px] h-[22px] rounded-lg border flex items-center justify-center shrink-0 cursor-pointer"
-                                      >
-                                        <Check size={13} strokeWidth={3} />
-                                      </button>
-                                      <span className="text-sm line-through text-[var(--text-muted)] truncate">
-                                        {cleanText(task.title)}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <DueDateBadge
-                                        dueDate={task.dueDate}
-                                        dueTime={task.dueTime}
-                                        isDone={true}
-                                        now={clockNow}
-                                        timeFormat={timeFormat}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTaskClick(task)}
-                                        aria-label="Delete completed to-do"
-                                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </Card>
@@ -3216,14 +3438,9 @@ export default function ClubTaskBoard({
                 {effectiveTier === 'board' ? <Shield size={14} /> : <Users size={14} />}
               </IconBadge>
               <div className="min-w-0">
-                <h3 className="text-sm font-extrabold text-[var(--text)]">
+                <h3 className="text-sm font-semibold text-[var(--text)]">
                   {cleanText(selectedClub?.name || 'Club')} Shared Tasks
                 </h3>
-                <p className="text-[11.5px] text-[var(--text-muted)]">
-                  {effectiveTier === 'board'
-                    ? 'Master Board View across club checklists, sub-group sprints, and officer tasks'
-                    : 'Club-wide checklists and tasks assigned to you or your sub-groups'}
-                </p>
               </div>
             </div>
 
@@ -3234,7 +3451,10 @@ export default function ClubTaskBoard({
                 className="inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-tile)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
               >
                 <FolderPlus size={13} />
-                <span>{sectionCreatorMode === 'club' ? 'Cancel' : 'New Club Section'}</span>
+                <span className="inline-grid">
+                  <span aria-hidden="true" className="col-start-1 row-start-1 invisible">New Club Section</span>
+                  <span className="col-start-1 row-start-1">{sectionCreatorMode === 'club' ? 'Cancel' : 'New Club Section'}</span>
+                </span>
               </button>
             )}
           </div>
@@ -3275,13 +3495,16 @@ export default function ClubTaskBoard({
                       </button>
                     ))}
                   </div>
-                  <button
+                  <Button
+                    variant="filled"
+                    size="sm"
                     type="submit"
-                    disabled={actionBusy || !newSectionTitle.trim()}
-                    className="px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+                    disabled={scope.uncertain.has('create-section:club') || !newSectionTitle.trim()}
+                    pending={isPending('create-section:club')}
+                    pendingLabel="Creating…"
                   >
                     Create Section
-                  </button>
+                  </Button>
                 </div>
               </form>
             </Card>
@@ -3294,13 +3517,14 @@ export default function ClubTaskBoard({
             const isCollapsed = Boolean(collapsedSections[sec.id])
 
             return (
-              <Card key={sec.id} className="overflow-hidden p-0" delay={2}>
+              <Card key={sec.id} className="task-rows p-0" data-task-section={sec.id}>
                 <div
                   className="flex items-center justify-between gap-2 px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border)]"
                   style={{ borderLeft: `5px solid ${accent}` }}
                 >
                   <button
                     type="button"
+                    data-section-focus
                     onClick={() => setCollapsedSections(p => ({ ...p, [sec.id]: !p[sec.id] }))}
                     className="flex items-center gap-2 min-h-[32px] bg-transparent border-none cursor-pointer text-left flex-wrap"
                   >
@@ -3309,7 +3533,7 @@ export default function ClubTaskBoard({
                     ) : (
                       <ChevronDown size={16} style={{ color: accentInk }} />
                     )}
-                    <span className="text-sm font-extrabold" style={{ color: accentInk }}>
+                    <span className="text-sm font-semibold" style={{ color: accentInk }}>
                       {cleanText(sec.title)}
                     </span>
                     <span className="text-xs text-[var(--text-muted)] font-mono-num">
@@ -3328,7 +3552,7 @@ export default function ClubTaskBoard({
                           setEditingTask(null)
                           setModalPersonalOnly(false)
                           setModalDefaultSectionId(sec.id)
-                          setModalOpen(true)
+                          openTaskModal()
                         }}
                         className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-xl bg-[var(--bg-card)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)] transition-colors"
                       >
@@ -3344,7 +3568,7 @@ export default function ClubTaskBoard({
                             aria-label="Delete section"
                             className="w-8 h-8 rounded-xl bg-transparent hover:bg-[var(--red-light)] text-[var(--text-light)] hover:text-[var(--red-ink)] border-none flex items-center justify-center cursor-pointer transition-colors"
                           >
-                            <Trash2 size={14} />
+                            {isPending(`section:${sec.id}`) ? <Loader2 size={14} className="motion-safe:animate-spin" /> : <Trash2 size={14} />}
                           </button>
                         )}
                     </div>
@@ -3366,7 +3590,7 @@ export default function ClubTaskBoard({
                             setEditingTask(null)
                             setModalPersonalOnly(false)
                             setModalDefaultSectionId(sec.id)
-                            setModalOpen(true)
+                            openTaskModal()
                           }}
                           className="inline-flex items-center gap-1 text-xs font-bold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                         >
@@ -3378,11 +3602,16 @@ export default function ClubTaskBoard({
                   ) : (
                     <div className="divide-y divide-[var(--border-subtle)]">
                       {secTasks.map(task => {
+                        const shown = displayedTask(task)
+                        const key = taskKey(task.id)
+                        const pending = isPending(key)
+                        const locked = isLocked(key) || isLocked(`section:${sec.id}`)
+                        const editable = !scope.uncertain.has(key) && (!pending || writes.get(key).acceptQueued)
                         const isGeneral = task.audience === 'general'
-                        const mySelfDone = (task.completedBy || []).some(
+                        const mySelfDone = (shown.completedBy || []).some(
                           c => c.userId === selfId
                         )
-                        const isDoneDisplay = !isBoard && isGeneral ? mySelfDone : task.status === 'done'
+                        const isDoneDisplay = !isBoard && isGeneral ? mySelfDone : shown.status === 'done'
                         const canMemberUpdateStatus =
                           isBoard || isGeneral || isAssignedToMeOrMyGroup(task)
                         const displayStatusKey =
@@ -3390,11 +3619,11 @@ export default function ClubTaskBoard({
                             ? mySelfDone
                               ? 'done'
                               : 'not_started'
-                            : task.status || 'not_started'
+                            : shown.status || 'not_started'
                         const sMeta =
                           TASK_STATUS_META[displayStatusKey] || TASK_STATUS_META.not_started
                         const pMeta =
-                          TASK_PRIORITY_META[task.priority] || TASK_PRIORITY_META.medium
+                          TASK_PRIORITY_META[shown.priority] || TASK_PRIORITY_META.medium
                         const assignees = task.assignees || []
                         const taskGroups = (task.groupIds || [])
                           .map(gid => groupsMap.get(gid))
@@ -3403,38 +3632,22 @@ export default function ClubTaskBoard({
                         return (
                           <div
                             key={task.id}
+                            data-task-row={task.id}
+                            aria-busy={pending || undefined}
                             className="group px-3.5 sm:px-4 py-3.5 hover:bg-[var(--bg-surface)]/55 transition-colors flex flex-col lg:flex-row lg:items-center justify-between gap-3"
                           >
                             {/* Left: Checkbox/Dot + Title + Notes + Owners */}
                             <div className="flex items-start gap-3 min-w-0 flex-1">
                               {!isBoard && isGeneral ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleInlineTaskPatch(task, { toggleCompletedForSelf: true })
-                                  }
-                                  aria-label={
-                                    mySelfDone
-                                      ? `Mark "${cleanText(task.title)}" incomplete`
-                                      : `Check off "${cleanText(task.title)}" for yourself`
-                                  }
-                                  style={
-                                    mySelfDone
-                                      ? {
-                                          background: 'var(--green)',
-                                          borderColor: 'var(--green)',
-                                          color: '#ffffff',
-                                        }
-                                      : undefined
-                                  }
-                                  className={`mt-0.5 w-[22px] h-[22px] rounded-lg border-2 flex items-center justify-center shrink-0 cursor-pointer transition-all ${
-                                    mySelfDone
-                                      ? ''
-                                      : 'border-[var(--border-strong)] hover:border-[var(--green)] bg-[var(--bg-card)] text-transparent hover:text-[var(--green)]'
-                                  }`}
-                                >
-                                  <Check size={13} strokeWidth={2.75} />
-                                </button>
+                                <TaskCompletionButton
+                                  checked={mySelfDone}
+                                  pending={writes.get(key)?.kind === 'completion'}
+                                  locked={locked}
+                                  label={mySelfDone
+                                    ? `Mark "${cleanText(task.title)}" incomplete`
+                                    : `Check off "${cleanText(task.title)}" for yourself`}
+                                  onClick={() => handleInlineTaskPatch(task, { toggleCompletedForSelf: true })}
+                                />
                               ) : (
                                 <span
                                   className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0"
@@ -3516,7 +3729,8 @@ export default function ClubTaskBoard({
                             </div>
 
                             {/* Right: Clean Due Date/Time Badge + Status + Priority + Actions */}
-                            <div className="flex flex-wrap items-center gap-2 pl-8 lg:pl-0 shrink-0">
+                            <div className="task-row-controls flex flex-wrap items-center gap-2 pl-8 lg:pl-0 shrink-0">
+                              <span className="task-due-slot">
                               <DueDateBadge
                                 dueDate={task.dueDate}
                                 dueTime={task.dueTime}
@@ -3529,10 +3743,10 @@ export default function ClubTaskBoard({
                                     ? () => {
                                         setEditingTask(task)
                                         setModalPersonalOnly(false)
-                                        setModalOpen(true)
+                                        openTaskModal()
                                       }
                                     : !isDoneDisplay && task.dueDate
-                                      ? () => setMemberReminderTask(task)
+                                      ? () => openMemberReminder(task)
                                       : undefined
                                 }
                                 title={
@@ -3541,6 +3755,7 @@ export default function ClubTaskBoard({
                                     : 'Configure personal reminder'
                                 }
                               />
+                              </span>
 
                               {!isBoard && isGeneral ? (
                                 <span
@@ -3549,7 +3764,7 @@ export default function ClubTaskBoard({
                                     color: sMeta.color,
                                     border: `1px solid color-mix(in srgb, ${sMeta.dot} 32%, transparent)`,
                                   }}
-                                  className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg text-[11px] font-bold"
+                                  className="task-status-slot inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg text-[11px] font-bold"
                                 >
                                   <span
                                     className="w-1.5 h-1.5 rounded-full"
@@ -3558,56 +3773,37 @@ export default function ClubTaskBoard({
                                   <span>{mySelfDone ? 'Done' : 'To Do'}</span>
                                 </span>
                               ) : (
-                                <select
-                                  disabled={!canMemberUpdateStatus}
-                                  value={task.status || 'not_started'}
-                                  onChange={e =>
-                                    handleInlineTaskPatch(task, { status: e.target.value })
-                                  }
+                                <Select
+                                  disabled={!canMemberUpdateStatus || !editable || isLocked(`section:${sec.id}`)}
+                                  pending={pending && Boolean(writes.get(key)?.current?.overlay?.status || writes.get(key)?.queued?.overlay?.status)}
+                                  value={shown.status || 'not_started'}
+                                  onValueChange={nextValue => handleInlineTaskPatch(task, { status: nextValue })}
                                   aria-label={`Status for ${cleanText(task.title)}`}
                                   style={{
                                     background: sMeta.bg,
                                     color: sMeta.color,
                                     border: `1px solid color-mix(in srgb, ${sMeta.dot} 32%, transparent)`,
                                   }}
-                                  className="min-h-[32px] px-2.5 rounded-xl text-base sm:text-xs font-bold cursor-pointer disabled:opacity-60"
-                                >
-                                  {Object.entries(TASK_STATUS_META).map(([k, m]) => (
-                                    <option
-                                      key={k}
-                                      value={k}
-                                      className="bg-[var(--bg-card)] text-[var(--text)]"
-                                    >
-                                      {m.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  className="min-h-[32px] px-2.5 rounded-xl text-base sm:text-xs font-bold cursor-pointer disabled:opacity-60 [--select-width:8.25rem]"
+                                  options={Object.entries(TASK_STATUS_META).map(([k, m]) => ({ value: k, label: m.label }))}
+                                />
                               )}
 
                               {effectiveTier === 'board' && isBoard ? (
-                                <select
-                                  value={task.priority || 'medium'}
-                                  onChange={e =>
-                                    handleInlineTaskPatch(task, { priority: e.target.value })
-                                  }
+                                <Select
+                                  disabled={!editable || isLocked(`section:${sec.id}`)}
+                                  pending={pending && Boolean(writes.get(key)?.current?.overlay?.priority || writes.get(key)?.queued?.overlay?.priority)}
+                                  value={shown.priority || 'medium'}
+                                  onValueChange={nextValue => handleInlineTaskPatch(task, { priority: nextValue })}
                                   aria-label={`Priority for ${cleanText(task.title)}`}
                                   style={{
                                     background: pMeta.bg,
                                     color: pMeta.color,
                                     border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
                                   }}
-                                  className="min-h-[32px] px-2.5 rounded-xl text-base sm:text-xs font-bold cursor-pointer"
-                                >
-                                  {Object.entries(TASK_PRIORITY_META).map(([k, m]) => (
-                                    <option
-                                      key={k}
-                                      value={k}
-                                      className="bg-[var(--bg-card)] text-[var(--text)]"
-                                    >
-                                      {m.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  className="min-h-[32px] px-2.5 rounded-xl text-base sm:text-xs font-bold cursor-pointer [--select-width:7rem]"
+                                  options={Object.entries(TASK_PRIORITY_META).map(([k, m]) => ({ value: k, label: m.label }))}
+                                />
                               ) : (
                                 <span
                                   style={{
@@ -3615,7 +3811,7 @@ export default function ClubTaskBoard({
                                     color: pMeta.color,
                                     border: `1px solid color-mix(in srgb, ${pMeta.dot} 28%, transparent)`,
                                   }}
-                                  className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg text-[11px] font-bold"
+                                  className="task-priority-slot inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg text-[11px] font-bold"
                                 >
                                   <span
                                     className="w-1.5 h-1.5 rounded-full"
@@ -3632,8 +3828,9 @@ export default function ClubTaskBoard({
                                     onClick={() => {
                                       setEditingTask(task)
                                       setModalPersonalOnly(false)
-                                      setModalOpen(true)
+                                      openTaskModal()
                                     }}
+                                    disabled={locked}
                                     aria-label="Edit task"
                                     className="w-8 h-8 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
                                   >
@@ -3642,10 +3839,13 @@ export default function ClubTaskBoard({
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteTaskClick(task)}
+                                    aria-disabled={locked || undefined}
                                     aria-label="Delete task"
                                     className="w-8 h-8 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--red-ink)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
                                   >
-                                    <Trash2 size={12} />
+                                    {writes.get(key)?.kind === 'delete'
+                                      ? <Loader2 size={12} className="motion-safe:animate-spin" />
+                                      : <Trash2 size={12} />}
                                   </button>
                                 </div>
                               ) : (
@@ -3653,7 +3853,7 @@ export default function ClubTaskBoard({
                                 task.dueDate && (
                                   <button
                                     type="button"
-                                    onClick={() => setMemberReminderTask(task)}
+                                    onClick={() => openMemberReminder(task)}
                                     aria-label={`Reminder settings for ${cleanText(task.title)}`}
                                     title="Personal reminder settings"
                                     className={`w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
@@ -3684,6 +3884,7 @@ export default function ClubTaskBoard({
           sections={(boardData?.sections || []).filter(s => s.visibility !== 'personal')}
           personalSections={personalSections}
           personalOnly={!isBoard || modalPersonalOnly}
+          clubOnly={isBoard && !modalPersonalOnly && !editingTask}
           clubPeople={clubPeople}
           initialTask={editingTask}
           defaultSectionId={modalDefaultSectionId}
@@ -3691,11 +3892,15 @@ export default function ClubTaskBoard({
           integrationSummary={integrationSummary}
           accountEmail={accountEmail || effectiveUser?.email || ''}
           timeFormat={timeFormat}
-          busy={actionBusy}
-          sendingReminder={Boolean(editingTask?.id && remindingTaskId === editingTask.id)}
+          busy={isPending(editingTask?.id ? taskKey(editingTask.id) : 'create-task') &&
+            (!editingTask?.id || writes.get(taskKey(editingTask.id))?.kind !== 'reminder')}
+          saveBlocked={scope.uncertain.has(editingTask?.id ? taskKey(editingTask.id) : 'create-task') ||
+            Boolean(editingTask?.id && writes.get(taskKey(editingTask.id))?.kind === 'reminder')}
+          sendingReminder={Boolean(editingTask?.id && writes.get(taskKey(editingTask.id))?.kind === 'reminder')}
           onSaveIntegrationChannelPrefs={handleSaveChannelPrefs}
           onSendReminderNow={t => executeTaskReminderDispatch(t, { isAutomatic: false })}
           onClose={() => {
+            modalInstance.current = null
             setModalOpen(false)
             setEditingTask(null)
             setModalPersonalOnly(false)
@@ -3716,11 +3921,15 @@ export default function ClubTaskBoard({
               { now: clockNow, timeFormat }
             )?.label || memberReminderTask.dueDate
           }
-          busy={actionBusy}
-          sendingNow={remindingTaskId === memberReminderTask.id}
+          busy={isPending(taskKey(memberReminderTask.id)) && writes.get(taskKey(memberReminderTask.id))?.kind !== 'reminder'}
+          saveBlocked={scope.uncertain.has(taskKey(memberReminderTask.id))}
+          sendingNow={writes.get(taskKey(memberReminderTask.id))?.kind === 'reminder'}
           onSave={opts => handleSaveMemberReminder(memberReminderTask, opts)}
           onSendNow={t => executeTaskReminderDispatch(t, { isAutomatic: false })}
-          onClose={() => setMemberReminderTask(null)}
+          onClose={() => {
+            reminderInstance.current = null
+            setMemberReminderTask(null)
+          }}
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Check,
@@ -16,7 +17,7 @@ import {
   Search,
   X,
 } from 'lucide-react'
-import { Card, BubbleTag, ToggleSwitch, SectionHeader, cleanText } from './ui'
+import { Card, BubbleTag, ToggleSwitch, SectionHeader, cleanText, Button, IconButton, FilterChip } from './ui'
 import { matchesSearchQuery } from '../utils/search'
 import { PlatformIcon } from './icons'
 import {
@@ -1002,17 +1003,14 @@ export default function IntegrationsPanel({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Bot Destination Channel
                   </label>
-                  <select
+                  <Select
+                    aria-label="Discord bot channel"
                     value={selectedBotChannelId}
-                    onChange={e => setSelectedBotChannelId(e.target.value)}
+                    onValueChange={setSelectedBotChannelId}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    {botChannels.map(ch => (
-                      <option key={ch.id} value={ch.id}>
-                        #{ch.name} — {ch.guildName || ch.guildId}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={botChannels.map(ch => ({ value: ch.id, label: `#${ch.name} — ${ch.guildName || ch.guildId}` }))}
+                  />
                 </div>
               )}
 
@@ -1044,29 +1042,25 @@ export default function IntegrationsPanel({
                 <span>Save Destination</span>
               </button>
 
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<Send size={13} />}
                 onClick={handleSendDiscordTest}
-                disabled={busyAction === 'test_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                pending={busyAction === 'test_discord'} pendingLabel="Sending…"
               >
-                <Send size={13} />
-                <span>{busyAction === 'test_discord' ? 'Sending…' : 'Send Test Embed'}</span>
-              </button>
+                Send Test Embed
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="md"
+                leadingIcon={<Calendar size={13} />}
                 onClick={handleSendDiscordDigest}
-                disabled={busyAction === 'digest_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
+                pending={busyAction === 'digest_discord'} pendingLabel="Posting…"
               >
-                <Calendar size={13} />
-                <span>
-                  {busyAction === 'digest_discord'
-                    ? 'Posting…'
-                    : `Post Schedule Digest (${syncedEvents.length})`}
-                </span>
-              </button>
+                {`Post Schedule Digest (${syncedEvents.length})`}
+              </Button>
             </div>
           </div>
 
@@ -1074,7 +1068,7 @@ export default function IntegrationsPanel({
           <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-bold text-[var(--text)]">
+                <div className="text-sm font-medium font-display text-[var(--text)]">
                   Inbound Club Server &amp; #announcements Sync
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
@@ -1082,52 +1076,52 @@ export default function IntegrationsPanel({
                 </p>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={
+                  <RefreshCw
+                    size={13}
+                    className={busyAction === 'sync_discord' ? 'animate-spin' : ''}
+                  />
+                }
                 onClick={handleSyncDiscordNow}
-                disabled={busyAction === 'sync_discord'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                pending={busyAction === 'sync_discord'} pendingLabel="Syncing…"
+                className="shrink-0"
               >
-                <RefreshCw
-                  size={13}
-                  className={busyAction === 'sync_discord' ? 'animate-spin' : ''}
-                />
-                <span>{busyAction === 'sync_discord' ? 'Syncing…' : 'Sync Discord Now'}</span>
-              </button>
+                Sync Discord Now
+              </Button>
             </div>
 
             <form
               onSubmit={handleConnectDiscordSource}
               className="grid grid-cols-1 sm:grid-cols-[1fr_1.3fr_auto] gap-2.5 pt-1"
             >
-              <select
+              <Select
+                aria-label="Discord source club"
                 value={discordSourceClubId}
-                onChange={e => setDiscordSourceClubId(e.target.value)}
+                onValueChange={setDiscordSourceClubId}
                 className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="all">Auto-detect Club (Aggregator Channel)</option>
-                {clubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="text"
-                value={discordSourceIdentifier}
-                onChange={e => setDiscordSourceIdentifier(e.target.value)}
-                placeholder="Channel ID or https://discord.com/channels/..."
-                list="clubhub-bot-channels"
-                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                search
+                options={[
+                  { value: "all", label: "Auto-detect Club (Aggregator Channel)" },
+                  ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                ]}
               />
-              <datalist id="clubhub-bot-channels">
-                {botChannels.map(ch => (
-                  <option key={ch.id} value={ch.id}>
-                    #{ch.name} ({ch.guildName})
-                  </option>
-                ))}
-              </datalist>
+
+              <Select
+                aria-label="Discord channel identifier"
+                value={discordSourceIdentifier}
+                onValueChange={setDiscordSourceIdentifier}
+                placeholder="Channel ID or https://discord.com/channels/…"
+                freeText
+                className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)]"
+                options={botChannels.map(channel => ({
+                  value: channel.id,
+                  label: `#${channel.name} (${channel.guildName})`,
+                  searchText: channel.id,
+                }))}
+              />
 
               <button
                 type="submit"
@@ -1213,18 +1207,17 @@ export default function IntegrationsPanel({
                       <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Fallback Club for Unmatched Aggregator Posts
                       </label>
-                      <select
+                      <Select
+                        aria-label="Default Discord club"
                         value={defaultDiscordClubId}
-                        onChange={e => setDefaultDiscordClubId(e.target.value)}
+                        onValueChange={setDefaultDiscordClubId}
                         className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                      >
-                        <option value="">Require club match (@handle, Follow, or [Club Name])</option>
-                        {clubs.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {cleanText(c.name)}
-                          </option>
-                        ))}
-                      </select>
+                        search
+                        options={[
+                          { value: "", label: "Require club match (@handle, Follow, or [Club Name])" },
+                          ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                        ]}
+                      />
                     </div>
 
                     <div>
@@ -1260,13 +1253,15 @@ export default function IntegrationsPanel({
                     <span className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">
                       Tip: Enable <strong>Message Content Intent</strong> in Discord Developer Portal &rarr; Bot so plain-text posts are readable.
                     </span>
-                    <button
+                    <Button
+                      variant="filled"
+                      size="md"
                       type="submit"
-                      disabled={busyAction === 'save_discord_cfg'}
-                      className="w-full sm:w-auto px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                      pending={busyAction === 'save_discord_cfg'} pendingLabel="Saving…"
+                      className="w-full sm:w-auto shrink-0"
                     >
-                      {busyAction === 'save_discord_cfg' ? 'Saving…' : 'Save & Verify Bot'}
-                    </button>
+                      Save &amp; Verify Bot
+                    </Button>
                   </div>
                 </form>
               )}
@@ -1332,18 +1327,12 @@ export default function IntegrationsPanel({
                   },
                   { id: 'other', label: 'Text-Only / Indexed' },
                 ].map(tab => (
-                  <button
+                  <FilterChip
                     key={tab.id}
-                    type="button"
+                    selected={scoutFilter === tab.id}
                     onClick={() => setScoutFilter(tab.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold border cursor-pointer transition-colors ${
-                      scoutFilter === tab.id
-                        ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
+                    label={tab.label}
+                  />
                 ))}
               </div>
 
@@ -1470,18 +1459,16 @@ export default function IntegrationsPanel({
 
                       <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
                         {canAutoFollow && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="filled"
+                            size="sm"
                             onClick={() => handleAutoFollowChannel(srv)}
                             disabled={busyAction === `follow_${srv.code}`}
-                            className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-[11.5px] font-semibold border-none cursor-pointer hover:opacity-90"
                           >
-                            <span>
-                              {busyAction === `follow_${srv.code}`
-                                ? 'Following…'
-                                : 'Auto-Follow'}
-                            </span>
-                          </button>
+                            {busyAction === `follow_${srv.code}`
+                              ? 'Following…'
+                              : 'Auto-Follow'}
+                          </Button>
                         )}
 
                         {srv.url && srv.status !== 'expired' && (
@@ -1591,29 +1578,25 @@ export default function IntegrationsPanel({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<Send size={13} />}
                 onClick={handleSendEmailTest}
-                disabled={busyAction === 'test_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                pending={busyAction === 'test_email'} pendingLabel="Sending…"
               >
-                <Send size={13} />
-                <span>{busyAction === 'test_email' ? 'Sending…' : 'Send Test Email'}</span>
-              </button>
+                Send Test Email
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="md"
+                leadingIcon={<Sparkles size={13} />}
                 onClick={handleSendEmailDigest}
-                disabled={busyAction === 'digest_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90"
+                pending={busyAction === 'digest_email'} pendingLabel="Sending…"
               >
-                <Sparkles size={13} />
-                <span>
-                  {busyAction === 'digest_email'
-                    ? 'Sending…'
-                    : `Email Schedule Digest + .ics (${syncedEvents.length})`}
-                </span>
-              </button>
+                {`Email Schedule Digest + .ics (${syncedEvents.length})`}
+              </Button>
             </div>
           </div>
 
@@ -1621,7 +1604,7 @@ export default function IntegrationsPanel({
           <div className="p-4 sm:p-5 rounded-xl content-tile space-y-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-bold text-[var(--text)]">
+                <div className="text-sm font-medium font-display text-[var(--text)]">
                   Inbound Club Mailing List &amp; Newsletter Sync
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
@@ -1633,32 +1616,32 @@ export default function IntegrationsPanel({
                 </p>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={
+                  <RefreshCw size={13} className={busyAction === 'sync_email' ? 'animate-spin' : ''} />
+                }
                 onClick={handleSyncEmailNow}
-                disabled={busyAction === 'sync_email'}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 shrink-0"
+                pending={busyAction === 'sync_email'} pendingLabel="Syncing…"
+                className="shrink-0"
               >
-                <RefreshCw size={13} className={busyAction === 'sync_email' ? 'animate-spin' : ''} />
-                <span>{busyAction === 'sync_email' ? 'Syncing…' : 'Sync Email Inbox Now'}</span>
-              </button>
+                Sync Email Inbox Now
+              </Button>
             </div>
 
             <form
               onSubmit={handleConnectEmailSource}
               className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_auto] gap-2.5 pt-1"
             >
-              <select
+              <Select
+                aria-label="Email source club"
                 value={emailSourceClubId}
-                onChange={e => setEmailSourceClubId(e.target.value)}
+                onValueChange={setEmailSourceClubId}
                 className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {clubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
+                search
+                options={clubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
 
               <input
                 type="email"
@@ -1726,15 +1709,17 @@ export default function IntegrationsPanel({
                       <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Outbound Transport Mode
                       </label>
-                      <select
+                      <Select
+                        aria-label="Email provider"
                         value={emailProvider}
-                        onChange={e => setEmailProvider(e.target.value)}
+                        onValueChange={setEmailProvider}
                         className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                      >
-                        <option value="auto">Auto (Resend API or Gmail/SMTP)</option>
-                        <option value="smtp">Gmail / UCSC / Standard SMTP + IMAP</option>
-                        <option value="resend">Resend HTTP API</option>
-                      </select>
+                        options={[
+                          { value: "auto", label: "Auto (Resend API or Gmail/SMTP)" },
+                          { value: "smtp", label: "Gmail / UCSC / Standard SMTP + IMAP" },
+                          { value: "resend", label: "Resend HTTP API" },
+                        ]}
+                      />
                     </div>
 
                     <div>
@@ -1880,13 +1865,15 @@ export default function IntegrationsPanel({
                       >
                         {busyAction === 'verify_sockets' ? 'Testing…' : 'Test IMAP/SMTP'}
                       </button>
-                      <button
+                      <Button
+                        variant="filled"
+                        size="md"
                         type="submit"
                         disabled={busyAction === 'save_email_cfg'}
-                        className="flex-1 sm:flex-initial px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
+                        className="flex-1 sm:flex-initial"
                       >
                         {busyAction === 'save_email_cfg' ? 'Verifying…' : 'Save & Verify'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </form>

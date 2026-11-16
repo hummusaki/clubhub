@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import Select from './Select'
+import { useState } from 'react'
 import {
   Calendar,
   Check,
@@ -11,11 +12,10 @@ import {
   Sparkles,
   Unlink,
   Users,
-  X,
   KeyRound,
   ArrowRight,
 } from 'lucide-react'
-import { Card, BubbleTag, ToggleSwitch, SectionHeader, cleanText } from './ui'
+import { Card, BubbleTag, ToggleSwitch, SectionHeader, cleanText, Button, ModalDialog } from './ui'
 import {
   normalizeCalendarSyncSettings,
   isLocalhostUrl,
@@ -98,15 +98,6 @@ export default function CalendarSyncModal({
   const [showClientIdInput, setShowClientIdInput] = useState(false)
   const [clientIdDraft, setClientIdDraft] = useState('')
 
-  useEffect(() => {
-    if (variant !== 'modal' || !open) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape' && onClose) onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [variant, open, onClose])
-
   if (variant === 'modal' && !open) return null
 
   const hasLiveFeedUrl = Boolean(feedWebcalUrl)
@@ -144,9 +135,9 @@ export default function CalendarSyncModal({
   }
 
   const innerContent = (
-    <div className={isCompact ? 'space-y-4' : 'space-y-5'}>
+    <div className="dense-controls space-y-3">
       {/* ── Header ── */}
-      <SectionHeader
+      {variant === 'card' && <SectionHeader
         icon={<Calendar size={18} />}
         color="blue"
         title="Google & Apple Calendar Sync"
@@ -163,20 +154,8 @@ export default function CalendarSyncModal({
             )}
           </div>
         }
-        action={
-          variant === 'modal' && onClose ? (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close calendar sync settings"
-              className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-            >
-              <X size={16} />
-            </button>
-          ) : null
-        }
         className={`${isCompact ? 'pb-3.5' : 'pb-4'} border-b border-[var(--border)]`}
-      />
+      />}
 
       {/* ── Live Joined Clubs Summary Strip ── */}
       <div className={`${rowPad} rounded-xl content-tile flex flex-col sm:flex-row sm:items-center justify-between gap-2.5`}>
@@ -225,17 +204,18 @@ export default function CalendarSyncModal({
         </div>
 
         {settings.clubScope === 'joined' && joinedClubs.length === 0 && onBrowseClubs && (
-          <button
-            type="button"
+          <Button
+            variant="tonal"
+            size="sm"
+            trailingIcon={<ArrowRight size={13} />}
             onClick={() => {
               if (onClose) onClose()
               onBrowseClubs()
             }}
-            className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90 shrink-0 self-start sm:self-center"
+            className="shrink-0 self-start sm:self-center"
           >
-            <span>Join Clubs</span>
-            <ArrowRight size={13} />
-          </button>
+            Join Clubs
+          </Button>
         )}
       </div>
 
@@ -247,7 +227,7 @@ export default function CalendarSyncModal({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <GoogleCalendarLogo size={20} />
-                <span className="text-sm font-bold text-[var(--text)]">Google Calendar</span>
+                <span className="text-sm font-medium font-display text-[var(--text)]">Google Calendar</span>
               </div>
               <BubbleTag
                 label={
@@ -276,48 +256,48 @@ export default function CalendarSyncModal({
           <div className="space-y-2.5">
             {googleConnected ? (
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={googleSyncBusy}
+                <Button
+                  variant="filled"
+                  size="md"
+                  pending={googleSyncBusy} pendingLabel="Syncing…"
+                  leadingIcon={<RefreshCw size={14} className={googleSyncBusy ? 'animate-spin' : ''} />}
                   onClick={() => onConnectGoogleLive && onConnectGoogleLive()}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-[13px] font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-60 transition-opacity"
+                  className="flex-1"
                 >
-                  <RefreshCw size={14} className={googleSyncBusy ? 'animate-spin' : ''} />
-                  <span>{googleSyncBusy ? 'Syncing…' : 'Sync Google Calendar Now'}</span>
-                </button>
-                <a
-                  href="https://calendar.google.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-1 px-3 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] text-xs font-semibold no-underline transition-colors"
+                  Sync Google Calendar Now
+                </Button>
+                <Button
+                  variant="outlined-neutral"
+                  size="md"
+                  trailingIcon={<ExternalLink size={12.5} />}
+                  onClick={() => window.open('https://calendar.google.com', '_blank', 'noopener,noreferrer')}
                 >
-                  <span>Open</span>
-                  <ExternalLink size={12.5} />
-                </a>
+                  Open
+                </Button>
               </div>
             ) : hasGoogleClientId ? (
-              <button
-                type="button"
-                disabled={googleSyncBusy}
+              <Button
+                variant="filled"
+                size="md"
+                pending={googleSyncBusy} pendingLabel="Connecting…"
+                leadingIcon={<GoogleCalendarLogo size={16} />}
                 onClick={() => onConnectGoogleLive && onConnectGoogleLive()}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-[13px] font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-60 transition-opacity"
+                className="w-full"
               >
-                <GoogleCalendarLogo size={16} />
-                <span>{googleSyncBusy ? 'Connecting…' : 'Connect Google Calendar (Auto-Sync)'}</span>
-              </button>
+                Connect Google Calendar (Auto-Sync)
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="md"
+                leadingIcon={<GoogleCalendarLogo size={16} />}
                 onClick={() => onIntegrateGoogle && onIntegrateGoogle()}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-[13px] font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity"
+                className="w-full"
               >
-                <GoogleCalendarLogo size={16} />
-                <span>
-                  {isPublicFeed
-                    ? 'Subscribe in Google Calendar'
-                    : 'Add to Google Calendar'}
-                </span>
-              </button>
+                {isPublicFeed
+                  ? 'Subscribe in Google Calendar'
+                  : 'Add to Google Calendar'}
+              </Button>
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-[var(--text-muted)]">
@@ -374,14 +354,15 @@ export default function CalendarSyncModal({
                   value={clientIdDraft}
                   onChange={e => setClientIdDraft(e.target.value)}
                   placeholder="Google OAuth Client ID (.apps.googleusercontent.com)"
-                  className="flex-1 min-w-0 min-h-[40px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="flex-1 min-w-0 min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] text-base sm:text-xs text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
                 />
-                <button
+                <Button
+                  variant="filled"
+                  size="sm"
                   type="submit"
-                  className="min-h-[40px] px-3.5 rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer shrink-0"
                 >
                   Save
-                </button>
+                </Button>
               </form>
             )}
           </div>
@@ -395,7 +376,7 @@ export default function CalendarSyncModal({
                 <span className="w-6 h-6 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center shrink-0">
                   <AppleCalendarLogo size={13.5} />
                 </span>
-                <span className="text-sm font-bold text-[var(--text)]">Apple Calendar</span>
+                <span className="text-sm font-medium font-display text-[var(--text)]">Apple Calendar</span>
               </div>
               <BubbleTag
                 label={hasLiveFeedUrl ? 'Live webcal:// Feed' : '.ics Calendar'}
@@ -412,18 +393,17 @@ export default function CalendarSyncModal({
           </div>
 
           <div className="space-y-2.5">
-            <button
-              type="button"
+            <Button
+              variant="outlined-neutral"
+              size="md"
+              leadingIcon={<AppleCalendarLogo size={15} />}
               onClick={() => onSubscribeApple && onSubscribeApple()}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 min-h-[42px] rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-surface)] text-[var(--text)] text-xs sm:text-[13px] font-semibold border border-[var(--border-strong)] hover:border-[var(--blue)] shadow-[var(--shadow-xs)] cursor-pointer transition-all"
+              className="w-full"
             >
-              <AppleCalendarLogo size={15} />
-              <span>
-                {hasLiveFeedUrl
-                  ? 'Subscribe in Apple Calendar'
-                  : 'Add to Apple Calendar'}
-              </span>
-            </button>
+              {hasLiveFeedUrl
+                ? 'Subscribe in Apple Calendar'
+                : 'Add to Apple Calendar'}
+            </Button>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-[var(--text-muted)]">
               <button
@@ -454,7 +434,7 @@ export default function CalendarSyncModal({
       <div className="pt-1 space-y-3">
         <div className="flex items-center gap-2">
           <SlidersHorizontal size={14} className="text-[var(--purple-ink)]" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <h3 className="text-xs font-medium text-[var(--text-muted)]">
             Sync Filter Rules
           </h3>
         </div>
@@ -511,7 +491,7 @@ export default function CalendarSyncModal({
           </label>
           <div className={`${rowPad} rounded-xl border bg-[var(--blue-light)] border-[var(--blue)]/35 flex flex-wrap items-center justify-between gap-2.5`}>
             <div className="min-w-0">
-              <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
+              <div className="text-xs sm:text-sm font-medium font-display text-[var(--text)]">
                 Currently Joined Clubs ({joinedClubs.length})
               </div>
               <div className="text-[11.5px] text-[var(--text-muted)] mt-0.5 leading-snug">
@@ -521,17 +501,18 @@ export default function CalendarSyncModal({
               </div>
             </div>
             {joinedClubs.length === 0 && onBrowseClubs && (
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="sm"
+                trailingIcon={<ArrowRight size={12} />}
                 onClick={() => {
                   if (onClose) onClose()
                   onBrowseClubs()
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none shrink-0"
+                className="shrink-0"
               >
-                <span>Browse Clubs</span>
-                <ArrowRight size={12} />
-              </button>
+                Browse Clubs
+              </Button>
             )}
           </div>
         </div>
@@ -593,34 +574,38 @@ export default function CalendarSyncModal({
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Default Calendar Alert
             </label>
-            <select
+            <Select
+              aria-label="Default event reminder"
               value={String(settings.reminderMinutes)}
-              onChange={e => onUpdateSyncSettings({ reminderMinutes: Number(e.target.value) })}
-              className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-            >
-              <option value="0">None (No reminder alert)</option>
-              <option value="10">10 minutes before</option>
-              <option value="15">15 minutes before</option>
-              <option value="30">30 minutes before</option>
-              <option value="60">1 hour before</option>
-              <option value="1440">1 day before</option>
-            </select>
+              onValueChange={nextValue => onUpdateSyncSettings({ reminderMinutes: Number(nextValue) })}
+              className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
+              options={[
+                { value: "0", label: "None (No reminder alert)" },
+                { value: "10", label: "10 minutes before" },
+                { value: "15", label: "15 minutes before" },
+                { value: "30", label: "30 minutes before" },
+                { value: "60", label: "1 hour before" },
+                { value: "1440", label: "1 day before" },
+              ]}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Subscription Auto-Refresh
             </label>
-            <select
+            <Select
+              aria-label="Calendar refresh interval"
               value={settings.refreshInterval}
-              onChange={e => onUpdateSyncSettings({ refreshInterval: e.target.value })}
-              className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-            >
-              <option value="PT15M">Every 15 minutes</option>
-              <option value="PT1H">Every hour (Recommended)</option>
-              <option value="PT6H">Every 6 hours</option>
-              <option value="P1D">Once daily</option>
-            </select>
+              onValueChange={nextValue => onUpdateSyncSettings({ refreshInterval: nextValue })}
+              className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
+              options={[
+                { value: "PT15M", label: "Every 15 minutes" },
+                { value: "PT1H", label: "Every hour (Recommended)" },
+                { value: "PT6H", label: "Every 6 hours" },
+                { value: "P1D", label: "Once daily" },
+              ]}
+            />
           </div>
         </div>
 
@@ -649,16 +634,17 @@ export default function CalendarSyncModal({
                 value={feedWebcalUrl}
                 onFocus={e => e.target.select()}
                 aria-label="Calendar subscription URL"
-                className="flex-1 min-w-0 min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] font-mono text-xs text-[var(--text-muted)] border border-[var(--border)] outline-none"
+                className="flex-1 min-w-0 min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] font-mono text-xs text-[var(--text-muted)] border border-[var(--md-outline)] outline-none"
               />
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="md"
+                leadingIcon={copiedUrl ? <Check size={13.5} className="text-[var(--green)]" /> : <Copy size={13.5} />}
                 onClick={() => handleCopyFeedUrl(feedWebcalUrl)}
-                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer shrink-0 transition-colors"
+                className="shrink-0"
               >
-                {copiedUrl ? <Check size={13.5} className="text-[var(--green)]" /> : <Copy size={13.5} />}
-                <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
-              </button>
+                {copiedUrl ? 'Copied' : 'Copy URL'}
+              </Button>
             </div>
           </div>
         )}
@@ -675,20 +661,10 @@ export default function CalendarSyncModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Google and Apple Calendar integration settings"
-      onMouseDown={e => {
-        if (e.target === e.currentTarget && onClose) {
-          onClose()
-        }
-      }}
-      className="fixed inset-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5"
-    >
-      <div className="w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-y-auto modal-panel p-4 sm:p-6 fade-in">
-        {innerContent}
-      </div>
-    </div>
+    <ModalDialog open={open} onClose={onClose} title="Calendar sync"
+      subtitle="Google sync, Apple subscriptions, and calendar exports"
+      maxWidth="max-w-2xl">
+      {innerContent}
+    </ModalDialog>
   )
 }

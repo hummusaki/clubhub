@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
-import { X, Check, Search } from 'lucide-react'
-import { ClubEmblemSvg } from './icons'
+import { useState, useEffect, useId, useRef } from 'react'
+import { X, Check, Search, ChevronDown, MoreHorizontal, LoaderCircle, Users } from 'lucide-react'
 
 /**
  * Google Material Design 3 (M3) & Google Workspace UI Primitives for ClubHub.
@@ -79,31 +78,40 @@ export function ClubHubLogo({ size = 36, className = '' }) {
 // ── Material 3 Button Primitive ──
 // Variants: 'filled' | 'tonal' | 'outlined' | 'text' | 'danger' | 'danger-tonal'
 // Sizes: 'sm' (32px) | 'md' (40px) | 'lg' (44px)
+// Keep pending labels in the same centered space as the idle label.
+// pendingLabel and reserveLabels participate in sizing while hidden from assistive technology.
 export function Button({
   children,
   variant = 'filled',
   size = 'md',
   icon = null,
+  leadingIcon = null,
   trailingIcon = null,
   type = 'button',
   disabled = false,
+  pending,
+  pendingLabel,
+  reserveLabels = [],
   className = '',
   onClick,
   title,
   ariaLabel,
   ...rest
 }) {
-  const hasLeading = Boolean(icon)
+  const leading = icon || leadingIcon
+  const hasLeading = Boolean(leading)
   const hasTrailing = Boolean(trailingIcon)
+  const hasLabel = children != null
+  const labelSpinner = pending !== undefined && !hasLeading && !hasTrailing
 
   let sizeClasses = ''
   if (size === 'sm') {
     const pad =
       variant === 'text'
         ? 'px-3'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-3 pr-4'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-4 pr-3'
             : 'px-4'
     sizeClasses = `h-8 min-h-[32px] text-xs gap-1.5 ${pad}`
@@ -111,9 +119,9 @@ export function Button({
     const pad =
       variant === 'text'
         ? 'px-4'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-5 pr-6'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-6 pr-5'
             : 'px-6'
     sizeClasses = `h-11 min-h-[44px] text-sm gap-2 ${pad}`
@@ -121,12 +129,12 @@ export function Button({
     const pad =
       variant === 'text'
         ? 'px-3.5'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-4 pr-6'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-6 pr-4'
             : 'px-6'
-    sizeClasses = `h-10 min-h-[40px] text-sm gap-2 ${pad}`
+    sizeClasses = `min-h-9 py-1.5 text-sm gap-2 ${pad}`
   }
 
   const variantMap = {
@@ -154,17 +162,50 @@ export function Button({
     <button
       type={type}
       disabled={disabled}
-      onClick={onClick}
+      onClick={event => {
+        if (pending) {
+          event.preventDefault()
+          return
+        }
+        onClick?.(event)
+      }}
       title={title}
       aria-label={ariaLabel}
-      className={`md-state-layer inline-flex items-center justify-center rounded-full font-medium tracking-[0.01em] select-none shrink-0 transition-[box-shadow,border-color,background-color,color] duration-150 ${
+      aria-busy={pending || undefined}
+      data-button-padding={labelSpinner && size !== 'sm' && !variant.startsWith('text') ? 'wide' : undefined}
+      aria-disabled={pending || undefined}
+      className={`ui-touch md-state-layer inline-flex items-center justify-center rounded-full font-medium tracking-[0.01em] select-none shrink-0 transition-[box-shadow,border-color,background-color,color] duration-150 ${
         disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
-      } ${sizeClasses} ${variantClasses} ${className}`}
+      } ${sizeClasses} ${variantClasses} ${className} ${labelSpinner ? 'async-label-button' : ''}`}
       {...rest}
     >
-      {icon && <span className="inline-flex items-center shrink-0">{icon}</span>}
-      {children !== undefined && children !== null && <span>{children}</span>}
-      {trailingIcon && <span className="inline-flex items-center shrink-0">{trailingIcon}</span>}
+      {hasLeading && (
+        <span className="relative inline-grid place-items-center shrink-0">
+          <span className={`col-start-1 row-start-1 inline-flex ${pending ? 'invisible' : ''}`}>{leading}</span>
+          {pending && <LoaderCircle aria-hidden="true" size={14} className="absolute motion-safe:animate-spin" />}
+        </span>
+      )}
+      {children != null && (pendingLabel || reserveLabels.length ? (
+        <span className="inline-grid min-w-0 place-items-center">
+          {pendingLabel && <span aria-hidden="true" className="invisible col-start-1 row-start-1">{pendingLabel}</span>}
+          {reserveLabels.map(label => (
+            <span aria-hidden="true" key={label} className="invisible col-start-1 row-start-1">{label}</span>
+          ))}
+          <span className={`col-start-1 row-start-1 ${pending && pendingLabel ? 'invisible' : ''}`} aria-hidden={pending && pendingLabel ? true : undefined}>
+            {children}
+          </span>
+          {pending && pendingLabel && <span className="col-start-1 row-start-1">{pendingLabel}</span>}
+        </span>
+      ) : <span>{children}</span>)}
+      {trailingIcon && (
+        <span className="relative inline-grid place-items-center shrink-0">
+          <span className={`inline-flex ${pending && !hasLeading ? 'invisible' : ''}`}>{trailingIcon}</span>
+          {pending && !hasLeading && <LoaderCircle aria-hidden="true" size={14} className="absolute motion-safe:animate-spin" />}
+        </span>
+      )}
+      {pending && labelSpinner && (
+        <LoaderCircle aria-hidden="true" size={12} className="async-label-spinner motion-safe:animate-spin" />
+      )}
     </button>
   )
 }
@@ -210,7 +251,7 @@ export function IconButton({
       aria-label={ariaLabel || title}
       title={title}
       onClick={onClick}
-      className={`md-state-layer inline-flex items-center justify-center rounded-full shrink-0 select-none transition-colors duration-150 ${
+      className={`ui-touch md-state-layer inline-flex items-center justify-center rounded-full shrink-0 select-none transition-colors duration-150 ${
         disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
       } ${dim} ${variantClasses} ${className}`}
       {...rest}
@@ -246,14 +287,14 @@ export function SegmentedControl({
             type="button"
             aria-pressed={isSelected}
             onClick={() => onChange && onChange(opt.value)}
-            className={`md-state-layer flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 font-medium border-none cursor-pointer transition-colors duration-150 whitespace-nowrap ${heightClass} ${
+            className={`ui-touch md-state-layer flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 font-medium border-none cursor-pointer transition-colors duration-150 whitespace-nowrap ${heightClass} ${
               isSelected
                 ? 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)]'
                 : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
-            {isSelected && showCheck ? (
-              <Check size={size === 'sm' ? 14 : 16} className="shrink-0" />
+            {showCheck && (isSelected || !opt.icon) ? (
+              <Check aria-hidden="true" size={size === 'sm' ? 14 : 16} className={`shrink-0 ${isSelected ? '' : 'invisible'}`} />
             ) : opt.icon ? (
               <span className="inline-flex items-center shrink-0">{opt.icon}</span>
             ) : null}
@@ -346,7 +387,7 @@ export function FilterChip({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`md-state-layer shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 h-8 min-h-[32px] rounded-lg text-xs font-medium cursor-pointer border transition-colors duration-150 ${
+      className={`ui-touch md-state-layer shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 h-8 min-h-[32px] rounded-lg text-xs font-medium cursor-pointer border transition-colors duration-150 ${
         selected
           ? 'pl-2.5 pr-3 bg-[var(--secondary-container)] text-[var(--on-secondary-container)] border-transparent'
           : 'px-3 bg-transparent text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--md-outline-variant)] hover:border-[var(--md-outline)]'
@@ -371,6 +412,100 @@ export function FilterChip({
   )
 }
 
+export function PageToolbar({ title, context, actions }) {
+  return (
+    <div className="page-toolbar">
+      <div className="min-w-0">
+        <h1 tabIndex={-1} className="page-title">{title}</h1>
+        {context}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2 min-w-0">{actions}</div>}
+    </div>
+  )
+}
+
+export function ActionDisclosure({
+  label, count, pending, pendingLabel, icon, iconOnly = false, children, className = '', panelClassName = '',
+}) {
+  const [open, setOpen] = useState(false)
+  const root = useRef(null)
+  const id = useId()
+
+  function close({ restoreFocus = true } = {}) {
+    setOpen(false)
+    if (restoreFocus) root.current?.querySelector('button')?.focus()
+  }
+
+  useEffect(() => {
+    if (!open) return
+    function handleOutside(event) {
+      if (!root.current?.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', handleOutside)
+    return () => document.removeEventListener('pointerdown', handleOutside)
+  }, [open])
+
+  return (
+    <div
+      ref={root}
+      className={`relative ${className}`}
+      onKeyDown={event => {
+        if (!open || event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        close()
+      }}
+    >
+      {iconOnly ? (
+        <IconButton variant="outlined" size="sm" selected={Boolean(count)} ariaLabel={label} title={label} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+          {icon || <MoreHorizontal size={18} />}
+        </IconButton>
+      ) : (
+        <Button variant="outlined-neutral" size="sm"
+          icon={pending ? <LoaderCircle size={14} className="motion-safe:animate-spin" /> : icon}
+          trailingIcon={<ChevronDown size={14} />}
+          reserveLabels={pendingLabel ? [label, pendingLabel] : undefined}
+          aria-busy={pending || undefined}
+          aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+          {pending && pendingLabel ? pendingLabel : label}
+          {count !== undefined && (
+            <span className={`ml-1 inline-block min-w-[2ch] tabular-nums ${count ? '' : 'invisible'}`}>
+              {count > 99 ? '99+' : count}
+            </span>
+          )}
+        </Button>
+      )}
+      <div id={id} hidden={!open} className={`action-disclosure absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-[var(--shadow-md)] ${panelClassName}`}>
+        {open && children(close)}
+      </div>
+    </div>
+  )
+}
+
+export function ActionItem({ children, icon, onClick, disabled, pending, pendingLabel, danger = false }) {
+  return (
+    <button
+      type="button"
+      className={`ui-touch flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-subtle)] disabled:opacity-45 ${danger ? 'text-[var(--red-ink)]' : 'text-[var(--text)]'}`}
+      onClick={event => {
+        if (!pending) onClick?.(event)
+      }}
+      disabled={disabled && !pending}
+      aria-disabled={pending || undefined}
+      aria-busy={pending || undefined}
+    >
+      {pending ? <LoaderCircle size={14} aria-hidden="true" className="shrink-0 motion-safe:animate-spin" /> : icon}
+      {pendingLabel ? (
+        <span className="inline-grid">
+          <span aria-hidden="true" className="invisible col-start-1 row-start-1">{pendingLabel}</span>
+          <span className={`col-start-1 row-start-1 ${pending ? 'invisible' : ''}`}>{children}</span>
+          {pending && <span className="col-start-1 row-start-1">{pendingLabel}</span>}
+        </span>
+      ) : children}
+    </button>
+  )
+}
+
 // ── Material 3 28dp Dialog Container ──
 export function ModalDialog({
   open = true,
@@ -384,31 +519,82 @@ export function ModalDialog({
   children,
   ariaLabel,
 }) {
+  const backdrop = useRef(null)
+  const panel = useRef(null)
+
   useEffect(() => {
     if (!open) return
-    const handleKey = e => {
-      if (e.key === 'Escape' && onClose) onClose()
+    const previous = document.activeElement
+    const dialog = panel.current
+    if (!dialog.contains(document.activeElement)) {
+      const initialFocus = dialog.querySelector('[data-initial-focus]') || dialog
+      initialFocus.focus({ preventScroll: true })
     }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, onClose])
+    return () => {
+      if (previous?.isConnected && (dialog.contains(document.activeElement) || document.activeElement === document.body)) {
+        previous.focus({ preventScroll: true })
+      }
+    }
+  }, [open])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const overlay = backdrop.current
+    if (!open || !viewport || !overlay) return
+
+    function updateViewport() {
+      overlay.style.setProperty('--dialog-viewport-height', `${viewport.height}px`)
+      overlay.style.setProperty('--dialog-viewport-top', `${viewport.offsetTop}px`)
+    }
+
+    updateViewport()
+    viewport.addEventListener('resize', updateViewport)
+    viewport.addEventListener('scroll', updateViewport)
+    return () => {
+      viewport.removeEventListener('resize', updateViewport)
+      viewport.removeEventListener('scroll', updateViewport)
+    }
+  }, [open])
+
+  function handleDialogKeys(event) {
+    if (event.defaultPrevented) return
+    if (event.key === 'Escape' && onClose) {
+      event.stopPropagation()
+      onClose()
+    }
+    if (event.key !== 'Tab') return
+    const focusable = [...panel.current.querySelectorAll(
+      'button:not(:disabled), a[href], input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]'
+    )].filter(element => element.getClientRects().length && element.tabIndex >= 0)
+    const first = focusable[0]
+    const last = focusable.at(-1)
+    if (!first || document.activeElement === panel.current || document.activeElement === (event.shiftKey ? first : last)) {
+      event.preventDefault()
+      const target = event.shiftKey ? last : first
+      target?.focus()
+    }
+  }
 
   if (!open) return null
 
   return (
     <div
-      className="fixed inset-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5 fade-in"
+      ref={backdrop}
+      className="modal-viewport fixed inset-x-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5 fade-in"
       onClick={onClose}
     >
       <div
+        ref={panel}
         role="dialog"
+        tabIndex={-1}
+        onKeyDown={handleDialogKeys}
         aria-modal="true"
         aria-label={ariaLabel || (typeof title === 'string' ? title : 'Dialog')}
-        className={`modal-panel w-full ${maxWidth} flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-hidden`}
+        className={`modal-panel w-full ${maxWidth} flex flex-col max-h-full overflow-hidden`}
         onClick={e => e.stopPropagation()}
       >
         {(title || onClose) && (
-          <div className="px-6 pt-6 pb-4 flex items-start justify-between gap-3 shrink-0">
+          <div className="px-3 pt-3 pb-2 sm:px-6 sm:pt-5 sm:pb-3 flex items-start justify-between gap-3 shrink-0">
             <div className="flex items-start gap-3 min-w-0">
               {icon && (
                 <IconBadge color={iconColor} size={40} radius={9999}>
@@ -436,10 +622,10 @@ export function ModalDialog({
           </div>
         )}
 
-        <div className="px-6 pb-6 overflow-y-auto flex-1 space-y-4">{children}</div>
+        <div className="px-3 pb-3 sm:px-6 sm:pb-5 min-h-0 overflow-y-auto overscroll-contain flex-1 space-y-4">{children}</div>
 
         {footer && (
-          <div className="px-6 py-4 border-t border-[var(--border)] flex flex-wrap items-center justify-end gap-2 shrink-0">
+          <div className="px-3 py-2 sm:px-6 sm:py-3 border-t border-[var(--border)] flex flex-wrap items-center justify-end gap-2 shrink-0">
             {footer}
           </div>
         )}
@@ -513,13 +699,7 @@ export function ClubAvatar({ club, size = 40, className = '' }) {
           className="w-full h-full object-cover rounded-[inherit]"
         />
       ) : (
-        <ClubEmblemSvg
-          clubName={club?.name}
-          clubId={club?.id}
-          abbr={club?.abbr}
-          category={club?.category}
-          size={iconSize}
-        />
+        <Users size={iconSize} aria-hidden="true" />
       )}
     </div>
   )
@@ -580,6 +760,7 @@ export function Card({
   style = {},
   animate = false,
   onClick,
+  'data-task-section': taskSection,
 }) {
   const interactiveClasses = onClick
     ? 'cursor-pointer hover:bg-[var(--bg-tile-hover)] hover:shadow-[var(--shadow-tile-hover)] transition-[box-shadow,border-color,background-color] duration-150'
@@ -591,6 +772,7 @@ export function Card({
         animate ? 'fade-in' : ''
       } ${interactiveClasses} ${className}`}
       style={style}
+      data-task-section={taskSection}
     >
       {children}
     </div>
@@ -623,6 +805,12 @@ export function SearchBox({
   shortcutHint = null,
   variant = 'outlined',
   trailingSlot = null,
+  onFocus,
+  onClick,
+  onKeyDown,
+  label = placeholder,
+  initialFocus = false,
+  className = '',
 }) {
   const isControlled = value !== undefined
   const isTopbar = variant === 'topbar'
@@ -632,8 +820,8 @@ export function SearchBox({
       className={`flex items-center gap-3 rounded-full transition-all duration-150 max-w-full min-w-0 ${
         isTopbar
           ? 'px-4 h-11 sm:h-12 bg-[var(--md-surface-container)] border border-transparent focus-within:bg-[var(--bg-card)] focus-within:border-[var(--border)] focus-within:shadow-[var(--shadow-md)]'
-          : 'px-3.5 h-10 bg-[var(--bg-card)] border border-[var(--md-outline-variant)] hover:border-[var(--md-outline)] focus-within:border-[var(--blue)] focus-within:shadow-[0_0_0_1px_var(--blue)]'
-      }`}
+          : 'px-3.5 h-11 sm:h-10 bg-[var(--bg-card)] border border-[var(--md-outline-variant)] hover:border-[var(--md-outline)] focus-within:border-[var(--blue)] focus-within:shadow-[0_0_0_1px_var(--blue)]'
+      } ${className}`}
       style={{ width }}
     >
       <Search size={18} className="shrink-0 text-[var(--text-muted)]" />
@@ -641,10 +829,16 @@ export function SearchBox({
         ref={inputRef}
         type="text"
         placeholder={placeholder}
+        aria-label={label}
+        data-initial-focus={initialFocus || undefined}
+        onFocus={onFocus}
+        onClick={onClick}
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
         onKeyDown={e => {
-          if (e.key === 'Escape') {
+          if (e.nativeEvent.isComposing) return
+          onKeyDown?.(e)
+          if (!e.defaultPrevented && e.key === 'Escape') {
             if (isControlled && value && onChange) {
               onChange('')
             } else {
@@ -652,13 +846,13 @@ export function SearchBox({
             }
           }
         }}
-        className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0 placeholder:text-[var(--text-muted)]"
+        className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm h-full w-full min-w-0 placeholder:text-[var(--text-muted)]"
       />
       {isControlled && value ? (
         <button
           type="button"
-          onClick={() => onChange && onChange('')}
-          className="w-7 h-7 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] cursor-pointer bg-transparent border-none flex items-center justify-center shrink-0 transition-colors"
+          onClick={() => { onChange?.(''); inputRef?.current?.focus() }}
+          className="ui-touch -mr-2 w-7 h-7 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] cursor-pointer bg-transparent border-none flex items-center justify-center shrink-0 transition-colors"
           aria-label="Clear search"
         >
           <X size={16} />
@@ -682,7 +876,7 @@ export function ToastViewport({ toast, onDismiss }) {
       role="status"
       aria-live="polite"
       data-toast-viewport="true"
-      className="fixed left-4 right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] sm:left-6 sm:right-auto lg:left-[280px] lg:bottom-6 sm:max-w-md z-[120] pointer-events-none flex"
+      className="fixed left-4 right-4 bottom-[calc(var(--mobile-nav-clearance)+0.5rem)] sm:left-6 sm:right-auto lg:left-[280px] lg:bottom-6 sm:max-w-md z-[120] pointer-events-none flex"
     >
       <div
         className="pointer-events-auto w-full sm:w-auto min-h-[48px] rounded-xl bg-[var(--md-inverse-surface)] text-[var(--md-inverse-on-surface)]

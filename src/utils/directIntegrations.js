@@ -225,7 +225,7 @@ export async function dispatchDiscordNotification(options = {}) {
 
   // Fallback to direct browser-to-Discord Webhook POST when running in static mode
   const cleanWebhook = sanitizeDiscordWebhookUrl(rawWebhook)
-  if (cleanWebhook && (backendRes?.offline || !options.channelId)) {
+  if (cleanWebhook && !backendRes?.outcomeUnknown && !(backendRes?.status >= 500) && (backendRes?.offline || !options.channelId)) {
     const payload = buildBrowserDiscordPayload(options)
     const res = await fetch(cleanWebhook, {
       method: 'POST',
@@ -282,7 +282,7 @@ export async function dispatchEmailNotification(
   }
 
   const canFallback =
-    allowMailtoFallback &&
+    allowMailtoFallback && !backendRes?.outcomeUnknown && !(backendRes?.status >= 500) &&
     (backendRes?.offline ||
       /not configured|not reachable|recipient email/i.test(backendRes?.error || ''))
 

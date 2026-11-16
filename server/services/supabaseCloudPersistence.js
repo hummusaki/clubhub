@@ -373,14 +373,26 @@ export async function syncSnapshotToSupabase(sqliteDb) {
     };
   });
   if (taskRows.length > 0) {
-    const { error: taskUpsertErr } = await admin
+    let { error: taskUpsertErr } = await admin
       .from('tasks')
       .upsert(taskRows, { onConflict: 'id' });
     if (taskUpsertErr && /(due_time|reminder_config)/i.test(taskUpsertErr.message || '')) {
       const legacyTaskRows = taskRows.map(
         ({ due_time: _dt, reminder_config: _rc, ...rest }) => rest
       );
-      await admin.from('tasks').upsert(legacyTaskRows, { onConflict: 'id' });
+      const res = await admin.from('tasks').upsert(legacyTaskRows, { onConflict: 'id' });
+      taskUpsertErr = res.error;
+    }
+    if (taskUpsertErr && /tasks_(audience|visibility)_check/i.test(taskUpsertErr.message || '')) {
+      console.warn(
+        '[SupabaseCloudPersistence] Supabase table "tasks" has legacy constraint (tasks_audience_check). Skipping personal tasks sync until ALTER TABLE script in supabase/schema.sql is executed in Supabase SQL editor.'
+      );
+      const nonPersonalTaskRows = taskRows
+        .filter(t => t.audience !== 'personal' && t.visibility !== 'personal')
+        .map(({ due_time: _dt, reminder_config: _rc, ...rest }) => rest);
+      if (nonPersonalTaskRows.length > 0) {
+        await admin.from('tasks').upsert(nonPersonalTaskRows, { onConflict: 'id' });
+      }
     }
   }
 }

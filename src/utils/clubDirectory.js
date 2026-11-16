@@ -262,7 +262,7 @@ export function buildClubDirectoryData({
     const youAvatarBg =
       userSettings?.avatarBg ||
       effectiveUser?.avatarBg ||
-      'linear-gradient(135deg, var(--blue), var(--purple))'
+      '#1A73E8'
 
     seenMemberKeys.add(youEmail.toLowerCase())
     members.push({
@@ -336,7 +336,7 @@ export function buildClubDirectoryData({
           email: r.email || clubObj?.email || hubClub.email || '',
           role: cleanText(r.role || 'Club Member'),
           major: r.major ? cleanText(r.major) : '',
-          avatarBg: clubObj?.avatarBg || 'linear-gradient(135deg, var(--teal), var(--blue))',
+          avatarBg: clubObj?.avatarBg || '#00796B',
           clubs: newTag,
           joined: 'Active',
           isCustom: false,
@@ -401,4 +401,24 @@ export function buildClubDirectoryData({
     clubOfficerCounts,
     clubMemberCounts,
   }
+}
+
+// Global search uses the public roster subset. Keep workspace people,
+// custom entries and contact information out of this cross-page index.
+export function getPublicDirectoryOfficers(hubDict = {}) {
+  const officers = []
+  const seen = new Set()
+  for (const [cid, club] of Object.entries(hubDict || {})) {
+    for (const entry of club?.roster || []) {
+      if (!entry?.id || !entry.name || entry.personType === 'member' ||
+          entry.isPrivate || (entry.visibility && entry.visibility !== 'public') ||
+          entry.isSyntheticContact || String(entry.id).endsWith('_official_contact')) continue
+      const id = `${cid}:${entry.id}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      officers.push({ id, clubId: cid, club: cleanText(club.name),
+        name: cleanText(entry.name), role: cleanText(entry.role || 'Officer') })
+    }
+  }
+  return officers
 }

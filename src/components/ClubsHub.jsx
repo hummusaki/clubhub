@@ -1,3 +1,6 @@
+import Select from './Select'
+import SearchDestination from './SearchDestination'
+import { FindClubsButton } from './ClubDiscoveryDialog'
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import {
   Calendar,
@@ -24,6 +27,7 @@ import {
   RotateCcw,
   RefreshCw,
   Settings,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   clubs as defaultClubs,
@@ -32,14 +36,22 @@ import {
 } from '../data/sampleData'
 import {
   Card,
+  PageToolbar,
+  SearchBox,
+  ActionDisclosure,
   ClubAvatar,
   Avatar,
   BubbleTag,
   IconBadge,
   cleanText,
   cleanMultilineText,
+  Button,
+  IconButton,
+  SegmentedControl,
+  FilterChip,
+  Tabs,
 } from './ui'
-import { PlatformIcon, ClubEmblemSvg } from './icons'
+import { PlatformIcon } from './icons'
 import { ingestFromSource, syncAllSources, getStaticSnapshot } from '../api/client'
 import IntegrationsPanel from './IntegrationsPanel'
 import {
@@ -53,7 +65,7 @@ import {
   getClubCategoryMeta,
 } from '../utils/clubCategories'
 import { buildClubDirectoryData, toInitials } from '../utils/clubDirectory'
-import { filterAndRankBySearch, matchesSearchQuery, parseSearchQuery } from '../utils/search'
+import { filterAndRankBySearch, matchesSearchQuery, parseSearchQuery, rankClubSearch } from '../utils/search'
 import ClubRbacPanel from './ClubRbacPanel'
 
 const SOURCE_FILTERS = [
@@ -525,33 +537,19 @@ const FeedPostCard = memo(function FeedPostCard({
 }) {
   const meta = SOURCE_META[post.source] || SOURCE_META[post.channel] || SOURCE_META.instagram
 
-  function handleCardClick(e) {
-    if (e.target.closest('a, button')) return
-    const selection = typeof window !== 'undefined' ? window.getSelection?.() : null
-    if (selection && selection.type === 'Range' && selection.toString().trim().length > 0) {
-      return
-    }
-    onToggleExpand(post.id)
-  }
-
   const headerDateText = isExpanded
     ? formatExpandedTimestamp(post.postedAtMs, post.postedAtRaw, use24h) || post.dateLabel
     : post.dateLabel
 
   return (
     <article
-      onClick={handleCardClick}
-      style={{
-        borderLeftWidth: '3.5px',
-        borderLeftColor: `var(--${meta.color})`,
-      }}
       className={`${
         isExpanded
           ? 'border-[var(--border-strong)] shadow-[var(--shadow-tile-hover)]'
           : 'feed-tile-virtual'
       } content-tile content-tile-interactive ${
         isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
-      } rounded-[var(--radius-sm)] flex items-start cursor-pointer`}
+      } rounded-[var(--radius-sm)] flex items-start`}
     >
       <IconBadge color={meta.color} size={isCompactDensity ? 32 : 36} radius={10} className="mt-0.5">
         <PlatformIcon type={post.channel} size={isCompactDensity ? 16 : 18} />
@@ -674,7 +672,7 @@ const FeedPostCard = memo(function FeedPostCard({
             type="button"
             aria-expanded={isExpanded}
             onClick={() => onToggleExpand(post.id)}
-            className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none p-0 cursor-pointer transition-colors"
+            className="ui-touch inline-flex items-center gap-1 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent border-none p-0 cursor-pointer transition-colors"
           >
             <span>
               {isExpanded
@@ -984,8 +982,8 @@ function DirectoryClubPicker({
 
             {joinedMatches.length > 0 && (
               <div className="space-y-0.5">
-                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
-                  My Joined Clubs ({joinedMatches.length})
+                <div className="px-2.5 pt-1.5 pb-0.5 text-xs font-medium text-[var(--text-muted)]">
+                  My joined clubs ({joinedMatches.length})
                 </div>
                 {joinedMatches.map(renderOptionRow)}
               </div>
@@ -993,8 +991,8 @@ function DirectoryClubPicker({
 
             {rosterMatches.length > 0 && (
               <div className="space-y-0.5">
-                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
-                  Clubs with Listed Roster ({rosterMatches.length})
+                <div className="px-2.5 pt-1.5 pb-0.5 text-xs font-medium text-[var(--text-muted)]">
+                  Clubs with listed roster ({rosterMatches.length})
                 </div>
                 {rosterMatches.map(renderOptionRow)}
               </div>
@@ -1002,8 +1000,8 @@ function DirectoryClubPicker({
 
             {contactMatches.length > 0 && (
               <div className="space-y-0.5">
-                <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-light)]">
-                  Official Club Contacts ({contactMatches.length})
+                <div className="px-2.5 pt-1.5 pb-0.5 text-xs font-medium text-[var(--text-muted)]">
+                  Official club contacts ({contactMatches.length})
                 </div>
                 {contactMatches.map(renderOptionRow)}
               </div>
@@ -1039,6 +1037,13 @@ export default function ClubsHub({
   onOpenTasks,
   onRefreshAnnouncements,
   searchQuery = '',
+  onSearchChange,
+  searchTarget,
+  onDismissSearchTarget,
+  publicPeople = [],
+  selectedAnnouncement,
+  onFindClubs,
+  onMembershipConfirmed,
   compact = false,
   onOpenClubs,
   onRefresh,
@@ -1056,6 +1061,7 @@ export default function ClubsHub({
           ? clubsData
           : defaultClubs
     return raw.map(c => {
+      if (c.category && c.categoryLabel && c.avatarBg) return c
       const catId = c.category || categorizeClub(c)
       const catMeta = getClubCategoryMeta(catId)
       const categoryLabel = c.categoryLabel || catMeta.label
@@ -1064,9 +1070,6 @@ export default function ClubsHub({
         category: catId,
         categoryLabel,
         avatarBg: c.avatarBg || catMeta.gradient,
-        _searchText: `${c.name || ''} ${c.description || ''} ${categoryLabel} ${(c.tags || [])
-          .map(t => t.label)
-          .join(' ')}`.toLowerCase(),
       }
     })
   }, [items, clubsData])
@@ -1082,7 +1085,7 @@ export default function ClubsHub({
 
   useEffect(() => {
     if (initialSection) setSection(initialSection)
-  }, [initialSection])
+  }, [initialSection, searchTarget?.revision])
 
   useEffect(() => {
     if (initialRbacClubId) setDirectoryClubFilter(String(initialRbacClubId))
@@ -1247,11 +1250,7 @@ export default function ClubsHub({
     const pool = section === 'discover' ? allClubs : joinedClubs
     const catLower = category === 'All' ? null : category.toLowerCase()
     const catScoped = catLower ? pool.filter(c => c.category === catLower) : pool
-    return filterAndRankBySearch(catScoped, searchQuery, c => ({
-      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
-      secondary: [c.instagram, c.id, c.categoryLabel, ...(c.tags || []).map(t => t.label)],
-      tertiary: [c.description, c.directoryDescription, c.email, c.schedule],
-    }))
+    return rankClubSearch(catScoped, searchQuery)
   }, [compact, allClubs, joinedClubs, section, category, searchQuery])
 
   const groupedClubs = useMemo(() => {
@@ -1645,11 +1644,7 @@ export default function ClubsHub({
           !listedOfficerClubIds.has(String(c.id)) &&
           (directoryCategory === 'All' || c.category === directoryCategory)
       )
-      return filterAndRankBySearch(candidates, searchQuery, c => ({
-        primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
-        secondary: [c.instagram, c.id, c.email, c.categoryLabel],
-        tertiary: [c.description, c.directoryDescription],
-      })).slice(0, 6)
+      return rankClubSearch(candidates, searchQuery, { limit: 6 })
     }
 
     if (directoryScope === 'myclubs' && joinedClubs.length > 0 && roleFilter !== 'members') {
@@ -1782,7 +1777,7 @@ export default function ClubsHub({
         email: cleanEmail,
         role: personRoleTitle.trim() || 'Active Member',
         major: personMajor.trim() || 'UCSC Undergraduate',
-        avatarBg: clubObj?.avatarBg || 'linear-gradient(135deg, var(--blue), var(--teal))',
+        avatarBg: clubObj?.avatarBg || '#1A73E8',
         clubs: [{ label: clubLabel, clubId: String(personClubId), color: accentColor }],
         joined: 'Nov 2026',
       }
@@ -1917,10 +1912,8 @@ export default function ClubsHub({
     }
   }
 
-  function renderClubCard(club) {
+  function renderClubCard(club, expandDetails = false) {
     const isJoined = Boolean(club.joined)
-    const catMeta = getClubCategoryMeta(club.category)
-    const accentColor = catMeta?.color || 'blue'
     const clubLinks = hubDict?.[club.id]?.links || []
     const discordInvite = clubLinks.find(
       l =>
@@ -1931,243 +1924,102 @@ export default function ClubsHub({
     const clubDiscordUrl = normalizeExternalHttpUrl(club.discordUrl || discordInvite?.url || '')
     const clubEmailAddr = !isDemoClubId(club.id) && club.email ? String(club.email).trim() : ''
 
+    const title = cleanText(club.name)
+    const openClub = compact
+      ? () => onOpenClubs?.({ section: 'directory', clubId: club.id })
+      : () => handleOpenClubRoster(club.id)
+
     return (
-      <div
-        key={club.id}
-        style={{
-          borderTopWidth: '3px',
-          borderTopColor: `var(--${accentColor})`,
-        }}
-        className={`feed-tile-virtual content-tile content-tile-interactive ${
-          isCompactDensity ? 'p-3 gap-2' : 'p-4 gap-3.5'
-        } rounded-[var(--radius-sm)] flex flex-col justify-between`}
-      >
-        <div>
-          <div className={`flex items-start justify-between gap-2.5 ${isCompactDensity ? 'mb-1.5' : 'mb-2.5'}`}>
-            <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
-              <ClubAvatar club={club} size={isCompactDensity ? 34 : 42} />
-              <div className="min-w-0">
-                <div
-                  className={`font-semibold ${
-                    isCompactDensity ? 'text-[13px]' : 'text-sm'
-                  } text-[var(--text)] truncate`}
-                >
-                  {cleanText(club.name)}
-                </div>
-                <div className="text-[11px] text-[var(--text-muted)]">
-                  {club.members} {club.members === 1 ? 'member' : 'members'}
-                </div>
+      <article key={club.id} className="content-tile rounded-[var(--radius-sm)] px-2 py-2 sm:px-3 min-w-0">
+        <div className="flex items-center gap-2">
+          <ClubAvatar club={club} size={32} />
+          <div className="min-w-0 flex-1">
+            <button type="button" onClick={openClub}
+              className="ui-touch text-left text-sm font-medium leading-snug break-words text-[var(--text)] hover:text-[var(--blue)] hover:underline">
+              {title}
+            </button>
+            <div className="text-xs text-[var(--text-muted)]">
+              {club.members != null && `${club.members} ${club.members === 1 ? 'member' : 'members'}`}
+              {club.members != null && club.categoryLabel && ' · '}
+              {club.categoryLabel}
+            </div>
+          </div>
+          {onToggleJoin && (
+            <Button size="sm" variant={isJoined ? 'tonal' : 'outlined'} className="!px-2.5"
+              ariaLabel={isJoined ? `Leave ${title}` : `Join ${title}`}
+              icon={isJoined ? <Check size={13} /> : undefined}
+              onClick={async () => {
+                if (await onToggleJoin(club.id) === false) return
+                onNotify?.(isJoined ? `Left ${title}` : `Joined ${title}!`, { type: isJoined ? 'info' : 'success' })
+              }}>
+              {isJoined ? 'Joined' : 'Join'}
+            </Button>
+          )}
+        </div>
+        {!compact && (
+          <details open={expandDetails || undefined} className="group/club-details mt-2 text-xs text-[var(--text-muted)]">
+            <summary className="club-details-toggle ui-touch inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-[var(--md-outline-variant)] px-3 font-medium text-[var(--text)] hover:bg-[var(--md-surface-container)]">
+              Club details
+              <ChevronDown size={14} aria-hidden="true" className="transition-transform group-open/club-details:rotate-180" />
+            </summary>
+            <div className="mt-2 space-y-2 pb-1">
+              {club.description && <p className="break-words">{cleanText(club.description)}</p>}
+              <p>{cleanText(club.schedule || 'Weekly meetings')}</p>
+              <div className="flex flex-wrap gap-1">
+                {(club.tags || []).map(tag => <BubbleTag key={tag.label} label={tag.label} color={tag.color || 'blue'} size="sm" />)}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3">
+                {clubDiscordUrl && (
+                  <a href={clubDiscordUrl} target="_blank" rel="noopener noreferrer"
+                    className="ui-touch inline-flex items-center gap-1 text-[var(--blue)] hover:underline">
+                    {section !== 'discover' && <PlatformIcon type="discord" size={14} />}
+                    {club.discordMemberCount ? `Discord · ${club.discordMemberCount}` : 'Discord'}
+                  </a>
+                )}
+                {clubEmailAddr && (
+                  <a href={`mailto:${clubEmailAddr}`} className="ui-touch inline-flex items-center gap-1 text-[var(--blue)] hover:underline">
+                    <Mail size={14} /> Email club
+                  </a>
+                )}
+                <button type="button" className="ui-touch text-[var(--blue)] hover:underline"
+                  onClick={() => {
+                    setSection('rbac')
+                    setDirectoryClubFilter(String(club.id))
+                  }}>
+                  Roles &amp; groups
+                </button>
               </div>
             </div>
-
-            {onToggleJoin && (
-              <button
-                type="button"
-                onClick={() => {
-                  onToggleJoin(club.id)
-                  if (onNotify) {
-                    onNotify(
-                      isJoined
-                        ? `Left ${cleanText(club.name)}`
-                        : `Joined ${cleanText(club.name)}!`,
-                      { type: isJoined ? 'info' : 'success' }
-                    )
-                  }
-                }}
-                className={`inline-flex items-center gap-1 ${
-                  isCompactDensity ? 'px-2.5 min-h-[27px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
-                } rounded-full font-semibold cursor-pointer border shrink-0 transition-colors ${
-                  isJoined
-                    ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent hover:opacity-85'
-                    : 'bg-[var(--blue)] text-white border-[var(--blue)] hover:opacity-90'
-                }`}
-              >
-                {isJoined ? <Check size={12} /> : <Plus size={12} />}
-                <span>{isJoined ? 'Joined' : 'Join'}</span>
-              </button>
-            )}
-          </div>
-
-          {club.description && (
-            <p
-              className={`text-xs text-[var(--text-muted)] leading-relaxed ${
-                isCompactDensity ? 'mb-2 line-clamp-1' : 'mb-3 line-clamp-2'
-              }`}
-            >
-              {cleanText(club.description)}
-            </p>
-          )}
-
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {clubDiscordUrl && (
-              <a
-                href={clubDiscordUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={
-                  club.discordServerName
-                    ? `Join ${club.discordServerName} on Discord`
-                    : `Join ${cleanText(club.name)} on Discord`
-                }
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] leading-4 font-semibold bg-[var(--blue-light)] text-[var(--blue-ink)] border border-[var(--blue)]/25 hover:opacity-85 no-underline transition-opacity"
-              >
-                <PlatformIcon type="discord" size={11} />
-                <span>
-                  {club.discordMemberCount
-                    ? `Discord · ${club.discordMemberCount}`
-                    : 'Discord'}
-                </span>
-              </a>
-            )}
-            {(club.tags || []).map(tag => (
-              <BubbleTag
-                key={tag.label}
-                label={tag.label}
-                color={tag.color || 'blue'}
-                size="sm"
-              />
-            ))}
-          </div>
-        </div>
-
-        <div
-          className={`${
-            isCompactDensity ? 'pt-2' : 'pt-2.5'
-          } border-t border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs text-[var(--text-muted)] min-w-0`}
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Calendar size={12} className="text-[var(--text-light)] shrink-0" />
-            <span className="truncate">{cleanText(club.schedule || 'Weekly meetings')}</span>
-          </div>
-
-          {!compact && (
-            <div className="flex items-center gap-1.5 shrink-0">
-              {clubDiscordUrl && (
-                <a
-                  href={clubDiscordUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={`Open ${cleanText(club.name)} Discord`}
-                  aria-label={`Open ${cleanText(club.name)} Discord`}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] hover:opacity-85 no-underline transition-opacity"
-                >
-                  <PlatformIcon type="discord" size={12.5} />
-                </a>
-              )}
-              {clubEmailAddr && (
-                <a
-                  href={`mailto:${clubEmailAddr}`}
-                  title={`Email ${clubEmailAddr}`}
-                  aria-label={`Email ${cleanText(club.name)}`}
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border-subtle)] no-underline transition-colors"
-                >
-                  <Mail size={12} />
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setSection('rbac')
-                  setDirectoryClubFilter(String(club.id))
-                }}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--purple-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
-              >
-                <Shield size={11.5} />
-                <span>Roles</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenClubRoster(club.id)}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
-              >
-                <span>Roster</span>
-                <ArrowRight size={12} />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+          </details>
+        )}
+      </article>
     )
   }
 
   const clubGridClasses = isCompactDensity
-    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5'
-    : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+    ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2'
+    : 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2.5'
 
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
     const previewLimit = isCompactDensity ? 4 : 3
-    const rankedJoined = filterAndRankBySearch(joinedClubs, searchQuery, c => ({
-      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
-      secondary: [c.instagram, c.id, c.categoryLabel],
-      tertiary: [c.description, c.directoryDescription, c.schedule],
-    }))
-    const rankedAll = filterAndRankBySearch(allClubs, searchQuery, c => ({
-      primary: [c.name, c.abbr, ...(c.alsoKnownAs || [])],
-      secondary: [c.instagram, c.id, c.categoryLabel],
-      tertiary: [c.description, c.directoryDescription, c.schedule],
-    }))
-    const previewClubs = rankedJoined.slice(0, previewLimit)
-    const suggestedClubs = rankedAll.slice(0, previewLimit)
-    const overviewGridClasses = isCompactDensity
-      ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5'
-      : 'grid grid-cols-1 md:grid-cols-3 gap-3.5'
-
+    const previewClubs = rankClubSearch(joinedClubs, searchQuery, { limit: previewLimit })
     return (
-      <Card className={isCompactDensity ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} delay={4}>
-        <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-[var(--text)]">My Clubs</h2>
-            <BubbleTag label={`${joinedClubs.length}`} color="blue" size="sm" />
-          </div>
-
-          {onOpenClubs && (
-            <button
-              type="button"
-              onClick={() =>
-                onOpenClubs(
-                  joinedClubs.length === 0 ? { section: 'discover' } : { section: 'myclubs' }
-                )
-              }
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-            >
-              <span>
-                {joinedClubs.length === 0
-                  ? `Discover All ${allClubs.length} Clubs`
-                  : 'Manage My Clubs'}
-              </span>
-              <ArrowRight size={13} />
-            </button>
+      <Card className="section-pad space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-1">
+          <h2 className="font-display text-base font-medium">My clubs</h2>
+          {joinedClubs.length > 0 && onOpenClubs && (
+            <Button variant="text" size="sm" onClick={() => onOpenClubs({ section: 'myclubs' })}>
+              View my clubs
+            </Button>
           )}
         </div>
-
         {previewClubs.length > 0 ? (
-          <div className={overviewGridClasses}>
-            {previewClubs.map(c => renderClubCard(c))}
-          </div>
+          <div className={clubGridClasses}>{previewClubs.map(club => renderClubCard(club))}</div>
         ) : (
-          <div className={isCompactDensity ? 'space-y-2.5' : 'space-y-3.5'}>
-            <div className="px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-xs text-[var(--text-muted)]">
-                You haven&apos;t joined any clubs yet. Join a club below or browse all campus clubs automatically organized by category.
-              </span>
-              {onOpenClubs && (
-                <button
-                  type="button"
-                  onClick={() => onOpenClubs({ section: 'discover' })}
-                  className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer shrink-0 self-start sm:self-auto hover:opacity-90"
-                >
-                  Browse Campus Clubs
-                </button>
-              )}
-            </div>
-
-            {suggestedClubs.length > 0 && (
-              <div className={overviewGridClasses}>
-                {suggestedClubs.map(c => renderClubCard(c))}
-              </div>
-            )}
-          </div>
+          <p className="text-sm text-[var(--text-muted)]">
+            {joinedClubs.length > 0 ? 'No joined clubs match your search.' : 'Your joined clubs will appear here.'}
+          </p>
         )}
       </Card>
     )
@@ -2181,7 +2033,7 @@ export default function ClubsHub({
     roleFilter !== 'all'
 
   const directoryGridClasses = isCompactDensity
-    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5'
+    ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2'
     : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
 
   const unjoinedClubsForSelect = allClubs.filter(c => !joinedIdSet.has(String(c.id)))
@@ -2219,10 +2071,6 @@ export default function ClubsHub({
     return (
       <div
         key={keySuffix ? `${m.id}_${keySuffix}` : m.id}
-        style={{
-          borderTopWidth: '3px',
-          borderTopColor: `var(--${officerColor})`,
-        }}
         className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
@@ -2232,7 +2080,7 @@ export default function ClubsHub({
             <div className={`flex items-center ${isCompactDensity ? 'gap-2.5' : 'gap-3'} min-w-0`}>
               <Avatar
                 initials={m.initials}
-                bg={`linear-gradient(135deg, var(--${officerColor}), var(--purple))`}
+                bg={`var(--${officerColor})`}
                 size={isCompactDensity ? 34 : 40}
               />
               <div className="min-w-0">
@@ -2323,11 +2171,11 @@ export default function ClubsHub({
                   })
                   setSection('rbac')
                 }}
-                title="Claim this officer position for elevated club permissions"
+                title="Request this officer role"
                 className="inline-flex items-center gap-1 px-2.5 min-h-[32px] rounded-lg bg-[var(--purple-light)] hover:opacity-90 text-xs font-semibold text-[var(--purple-ink)] cursor-pointer transition-opacity"
               >
                 <Shield size={12} />
-                <span>Claim Role</span>
+                <span>Request role</span>
               </button>
             )}
             {m.email && (
@@ -2386,10 +2234,6 @@ export default function ClubsHub({
     return (
       <div
         key={keySuffix ? `${m.id}_${keySuffix}` : m.id}
-        style={{
-          borderTopWidth: '3px',
-          borderTopColor: m.isYou ? 'var(--blue)' : 'var(--teal)',
-        }}
         className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
@@ -2525,10 +2369,6 @@ export default function ClubsHub({
     return (
       <div
         key={copyKey}
-        style={{
-          borderTopWidth: '3px',
-          borderTopColor: `var(--${accentColor})`,
-        }}
         className={`feed-tile-virtual content-tile content-tile-interactive ${
           isCompactDensity ? 'p-3 gap-2.5' : 'p-4 gap-3.5'
         } rounded-[var(--radius-sm)] flex flex-col justify-between`}
@@ -2625,147 +2465,167 @@ export default function ClubsHub({
     )
   }
 
+  const selectedSearchClub = searchTarget?.type === 'club' ? allClubs.find(club => String(club.id) === searchTarget.id) : null
+  const selectedSearchPerson = searchTarget?.type === 'person' ? publicPeople.find(person => person.id === searchTarget.id) : null
+
   const showGroupedSections =
-    clubLayout === 'grouped' && category === 'All' && groupedClubs.length > 1
+    !searchQuery.trim() && clubLayout === 'grouped' && category === 'All' && groupedClubs.length > 1
 
-  // ── 2. FULL CLUBS & COMMUNITY PAGE ────────────────────────────────
+  const communitySections = [
+    { id: 'myclubs', label: `My clubs (${joinedClubs.length})` },
+    { id: 'rbac', label: 'Roles & sub-groups' },
+    { id: 'discover', label: `Discover (${allClubs.length})` },
+    { id: 'updates', label: 'Club feed' },
+    { id: 'directory', label: 'Officers & members' },
+    { id: 'integrations', label: 'Discord & email' },
+  ]
+  function selectCommunitySection(nextSection) {
+    if (section !== nextSection) onDismissSearchTarget?.()
+    setSection(nextSection)
+    setCategory('All')
+  }
+  const sectionFilterLabel = {
+    myclubs: 'Filter clubs',
+    discover: 'Filter clubs',
+    updates: 'Filter posts',
+    directory: 'Filter people',
+  }[section]
+  const showClubFilters = (section === 'myclubs' || section === 'discover') &&
+    (filteredClubs.length > 6 || categoryFilters.length > 1)
+
   return (
-    <Card className={isCompactDensity ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-6'} delay={0}>
-      {/* Sub-navigation Tabs */}
-      <div className={`flex flex-col gap-3 ${isCompactDensity ? 'pb-3 mb-4' : 'pb-4 mb-5'} border-b border-[var(--border)]`}>
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
-            {[
-              { id: 'myclubs',      label: `My Clubs (${joinedClubs.length})` },
-              { id: 'rbac',         label: 'Roles & Sub-Groups' },
-              { id: 'discover',     label: `Discover (${allClubs.length})` },
-              { id: 'updates',      label: 'Club Feed' },
-              { id: 'directory',    label: `Officers & Members (${allOfficers.length + allMembers.length})` },
-              { id: 'integrations', label: 'Discord & Email', icon: 'discord' },
-            ].map(tab => {
-              const isActive = section === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setSection(tab.id)
-                    setCategory('All')
-                  }}
-                  className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 min-h-[38px] rounded-xl text-xs sm:text-[13px] font-semibold cursor-pointer border transition-colors ${
-                    isActive
-                      ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  {tab.icon && <PlatformIcon type={tab.icon} size={14} />}
-                  <span>{tab.label}</span>
-                </button>
-              )
-            })}
+    <div className="page-stack">
+      <PageToolbar title="Clubs & Community" />
+      <div className="min-w-0">
+        <Select
+          aria-label="Community section"
+          className="control-select ui-touch sm:hidden flex-1 [--select-width:14rem]"
+          value={section}
+          onValueChange={selectCommunitySection}
+          options={communitySections.map(tab => ({ value: tab.id, label: tab.label }))}
+        />
+        <nav aria-label="Community sections" className="hidden sm:flex flex-wrap items-center gap-1">
+          {communitySections.map(tab => (
+            <Button key={tab.id} size="sm" variant={section === tab.id ? 'tonal' : 'text-neutral'}
+              aria-current={section === tab.id ? 'page' : undefined}
+              onClick={() => selectCommunitySection(tab.id)}>
+              {tab.label}
+            </Button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="flex min-h-11 min-w-0 items-center gap-1.5 sm:gap-2">
+        {onSearchChange && sectionFilterLabel && (
+          <div className="w-44 min-w-0 shrink">
+            <SearchBox className="community-filter-field" placeholder={sectionFilterLabel} value={searchQuery} onChange={onSearchChange} />
           </div>
-
-          {(section === 'myclubs' || section === 'discover') && filteredClubs.length > 6 && (
-            <div className="segmented-track">
-              <button
-                type="button"
-                onClick={() => {
-                  setClubLayout('grouped')
-                  setCategory('All')
-                }}
-                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                  clubLayout === 'grouped' && category === 'All'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <Layers size={13} />
-                <span>By Category</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setClubLayout('grid')}
-                className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                  clubLayout === 'grid' || category !== 'All'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <LayoutGrid size={13} />
-                <span>All Grid</span>
-              </button>
-            </div>
-          )}
-
+        )}
+        {showClubFilters && (
+          <ActionDisclosure label="Filters" iconOnly icon={<SlidersHorizontal size={15} />} count={Number(category !== 'All')} panelClassName="w-52 p-2">
+            {() => (
+              <div className="grid gap-2">
+                {categoryFilters.length > 1 && (
+                  <label className="grid gap-1 text-xs">
+                    Category
+                    <Select
+                      aria-label="Club category"
+                      value={category}
+                      onValueChange={setCategory}
+                      className="control-select"
+                      search="auto"
+                      options={categoryFilters.map(cat => ({ value: cat.value, label: `${cat.label} (${cat.count})` }))}
+                    />
+                  </label>
+                )}
+                {(filteredClubs.length > 6 || category !== 'All') && (
+                  <label className="grid gap-1 text-xs">
+                    Layout
+                    <Select
+                      aria-label="Club layout"
+                      value={clubLayout === 'grid' || category !== 'All' ? 'grid' : 'grouped'}
+                      className="control-select [--select-width:8rem]"
+                      onValueChange={nextValue => {
+                        setClubLayout(nextValue)
+                        if (nextValue === 'grouped') setCategory('All')
+                      }}
+                      options={[
+                        { value: "grouped", label: "By category" },
+                        { value: "grid", label: "Grid view" },
+                      ]}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+          </ActionDisclosure>
+        )}
+        <>
+          {section === 'discover' && onFindClubs && <FindClubsButton onClick={onFindClubs} />}
           {section === 'updates' &&
             (joinedClubs.length > 0 ? (
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="sm"
+                leadingIcon={showPostForm ? <X size={14} /> : <Plus size={14} />}
                 onClick={() => setShowPostForm(prev => !prev)}
-                className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+                className="self-start sm:self-auto"
               >
-                {showPostForm ? <X size={14} /> : <Plus size={14} />}
-                <span>{showPostForm ? 'Cancel' : 'Post Update'}</span>
-              </button>
+                {showPostForm ? 'Cancel' : 'Post update'}
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="tonal"
+                size="sm"
+                trailingIcon={<ArrowRight size={14} />}
                 onClick={() => {
                   setSection('discover')
                   setCategory('All')
                 }}
-                className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+                className="self-start sm:self-auto"
               >
-                <span>Discover Clubs</span>
-                <ArrowRight size={14} />
-              </button>
+                Discover Clubs
+              </Button>
             ))}
 
           {section === 'directory' && (
-            <button
-              type="button"
+            <Button
+              variant="filled"
+              size="sm"
+              leadingIcon={showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
+              reserveLabels={['Cancel', 'Add person']}
               onClick={() => {
                 if (showAddPersonForm) setShowAddPersonForm(false)
                 else handleOpenAddPersonForClub()
               }}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 self-start sm:self-auto"
+              className="self-start sm:self-auto"
             >
-              {showAddPersonForm ? <X size={14} /> : <UserPlus size={14} />}
-              <span>{showAddPersonForm ? 'Cancel' : 'Add Member / Officer'}</span>
-            </button>
+              {showAddPersonForm ? 'Cancel' : 'Add person'}
+            </Button>
           )}
-        </div>
-
-        {/* Auto-Categorized Filter Pills */}
-        {(section === 'myclubs' || section === 'discover') && categoryFilters.length > 1 && (
-          <div className="mobile-pill-rail pb-0.5 sm:pb-0">
-            {categoryFilters.map(cat => {
-              const active = category === cat.value
-              return (
-                <button
-                  key={cat.value}
-                  type="button"
-                  onClick={() => setCategory(cat.value)}
-                  className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-full text-xs cursor-pointer border transition-colors ${
-                    active
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35 font-semibold'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)] font-medium'
-                  }`}
-                >
-                  <span>{cat.shortLabel || cat.label}</span>
-                  <span
-                    className={`text-[10.5px] font-mono-num ${
-                      active ? 'text-[var(--blue-ink)]' : 'text-[var(--text-light)]'
-                    }`}
-                  >
-                    {cat.count}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
+        </>
       </div>
+
+      {selectedSearchClub && (
+        <SearchDestination key={searchTarget.revision} heading={cleanText(selectedSearchClub.name)} onDismiss={onDismissSearchTarget}>
+          {renderClubCard(selectedSearchClub, true)}
+        </SearchDestination>
+      )}
+      {selectedSearchPerson && (
+        <SearchDestination key={searchTarget.revision} heading={selectedSearchPerson.name} onDismiss={onDismissSearchTarget}>
+          <p className="text-sm text-[var(--text-muted)]">{selectedSearchPerson.role} · {selectedSearchPerson.club}</p>
+        </SearchDestination>
+      )}
+      {section === 'updates' && selectedAnnouncement && (
+        <SearchDestination key={searchTarget.revision} heading={selectedAnnouncement.title}
+          onDismiss={onDismissSearchTarget} dismissLabel="Close announcement">
+          <div className="flex flex-wrap items-center gap-2">
+            <BubbleTag label={selectedAnnouncement.type} color={selectedAnnouncement.color} size="sm" />
+            <span className="text-xs text-[var(--text-muted)]">{selectedAnnouncement.time}</span>
+          </div>
+          {selectedAnnouncement.description && <p className="text-sm whitespace-pre-wrap wrap-anywhere">{selectedAnnouncement.description}</p>}
+        </SearchDestination>
+      )}
 
       {/* ── SECTION 1 & 2: MY CLUBS / DISCOVER ── */}
       {(section === 'myclubs' || section === 'discover') && (
@@ -2783,12 +2643,6 @@ export default function ClubsHub({
                     <section key={group.id} className="space-y-3">
                       <div className="flex items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs"
-                            style={{ background: group.gradient }}
-                          >
-                            <ClubEmblemSvg category={group.id} size={15} />
-                          </div>
                           <h3 className="text-sm sm:text-[15px] font-bold text-[var(--text)] truncate">
                             {group.label}
                           </h3>
@@ -2850,16 +2704,17 @@ export default function ClubsHub({
                   : 'Try selecting another category or clearing your search.'}
               </p>
               {section === 'myclubs' && (
-                <button
-                  type="button"
+                <Button
+                  variant="filled"
+                  size="md"
                   onClick={() => {
                     setSection('discover')
                     setCategory('All')
                   }}
-                  className="mt-2 px-4 min-h-[38px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer"
+                  className="mt-2"
                 >
                   Discover Clubs
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -2879,7 +2734,7 @@ export default function ClubsHub({
           }}
           user={user}
           isDemo={isDemo}
-          onToggleJoin={onToggleJoin}
+          onMembershipConfirmed={onMembershipConfirmed}
           onOpenTasks={onOpenTasks}
           onRefreshAnnouncements={onRefreshAnnouncements}
           onNotify={onNotify}
@@ -2942,32 +2797,31 @@ export default function ClubsHub({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Club
                   </label>
-                  <select
+                  <Select
+                    aria-label="Post club"
                     value={postClubId}
-                    onChange={e => setPostClubId(e.target.value)}
+                    onValueChange={setPostClubId}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    {joinedClubs.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {cleanText(c.name)}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={joinedClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Channel
                   </label>
-                  <select
+                  <Select
+                    aria-label="Post source"
                     value={postSource}
-                    onChange={e => setPostSource(e.target.value)}
+                    onValueChange={setPostSource}
                     className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    <option value="discord">Discord</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="email">Mailing List</option>
-                  </select>
+                    options={[
+                      { value: "discord", label: "Discord" },
+                      { value: "instagram", label: "Instagram" },
+                      { value: "email", label: "Mailing List" },
+                    ]}
+                  />
                 </div>
 
                 <div>
@@ -3035,12 +2889,14 @@ export default function ClubsHub({
                   </label>
                 </div>
 
-                <button
+                <Button
+                  variant="filled"
+                  size="md"
                   type="submit"
-                  className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90 shrink-0"
+                  className="shrink-0"
                 >
                   Publish Update
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -3090,17 +2946,18 @@ export default function ClubsHub({
               <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto leading-relaxed">
                 You aren&apos;t in any clubs yet. Once you join a club, its official announcements, Discord updates, and Instagram posts appear here.
               </p>
-              <button
-                type="button"
+              <Button
+                variant="filled"
+                size="sm"
+                icon={ArrowRight}
+                iconPosition="end"
                 onClick={() => {
                   setSection('discover')
                   setCategory('All')
                 }}
-                className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--text)] text-[var(--bg)] border-none text-xs font-semibold cursor-pointer hover:opacity-90"
               >
-                <span>Discover Clubs</span>
-                <ArrowRight size={13} />
-              </button>
+                Discover Clubs
+              </Button>
             </div>
           ) : (
             <div className="py-10 px-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-center space-y-3">
@@ -3113,22 +2970,20 @@ export default function ClubsHub({
               </div>
               {(selectedSource === 'discord' || selectedSource === 'email') && (
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    disabled={Boolean(syncingChannel)}
+                  <Button
+                    variant="filled"
+                    size="sm"
+                    pending={syncingChannel === selectedSource} pendingLabel="Syncing…"
                     onClick={() => handleSyncChannelNow(selectedSource)}
-                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer hover:opacity-90 disabled:opacity-60"
+                    leadingIcon={
+                      <RefreshCw
+                        size={13}
+                        className={syncingChannel === selectedSource ? 'animate-spin' : ''}
+                      />
+                    }
                   >
-                    <RefreshCw
-                      size={13}
-                      className={syncingChannel === selectedSource ? 'animate-spin' : ''}
-                    />
-                    <span>
-                      {syncingChannel === selectedSource
-                        ? 'Syncing…'
-                        : `Sync ${selectedSource === 'discord' ? 'Discord' : 'Email'} Now`}
-                    </span>
-                  </button>
+                    {`Sync ${selectedSource === 'discord' ? 'Discord' : 'Email'} Now`}
+                  </Button>
                   {onOpenSettings && (
                     <button
                       type="button"
@@ -3348,50 +3203,33 @@ export default function ClubsHub({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Club
                   </label>
-                  <select
+                  <Select
+                    aria-label="Directory club"
                     value={personClubId}
-                    onChange={e => setPersonClubId(e.target.value)}
+                    onValueChange={setPersonClubId}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    {joinedClubs.length > 0 ? (
-                      <>
-                        <optgroup label="My Joined Clubs">
-                          {joinedClubs.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {cleanText(c.name)}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="All Campus Clubs">
-                          {unjoinedClubsForSelect.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {cleanText(c.name)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </>
-                    ) : (
-                      allClubs.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {cleanText(c.name)}
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    search
+                    options={joinedClubs.length > 0 ? [
+                      ...joinedClubs.map(c => ({ value: c.id, label: cleanText(c.name), group: "My Joined Clubs" })),
+                      ...unjoinedClubsForSelect.map(c => ({ value: c.id, label: cleanText(c.name), group: "All Campus Clubs" })),
+                    ] : allClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Directory Group
                   </label>
-                  <select
+                  <Select
+                    aria-label="Directory group"
                     value={personType}
-                    onChange={e => setPersonType(e.target.value)}
+                    onValueChange={setPersonType}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-card)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    <option value="officer">Executive Officer / Lead</option>
-                    <option value="member">Club Member</option>
-                  </select>
+                    options={[
+                      { value: "officer", label: "Executive Officer / Lead" },
+                      { value: "member", label: "Club Member" },
+                    ]}
+                  />
                 </div>
 
                 <div>
@@ -3441,19 +3279,20 @@ export default function ClubsHub({
               </div>
 
               <div className="flex justify-end gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="text"
+                  size="md"
                   onClick={() => setShowAddPersonForm(false)}
-                  className="px-4 min-h-[40px] rounded-xl bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] text-xs sm:text-sm font-semibold cursor-pointer"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="filled"
+                  size="md"
                   type="submit"
-                  className="px-5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-90"
                 >
                   Save to Directory
-                </button>
+                </Button>
               </div>
             </form>
           )}
@@ -3470,10 +3309,6 @@ export default function ClubsHub({
 
               return (
                 <div
-                  style={{
-                    borderTopWidth: '3px',
-                    borderTopColor: `var(--${clubAccent})`,
-                  }}
                   className="content-tile p-4 sm:p-4.5 rounded-[var(--radius-sm)] space-y-3 fade-in"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -3497,7 +3332,7 @@ export default function ClubsHub({
                           )}
                         </div>
                         {(selectedDirectoryClub.description || selectedDirectoryClub.schedule) && (
-                          <p className="text-xs text-[var(--text-muted)] leading-relaxed line-clamp-2">
+                          <p className="text-sm text-[var(--text-muted)] leading-relaxed break-words">
                             {cleanText(
                               selectedDirectoryClub.description || selectedDirectoryClub.schedule
                             )}
@@ -3508,10 +3343,12 @@ export default function ClubsHub({
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       {onToggleJoin && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onToggleJoin(selectedDirectoryClub.id)
+                        <Button
+                          variant={isSelectedJoined ? 'tonal' : 'filled'}
+                          size="sm"
+                          leadingIcon={isSelectedJoined ? <Check size={12} /> : <Plus size={12} />}
+                          onClick={async () => {
+                            if (await onToggleJoin(selectedDirectoryClub.id) === false) return
                             if (onNotify) {
                               onNotify(
                                 isSelectedJoined
@@ -3521,15 +3358,9 @@ export default function ClubsHub({
                               )
                             }
                           }}
-                          className={`inline-flex items-center gap-1 px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
-                            isSelectedJoined
-                              ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent hover:opacity-85'
-                              : 'bg-[var(--blue)] text-white border-[var(--blue)] hover:opacity-90'
-                          }`}
                         >
-                          {isSelectedJoined ? <Check size={12} /> : <Plus size={12} />}
-                          <span>{isSelectedJoined ? 'Joined' : 'Join Club'}</span>
-                        </button>
+                          {isSelectedJoined ? 'Joined' : 'Join Club'}
+                        </Button>
                       )}
 
                       <button
@@ -3707,14 +3538,14 @@ export default function ClubsHub({
                       !selectedDirectoryClub.joined &&
                       roleFilter === 'members' &&
                       onToggleJoin && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="filled"
+                          size="md"
+                          leadingIcon={<Plus size={14} />}
                           onClick={() => onToggleJoin(selectedDirectoryClub.id)}
-                          className="inline-flex items-center gap-1.5 px-4 min-h-[36px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
                         >
-                          <Plus size={14} />
-                          <span>Join {cleanText(selectedDirectoryClub.name)}</span>
-                        </button>
+                          Join {cleanText(selectedDirectoryClub.name)}
+                        </Button>
                       )}
 
                     <button
@@ -3979,14 +3810,14 @@ export default function ClubsHub({
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 {!selectedDirectoryClub.joined && onToggleJoin && (
-                                  <button
-                                    type="button"
+                                  <Button
+                                    variant="filled"
+                                    size="sm"
+                                    leadingIcon={<Plus size={12} />}
                                     onClick={() => onToggleJoin(selectedDirectoryClub.id)}
-                                    className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
                                   >
-                                    <Plus size={12} />
-                                    <span>Join Club</span>
-                                  </button>
+                                    Join Club
+                                  </Button>
                                 )}
                                 <button
                                   type="button"
@@ -4041,18 +3872,14 @@ export default function ClubsHub({
         <div className="space-y-5 fade-in">
           {/* GitHub Actions Autonomous Agent Banner */}
           <div
-            style={{
-              borderLeftWidth: '3.5px',
-              borderLeftColor: 'var(--blue)',
-            }}
             className="p-4 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-3.5"
           >
             <div className="flex items-start gap-3 min-w-0">
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs"
-                style={{ background: 'linear-gradient(135deg, #5865F2, #4752C4)' }}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-[var(--on-blue)] shrink-0 shadow-xs"
+                style={{ backgroundColor: '#1A73E8' }}
               >
-                <ClubEmblemSvg size={22} />
+                <PlatformIcon type="discord" size={22} />
               </div>
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -4103,6 +3930,6 @@ export default function ClubsHub({
           />
         </div>
       )}
-    </Card>
+    </div>
   )
 }

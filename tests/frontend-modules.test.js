@@ -219,29 +219,18 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
     const appCode = fs.readFileSync(path.join(SRC_DIR, 'App.jsx'), 'utf8');
     const sidebarCode = fs.readFileSync(path.join(SRC_DIR, 'components/Sidebar.jsx'), 'utf8');
 
-    assert.match(sidebarCode, /lg:hidden fixed bottom-0/);
-    assert.match(appCode, /sm:pt-5 pb-\[calc\(6rem\+env\(safe-area-inset-bottom,0px\)\)\] lg:pb-16/);
-    assert.match(appCode, /sm:pt-7 pb-\[calc\(7rem\+env\(safe-area-inset-bottom,0px\)\)\] lg:pb-20/);
-    assert.equal(
-      /pb-2[48]\s+sm:py-[57]/.test(appCode),
-      false,
-      'Main content wrapper must not use sm:py-* shorthand that clobbers bottom nav clearance on < lg widths'
-    );
+    const css = fs.readFileSync(path.join(SRC_DIR, 'index.css'), 'utf8');
+    const ui = fs.readFileSync(path.join(SRC_DIR, 'components/ui.jsx'), 'utf8');
+
+    assert.match(sidebarCode, /mobile-nav lg:hidden fixed bottom-0/);
+    assert.match(appCode, /className="app-content /);
+    assert.match(css, /--mobile-nav-clearance:[^;]*safe-area-inset-bottom/);
+    assert.match(css, /\.app-content\s*\{[^}]*var\(--mobile-nav-clearance\)/);
+    assert.match(css, /\.mobile-nav > div\s*\{[^}]*var\(--mobile-nav-height\)/);
+    assert.match(ui, /bottom-\[calc\(var\(--mobile-nav-clearance\)/);
   });
 
-  it('keeps Header SearchBox separate from standalone Overview AI Matchmaker and supports smart site-wide search', () => {
-    const headerCode = fs.readFileSync(path.join(SRC_DIR, 'components/Header.jsx'), 'utf8');
-    const appCode = fs.readFileSync(path.join(SRC_DIR, 'App.jsx'), 'utf8');
-
-    assert.match(headerCode, /<SearchBox/);
-    assert.equal(
-      headerCode.includes('AiOverviewSearchBar'),
-      false,
-      'Header must keep the normal site-wide SearchBox instead of replacing it with AiOverviewSearchBar'
-    );
-    assert.match(appCode, /<AiOverviewSearchBar/);
-    assert.match(appCode, /<OverviewSearchResults/);
-
+  it('ranks exact and related site search matches', () => {
     const items = [
       {
         id: 'bio_mention',
@@ -752,7 +741,7 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
     }
   });
 
-  it('supports proper AI Overview search: negations, multi-turn overrides, upcoming events, and anti-hallucination grounding', () => {
+  it('supports club discovery: negations, multi-turn overrides, upcoming events, and anti-hallucination grounding', () => {
     const sampleClubs = [
       {
         id: 'gdgc_ucsc',
@@ -874,10 +863,9 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
       },
     });
 
-    assert.equal(merged.mode, 'gemini-4');
-    assert.equal(merged.matches.length, 1, 'Hallucinated and excluded clubIds must be rejected');
-    assert.equal(merged.matches[0].club.id, 'gdacollab');
-    assert.equal(merged.matches[0].nextEvent?.id, 'ev_gda_jam');
+    assert.equal(merged.matches, rag.matches, 'Model picks must not replace local results');
+    assert.deepEqual(merged.assistantPicks.map(club => club.id), ['gdacollab']);
+    assert.equal(merged.matches.find(match => match.club.id === 'gdacollab').nextEvent?.id, 'ev_gda_jam');
   });
 
   it('prevents unauthenticated /auth/me 401s, refreshes stale sessions on 401, and normalizes poll creation responses', async () => {

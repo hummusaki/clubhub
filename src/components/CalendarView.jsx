@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
+import Select from './Select'
+import SearchDestination from './SearchDestination'
+import { useState, useMemo, useEffect, useId } from 'react'
 import {
   MapPin,
   Clock,
@@ -15,12 +17,9 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { Card, BubbleTag, IconBadge, cleanText } from './ui'
+import { Card, BubbleTag, IconBadge, Button, IconButton, PageToolbar, SearchBox, SegmentedControl, cleanText } from './ui'
 import { ScheduleEventIcon } from './icons'
-import CalendarSyncModal, {
-  GoogleCalendarLogo,
-  AppleCalendarLogo,
-} from './CalendarSyncModal'
+import CalendarSyncModal from './CalendarSyncModal'
 import {
   buildGoogleCalendarTemplateUrl,
   normalizeCalendarSyncSettings,
@@ -87,11 +86,16 @@ export default function CalendarView({
   clubs = [],
   joinedCount = null,
   initialView = null,
+  lastSelectedView = null,
+  onSelectView,
   userSettings = {},
   onUpdateSettings,
   calendarIntegration = null,
   onPageContextChange,
   searchQuery = '',
+  onSearchChange,
+  searchTarget,
+  onDismissSearchTarget,
   compact = false,
   onOpenCalendar,
   onBrowseClubs,
@@ -101,6 +105,7 @@ export default function CalendarView({
   onToggleRsvp,
   onNotify,
 }) {
+  const eventFieldId = useId()
   const use24h = userSettings?.timeFormat === '24h'
   const weekStartsOn = userSettings?.weekStartsOn === 'monday' ? 'monday' : 'sunday'
   const isCompactDensity = Boolean(userSettings?.compactCards)
@@ -128,7 +133,8 @@ export default function CalendarView({
   const handleBrowseClubs = onBrowseClubs || calendarIntegration?.onBrowseClubs
 
   const [viewMode, setViewMode] = useState(
-    () => initialView || userSettings?.defaultCalendarView || 'month'
+    () => initialView || lastSelectedView || userSettings?.defaultCalendarView ||
+      (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 'agenda' : 'month')
   ) // 'month' | 'week' | 'agenda'
 
   useEffect(() => {
@@ -147,8 +153,14 @@ export default function CalendarView({
     [weekAnchor, weekStartsOn]
   )
 
+  function selectView(nextView) {
+    setViewMode(nextView)
+    onSelectView?.(nextView)
+  }
+
   // Add Event & Calendar Sync Settings modal state
   const [showAddForm, setShowAddForm] = useState(false)
+  const [savingEvent, setSavingEvent] = useState(false)
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
   const [eventClubId, setEventClubId] = useState(
@@ -418,18 +430,19 @@ export default function CalendarView({
 
   async function handleSubmitNewEvent(e) {
     e.preventDefault()
-    if (!eventTitle.trim() || !eventDate || !eventClubId) return
+    if (savingEvent || !onAddEvent || !eventTitle.trim() || !eventDate || !eventClubId) return
 
     const [hh, mm] = (eventTime || '17:00').split(':').map(Number)
     const [yy, mo, dd] = eventDate.split('-').map(Number)
-    const startDt = new Date(yy, (mo || 1) - 1, dd || 1, hh || 17, mm || 0, 0)
+    const startDt = new Date(yy, (mo || 1) - 1, dd || 1, hh, mm, 0)
     const endDt = new Date(startDt.getTime() + 60 * 60 * 1000)
 
     const clubObj = memberClubs.find(c => String(c.id) === String(eventClubId))
     if (!clubObj) return
     const clubLabel = cleanText(clubObj.name)
 
-    if (onAddEvent) {
+    setSavingEvent(true)
+    try {
       await onAddEvent({
         clubId: String(clubObj.id),
         clubName: clubLabel,
@@ -438,6 +451,11 @@ export default function CalendarView({
         end: endDt.toISOString(),
         location: eventLocation.trim() || clubObj?.room || 'TBD',
       })
+    } catch {
+      onNotify?.('Could not save the event. Please try again.', { type: 'error' })
+      return
+    } finally {
+      setSavingEvent(false)
     }
 
     setSelectedDate(eventDate)
@@ -459,7 +477,7 @@ export default function CalendarView({
     return (
       <div key={item.id} className={`flex items-stretch ${isCompactDensity ? 'gap-2.5' : 'gap-3'}`}>
         <div className="hidden xs:flex flex-col items-center pt-1">
-          <IconBadge color={c} size={isCompactDensity ? 28 : 34} radius={isCompactDensity ? 8 : 10}>
+          <IconBadge color={c} size={isCompactDensity ? 30 : 36} radius={9999}>
             <ScheduleEventIcon club={clubName} event={title} size={isCompactDensity ? 14 : 16} />
           </IconBadge>
           {!isLast && (
@@ -468,18 +486,12 @@ export default function CalendarView({
         </div>
 
         <div
-          style={{
-            borderLeftWidth: '3.5px',
-            borderLeftColor: `var(--${c})`,
-          }}
-          className={`content-tile content-tile-interactive flex-1 min-w-0 rounded-[var(--radius-sm)] ${
-            isCompactDensity ? 'p-2.5' : 'p-3.5'
-          }`}
+          className={`content-tile flex-1 min-w-0 rounded-[var(--radius-sm)] px-2.5 py-2 sm:px-3`}
         >
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1.5">
             <div className="min-w-0">
               {clubName && (
-                <div className="text-[11px] font-semibold text-[var(--blue-ink)] mb-0.5 truncate">
+                <div className="text-xs font-semibold text-[var(--blue-ink)] mb-0.5 break-words">
                   {clubName}
                 </div>
               )}
@@ -517,13 +529,13 @@ export default function CalendarView({
 
           <div
             className={`flex flex-wrap items-center justify-between gap-2 ${
-              isCompactDensity ? 'mt-1.5 pt-1.5' : 'mt-2.5 pt-2.5'
+              isCompactDensity ? 'mt-1 pt-1' : 'mt-1.5 pt-1.5'
             } border-t border-[var(--border-subtle)]`}
           >
             <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)] min-w-0">
               <span className="inline-flex items-center gap-1 min-w-0">
                 <MapPin size={12} className="text-[var(--text-light)] shrink-0" />
-                <span className="truncate">{cleanText(item.location || 'Campus / See post')}</span>
+                <span className="break-words">{cleanText(item.location || 'Campus / See post')}</span>
               </span>
               {item.duration && (
                 <span className="inline-flex items-center gap-1 shrink-0">
@@ -541,9 +553,9 @@ export default function CalendarView({
                   rel="noopener noreferrer"
                   title={postLink.tooltip}
                   aria-label={`${postLink.label} for ${title}`}
-                  className={`inline-flex items-center gap-1 ${
-                    isCompactDensity ? 'px-2.5 min-h-[26px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
-                  } rounded-full bg-[var(--bg-card)] text-[var(--blue-ink)] hover:bg-[var(--blue-light)] border border-[var(--border)] hover:border-[var(--blue)] font-semibold no-underline transition-colors`}
+                  className={`ui-touch inline-flex items-center gap-1.5 ${
+                    isCompactDensity ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-xs'
+                  } rounded-full bg-transparent text-[var(--blue)] border border-[var(--md-outline)] hover:border-[var(--blue)] font-medium no-underline transition-colors`}
                 >
                   <span>{postLink.label}</span>
                   <ExternalLink size={11} />
@@ -559,43 +571,35 @@ export default function CalendarView({
                   rel="noreferrer"
                   title="Add this event to Google Calendar"
                   aria-label="Add this event to Google Calendar"
-                  className={`inline-flex items-center justify-center ${
-                    isCompactDensity ? 'w-[26px] h-[26px]' : 'w-8 h-8'
-                  } rounded-full bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--blue-ink)] border border-[var(--border)] hover:border-[var(--blue)] no-underline transition-colors`}
+                  className={`ui-touch inline-flex items-center justify-center ${
+                    isCompactDensity ? 'w-7 h-7' : 'w-8 h-8'
+                  } rounded-full bg-transparent text-[var(--text-muted)] hover:text-[var(--blue)] border border-[var(--md-outline-variant)] hover:border-[var(--blue)] no-underline transition-colors`}
                 >
                   <CalendarPlus size={13} />
                 </a>
               )}
 
               {onToggleRsvp && (
-                <button
-                  type="button"
+                <Button
+                  size={isCompactDensity ? 'sm' : 'sm'}
+                  variant={item.isGoing ? 'tonal' : 'outlined'}
+                  icon={item.isGoing ? <Check size={13} /> : undefined}
                   onClick={() => onToggleRsvp(item.id, !item.isGoing)}
-                  className={`inline-flex items-center gap-1 ${
-                    isCompactDensity ? 'px-2.5 min-h-[26px] text-[11px]' : 'px-3 min-h-[32px] text-xs'
-                  } rounded-full font-semibold cursor-pointer border transition-colors ${
-                    item.isGoing
-                      ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-transparent'
-                      : 'bg-[var(--bg-card)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
-                  }`}
                 >
-                  {item.isGoing && <Check size={12} />}
-                  <span>{item.isGoing ? 'Going' : 'RSVP'}</span>
-                </button>
+                  {item.isGoing ? 'Going' : 'RSVP'}
+                </Button>
               )}
 
               {canRemove && (
-                <button
-                  type="button"
-                  onClick={() => onDeleteEvent(item.id)}
+                <IconButton
+                  size={isCompactDensity ? 'sm' : 'sm'}
+                  variant="danger"
                   title="Remove event from calendar"
-                  className={`inline-flex items-center gap-1 ${
-                    isCompactDensity ? 'px-2 min-h-[26px] text-[11px]' : 'px-2.5 min-h-[32px] text-xs'
-                  } rounded-full bg-[var(--red-light)] text-[var(--red-ink)] font-semibold border-none cursor-pointer hover:opacity-85 transition-opacity`}
+                  ariaLabel="Remove event from calendar"
+                  onClick={() => onDeleteEvent(item.id)}
                 >
-                  <Trash2 size={12} />
-                  <span>Remove</span>
-                </button>
+                  <Trash2 size={14} />
+                </IconButton>
               )}
             </div>
           </div>
@@ -632,33 +636,43 @@ export default function CalendarView({
     />
   ) : null
 
+  const syncButton = calendarIntegration && (
+    <Button variant="outlined-neutral" size="sm" onClick={() => setShowSyncModal(true)}
+      icon={<SlidersHorizontal size={14} />}>
+      Calendar sync
+    </Button>
+  )
+  const syncStatus = calendarIntegration?.googleLiveMeta?.connected && (
+    <span className="text-xs text-[var(--green-ink)]">Google connected</span>
+  )
+
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
     const preview = filtered.slice(0, isCompactDensity ? 6 : 4)
     return (
       <Card
-        className={`${isCompactDensity ? 'p-3.5 sm:p-4' : 'p-4 sm:p-[22px]'} flex flex-col justify-between`}
+        className="section-pad"
         delay={1}
       >
         <div>
-          <div className={`flex items-center justify-between gap-2 ${isCompactDensity ? 'mb-3' : 'mb-4'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold text-[var(--text)]">Upcoming Schedule</h2>
+              <h2 className="text-base font-medium font-display text-[var(--text)]">Upcoming Schedule</h2>
               <BubbleTag label={`${filtered.length}`} color="blue" size="sm" />
               {inAppRsvpOnly && (
                 <BubbleTag label="RSVP'd Only" color="green" size="sm" dot />
               )}
             </div>
 
-            {onOpenCalendar && (
-              <button
-                type="button"
+          {onOpenCalendar && (
+              <Button
+                variant="text"
+                size="sm"
+                trailingIcon={<ArrowRight size={13} />}
                 onClick={onOpenCalendar}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer shrink-0"
               >
-                <span>Full Calendar</span>
-                <ArrowRight size={13} />
-              </button>
+                View calendar
+              </Button>
             )}
           </div>
 
@@ -667,21 +681,7 @@ export default function CalendarView({
               {preview.map((item, idx) => renderEventRow(item, idx === preview.length - 1))}
             </div>
           ) : !hasJoinedClubs ? (
-            <div className="py-7 px-3 text-center space-y-3">
-              <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-                You&apos;re not in any clubs yet. Join a club to populate your calendar with upcoming meetings and events.
-              </p>
-              {handleBrowseClubs && (
-                <button
-                  type="button"
-                  onClick={handleBrowseClubs}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none"
-                >
-                  <span>Browse Clubs</span>
-                  <ArrowRight size={13} />
-                </button>
-              )}
-            </div>
+            <p className="text-sm text-[var(--text-muted)]">Events appear here after you join a club.</p>
           ) : (
             <div className="py-7 text-center text-sm text-[var(--text-muted)] space-y-2">
               <div>
@@ -692,52 +692,22 @@ export default function CalendarView({
                     : 'No upcoming events scheduled across your joined clubs yet.'}
               </div>
               {inAppRsvpOnly && onUpdateSettings && (
-                <button
-                  type="button"
+                <Button
+                  variant="outlined-neutral"
+                  size="sm"
                   onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
-                  className="px-3 min-h-[30px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
                 >
                   Show all upcoming events
-                </button>
+                </Button>
               )}
             </div>
           )}
         </div>
 
         {calendarIntegration && (
-          <div className="mt-3.5 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-[var(--text-muted)]">
-              Sync {calendarIntegration.syncedEvents.length} {calendarIntegration.syncedEvents.length === 1 ? 'event' : 'events'}
-              {calSyncSettings.rsvpOnly ? " (RSVP'd)" : ''}
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => calendarIntegration.onQuickGoogleClick()}
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-              >
-                <GoogleCalendarLogo size={13.5} />
-                <span>Google</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => calendarIntegration.onSubscribeApple()}
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-              >
-                <AppleCalendarLogo size={12.5} />
-                <span>Apple</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(true)}
-                title="Calendar sync settings"
-                aria-label="Calendar sync settings"
-                className="inline-flex items-center gap-1 px-2.5 min-h-[30px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
-              >
-                <SlidersHorizontal size={12.5} />
-                <span>Sync Settings</span>
-              </button>
-            </div>
+          <div className="mt-2 pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-end gap-2">
+            {syncStatus}
+            {syncButton}
           </div>
         )}
 
@@ -754,306 +724,97 @@ export default function CalendarView({
     day: 'numeric',
   })
 
+  const selectedSearchEvent = searchTarget?.type === 'event'
+    ? enrichedEvents.find(event => String(event.id) === searchTarget.id) : null
+
+  const calendarViews = [
+    { value: 'month', label: 'Month' },
+    { value: 'week', label: 'Week' },
+    { value: 'agenda', label: 'Agenda' },
+  ]
+
   return (
-    <Card className="p-4 sm:p-6" delay={0}>
-      {/* Top Toolbar: View Switcher, Club/RSVP Filters & External Calendar Integration */}
-      <div className="flex flex-col gap-3 pb-4 mb-4 border-b border-[var(--border)]">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="segmented-track w-full sm:w-auto">
-              {[
-                { id: 'month', label: 'Full Calendar' },
-                { id: 'week', label: 'Week' },
-                { id: 'agenda', label: 'Agenda' },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setViewMode(tab.id)}
-                  className={`flex-1 sm:flex-initial px-3.5 min-h-[36px] rounded-lg text-xs font-semibold border-none cursor-pointer transition-all ${
-                    viewMode === tab.id
-                      ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+    <div className={`page-stack ${viewMode === 'week' ? 'calendar-week-page' : ''}`}>
+      <PageToolbar title="Calendar" actions={
+        <>
+          {syncStatus}
+          {syncButton}
+          {hasJoinedClubs && onAddEvent && (
+            <Button size="sm" icon={showAddForm ? <X size={15} /> : <Plus size={15} />}
+              variant={showAddForm ? 'outlined-neutral' : 'filled'}
+              reserveLabels={['Add event', 'Close event form']}
+              aria-expanded={showAddForm} aria-controls="calendar-add-event"
+              onClick={() => setShowAddForm(prev => !prev)}>
+              {showAddForm ? 'Close event form' : 'Add event'}
+            </Button>
+          )}
+        </>
+      } />
 
-            {hasJoinedClubs && (
-              <span className="inline-flex items-center px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)]">
-                My Clubs ({memberClubs.length})
-              </span>
-            )}
-
-            {hasJoinedClubs && onUpdateSettings && (
-              <button
-                type="button"
-                onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: !inAppRsvpOnly })}
-                title="Only show events you have RSVP'd to on the calendar"
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl text-xs font-semibold cursor-pointer border transition-colors ${
-                  inAppRsvpOnly
-                    ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/35'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                }`}
-              >
-                <Check size={13} className={inAppRsvpOnly ? 'opacity-100' : 'opacity-55'} />
-                <span>RSVP&apos;d Only ({rsvpGoingCountInScope})</span>
-              </button>
-            )}
-          </div>
-
-          {/* Google Calendar, Apple Calendar, Sync Settings & Add Event Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            {calendarIntegration && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => calendarIntegration.onQuickGoogleClick()}
-                  className="inline-flex items-center gap-2 px-3 sm:px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--blue)] cursor-pointer transition-colors"
-                >
-                  <GoogleCalendarLogo size={15} />
-                  <span>
-                    Google<span className="hidden sm:inline"> Calendar</span>
-                  </span>
-                  {calendarIntegration.googleLiveMeta?.connected && (
-                    <span className="w-2 h-2 rounded-full bg-[var(--green)]" title="Live Auto-Sync Connected" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => calendarIntegration.onSubscribeApple()}
-                  className="inline-flex items-center gap-2 px-3 sm:px-3.5 min-h-[40px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] hover:border-[var(--border-strong)] cursor-pointer transition-colors"
-                >
-                  <AppleCalendarLogo size={14} />
-                  <span>
-                    Apple<span className="hidden sm:inline"> Calendar</span>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowSyncModal(true)}
-                  title="Configure how Google & Apple Calendar integration works"
-                  className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                    calSyncSettings.rsvpOnly
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/35'
-                      : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-                  }`}
-                >
-                  <SlidersHorizontal size={14} />
-                  <span>
-                    Sync<span className="hidden sm:inline"> Settings</span>
-                  </span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-[var(--bg-card)] text-[10.5px] font-mono-num text-[var(--text)] border border-[var(--border-subtle)]">
-                    {calendarIntegration.syncedEvents.length}
-                  </span>
-                </button>
-              </>
-            )}
-
-            {hasJoinedClubs ? (
-              <button
-                type="button"
-                onClick={() => setShowAddForm(prev => !prev)}
-                className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--blue)] text-white text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
-              >
-                {showAddForm ? <X size={15} /> : <Plus size={15} />}
-                <span>{showAddForm ? 'Cancel' : 'Add Event'}</span>
-              </button>
-            ) : (
-              handleBrowseClubs && (
-                <button
-                  type="button"
-                  onClick={handleBrowseClubs}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs sm:text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity ml-auto sm:ml-0"
-                >
-                  <span>Browse Clubs</span>
-                  <ArrowRight size={14} />
-                </button>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* Agenda Sub-Filters (Shown only in Agenda View) */}
-        {viewMode === 'agenda' && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-            {[
-              { id: 'upcoming', label: `Upcoming (${agendaCounts.upcoming})` },
-              { id: 'past', label: `Past Events (${agendaCounts.past})` },
-              { id: 'all', label: `All (${agendaCounts.all})` },
-            ].map(f => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setAgendaFilter(f.id)}
-                className={`px-3 min-h-[32px] rounded-full text-xs font-semibold cursor-pointer border transition-colors ${
-                  agendaFilter === f.id
-                    ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text)]'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Notice when user is not in any clubs yet */}
-      {!hasJoinedClubs && (
-        <div className="mb-5 p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-bold text-[var(--text)]">
-              Join a club to unlock your calendar
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
-              You aren&apos;t in any clubs yet, so there are no incoming club events on your schedule. Join one or more clubs to see their meetings and workshops here.
-            </p>
-          </div>
-          {handleBrowseClubs && (
-            <button
-              type="button"
-              onClick={handleBrowseClubs}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[38px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold cursor-pointer border-none shrink-0 self-start sm:self-auto"
-            >
-              <span>Browse Clubs</span>
-              <ArrowRight size={13} />
-            </button>
+      {selectedSearchEvent && (
+        <SearchDestination key={searchTarget.revision} heading={cleanText(selectedSearchEvent.event || selectedSearchEvent.title)} onDismiss={onDismissSearchTarget}>
+          {renderEventRow(selectedSearchEvent, true)}
+        </SearchDestination>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {onSearchChange && <div className="w-full sm:w-56 min-w-0">
+          <SearchBox placeholder="Filter this calendar" value={searchQuery} onChange={onSearchChange} />
+        </div>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            className="ui-touch sm:hidden control-select [--select-width:7rem]"
+            value={viewMode}
+            aria-label="Calendar view"
+            onValueChange={selectView}
+            options={calendarViews.map(view => ({ value: view.value, label: view.label }))}
+          />
+          <SegmentedControl className="!hidden sm:!inline-flex" size="sm" options={calendarViews}
+            value={viewMode} onChange={selectView} ariaLabel="Calendar view" />
+          {hasJoinedClubs && onUpdateSettings && (
+            <Button size="sm" variant={inAppRsvpOnly ? 'tonal' : 'outlined-neutral'}
+              aria-pressed={inAppRsvpOnly} icon={inAppRsvpOnly ? <Check size={13} /> : null}
+              onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: !inAppRsvpOnly })}>
+              RSVP&apos;d only ({rsvpGoingCountInScope})
+            </Button>
+          )}
+          {viewMode === 'agenda' && (
+            <Select
+              className="ui-touch control-select [--select-width:10rem]"
+              value={agendaFilter}
+              aria-label="Agenda date range"
+              onValueChange={setAgendaFilter}
+              options={[
+                { value: "upcoming", label: `Upcoming (${agendaCounts.upcoming})` },
+                { value: "past", label: `Past (${agendaCounts.past})` },
+                { value: "all", label: `All events (${agendaCounts.all})` },
+              ]}
+            />
           )}
         </div>
-      )}
-
-      {/* Add Event Form (Comfortable 44px fields, clear labels, no raw IDs) */}
-      {showAddForm && hasJoinedClubs && (
-        <form
-          onSubmit={handleSubmitNewEvent}
-          className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
-        >
-          <div className="text-sm font-bold text-[var(--text)]">Add Club Event</div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                Event Title
-              </label>
-              <input
-                type="text"
-                required
-                value={eventTitle}
-                onChange={e => setEventTitle(e.target.value)}
-                placeholder="e.g. Intro to Web Dev Workshop"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                Club
-              </label>
-              <select
-                value={eventClubId}
-                onChange={e => setEventClubId(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {memberClubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={eventDate}
-                  onChange={e => setEventDate(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                  Start Time
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={eventTime}
-                  onChange={e => setEventTime(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
-                Location
-              </label>
-              <input
-                type="text"
-                value={eventLocation}
-                onChange={e => setEventLocation(e.target.value)}
-                placeholder="e.g. Baskin Engineering 152 or Zoom"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setShowAddForm(false)}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border)] text-sm font-semibold cursor-pointer hover:text-[var(--text)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90"
-            >
-              Save Event
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Period Navigation Bar (Shown in Full Calendar Month & Week views — navigate past & future dates) */}
-      {viewMode !== 'agenda' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
+        {viewMode !== 'agenda' && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex flex-wrap items-center gap-0.5">
+            <IconButton
+              size="sm"
+              ariaLabel="Previous period"
               onClick={handlePrev}
-              aria-label="Previous period"
-              className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
             >
               <ChevronLeft size={16} />
-            </button>
+            </IconButton>
             <button
               type="button"
               onClick={handleToday}
-              className="px-3.5 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] text-xs font-semibold cursor-pointer hover:border-[var(--blue)]"
+              className="ui-touch px-2 h-9 rounded-full bg-[var(--md-surface-container)] text-[var(--text)] border border-[var(--md-outline-variant)] text-xs font-medium cursor-pointer hover:border-[var(--blue)]"
             >
               Today
             </button>
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              ariaLabel="Next period"
               onClick={handleNext}
-              aria-label="Next period"
-              className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)]"
             >
               <ChevronRight size={16} />
-            </button>
+            </IconButton>
 
             {viewMode === 'month' && (
               <input
@@ -1061,22 +822,141 @@ export default function CalendarView({
                 value={monthInputValue}
                 onChange={handleMonthPickerChange}
                 aria-label="Jump to month"
-                className="h-9 px-2.5 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
+                className="ui-touch calendar-month-picker h-9 px-1.5 rounded-lg bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--md-outline-variant)] outline-none focus:border-[var(--blue)] cursor-pointer"
               />
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="text-sm sm:text-base font-bold text-[var(--text)]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-display text-base font-medium text-[var(--text)]">
               {periodLabel}
             </div>
             {viewMode === 'month' && (
-              <span className="text-xs text-[var(--text-muted)]">
+              <span className="hidden xl:inline text-xs text-[var(--text-muted)]">
                 {viewedMonthStats.total} {viewedMonthStats.total === 1 ? 'event' : 'events'} ({viewedMonthStats.pastCount} past · {viewedMonthStats.upcomingCount} upcoming)
               </span>
             )}
           </div>
         </div>
+        )}
+      </div>
+
+      {/* Notice when user is not in any clubs yet */}
+      {!hasJoinedClubs && (
+        <div className="mb-5 p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium font-display text-[var(--text)]">Join a club to unlock your calendar</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+              You aren&apos;t in any clubs yet, so there are no incoming club events on your schedule. Join one or more clubs to see their meetings and workshops here.
+            </p>
+          </div>
+          {handleBrowseClubs && (
+            <Button
+              variant="tonal"
+              size="md"
+              trailingIcon={<ArrowRight size={14} />}
+              onClick={handleBrowseClubs}
+            >
+              Browse clubs
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Add Event Form (Comfortable 44px fields, clear labels, no raw IDs) */}
+      {showAddForm && hasJoinedClubs && onAddEvent && (
+        <form
+          id="calendar-add-event"
+          onSubmit={handleSubmitNewEvent}
+          className="mb-5 p-4 sm:p-5 rounded-2xl content-tile space-y-4 fade-in"
+        >
+          <div className="text-sm font-medium font-display text-[var(--text)]">Add Club Event</div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label htmlFor={`${eventFieldId}-title`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                Event Title
+              </label>
+              <input
+                id={`${eventFieldId}-title`}
+                type="text"
+                required
+                value={eventTitle}
+                onChange={e => setEventTitle(e.target.value)}
+                placeholder="e.g. Intro to Web Dev Workshop"
+                className="calendar-event-field"
+              />
+            </div>
+
+            <div>
+              <label htmlFor={`${eventFieldId}-club`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                Club
+              </label>
+              <Select
+                id={`${eventFieldId}-club`}
+                value={eventClubId}
+                onValueChange={setEventClubId}
+                className="calendar-event-field"
+                fullWidth
+                search
+                options={memberClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label htmlFor={`${eventFieldId}-date`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  id={`${eventFieldId}-date`}
+                  required
+                  value={eventDate}
+                  onChange={e => setEventDate(e.target.value)}
+                  className="calendar-event-field"
+                />
+              </div>
+
+              <div>
+                <label htmlFor={`${eventFieldId}-time`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                  Start Time
+                </label>
+                <input
+                  type="time"
+                  id={`${eventFieldId}-time`}
+                  required
+                  value={eventTime}
+                  onChange={e => setEventTime(e.target.value)}
+                  className="calendar-event-field"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor={`${eventFieldId}-location`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                Location
+              </label>
+              <input
+                type="text"
+                id={`${eventFieldId}-location`}
+                value={eventLocation}
+                onChange={e => setEventLocation(e.target.value)}
+                placeholder="e.g. Baskin Engineering 152 or Zoom"
+                className="calendar-event-field"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="text" onClick={() => setShowAddForm(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="filled" pending={savingEvent} pendingLabel="Saving…">
+              Save event
+            </Button>
+          </div>
+        </form>
       )}
 
       {/* ── VIEW 1: AGENDA LIST ── */}
@@ -1098,24 +978,24 @@ export default function CalendarView({
                     : 'Try clearing your search or adding a new club event.'}
               </p>
               {!hasJoinedClubs && handleBrowseClubs ? (
-                <button
-                  type="button"
+                <Button
+                  variant="tonal"
+                  size="sm"
+                  trailingIcon={<ArrowRight size={13} />}
                   onClick={handleBrowseClubs}
-                  className="inline-flex items-center gap-1.5 px-4 min-h-[34px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold border-none cursor-pointer"
                 >
-                  <span>Browse Clubs</span>
-                  <ArrowRight size={13} />
-                </button>
+                  Browse Clubs
+                </Button>
               ) : (
                 inAppRsvpOnly &&
                 onUpdateSettings && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="outlined-neutral"
+                    size="sm"
                     onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
-                    className="px-3.5 min-h-[32px] rounded-full bg-[var(--bg-surface)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)]"
                   >
                     Show all events
-                  </button>
+                  </Button>
                 )
               )}
             </div>
@@ -1125,7 +1005,7 @@ export default function CalendarView({
 
       {/* ── VIEW 2: WEEK VIEW (Mobile 7-day strip + cards; Desktop 7-col board) ── */}
       {viewMode === 'week' && (
-        <div>
+        <div className="calendar-week-view">
           {/* Mobile Day Strip (< md): fits 100% width with zero scrollbar */}
           <div className="grid grid-cols-7 gap-1 md:hidden mb-4">
             {weekDates.map(ymd => {
@@ -1142,11 +1022,11 @@ export default function CalendarView({
                   onClick={() => setSelectedDate(ymd)}
                   className={`py-2 px-1 rounded-xl border flex flex-col items-center gap-1 cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
+                      ? 'bg-[var(--blue)] text-[var(--on-blue)] border-[var(--blue)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)]'
                   }`}
                 >
-                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-white/85' : 'text-[var(--text-muted)]'}`}>
+                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-[var(--on-blue)]/85' : 'text-[var(--text-muted)]'}`}>
                     {dayLetter}
                   </span>
                   <span className="text-sm font-bold font-mono-num">{dayNum}</span>
@@ -1167,7 +1047,7 @@ export default function CalendarView({
           {/* Mobile Selected Day Events (< md) */}
           <div className="md:hidden">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
+              <span className="text-xs font-medium text-[var(--text-muted)]">
                 {selectedDateLabel}
               </span>
               <span className="text-xs text-[var(--text-muted)]">
@@ -1188,27 +1068,27 @@ export default function CalendarView({
                     : 'Join a club to see scheduled meetings and workshops here.'}
                 </p>
                 {hasJoinedClubs ? (
-                  <button
-                    type="button"
+                  <Button
+                    variant="outlined-neutral"
+                    size="sm"
+                    leadingIcon={<Plus size={13} />}
                     onClick={() => {
                       setEventDate(selectedDate)
                       setShowAddForm(true)
                     }}
-                    className="inline-flex items-center gap-1 px-3.5 min-h-[36px] rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs font-semibold text-[var(--blue-ink)] cursor-pointer hover:border-[var(--blue)]"
                   >
-                    <Plus size={13} />
-                    <span>Add event on this day</span>
-                  </button>
+                    Add event on this day
+                  </Button>
                 ) : (
                   handleBrowseClubs && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="tonal"
+                      size="sm"
+                      trailingIcon={<ArrowRight size={13} />}
                       onClick={handleBrowseClubs}
-                      className="inline-flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-semibold border-none cursor-pointer"
                     >
-                      <span>Browse Clubs</span>
-                      <ArrowRight size={13} />
-                    </button>
+                      Browse Clubs
+                    </Button>
                   )
                 )}
               </div>
@@ -1216,7 +1096,7 @@ export default function CalendarView({
           </div>
 
           {/* Desktop 7-Column Week Board (md+) */}
-          <div className="hidden md:grid grid-cols-7 gap-2">
+          <div className="calendar-week-grid hidden md:grid grid-cols-7 gap-2">
             {weekDates.map(ymd => {
               const dt = parseYmdLocal(ymd)
               const dayName = dt.toLocaleDateString('en-US', { weekday: 'short' })
@@ -1240,27 +1120,26 @@ export default function CalendarView({
                       return (
                         <div
                           key={ev.id}
-                          style={{
-                            borderLeftWidth: '3px',
-                            borderLeftColor: `var(--${c})`,
-                          }}
                           className="content-tile p-2 rounded-lg flex flex-col gap-1 min-w-0"
                         >
-                          <span className="text-[11px] font-bold text-[var(--text)] leading-snug line-clamp-2">
-                            {weekPostLink ? (
-                              <a
-                                href={weekPostLink.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={weekPostLink.tooltip}
-                                className="text-inherit hover:text-[var(--blue-ink)] hover:underline no-underline"
-                              >
-                                {cleanText(ev.event)}
-                              </a>
-                            ) : (
-                              cleanText(ev.event)
-                            )}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: `var(--${c})` }} />
+                            <span className="text-[11px] font-medium text-[var(--text)] leading-snug line-clamp-2">
+                              {weekPostLink ? (
+                                <a
+                                  href={weekPostLink.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={weekPostLink.tooltip}
+                                  className="text-inherit hover:text-[var(--blue-ink)] hover:underline no-underline"
+                                >
+                                  {cleanText(ev.event)}
+                                </a>
+                              ) : (
+                                cleanText(ev.event)
+                              )}
+                            </span>
+                          </div>
                           <span className="text-[10px] text-[var(--text-muted)] truncate">
                             {cleanText(ev.club)}
                           </span>
@@ -1295,8 +1174,8 @@ export default function CalendarView({
                       )
                     })
                   ) : (
-                    <div className="text-[11px] text-[var(--text-light)] text-center my-auto">
-                      Open
+                    <div className="text-xs text-[var(--text-muted)]">
+                      No events
                     </div>
                   )}
                 </div>
@@ -1360,7 +1239,7 @@ export default function CalendarView({
                           {cell.dayNum}
                         </span>
                         {isToday && (
-                          <span className="hidden md:inline-block px-1.5 py-0.2 rounded-full bg-[var(--blue)] text-white text-[9px] font-bold">
+                          <span className="hidden md:inline-block px-1.5 py-0.5 rounded-full bg-[var(--secondary-container)] text-[var(--on-secondary-container)] text-[9px] font-medium">
                             Today
                           </span>
                         )}
@@ -1388,22 +1267,20 @@ export default function CalendarView({
                         return (
                           <div
                             key={ev.id}
-                            style={
-                              ev.isPast
-                                ? undefined
-                                : {
-                                    borderLeftWidth: '2.5px',
-                                    borderLeftColor: `var(--${pillColor})`,
-                                  }
-                            }
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold truncate border ${
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium truncate flex items-center gap-1 border ${
                               ev.isPast
                                 ? 'bg-[var(--bg-card)]/75 border-[var(--border-subtle)] text-[var(--text-muted)]'
                                 : 'bg-[var(--bg-tile)] border-[var(--border-tile)] text-[var(--text)] shadow-2xs'
                             }`}
                             title={`${cleanText(ev.club)}: ${cleanText(ev.event)}`}
                           >
-                            {cleanText(ev.club ? `${ev.club} · ${ev.event}` : ev.event)}
+                            {!ev.isPast && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: `var(--${pillColor})` }}
+                              />
+                            )}
+                            <span className="truncate">{cleanText(ev.club ? `${ev.club} · ${ev.event}` : ev.event)}</span>
                           </div>
                         )
                       })}
@@ -1423,7 +1300,7 @@ export default function CalendarView({
           <div className="pt-4 border-t border-[var(--border)]">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-[var(--text)]">
+                <span className="text-xs font-medium text-[var(--text)]">
                   {selectedDateLabel}
                 </span>
                 <BubbleTag
@@ -1449,17 +1326,17 @@ export default function CalendarView({
               </div>
 
               {hasJoinedClubs && (
-                <button
-                  type="button"
+                <Button
+                  variant="text"
+                  size="sm"
+                  leadingIcon={<Plus size={13} />}
                   onClick={() => {
                     setEventDate(selectedDate)
                     setShowAddForm(true)
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                 >
-                  <Plus size={13} />
-                  <span>Add event on this date</span>
-                </button>
+                  Add event on this date
+                </Button>
               )}
             </div>
 
@@ -1479,13 +1356,13 @@ export default function CalendarView({
                       : `No club events scheduled across your joined clubs on ${selectedDateLabel}.`}
                 </span>
                 {hasJoinedClubs && inAppRsvpOnly && onUpdateSettings && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="outlined-neutral"
+                    size="sm"
                     onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
-                    className="px-3 min-h-[30px] rounded-full bg-[var(--bg-card)] text-xs font-semibold text-[var(--blue-ink)] border border-[var(--border)] cursor-pointer hover:border-[var(--blue)] shrink-0"
                   >
                     Show all events
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -1494,6 +1371,6 @@ export default function CalendarView({
       )}
 
       {renderSyncModal}
-    </Card>
+    </div>
   )
 }

@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Clock,
@@ -19,7 +20,7 @@ import {
   X,
   Mail,
 } from 'lucide-react'
-import { Card, BubbleTag, Avatar, cleanText } from './ui'
+import { Card, BubbleTag, Avatar, cleanText, Button, IconButton, ActionDisclosure, ActionItem, ModalDialog, PageToolbar, SegmentedControl } from './ui'
 import { PlatformIcon } from './icons'
 import {
   getSchedulerPolls,
@@ -48,11 +49,11 @@ const DEFAULT_TZ = 'America/Los_Angeles'
 const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
 
 const RESPONDER_GRADIENTS = [
-  'linear-gradient(135deg, var(--blue), var(--teal))',
-  'linear-gradient(135deg, var(--purple), var(--blue))',
-  'linear-gradient(135deg, var(--teal), var(--green))',
-  'linear-gradient(135deg, var(--yellow), var(--red))',
-  'linear-gradient(135deg, var(--green), var(--blue))',
+  '#1A73E8', // Google Blue
+  '#6750A4', // Google Purple
+  '#00796B', // Google Teal
+  '#E37400', // Google Amber
+  '#1E8E3E', // Google Green
 ]
 
 function getInitials(name) {
@@ -252,7 +253,7 @@ export default function AvailabilityView({
   const signedInAvatarBg =
     userSettings?.avatarBg ||
     effectiveUser?.avatarBg ||
-    'linear-gradient(135deg, var(--blue), var(--purple))'
+    '#1A73E8'
 
   const [polls, setPolls] = useState([])
   const [pollsLoading, setPollsLoading] = useState(true)
@@ -313,7 +314,6 @@ export default function AvailabilityView({
   const [clubPeopleCache, setClubPeopleCache] = useState({})
 
   // Poll creator lifecycle controls (Archive / Unarchive & Delete)
-  const [showArchivedPolls, setShowArchivedPolls] = useState(false)
   const [pollActionBusy, setPollActionBusy] = useState('')
   const [confirmDeletePollId, setConfirmDeletePollId] = useState(null)
 
@@ -327,10 +327,9 @@ export default function AvailabilityView({
     if (explicit) return explicit
     return (
       activePolls[0] ||
-      (showArchivedPolls ? archivedPolls[0] : null) ||
       EMPTY_POLL_TEMPLATE
     )
-  }, [polls, selectedPollId, activePolls, archivedPolls, showArchivedPolls])
+  }, [polls, selectedPollId, activePolls])
 
   const hasActivePoll = Boolean(activePoll.id)
   const isActivePollArchived = Boolean(hasActivePoll && activePoll.archived)
@@ -440,9 +439,6 @@ export default function AvailabilityView({
     setPolls(list)
     if (list.length > 0) {
       const requestedMatch = requestedPollId ? list.find(p => p.id === requestedPollId) : null
-      if (requestedMatch?.archived) {
-        setShowArchivedPolls(true)
-      }
       setSelectedPollId(prev => {
         if (requestedMatch) return requestedMatch.id
         if (prev && list.some(p => p.id === prev)) return prev
@@ -1015,13 +1011,8 @@ export default function AvailabilityView({
     const d1 = new Date(Date.UTC(p1.y, p1.m - 1, p1.d, 12, 0, 0))
     const d2 = new Date(Date.UTC(p2.y, p2.m - 1, p2.d, 12, 0, 0))
     const s1 = d1.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-    const s2 = d2.toLocaleDateString('en-US', {
-      month: p1.m === p2.m ? undefined : 'short',
-      day: 'numeric',
-      year: 'numeric',
-      timeZone: 'UTC',
-    })
-    return `${s1} – ${s2}`
+    const lastDay = p1.m === p2.m ? p2.d : d2.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    return `${s1} – ${lastDay}, ${p2.y}`
   }, [displayedWeekDates])
 
   function beginDragAtCell(e, colIdx, rowIdx, iso, isSingleDayMobile = false) {
@@ -1313,7 +1304,8 @@ export default function AvailabilityView({
     }
 
     const res = await createVerifiedPoll(payload, effectiveUser)
-    setCreatePollBusy(false)
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setCreatePollBusy(false))
 
     const pollObj = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
     if (!res?.ok || !pollObj?.id) {
@@ -1349,7 +1341,8 @@ export default function AvailabilityView({
     }
     setPollActionBusy('archive')
     const res = await archiveVerifiedPoll(targetPoll.id, nextArchived, effectiveUser)
-    setPollActionBusy('')
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setPollActionBusy(''))
 
     const updatedPoll = res?.poll || res?.data || null
     if (!res?.ok || !updatedPoll?.id) {
@@ -1367,9 +1360,6 @@ export default function AvailabilityView({
         setSelectedPollId(nextActive ? nextActive.id : '')
       } else {
         setSelectedPollId(updatedPoll.id)
-        if (!nextList.some(p => p.archived)) {
-          setShowArchivedPolls(false)
-        }
       }
       return nextList
     })
@@ -1395,7 +1385,8 @@ export default function AvailabilityView({
     }
     setPollActionBusy('delete')
     const res = await deleteVerifiedPoll(targetPoll.id, effectiveUser)
-    setPollActionBusy('')
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setPollActionBusy(''))
 
     if (!res?.ok) {
       if (onNotify) {
@@ -1437,13 +1428,10 @@ export default function AvailabilityView({
       const remaining = prev.filter(p => p.id !== deletedId)
       const remainingActive = remaining.filter(p => !p.archived)
       const remainingArchived = remaining.filter(p => p.archived)
-      if (remainingArchived.length === 0) {
-        setShowArchivedPolls(false)
-      }
       if (selectedPollId === deletedId || !selectedPollId) {
         const fallback =
           remainingActive[0]?.id ||
-          (showArchivedPolls ? remainingArchived[0]?.id : '') ||
+          (targetPoll.archived ? remainingArchived[0]?.id : '') ||
           ''
         setSelectedPollId(fallback)
       }
@@ -1568,317 +1556,115 @@ export default function AvailabilityView({
     }).length
   }, [timeRows, gridSlots, mobileDay, myFreeSlots])
 
-  const mobileDayParsed = parseDateParts(mobileDay)
-  const mobileDayFullLabel = new Date(
-    Date.UTC(mobileDayParsed.y, mobileDayParsed.m - 1, mobileDayParsed.d, 12, 0, 0)
-  ).toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
 
   return (
-    <div className={isCompact ? 'space-y-3.5' : 'space-y-4 sm:space-y-5'}>
-      {/* ── 1. Streamlined Poll & Week Bar ── */}
-      <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={0}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Left: Poll Switcher + Location + New Poll + Archived Toggle */}
-          <div className="flex flex-wrap items-center gap-2 min-w-0">
-            {activePolls.map(p => {
-              const isSelected = p.id === activePoll.id
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedPollId(p.id)
-                    setSpotlightUserId(null)
-                    if (p.dates?.[0]) {
-                      setWeekAnchorDate(getWeekStartOfDate(p.dates[0], weekStartsOn))
-                    }
-                  }}
-                  className={`px-3.5 min-h-[36px] rounded-xl text-xs sm:text-[13px] font-semibold border cursor-pointer transition-all truncate max-w-full ${
-                    isSelected
-                      ? 'bg-[var(--blue)] text-white border-[var(--blue)] shadow-2xs'
-                      : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
-                  }`}
-                >
-                  {cleanText(p.title)}
-                </button>
-              )
-            })}
+    <div className="page-stack">
+      <PageToolbar title="Group availability" actions={
+        <Button size="sm" variant={showNewPollForm ? 'outlined-neutral' : 'filled'}
+          icon={showNewPollForm ? <X size={14} /> : <Plus size={14} />}
+          reserveLabels={['New poll', 'Close poll form']}
+          aria-expanded={showNewPollForm} aria-controls="create-availability-poll"
+          onClick={() => setShowNewPollForm(prev => !prev)}>
+          {showNewPollForm ? 'Close poll form' : 'New poll'}
+        </Button>
+      } />
 
-            <button
-              type="button"
-              onClick={() => setShowNewPollForm(prev => !prev)}
-              className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                showNewPollForm
-                  ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]'
-                  : 'bg-transparent text-[var(--blue-ink)] border-dashed border-[var(--border-strong)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)]'
-              }`}
-            >
-              {showNewPollForm ? <X size={14} /> : <Plus size={14} />}
-              <span>{showNewPollForm ? 'Cancel' : 'New Poll'}</span>
-            </button>
-
-            {archivedPolls.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const nextOpen = !(showArchivedPolls || isActivePollArchived)
-                  setShowArchivedPolls(nextOpen)
-                  if (nextOpen && !hasActivePoll && archivedPolls[0]?.id) {
-                    setSelectedPollId(archivedPolls[0].id)
-                  } else if (!nextOpen && isActivePollArchived) {
-                    setSelectedPollId(activePolls[0]?.id || '')
-                  }
-                }}
-                title="View your archived polls"
-                className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                  showArchivedPolls || isActivePollArchived
-                    ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]'
-                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-                }`}
-              >
-                <Archive size={13} />
-                <span>Archived ({archivedPolls.length})</span>
-              </button>
-            )}
-
-            {activePoll.location && hasActivePoll && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text-muted)] font-medium border border-[var(--border-subtle)]">
-                <MapPin size={12} className="text-[var(--teal-ink)] shrink-0" />
-                <span className="truncate max-w-[200px]">{cleanText(activePoll.location)}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Right: Week Stepper + Invite Link + Creator Lifecycle Controls */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <div className="segmented-track">
-              <button
-                type="button"
-                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}
-                aria-label="Previous week"
-                className="w-8 h-8 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)] transition-colors"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <span className="text-xs font-bold text-[var(--text)] px-2 whitespace-nowrap">
-                {weekLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}
-                aria-label="Next week"
-                className="w-8 h-8 rounded-lg bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer hover:border-[var(--blue)] transition-colors"
-              >
-                <ChevronRight size={14} />
-              </button>
-              {!isDefaultWeek && (
-                <button
-                  type="button"
-                  onClick={() => setWeekAnchorDate(defaultPollWeekStart)}
-                  title="Jump back to poll week"
-                  className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11px] font-semibold border-none cursor-pointer"
-                >
-                  <RotateCcw size={11} />
-                  <span>Poll Week</span>
-                </button>
-              )}
-            </div>
-
-            <div className="inline-flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                disabled={!hasActivePoll || isActivePollArchived}
-                onClick={handleCopyShareLink}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
-              >
-                <Share2 size={13} className="text-[var(--blue)]" />
-                <span>Copy Invite Link</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={Boolean(shareBusy) || !hasActivePoll || isActivePollArchived}
-                onClick={handleSharePollDiscord}
-                title="Post availability poll invite to Discord"
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
-              >
-                <span className="text-[var(--blue)] flex items-center">
-                  <PlatformIcon type="discord" size={13.5} />
-                </span>
-                <span>{shareBusy === 'discord' ? 'Posting…' : 'Discord'}</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={Boolean(shareBusy) || !hasActivePoll || isActivePollArchived}
-                onClick={handleSharePollEmail}
-                title="Send availability poll invite via Email"
-                className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors disabled:opacity-50"
-              >
-                <Mail size={13} className="text-[var(--yellow)]" />
-                <span>{shareBusy === 'email' ? 'Sending…' : 'Email'}</span>
-              </button>
-
-              {isActivePollCreator && (
-                <>
-                  <button
-                    type="button"
-                    disabled={Boolean(pollActionBusy)}
-                    onClick={() => handleToggleArchivePoll(activePoll, !isActivePollArchived)}
-                    title={
-                      isActivePollArchived
-                        ? 'Restore this poll to active polls'
-                        : 'Archive this poll — preserves responses and stops new changes'
-                    }
-                    className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors disabled:opacity-60 ${
-                      isActivePollArchived
-                        ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] border-[var(--blue)]/30 hover:opacity-90'
-                        : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--border)]'
-                    }`}
-                  >
-                    {isActivePollArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
-                    <span>
-                      {pollActionBusy === 'archive'
-                        ? isActivePollArchived
-                          ? 'Restoring…'
-                          : 'Archiving…'
-                        : isActivePollArchived
-                          ? 'Unarchive'
-                          : 'Archive'}
-                    </span>
-                  </button>
-
-                  {confirmDeletePollId === activePoll.id ? (
-                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-xl bg-[var(--red-light)] border border-[var(--red)]/35">
-                      <button
-                        type="button"
-                        disabled={Boolean(pollActionBusy)}
-                        onClick={() => handleDeletePoll(activePoll)}
-                        className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg bg-[var(--red)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-60"
-                      >
-                        <Trash2 size={12} />
-                        <span>{pollActionBusy === 'delete' ? 'Deleting…' : 'Confirm Delete'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={Boolean(pollActionBusy)}
-                        onClick={() => setConfirmDeletePollId(null)}
-                        className="px-2 min-h-[28px] rounded-lg bg-transparent text-[var(--red-ink)] text-xs font-semibold border-none cursor-pointer hover:underline"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={Boolean(pollActionBusy)}
-                      onClick={() => setConfirmDeletePollId(activePoll.id)}
-                      title="Permanently delete this poll and its responses"
-                      aria-label="Delete poll"
-                      className="inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--red-light)] text-[var(--text-muted)] hover:text-[var(--red-ink)] text-xs font-semibold border border-[var(--border)] hover:border-[var(--red)]/35 cursor-pointer transition-colors disabled:opacity-60"
-                    >
-                      <Trash2 size={13} />
-                      <span>Delete</span>
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Creator's Archived Polls Tray */}
-        {(showArchivedPolls || isActivePollArchived) && archivedPolls.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-wrap items-center gap-2 fade-in">
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-light)] mr-1">
-              <Archive size={11.5} />
-              <span>Archived Polls</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 dense-controls">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+          {(activePolls.length > 0 || archivedPolls.length > 0) && (
+            <Select
+              className="control-select w-full sm:w-auto sm:max-w-80 [--select-width:19rem]"
+              aria-label="Select poll"
+              value={activePoll.id || ''}
+              onValueChange={nextValue => {
+                setSelectedPollId(nextValue)
+                setSpotlightUserId(null)
+                setConfirmDeletePollId(null)
+              }}
+              search="auto"
+              options={[
+                ...(!hasActivePoll ? [{ value: "", label: "Select a poll", disabled: true }] : []),
+                ...(activePolls.length > 0 ? activePolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Active polls" })) : []),
+                ...(archivedPolls.length > 0 ? archivedPolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Archived polls" })) : []),
+              ]}
+            />
+          )}
+          {hasActivePoll && activePoll.location && (
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] min-w-0 break-words">
+              <MapPin size={14} className="shrink-0" />
+              {cleanText(activePoll.location)}
             </span>
-            {archivedPolls.map(p => {
-              const isSelected = p.id === activePoll.id
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedPollId(p.id)
-                    setSpotlightUserId(null)
-                    if (p.dates?.[0]) {
-                      setWeekAnchorDate(getWeekStartOfDate(p.dates[0], weekStartsOn))
-                    }
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 min-h-[32px] rounded-xl text-xs font-semibold border cursor-pointer transition-all truncate max-w-full ${
-                    isSelected
-                      ? 'bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)] shadow-2xs'
-                      : 'bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border-dashed border-[var(--border)]'
-                  }`}
-                >
-                  <Archive size={11.5} className="shrink-0 opacity-75" />
-                  <span className="truncate">{cleanText(p.title)}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Active Poll Archived Read-Only Notice */}
-        {isActivePollArchived && (
-          <div className="mt-3 p-3 rounded-xl bg-[var(--yellow-light)]/55 border border-[var(--yellow)]/35 flex flex-wrap items-center justify-between gap-2.5 fade-in">
-            <div className="flex items-center gap-2 text-xs text-[var(--yellow-ink)]">
-              <Archive size={14} className="shrink-0" />
-              <span>
-                <strong className="font-semibold">This poll is archived.</strong> Collected
-                responses and overlap windows are preserved, and new edits are paused.
-              </span>
-            </div>
+          )}
+          {isActivePollArchived && <BubbleTag label="Archived · responses are read-only" color="yellow" />}
+          {!hasActivePoll && !showNewPollForm && (
+            <span className="text-xs text-[var(--text-muted)]" role="status">
+              {pollsLoading ? 'Loading polls…' : 'No active polls'}
+            </span>
+          )}
+        </div>
+        {(hasActivePoll || isActivePollCreator) && (
+          <div className="flex items-center gap-2 ml-auto">
+            {!isActivePollArchived && (
+              <ActionDisclosure label="Share poll" pending={Boolean(shareBusy)} pendingLabel="Sharing…" icon={<Share2 size={14} />}>
+                {() => (
+                  <>
+                    <ActionItem onClick={handleCopyShareLink}>Copy invite link</ActionItem>
+                    <ActionItem disabled={Boolean(shareBusy)} onClick={handleSharePollDiscord}
+                      icon={<PlatformIcon type="discord" size={14} />} pending={shareBusy === 'discord'} pendingLabel="Posting…">
+                      Share to Discord
+                    </ActionItem>
+                    <ActionItem disabled={Boolean(shareBusy)} onClick={handleSharePollEmail} icon={<Mail size={14} />} pending={shareBusy === 'email'} pendingLabel="Sending…">
+                      Share by email
+                    </ActionItem>
+                  </>
+                )}
+              </ActionDisclosure>
+            )}
             {isActivePollCreator && (
-              <button
-                type="button"
-                disabled={Boolean(pollActionBusy)}
-                onClick={() => handleToggleArchivePoll(activePoll, false)}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[30px] rounded-lg bg-[var(--bg-card)] text-[var(--text)] text-xs font-semibold border border-[var(--border)] cursor-pointer hover:border-[var(--blue)] disabled:opacity-60"
-              >
-                <ArchiveRestore size={12.5} className="text-[var(--blue)]" />
-                <span>Unarchive Poll</span>
-              </button>
+              <ActionDisclosure key={activePoll.id} label="Poll actions" iconOnly>
+                {close => (
+                  <>
+                    <ActionItem pending={pollActionBusy === 'archive'} pendingLabel="Updating…"
+                      onClick={() => handleToggleArchivePoll(activePoll, !isActivePollArchived)}
+                      icon={isActivePollArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}>
+                      {isActivePollArchived ? 'Unarchive poll' : 'Archive poll'}
+                    </ActionItem>
+                    <ActionItem danger disabled={Boolean(pollActionBusy)} icon={<Trash2 size={14} />}
+                      onClick={() => {
+                        close()
+                        setConfirmDeletePollId(activePoll.id)
+                      }}>
+                      Delete poll
+                    </ActionItem>
+                  </>
+                )}
+              </ActionDisclosure>
             )}
           </div>
         )}
+      </div>
 
-        {/* Empty Polls Prompt */}
-        {!pollsLoading && activePolls.length === 0 && !isActivePollArchived && !showNewPollForm && (
-          <div className="mt-3 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-[var(--text-muted)]">
-              <strong className="text-[var(--text)] font-semibold">
-                {archivedPolls.length > 0
-                  ? 'No active availability polls.'
-                  : 'No availability polls yet.'}
-              </strong>{' '}
-              {archivedPolls.length > 0
-                ? 'Restore an archived poll above or create a new poll for your club, board, or sub-groups.'
-                : 'Create a poll for your club, board, or sub-groups to compare schedules and find the best time to meet.'}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowNewPollForm(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 min-h-[34px] rounded-xl bg-[var(--blue)] text-white text-xs font-semibold border-none cursor-pointer hover:opacity-90"
-            >
-              <Plus size={13} />
-              <span>{archivedPolls.length > 0 ? 'Create Poll' : 'Create First Poll'}</span>
-            </button>
-          </div>
-        )}
+      {isActivePollCreator && confirmDeletePollId === activePoll.id && (
+        <ModalDialog title="Delete poll?" onClose={() => setConfirmDeletePollId(null)} footer={
+          <>
+            <Button variant="text" onClick={() => setConfirmDeletePollId(null)}>Cancel</Button>
+            <Button variant="danger" pending={pollActionBusy === 'delete'} pendingLabel="Deleting…" onClick={() => handleDeletePoll(activePoll)}>
+              Delete poll
+            </Button>
+          </>
+        }>
+          <p className="text-sm text-[var(--text-muted)]">
+            Deleting {cleanText(activePoll.title)} permanently removes the poll and its responses.
+          </p>
+        </ModalDialog>
+      )}
 
         {/* New Poll Drawer */}
         {showNewPollForm && (
           <form
+            id="create-availability-poll"
             onSubmit={handleCreatePollSubmit}
-            className="mt-4 pt-4 border-t border-[var(--border)] space-y-3.5 fade-in"
+            className="section-pad content-tile rounded-xl space-y-3 fade-in"
           >
             <div className="text-sm font-bold text-[var(--text)]">Create New Availability Poll</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1928,22 +1714,21 @@ export default function AvailabilityView({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Host Club (Optional)
                   </label>
-                  <select
+                  <Select
+                    aria-label="Host club"
                     value={newPollClubId}
-                    onChange={e => {
-                      setNewPollClubId(e.target.value)
+                    onValueChange={nextValue => {
+                      setNewPollClubId(nextValue)
                       setNewPollShortcuts([])
                       setNewPollVisibility('public_link')
                     }}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    <option value="">Personal / Cross-Club Poll</option>
-                    {clubs.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {cleanText(c.name)}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={[
+                      { value: "", label: "Personal / Cross-Club Poll" },
+                      ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                    ]}
+                  />
                 </div>
 
                 {newPollClubId && (
@@ -1951,17 +1736,17 @@ export default function AvailabilityView({
                     <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                       Poll Access Tier
                     </label>
-                    <select
+                    <Select
+                      aria-label="Poll access tier"
                       value={newPollVisibility}
-                      onChange={e => setNewPollVisibility(e.target.value)}
+                      onValueChange={setNewPollVisibility}
                       className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                    >
-                      <option value="public_link">Anyone with Invite Link</option>
-                      <option value="club_members">Club Members & Board Only</option>
-                      {newPollClubPeople?.permission?.isBoard && (
-                        <option value="board_only">Board / Leadership Only</option>
-                      )}
-                    </select>
+                      options={[
+                        { value: "public_link", label: "Anyone with Invite Link" },
+                        { value: "club_members", label: "Club Members & Board Only" },
+                        ...(newPollClubPeople?.permission?.isBoard ? [{ value: "board_only", label: "Board / Leadership Only" }] : []),
+                      ]}
+                    />
                   </div>
                 )}
               </div>
@@ -1988,179 +1773,96 @@ export default function AvailabilityView({
             )}
 
             <div className="flex justify-end gap-2">
-              <button
+              <Button
+                variant="filled"
+                size="md"
                 type="submit"
-                disabled={createPollBusy}
-                className="px-5 min-h-[40px] rounded-xl bg-[var(--blue)] text-white border-none text-sm font-semibold cursor-pointer hover:opacity-90 disabled:opacity-60"
+                pending={createPollBusy} pendingLabel="Creating…"
               >
-                {createPollBusy ? 'Creating…' : 'Create Poll'}
-              </button>
+                Create Poll
+              </Button>
             </div>
           </form>
         )}
-      </Card>
 
       {/* ── 2. Balanced 2-Column Workspace: Interactive Schedule + Sticky Right Rail ── */}
       <div
-        className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_368px] ${
-          isCompact ? 'gap-3.5' : 'gap-4 sm:gap-5'
-        } items-start`}
+        className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-[var(--section-gap)] items-start"
       >
         {/* LEFT: 7-Day Availability Schedule */}
-        <Card className={`${isCompact ? 'p-3.5 sm:p-4.5' : 'p-4 sm:p-5'} select-none`} delay={1}>
-          {/* Mode Switcher + Quick Fill Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-[var(--border)]">
-            <div className="segmented-track w-full xs:w-auto">
-              <button
-                type="button"
-                onClick={() => setGridMode('mine')}
-                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
-                  gridMode === 'mine'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <span>My Availability</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-bold font-mono-num ${
-                    gridMode === 'mine'
-                      ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
-                      : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  {formatHoursFromSlots(myWeekFreeCount)}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGridMode('group')}
-                className={`flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
-                  gridMode === 'group'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <span>Group Overlap</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-bold font-mono-num ${
-                    gridMode === 'group'
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
-                      : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  {allParticipants.length}
-                </span>
-              </button>
+        <Card className="section-pad select-none min-w-0" delay={1}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-0.5">
+              <IconButton size="sm" ariaLabel="Previous week" onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, -7))}>
+                <ChevronLeft size={16} />
+              </IconButton>
+              <span className="text-sm font-medium">{weekLabel}</span>
+              <IconButton size="sm" ariaLabel="Next week" onClick={() => setWeekAnchorDate(prev => addDaysToYmd(prev, 7))}>
+                <ChevronRight size={16} />
+              </IconButton>
             </div>
+            {!isDefaultWeek && (
+              <Button size="sm" variant="text" icon={<RotateCcw size={13} />}
+                onClick={() => setWeekAnchorDate(defaultPollWeekStart)}>
+                Go to poll week
+              </Button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SegmentedControl
+              ariaLabel="Availability view"
+              className="availability-mode max-w-full"
+              size="sm"
+              options={[
+                { value: 'mine', label: 'My Availability', badge: formatHoursFromSlots(myWeekFreeCount) },
+                { value: 'group', label: 'Group Overlap', badge: allParticipants.length },
+              ]}
+              value={gridMode}
+              onChange={setGridMode}
+            />
 
-            {gridMode === 'mine' ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleToggleWeekdayPreset(9, 12, 'mornings (9 AM–12 PM)')
-                  }
-                  title="Toggle Mon–Fri 9:00 AM – 12:00 PM"
-                  className={`px-2.5 min-h-[30px] rounded-lg text-[11.5px] font-semibold border cursor-pointer transition-colors ${
-                    morningsAllSelected
-                      ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/40'
-                      : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border)]'
-                  }`}
-                >
-                  {morningsAllSelected ? '✓ Mornings' : '+ Mornings'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleToggleWeekdayPreset(13, 17, 'afternoons (1–5 PM)')
-                  }
-                  title="Toggle Mon–Fri 1:00 PM – 5:00 PM"
-                  className={`px-2.5 min-h-[30px] rounded-lg text-[11.5px] font-semibold border cursor-pointer transition-colors ${
-                    afternoonsAllSelected
-                      ? 'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/40'
-                      : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border)]'
-                  }`}
-                >
-                  {afternoonsAllSelected ? '✓ Afternoons' : '+ Afternoons'}
-                </button>
-
-                {myWeekFreeCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearWeekTimes}
-                    className="px-2.5 min-h-[30px] rounded-lg bg-transparent hover:bg-[var(--red-light)] text-[11.5px] font-semibold text-[var(--text-muted)] hover:text-[var(--red-ink)] border-none cursor-pointer transition-colors"
-                  >
-                    Clear All
-                  </button>
-                )}
-
-                {dragUiState ? (
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                      dragUiState.mode === 'remove'
-                        ? 'bg-[var(--red-light)] text-[var(--red-ink)]'
-                        : 'bg-[var(--green-light)] text-[var(--green-ink)]'
-                    }`}
-                  >
-                    <span>
-                      {dragUiState.mode === 'remove' ? 'Deselecting…' : 'Selecting…'}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--green-light)] text-[var(--green-ink)] text-[11px] font-semibold">
-                    <Check size={11} />
-                    <span>{autoSaveState === 'saving' ? 'Saving…' : 'Saved'}</span>
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2.5 text-[11.5px] text-[var(--text-muted)]">
-                <div className="inline-flex items-center gap-1.5">
-                  <span>Fewer</span>
-                  {[0.2, 0.44, 0.68, 0.92].map(a => (
-                    <span
-                      key={a}
-                      className="w-3.5 h-3.5 rounded inline-block"
-                      style={{
-                        background: `color-mix(in srgb, var(--green) ${Math.round(a * 100)}%, transparent)`,
-                      }}
-                    />
-                  ))}
-                  <span>Everyone</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setGridMode('mine')}
-                  className="px-2.5 min-h-[28px] rounded-lg bg-[var(--blue-light)] text-[var(--blue-ink)] text-[11.5px] font-semibold border-none cursor-pointer hover:opacity-90"
-                >
-                  Edit My Times
-                </button>
-              </div>
+            {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
+              <>
+                <ActionDisclosure label="Fill week">
+                  {close => (
+                    <>
+                      <ActionItem onClick={() => {
+                        handleToggleWeekdayPreset(9, 12, 'mornings (9 AM–12 PM)')
+                        close()
+                      }}>{morningsAllSelected ? 'Clear mornings' : 'Mark mornings free'}</ActionItem>
+                      <ActionItem onClick={() => {
+                        handleToggleWeekdayPreset(13, 17, 'afternoons (1–5 PM)')
+                        close()
+                      }}>{afternoonsAllSelected ? 'Clear afternoons' : 'Mark afternoons free'}</ActionItem>
+                      {myWeekFreeCount > 0 && (
+                        <ActionItem onClick={() => { handleClearWeekTimes(); close() }}>Clear week</ActionItem>
+                      )}
+                    </>
+                  )}
+                </ActionDisclosure>
+                <span className="text-xs text-[var(--text-muted)]" role="status">
+                  {dragUiState ? (dragUiState.mode === 'remove' ? 'Deselecting…' : 'Selecting…') :
+                    (autoSaveState === 'saving' ? 'Saving…' : 'Saved')}
+                </span>
+              </>
             )}
           </div>
 
           {/* Clear Contextual Instruction / Active Identity Banner */}
-          <div className="flex flex-wrap items-center justify-between gap-2 py-2.5 mb-1 text-xs text-[var(--text-muted)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs text-[var(--text-muted)]">
             {gridMode === 'mine' ? (
               <div className="flex flex-wrap items-center gap-2">
                 {!isAuthenticated ? (
                   <span>Sign in with your account to mark availability on real club polls.</span>
                 ) : !hasActivePoll ? (
                   <span>Create a poll above to begin collecting verified member availability.</span>
-                ) : (
-                  <span>
-                    <strong className="font-semibold text-[var(--text)]">Click or drag</strong> empty
-                    slots to mark free, or green slots to{' '}
-                    <strong className="font-semibold text-[var(--text)]">deselect</strong>.
-                  </span>
+                ) : isActivePollArchived ? null : (
+                  <span>Tap or click a time to toggle availability. Drag to select a range with a mouse.</span>
                 )}
               </div>
             ) : (
               <span>
-                Darker green shows stronger overlap. Click any time slot to inspect who is free or
-                busy.
+                Darker green shows stronger overlap. Select a time to see who is free.
               </span>
             )}
 
@@ -2180,81 +1882,36 @@ export default function AvailabilityView({
           </div>
 
           {/* ── MOBILE VIEW (< md): 7-Day Selector + Chronological Time Slots ── */}
-          <div className="md:hidden space-y-3">
-            <div className="grid grid-cols-7 gap-1">
-              {displayedWeekDates.map(ymd => {
-                const { y, m, d } = parseDateParts(ymd)
-                const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-                const dayNarrow = dt.toLocaleDateString('en-US', {
-                  weekday: 'narrow',
-                  timeZone: 'UTC',
-                })
-                const isSelected = mobileDay === ymd
-                const dayFreeCount = timeRows.filter(r => {
-                  const iso = gridSlots[ymd]?.[`${r.hour}:${r.minute}`]
-                  return gridMode === 'mine'
-                    ? myFreeSlots.has(iso)
-                    : (slotStatsMap[iso]?.availableCount || 0) > 0
-                }).length
-
-                return (
-                  <button
-                    key={ymd}
-                    type="button"
-                    onClick={() => setMobileDay(ymd)}
-                    className={`py-2 px-1 rounded-xl border flex flex-col items-center gap-1 cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                        : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)]'
-                    }`}
-                  >
-                    <span
-                      className={`text-[10px] font-semibold ${
-                        isSelected ? 'text-white/85' : 'text-[var(--text-muted)]'
-                      }`}
-                    >
-                      {dayNarrow}
-                    </span>
-                    <span className="text-sm font-bold font-mono-num">{d}</span>
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        dayFreeCount > 0
-                          ? isSelected
-                            ? 'bg-white'
-                            : 'bg-[var(--green)]'
-                          : 'bg-transparent'
-                      }`}
-                    />
-                  </button>
-                )
-              })}
-            </div>
-
-            {gridMode === 'mine' && (
-              <div className="flex items-center justify-between gap-2 px-1 text-xs">
-                <span className="font-semibold text-[var(--text)]">{mobileDayFullLabel}</span>
-                <div className="flex items-center gap-2">
+          <div className="poll-day-grid space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Select
+                aria-label="Availability day"
+                value={mobileDay}
+                onValueChange={setMobileDay}
+                className="control-select ui-touch [--select-width:12rem]"
+                options={displayedWeekDates.map(ymd => {
+                  const { y, m, d } = parseDateParts(ymd)
+                  const label = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+                  })
+                  return { value: ymd, label: label }
+                })}
+              />
+              {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
+                <div className="flex flex-wrap items-center gap-1">
                   {mobileDayFreeCount < timeRows.length && (
-                    <button
-                      type="button"
-                      onClick={() => handleToggleMobileDay(true)}
-                      className="text-[11.5px] font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
-                    >
+                    <Button variant="text" size="sm" className="!px-2" onClick={() => handleToggleMobileDay(true)}>
                       Select all day
-                    </button>
+                    </Button>
                   )}
                   {mobileDayFreeCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleToggleMobileDay(false)}
-                      className="text-[11.5px] font-semibold text-[var(--red-ink)] hover:underline bg-transparent border-none cursor-pointer p-0"
-                    >
+                    <Button variant="text-neutral" size="sm" className="!px-2" onClick={() => handleToggleMobileDay(false)}>
                       Clear day
-                    </button>
+                    </Button>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="flex flex-col gap-1.5">
               {timeRows.map((r, rowIdx) => {
@@ -2318,9 +1975,8 @@ export default function AvailabilityView({
                       }
                       handleMobileSlotTap(iso)
                     }}
-                    className={`w-full ${
-                      isCompact ? 'min-h-[38px] py-1.5' : 'min-h-[44px] py-2'
-                    } px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-colors ${rowStyle} ${
+                    aria-pressed={gridMode === 'mine' ? isMine : isPinned}
+                    className={`w-full min-h-11 py-1.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 cursor-pointer transition-colors ${rowStyle} ${
                       isPinned && gridMode === 'group' ? 'ring-2 ring-[var(--blue)]' : ''
                     } ${isSpotlit ? 'ring-2 ring-[var(--blue)]' : ''}`}
                   >
@@ -2363,7 +2019,7 @@ export default function AvailabilityView({
 
           {/* ── DESKTOP / TABLET VIEW (md+): Framed 7-Day Interactive Grid ── */}
           <div
-            className="hidden md:block"
+            className="poll-week-grid hidden md:block"
             onMouseLeave={() => setHoveredSlotIso(null)}
           >
             <div className="rounded-2xl border border-[var(--border)] overflow-hidden bg-[var(--bg-card)]">
@@ -2373,7 +2029,7 @@ export default function AvailabilityView({
               >
                 <thead>
                   <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)]">
-                    <th className="w-[68px] py-2.5 px-2 text-right text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-light)] border-r border-[var(--border)]">
+                    <th className="w-[68px] py-2.5 px-2 text-right text-xs font-medium text-[var(--text-muted)] border-r border-[var(--border)]">
                       Time
                     </th>
                     {displayedWeekDates.map((dateStr, colIdx) => {
@@ -2397,11 +2053,11 @@ export default function AvailabilityView({
                             colIdx < 6 ? 'border-r border-[var(--border)]' : ''
                           }`}
                         >
-                          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                          <div className="text-xs font-medium text-[var(--text-muted)]">
                             {dayShort}
                           </div>
                           <div className="mt-0.5 flex items-center justify-center gap-1">
-                            <span className="text-sm font-extrabold font-mono-num text-[var(--text)]">
+                            <span className="text-sm font-semibold font-mono-num text-[var(--text)]">
                               {m}/{d}
                             </span>
                             {dayMarkedCount > 0 && (
@@ -2514,6 +2170,20 @@ export default function AvailabilityView({
                               key={iso}
                               data-slot-col={colIdx}
                               data-slot-row={rowIdx}
+                              tabIndex={rowIdx === 0 && colIdx === 0 ? 0 : -1}
+                              onKeyDown={e => {
+                                const direction = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key]
+                                if (direction) {
+                                  e.preventDefault()
+                                  const [rowStep, colStep] = direction
+                                  e.currentTarget.closest('table')?.querySelector(
+                                    `[data-slot-col="${colIdx + colStep}"][data-slot-row="${rowIdx + rowStep}"]`
+                                  )?.focus()
+                                } else if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  handleMobileSlotTap(iso)
+                                }
+                              }}
                               onPointerDown={e => beginDragAtCell(e, colIdx, rowIdx, iso, false)}
                               onPointerEnter={() => handleCellPointerEnter(colIdx, rowIdx, iso)}
                               title={`${formatTimeFromIso(iso, use24h, {
@@ -2554,7 +2224,7 @@ export default function AvailabilityView({
                               )}
 
                               {isBooked ? (
-                                <span className="pointer-events-none inline-block px-1.5 rounded bg-[var(--blue)] text-white text-[9.5px] font-bold leading-tight">
+                                <span className="pointer-events-none inline-block px-1.5 py-0.5 rounded-full bg-[var(--blue)] text-[var(--on-blue)] text-[9.5px] font-medium leading-tight">
                                   Booked
                                 </span>
                               ) : gridMode === 'mine' ? (
@@ -2638,15 +2308,15 @@ export default function AvailabilityView({
 
                 <div className="flex items-center gap-2">
                   {!pinnedSlotStat.scheduledEvent && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="filled"
+                      size="sm"
+                      leadingIcon={<CalendarPlus size={11} />}
                       disabled={bookingBusy}
                       onClick={() => handleScheduleSlot(pinnedSlotStat.iso)}
-                      className="inline-flex items-center gap-1 px-2.5 min-h-[28px] rounded-lg bg-[var(--blue)] text-white text-[11px] font-semibold border-none cursor-pointer hover:opacity-90"
                     >
-                      <CalendarPlus size={11} />
-                      <span>Schedule {formatDurationShort(durationMins)}</span>
-                    </button>
+                      Schedule {formatDurationShort(durationMins)}
+                    </Button>
                   )}
                   <button
                     type="button"
@@ -2668,7 +2338,7 @@ export default function AvailabilityView({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div className="p-2.5 rounded-xl content-tile">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--green-ink)] mb-1">
+                  <div className="text-xs font-medium text-[var(--green-ink)] mb-1">
                     Free ({pinnedSlotStat.availableUsers.length})
                   </div>
                   <div className="text-[11.5px] text-[var(--text)]">
@@ -2679,7 +2349,7 @@ export default function AvailabilityView({
                 </div>
 
                 <div className="p-2.5 rounded-xl content-tile">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--text-muted)] mb-1">
+                  <div className="text-xs font-medium text-[var(--text-muted)] mb-1">
                     Unavailable ({pinnedSlotStat.unavailableUsers.length})
                   </div>
                   <div className="text-[11.5px] text-[var(--text-muted)]">
@@ -2694,153 +2364,8 @@ export default function AvailabilityView({
         </Card>
 
         {/* RIGHT STICKY RAIL: 1) Responders (Above) + 2) Best Meeting Windows (Below) */}
-        <div className={`lg:sticky lg:top-5 ${isCompact ? 'space-y-3.5' : 'space-y-4'}`}>
-          {/* Card 1 (TOP): Verified Team Responders */}
-          <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={2}>
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className="flex items-center gap-2">
-                <Users size={15} className="text-[var(--blue)] shrink-0" />
-                <h3 className="text-sm font-bold text-[var(--text)]">
-                  Responders ({allParticipants.length})
-                </h3>
-              </div>
-
-              {hasActivePoll && !isActivePollArchived && activePollClubPeople?.permission?.isBoard && (
-                <button
-                  type="button"
-                  onClick={() => setShowExistingInviteShortcuts(prev => !prev)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
-                >
-                  {showExistingInviteShortcuts ? <X size={12} /> : <Shield size={12} />}
-                  <span>{showExistingInviteShortcuts ? 'Cancel' : 'Invite Shortcuts'}</span>
-                </button>
-              )}
-            </div>
-
-            <p className="text-xs text-[var(--text-muted)] mb-3">
-              Verified account responses only. Click anyone to highlight their free times.
-            </p>
-
-            {showExistingInviteShortcuts && activePollClubPeople?.permission?.isBoard && (
-              <div className="mb-3 space-y-2 fade-in">
-                <LeadershipShortcutBar
-                  clubPeople={activePollClubPeople}
-                  selectedShortcuts={existingInviteShortcuts}
-                  onToggleShortcut={toggleExistingPollShortcut}
-                  label="Add Roster / Sub-Groups"
-                  compact
-                />
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    disabled={inviteBusy || existingInviteShortcuts.length === 0}
-                    onClick={handleApplyExistingShortcuts}
-                    className="px-3 min-h-[32px] rounded-lg bg-[var(--blue)] text-white border-none text-xs font-semibold cursor-pointer disabled:opacity-50"
-                  >
-                    {inviteBusy ? 'Adding…' : 'Apply Invites'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5 max-h-[252px] overflow-y-auto pr-0.5">
-              {allParticipants.length === 0 ? (
-                <div className="py-4 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
-                  No verified responses yet. Share the poll link or mark your free slots on the grid.
-                </div>
-              ) : (
-                allParticipants.map(p => {
-                  const isSpotlit = spotlightUserId === p.userId
-                  const weekSlotCount = (p.freeSlots || []).filter(s =>
-                    displayedWeekSlotsSet.has(s)
-                  ).length
-
-                  return (
-                    <div
-                      key={p.userId}
-                      onClick={() =>
-                        setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
-                      }
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
-                        }
-                      }}
-                      title={`Click to ${isSpotlit ? 'clear highlight' : `highlight ${p.userName}'s free times`}`}
-                      className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border cursor-pointer transition-all ${
-                        isSpotlit
-                          ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-2xs'
-                          : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border-[var(--border)]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Avatar initials={p.initials} bg={p.avatarBg} size={26} />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs font-semibold text-[var(--text)] truncate">
-                              {p.userName}
-                            </span>
-                            {p.isYou && (
-                              <span className="px-1.5 py-0.5 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] text-[10px] font-bold shrink-0">
-                                You
-                              </span>
-                            )}
-                          </div>
-                          {(p.roleTitle || p.clubName) && (
-                            <div className="text-[10.5px] text-[var(--text-muted)] truncate">
-                              {[p.roleTitle, p.clubName].filter(Boolean).join(' · ')}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono-num ${
-                            weekSlotCount > 0
-                              ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-light)]'
-                          }`}
-                        >
-                          {weekSlotCount > 0 ? `${formatHoursFromSlots(weekSlotCount)} free` : 'None'}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-
-              {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length > 0 && (
-                <div className="pt-2 mt-1 border-t border-[var(--border-subtle)] space-y-1">
-                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-light)] px-1">
-                    Awaiting Response (
-                    {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length}
-                    )
-                  </div>
-                  {(activePoll.invitedParticipants || [])
-                    .filter(inv => !inv.hasResponded)
-                    .map(inv => (
-                      <div
-                        key={inv.memberKey || inv.name}
-                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border)] text-xs"
-                      >
-                        <span className="font-medium text-[var(--text-muted)] truncate">
-                          {cleanText(inv.name)}
-                        </span>
-                        <span className="text-[10.5px] text-[var(--text-light)] shrink-0">
-                          {cleanText(inv.sourceShortcut || inv.roleTitle || 'Invited')}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Card 2 (BELOW RESPONDERS): Ranked Best Meeting Windows */}
+        <div className="page-stack min-w-0">
+          {/* Ranked best meeting windows */}
           <Card className={isCompact ? 'p-3.5 sm:p-4' : 'p-4 sm:p-5'} delay={3}>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <div className="flex items-center gap-2">
@@ -2904,14 +2429,6 @@ export default function AvailabilityView({
                         setHoveredSlotIso(null)
                         setHoveredWindowRange(null)
                       }}
-                      style={{
-                        borderLeftWidth: '3.5px',
-                        borderLeftColor: win.scheduledEvent
-                          ? 'var(--blue)'
-                          : idx === 0
-                            ? 'var(--green)'
-                            : 'var(--teal)',
-                      }}
                       className={`content-tile ${
                         isCompact ? 'p-2.5 space-y-2' : 'p-3.5 space-y-2.5'
                       } rounded-xl hover:border-[var(--blue)] transition-colors`}
@@ -2920,7 +2437,7 @@ export default function AvailabilityView({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span
-                              className={`inline-flex items-center justify-center shrink-0 px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num ${
+                              className={`inline-flex items-center justify-center shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono-num ${
                                 idx === 0
                                   ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
                                   : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
@@ -3009,18 +2526,19 @@ export default function AvailabilityView({
                             </button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
+                          <Button
+                            variant="filled"
+                            size="sm"
+                            leadingIcon={<CalendarPlus size={12} />}
                             disabled={bookingBusy}
                             onClick={e => {
                               e.stopPropagation()
                               handleScheduleSlot(win.startIso)
                             }}
-                            className="inline-flex items-center gap-1 px-3 min-h-[30px] rounded-lg bg-[var(--blue)] text-white text-[11.5px] font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+                            className="shrink-0"
                           >
-                            <CalendarPlus size={12} />
-                            <span>Schedule {formatDurationShort(durationMins)}</span>
-                          </button>
+                            Schedule {formatDurationShort(durationMins)}
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -3034,6 +2552,146 @@ export default function AvailabilityView({
               </div>
             )}
           </Card>
+          <details className="section-pad rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-card)]">
+            <summary className="cursor-pointer text-sm font-medium py-2 max-sm:min-h-11">
+              Responders ({allParticipants.length})
+            </summary>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              {hasActivePoll && !isActivePollArchived && activePollClubPeople?.permission?.isBoard && (
+                <button
+                  type="button"
+                  onClick={() => setShowExistingInviteShortcuts(prev => !prev)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
+                >
+                  {showExistingInviteShortcuts ? <X size={12} /> : <Shield size={12} />}
+                  <span>{showExistingInviteShortcuts ? 'Cancel' : 'Invite Shortcuts'}</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] mb-3">
+              Verified account responses only. Click anyone to highlight their free times.
+            </p>
+
+            {showExistingInviteShortcuts && activePollClubPeople?.permission?.isBoard && (
+              <div className="mb-3 space-y-2 fade-in">
+                <LeadershipShortcutBar
+                  clubPeople={activePollClubPeople}
+                  selectedShortcuts={existingInviteShortcuts}
+                  onToggleShortcut={toggleExistingPollShortcut}
+                  label="Add Roster / Sub-Groups"
+                  compact
+                />
+                <div className="flex justify-end">
+                  <Button
+                    variant="filled"
+                    size="sm"
+                    disabled={existingInviteShortcuts.length === 0} pending={inviteBusy} pendingLabel="Adding…"
+                    onClick={handleApplyExistingShortcuts}
+                  >
+                    Apply Invites
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5 max-h-[252px] overflow-y-auto pr-0.5">
+              {allParticipants.length === 0 ? (
+                <div className="py-4 px-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
+                  No verified responses yet. Share the poll link or mark your free slots on the grid.
+                </div>
+              ) : (
+                allParticipants.map(p => {
+                  const isSpotlit = spotlightUserId === p.userId
+                  const weekSlotCount = (p.freeSlots || []).filter(s =>
+                    displayedWeekSlotsSet.has(s)
+                  ).length
+
+                  return (
+                    <div
+                      key={p.userId}
+                      onClick={() =>
+                        setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
+                      }
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSpotlightUserId(prev => (prev === p.userId ? null : p.userId))
+                        }
+                      }}
+                      title={`Click to ${isSpotlit ? 'clear highlight' : `highlight ${p.userName}'s free times`}`}
+                      className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border cursor-pointer transition-all ${
+                        isSpotlit
+                          ? 'bg-[var(--blue-light)] border-[var(--blue)] shadow-2xs'
+                          : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border-[var(--border)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar initials={p.initials} bg={p.avatarBg} size={26} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-[var(--text)] truncate">
+                              {p.userName}
+                            </span>
+                            {p.isYou && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-[var(--blue-light)] text-[var(--blue-ink)] text-[10px] font-bold shrink-0">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          {(p.roleTitle || p.clubName) && (
+                            <div className="text-[10.5px] text-[var(--text-muted)] truncate">
+                              {[p.roleTitle, p.clubName].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono-num ${
+                            weekSlotCount > 0
+                              ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
+                              : 'bg-[var(--bg-card)] text-[var(--text-light)]'
+                          }`}
+                        >
+                          {weekSlotCount > 0 ? `${formatHoursFromSlots(weekSlotCount)} free` : 'None'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+
+              {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length > 0 && (
+                <div className="pt-2 mt-1 border-t border-[var(--border-subtle)] space-y-1">
+                  <div className="text-xs font-medium text-[var(--text-muted)] px-1">
+                    Awaiting response (
+                    {(activePoll.invitedParticipants || []).filter(inv => !inv.hasResponded).length}
+                    )
+                  </div>
+                  {(activePoll.invitedParticipants || [])
+                    .filter(inv => !inv.hasResponded)
+                    .map(inv => (
+                      <div
+                        key={inv.memberKey || inv.name}
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border)] text-xs"
+                      >
+                        <span className="font-medium text-[var(--text-muted)] truncate">
+                          {cleanText(inv.name)}
+                        </span>
+                        <span className="text-[10.5px] text-[var(--text-light)] shrink-0">
+                          {cleanText(inv.sourceShortcut || inv.roleTitle || 'Invited')}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </details>
+
         </div>
       </div>
     </div>

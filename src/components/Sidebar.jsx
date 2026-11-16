@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
-import { Moon, Sun, LogIn, LogOut, Settings, ChevronUp } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { navItems } from '../data/sampleData'
-import { Avatar, ClubHubLogo, ToggleSwitch } from './ui'
+import { Button } from './ui'
 import { NavIcon } from './icons'
 
 const MOBILE_NAV_LABELS = {
@@ -16,208 +15,86 @@ const MOBILE_NAV_LABELS = {
 export default function Sidebar({
   activeNav,
   onNav,
-  dark,
-  onToggleDark,
-  user = null,
-  userSettings = {},
   isDemo = false,
   onExitDemo,
-  onSignOut,
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
-
-  useEffect(() => {
-    function handleOutside(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false)
-      }
-    }
-    function handleKey(e) {
-      if (e.key === 'Escape') setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', handleOutside)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [])
-  const effectiveUser = isDemo ? null : user
-
-  const displayName =
-    userSettings?.displayName?.trim() ||
-    effectiveUser?.fullName ||
-    effectiveUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-    effectiveUser?.email?.split('@')[0] ||
-    (isDemo ? 'Demo Guest' : 'Student')
-
-  const subline =
-    userSettings?.major?.trim() ||
-    effectiveUser?.primaryEmailAddress?.emailAddress ||
-    effectiveUser?.email ||
-    (isDemo ? 'Preview Mode' : 'Verified Member')
-
-  const initials = displayName
-    .split(' ')
-    .filter(Boolean)
-    .map(w => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'ST'
-
-  const avatarGradient =
-    userSettings?.avatarBg ||
-    effectiveUser?.avatarBg ||
-    'linear-gradient(135deg, var(--blue), var(--purple))'
-
   return (
     <>
-      {/* ── Desktop Fixed Sidebar (lg+): Locked to Viewport, Never Scrolls With Page ── */}
+      {/* ── Desktop Google Workspace Navigation Drawer (lg+): Below 64px Top App Bar ── */}
       <aside
-        className="hidden lg:flex fixed inset-y-0 left-0 w-[252px] bg-[var(--bg-sidebar)] border-r border-[var(--border)]
-          flex-col px-3.5 py-5 z-40 select-none overflow-y-auto"
+        aria-label="Primary navigation"
+        className="hidden lg:flex fixed top-16 bottom-0 left-0 w-[var(--sidebar-width)] bg-[var(--bg-sidebar)]
+          flex-col px-3 py-3 z-30 select-none overflow-y-auto"
       >
-        {/* Brand Logo */}
-        <button
-          type="button"
-          onClick={() => onNav('overview')}
-          className="flex items-center gap-2.5 px-2.5 mb-7 bg-transparent border-none text-left cursor-pointer shrink-0"
-        >
-          <ClubHubLogo size={36} />
-          <div>
-            <div className="font-bold text-[16px] tracking-tight text-[var(--text)] leading-tight">
-              ClubHub
-            </div>
-            <div className="text-[11px] text-[var(--text-muted)]">
-              Campus Workspace
-            </div>
-          </div>
-        </button>
-
-        {/* Primary Navigation */}
-        <nav className="flex-1 flex flex-col gap-1">
+        <nav className="flex-1 flex flex-col gap-0.5">
           {navItems.map(item => {
             const isActive = activeNav === item.id
             return (
               <button
                 key={item.id}
                 type="button"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => onNav(item.id)}
-                className={`flex items-center gap-3 px-3.5 min-h-[42px] rounded-[var(--radius-sm)]
-                  text-[13.5px] cursor-pointer transition-colors duration-150 border-none text-left
-                  ${
+                className={`md-state-layer flex items-center gap-3.5 px-4 h-11 min-h-[44px] rounded-full
+                  text-sm cursor-pointer transition-colors duration-150 border-none text-left ${
                     isActive
-                      ? 'font-semibold text-[var(--blue-ink)] bg-[var(--blue-light)]'
-                      : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)] bg-transparent'
+                      ? 'font-medium text-[var(--on-secondary-container)] bg-[var(--secondary-container)]'
+                      : 'font-medium text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent'
                   }`}
               >
-                <NavIcon name={item.icon} active={isActive} size={19} />
-                <span>{item.label}</span>
+                <NavIcon name={item.icon} active={isActive} size={20} />
+                <span className="truncate">{item.label}</span>
               </button>
             )
           })}
 
+          <div className="my-2 mx-4 border-t border-[var(--border)]" />
+
           <button
             type="button"
+            aria-current={activeNav === 'settings' ? 'page' : undefined}
             onClick={() => onNav('settings')}
-            className={`flex items-center gap-3 px-3.5 min-h-[42px] rounded-[var(--radius-sm)]
-              text-[13.5px] cursor-pointer transition-colors duration-150 border-none text-left
-              ${
+            className={`md-state-layer flex items-center gap-3.5 px-4 h-11 min-h-[44px] rounded-full
+              text-sm cursor-pointer transition-colors duration-150 border-none text-left ${
                 activeNav === 'settings'
-                  ? 'font-semibold text-[var(--blue-ink)] bg-[var(--blue-light)]'
-                  : 'font-medium text-[var(--text-muted)] hover:bg-[var(--bg-surface)] hover:text-[var(--text)] bg-transparent'
+                  ? 'font-medium text-[var(--on-secondary-container)] bg-[var(--secondary-container)]'
+                  : 'font-medium text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent'
               }`}
           >
-            <NavIcon name="Settings" active={activeNav === 'settings'} size={19} />
-            <span>Settings</span>
+            <NavIcon name="Settings" active={activeNav === 'settings'} size={20} />
+            <span className="truncate">Settings</span>
           </button>
 
-          {/* Bottom Controls: Theme & Account */}
-          <div className="mt-auto pt-4 border-t border-[var(--border)] flex flex-col gap-1.5">
-            <div className="flex items-center justify-between px-3 py-1.5">
-              <div className="flex items-center gap-2.5 text-[13px] text-[var(--text-muted)]">
-                {dark ? <Sun size={16} /> : <Moon size={16} />}
-                <span>Dark Mode</span>
-              </div>
-              <ToggleSwitch
-                checked={Boolean(dark)}
-                onChange={() => onToggleDark()}
-                ariaLabel="Toggle dark mode"
-              />
-            </div>
-
-            {(user || isDemo) && (
-              <div className="relative" ref={menuRef}>
-                {menuOpen && (
-                  <div className="absolute bottom-full left-0 right-0 mb-2 rounded-[var(--radius-sm)] bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-lg)] p-1.5 z-50 fade-in">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onNav('settings')
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 min-h-[36px] rounded-lg text-xs font-semibold text-[var(--text)] bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-left transition-colors"
-                    >
-                      <Settings size={14} className="text-[var(--text-muted)]" />
-                      <span>Profile & Settings</span>
-                    </button>
-
-                    {(onSignOut || (isDemo && onExitDemo)) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpen(false)
-                          if (isDemo && onExitDemo) onExitDemo()
-                          else if (onSignOut) onSignOut()
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 min-h-[36px] rounded-lg text-xs font-semibold text-[var(--red-ink)] bg-transparent hover:bg-[var(--red-light)] border-none cursor-pointer text-left transition-colors"
-                      >
-                        {isDemo ? <LogIn size={14} /> : <LogOut size={14} />}
-                        <span>{isDemo ? 'Sign In / Exit Demo' : 'Log Out'}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen(o => !o)}
-                  className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--radius-sm)] bg-transparent hover:bg-[var(--bg-surface)] border-none cursor-pointer text-left transition-colors"
+          {isDemo && onExitDemo && (
+            <div className="mt-auto pt-3 px-1">
+              <div className="p-3.5 rounded-2xl bg-[var(--md-surface-container)] border border-[var(--border)] space-y-2.5">
+                <div className="text-xs font-medium text-[var(--text)]">
+                  Previewing as guest
+                </div>
+                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                  Sign in with your UCSC account to sync clubs, tasks, and calendars.
+                </p>
+                <Button
+                  variant="tonal"
+                  size="sm"
+                  icon={<LogIn size={14} />}
+                  onClick={onExitDemo}
+                  className="w-full"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar initials={initials} bg={avatarGradient} size={32} />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-[var(--text)] truncate">
-                        {displayName}
-                      </div>
-                      <div className="text-[11px] text-[var(--text-muted)] truncate">
-                        {subline}
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronUp
-                    size={15}
-                    className={`text-[var(--text-muted)] shrink-0 transition-transform ${
-                      menuOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
+                  Sign in
+                </Button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </nav>
       </aside>
 
-      {/* ── Mobile Bottom Navigation Bar (< lg): 6 Core Destinations ── */}
+      {/* ── Mobile Material 3 Navigation Bar (< lg): 64x32px Active Icon Pill ── */}
       <nav
         aria-label="Mobile navigation"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--bg-sidebar)] border-t border-[var(--border)] select-none"
-        style={{
-          paddingBottom: 'max(0.45rem, env(safe-area-inset-bottom, 0px))',
-        }}
+        className="mobile-nav lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--md-surface-container)] border-t border-[var(--border)] select-none"
       >
-        <div className="px-1.5 pt-1.5 grid grid-cols-6 gap-0.5">
+        <div className="grid grid-cols-6 items-center gap-0.5">
           {navItems.map(item => {
             const isActive = activeNav === item.id
             const mobileLabel = MOBILE_NAV_LABELS[item.id] || item.label
@@ -225,18 +102,24 @@ export default function Sidebar({
               <button
                 key={item.id}
                 type="button"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={() => onNav(item.id)}
-                className={`flex flex-col items-center justify-center gap-0.5 min-h-[46px] py-1 px-0.5 rounded-xl
-                  border-none cursor-pointer min-w-0 transition-colors ${
-                    isActive
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
-                      : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
+                className="flex flex-col items-center justify-center gap-0.5 min-h-[52px] py-0.5 rounded-xl bg-transparent border-none cursor-pointer min-w-0 group"
               >
-                <NavIcon name={item.icon} active={isActive} size={18} />
                 <span
-                  className={`text-[10.5px] sm:text-[11px] leading-tight truncate max-w-full ${
-                    isActive ? 'font-bold' : 'font-medium'
+                  className={`md-state-layer w-[min(100%,48px)] sm:w-16 h-7 rounded-full flex items-center justify-center transition-colors duration-150 ${
+                    isActive
+                      ? 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)]'
+                      : 'bg-transparent text-[var(--text-muted)] group-hover:text-[var(--text)]'
+                  }`}
+                >
+                  <NavIcon name={item.icon} active={isActive} size={19} />
+                </span>
+                <span
+                  className={`text-[11px] leading-tight max-w-full ${
+                    isActive
+                      ? 'font-medium text-[var(--text)]'
+                      : 'font-normal text-[var(--text-muted)]'
                   }`}
                 >
                   <span className="sm:hidden">{mobileLabel}</span>

@@ -464,27 +464,7 @@ export function PlatformIcon({ type, size = 18 }) {
   )
 }
 
-// ── 4. Club & Organization Emblem (Discord Clyde Mark) ──────────────
-
-export function ClubEmblemSvg({ size = 22 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
-      <path
-        d="M18.9 5.4A15.8 15.8 0 0 0 14.95 4.15L14.45 5.15A14.2 14.2 0 0 0 9.55 5.15L9.05 4.15A15.8 15.8 0 0 0 5.1 5.4C2.65 9.1 2 12.7 2.3 16.25A16 16 0 0 0 7.15 18.75L8.15 17.35C7.35 17.05 6.6 16.65 5.95 16.15C6.15 16.3 6.35 16.4 6.55 16.5C9.95 18.05 14.05 18.05 17.45 16.5C17.65 16.4 17.85 16.3 18.05 16.15C17.4 16.65 16.65 17.05 15.85 17.35L16.85 18.75A16 16 0 0 0 21.7 16.25C22.05 12.15 21.05 8.55 18.9 5.4Z"
-        fill="white"
-        fillOpacity="0.22"
-        stroke="white"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.1" cy="11.8" r="1.45" fill="white" />
-      <circle cx="14.9" cy="11.8" r="1.45" fill="white" />
-    </svg>
-  )
-}
-
-// ── 5. Schedule & Announcement Duotone Event/Alert Icons ─────────────
+// ── 4. Schedule & Announcement Duotone Event/Alert Icons ─────────────
 
 export function ScheduleEventIcon({ size = 16 }) {
   return (

@@ -1,4 +1,5 @@
-import { Shield, Users, Layers, Check } from 'lucide-react'
+import { Shield, Users, Layers } from 'lucide-react'
+import { FilterChip } from './ui'
 import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts'
 
 export { resolveDeduplicatedTargets }
@@ -24,28 +25,26 @@ export default function LeadershipShortcutBar({
   const coreButtons = [
     {
       token: 'all_board',
-      title: 'Add All Board Members',
+      title: 'All Board Members',
       count: boardCount,
       icon: Shield,
-      accent: 'purple',
     },
     {
       token: 'everyone',
-      title: 'Add All Club Members',
+      title: 'All Club Members',
       count: everyoneCount,
       icon: Users,
-      accent: 'blue',
     },
   ]
 
   return (
     <div
-      className={`content-tile rounded-xl ${
+      className={`content-tile rounded-2xl ${
         compact ? 'p-3 space-y-2' : 'p-3.5 space-y-2.5'
       }`}
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+        <span className="text-xs font-medium text-[var(--text-muted)]">
           {label}
         </span>
         <span className="text-[11px] text-[var(--text-light)]">
@@ -57,47 +56,29 @@ export default function LeadershipShortcutBar({
         {coreButtons.map(btn => {
           const active = activeSet.has(btn.token)
           const IconComp = btn.icon
-          const isPurple = btn.accent === 'purple'
           return (
-            <button
+            <FilterChip
               key={btn.token}
-              type="button"
+              selected={active}
               onClick={() => onToggleShortcut(btn.token)}
-              className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
-                active
-                  ? isPurple
-                    ? 'bg-[var(--purple)] text-white border-[var(--purple)]'
-                    : 'bg-[var(--blue)] text-white border-[var(--blue)]'
-                  : isPurple
-                    ? 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--purple)]'
-                    : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--blue)]'
-              }`}
-            >
-              {active ? <Check size={12} /> : <IconComp size={12} />}
-              <span>{btn.title}</span>
-              <span className="opacity-75 font-mono-num">({btn.count})</span>
-            </button>
+              leadingIcon={<IconComp size={14} />}
+              label={`${btn.title} (${btn.count})`}
+            />
           )
         })}
 
         {groups.map(grp => {
           const token = `group:${grp.id}`
           const active = activeSet.has(token)
+          const count = grp.memberCount ?? grp.members?.length ?? 0
           return (
-            <button
+            <FilterChip
               key={token}
-              type="button"
+              selected={active}
               onClick={() => onToggleShortcut(token)}
-              className={`inline-flex items-center gap-1.5 px-3 min-h-[34px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
-                active
-                  ? 'bg-[var(--teal)] text-white border-[var(--teal)]'
-                  : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
-              }`}
-            >
-              {active ? <Check size={12} /> : <Layers size={12} />}
-              <span>Add Group: {grp.name}</span>
-              <span className="opacity-75 font-mono-num">({grp.memberCount ?? grp.members?.length ?? 0})</span>
-            </button>
+              leadingIcon={<Layers size={14} />}
+              label={`Group: ${grp.name} (${count})`}
+            />
           )
         })}
       </div>

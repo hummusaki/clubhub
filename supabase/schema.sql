@@ -250,6 +250,13 @@ create table if not exists public.tasks (
 alter table public.tasks add column if not exists due_time text not null default '';
 alter table public.tasks add column if not exists reminder_config jsonb not null default '{}'::jsonb;
 
+-- Safe in-place migration for tasks check constraints (supports personal to-do tasks on club servers)
+alter table public.tasks drop constraint if exists tasks_audience_check;
+alter table public.tasks add constraint tasks_audience_check check (audience in ('general', 'targeted', 'board', 'personal'));
+
+alter table public.tasks drop constraint if exists tasks_visibility_check;
+alter table public.tasks add constraint tasks_visibility_check check (visibility in ('members', 'board', 'personal'));
+
 create index if not exists idx_tasks_club_vis on public.tasks (club_id, visibility, status);
 
 drop trigger if exists trg_tasks_updated_at on public.tasks;

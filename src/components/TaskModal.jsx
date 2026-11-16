@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
+import Select from './Select'
+import { useState, useMemo } from 'react'
 import {
-  X,
   Check,
   CheckSquare,
   Calendar,
@@ -13,7 +13,7 @@ import {
   Shield,
   Users,
 } from 'lucide-react'
-import { Avatar, SectionHeader, cleanText } from './ui'
+import { Avatar, ModalDialog, cleanText, Button, FilterChip } from './ui'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import { DateInputField, TimePickerSelect } from './TimePickerSelect'
 import {
@@ -114,6 +114,7 @@ export default function TaskModal({
   sections = [],
   personalSections = [],
   personalOnly = false,
+  clubOnly = false,
   clubPeople = null,
   initialTask = null,
   defaultSectionId = '',
@@ -122,6 +123,7 @@ export default function TaskModal({
   accountEmail = '',
   timeFormat = '12h',
   busy = false,
+  saveBlocked = false,
   sendingReminder = false,
   onSaveIntegrationChannelPrefs,
   onSendReminderNow,
@@ -151,7 +153,7 @@ export default function TaskModal({
     if (initialTask?.sectionId) return initialTask.sectionId
     if (defaultSectionId) return defaultSectionId
     if (initialScope === 'personal') return personalSections[0]?.id || ''
-    return sections[0]?.id || personalSections[0]?.id || ''
+    return sections[0]?.id || ''
   })
   const [status, setStatus] = useState(initialTask?.status || 'not_started')
   const [priority, setPriority] = useState(initialTask?.priority || 'medium')
@@ -212,8 +214,9 @@ export default function TaskModal({
 
   const selectableSections = useMemo(() => {
     if (lockToPersonal || scopeMode === 'personal') return personalSections
+    if (clubOnly) return sections
     return [...sections, ...personalSections]
-  }, [lockToPersonal, scopeMode, sections, personalSections])
+  }, [lockToPersonal, clubOnly, scopeMode, sections, personalSections])
 
   const reminderFirePreview = useMemo(() => {
     if (!dueDate || !reminderEnabled) return ''
@@ -305,14 +308,6 @@ export default function TaskModal({
     }
   }
 
-  useEffect(() => {
-    const handleKey = e => {
-      if (e.key === 'Escape' && onClose) onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
-
   function toggleShortcut(token) {
     setSelectedShortcuts(prev => {
       const exists = prev.includes(token)
@@ -370,7 +365,7 @@ export default function TaskModal({
 
   function handleFormSubmit(e) {
     e.preventDefault()
-    if (!title.trim() || busy) return
+    if (!title.trim() || busy || saveBlocked) return
 
     const cleanWebhook = isValidDiscordWebhookUrl(customWebhook) ? customWebhook.trim() : ''
     const cleanEmail = String(customEmail || '').trim()
@@ -468,58 +463,22 @@ export default function TaskModal({
   const tomorrowStr = addDaysYmd(1)
   const nextWeekStr = addDaysYmd(7)
 
-  return (
-    <div
-      className="fixed inset-0 z-[110] modal-backdrop flex items-center justify-center p-3 sm:p-5"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={
-          isPersonalScope
-            ? isEditing
-              ? 'Edit Personal To-Do'
-              : 'Add Personal To-Do'
-            : isEditing
-              ? 'Edit Club Task'
-              : 'Create Club Task'
-        }
-        className="modal-panel w-full max-w-2xl p-5 sm:p-6 space-y-4 max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] overflow-y-auto fade-in"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="pb-3.5 border-b border-[var(--border)]">
-          <SectionHeader
-            icon={isPersonalScope ? <Lock size={17} /> : <CheckSquare size={18} />}
-            color={isPersonalScope ? 'green' : 'blue'}
-            title={
-              isPersonalScope
-                ? isEditing
-                  ? 'Edit Personal To-Do'
-                  : 'New Personal To-Do'
-                : isEditing
-                  ? 'Edit Club Task'
-                  : 'New Club Task'
-            }
-            subtitle={
-              isPersonalScope
-                ? `${cleanText(clubName)} · Visible only to you on this server`
-                : `${cleanText(clubName)} · Share with all members, sub-groups, or board officers`
-            }
-            action={
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close modal"
-                className="w-9 h-9 rounded-xl bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X size={16} />
-              </button>
-            }
-          />
-        </div>
+  const dialogTitle = isPersonalScope
+    ? (isEditing ? 'Edit personal task' : 'Add personal task')
+    : (isEditing ? 'Edit club task' : 'Create club task')
 
-        <form onSubmit={handleFormSubmit} className="space-y-4">
+  return (
+    <ModalDialog
+      title={dialogTitle}
+      onClose={onClose}
+      subtitle={isPersonalScope
+        ? `${cleanText(clubName)} · Visible only to you`
+        : `${cleanText(clubName)} · Choose who can see the task`}
+      icon={isPersonalScope ? <Lock size={17} /> : <CheckSquare size={18} />}
+      iconColor={isPersonalScope ? 'green' : 'blue'}
+      maxWidth="max-w-2xl"
+    >
+        <form onSubmit={handleFormSubmit} className="dense-controls space-y-3">
           {/* 1. Task Title */}
           <div>
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
@@ -528,7 +487,7 @@ export default function TaskModal({
             <input
               type="text"
               required
-              autoFocus
+              data-initial-focus
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={
@@ -554,7 +513,7 @@ export default function TaskModal({
                 Who is this task for?
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {scopeOptions.map(opt => {
+                {scopeOptions.filter(opt => !clubOnly || opt.id !== 'personal').map(opt => {
                   const IconComp = opt.icon
                   const active = scopeMode === opt.id
                   const isPersonalOpt = opt.id === 'personal'
@@ -562,6 +521,7 @@ export default function TaskModal({
                     <button
                       key={opt.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => handleScopeModeSelect(opt.id)}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
                         active
@@ -589,10 +549,11 @@ export default function TaskModal({
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 {isPersonalScope ? 'Personal List' : 'Board Section'}
               </label>
-              <select
+              <Select
+                aria-label="Task list or section"
                 value={sectionId}
-                onChange={e => {
-                  const sid = e.target.value
+                onValueChange={nextValue => {
+                  const sid = nextValue
                   setSectionId(sid)
                   const pSec = personalSections.find(s => s.id === sid)
                   if (pSec) {
@@ -604,54 +565,38 @@ export default function TaskModal({
                   else if (scopeMode === 'personal') setScopeMode('general')
                 }}
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {selectableSections.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {cleanText(s.title)}
-                    {s.visibility === 'personal'
-                      ? ' (Only You)'
-                      : s.visibility === 'board'
-                        ? ' (Board Only)'
-                        : ''}
-                  </option>
-                ))}
-              </select>
+                search="auto"
+                options={selectableSections.map(s => ({
+                  value: s.id,
+                  label: `${cleanText(s.title)}${s.visibility === 'personal' ? ' (Only You)' : s.visibility === 'board' ? ' (Board Only)' : ''}`,
+                }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Priority
               </label>
-              <select
+              <Select
                 value={priority}
-                onChange={e => setPriority(e.target.value)}
+                onValueChange={setPriority}
                 aria-label="Task priority"
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {Object.entries(TASK_PRIORITY_META).map(([k, meta]) => (
-                  <option key={k} value={k}>
-                    {meta.label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(TASK_PRIORITY_META).map(([k, meta]) => ({ value: k, label: meta.label }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Status
               </label>
-              <select
+              <Select
                 value={status}
-                onChange={e => setStatus(e.target.value)}
+                onValueChange={setStatus}
                 aria-label="Task status"
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {Object.entries(TASK_STATUS_META).map(([k, meta]) => (
-                  <option key={k} value={k}>
-                    {meta.label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(TASK_STATUS_META).map(([k, meta]) => ({ value: k, label: meta.label }))}
+              />
             </div>
           </div>
 
@@ -786,18 +731,13 @@ export default function TaskModal({
                       <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
                         When to remind
                       </label>
-                      <select
+                      <Select
                         value={reminderOffset}
-                        onChange={e => setReminderOffset(Number(e.target.value))}
+                        onValueChange={nextValue => setReminderOffset(Number(nextValue))}
                         aria-label="Reminder timing"
                         className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-                      >
-                        {REMINDER_OFFSET_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={REMINDER_OFFSET_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }))}
+                      />
                     </div>
 
                     <div>
@@ -851,9 +791,14 @@ export default function TaskModal({
                     </button>
 
                     {isEditing && onSendReminderNow && initialTask?.id && (
-                      <button
+                      <Button
                         type="button"
-                        disabled={sendingReminder || busy}
+                        disabled={busy}
+                        variant="outlined-neutral"
+                        size="sm"
+                        icon={<Send size={11} />}
+                        pending={sendingReminder}
+                        pendingLabel="Sending…"
                         onClick={() =>
                           onSendReminderNow({
                             ...initialTask,
@@ -870,11 +815,9 @@ export default function TaskModal({
                             },
                           })
                         }
-                        className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--blue-light)] text-[var(--text)] hover:text-[var(--blue-ink)] border border-[var(--border)] font-semibold cursor-pointer transition-colors disabled:opacity-50"
                       >
-                        <Send size={11} />
-                        <span>{sendingReminder ? 'Sending…' : 'Send reminder now'}</span>
-                      </button>
+                        Send reminder now
+                      </Button>
                     )}
                   </div>
 
@@ -897,7 +840,7 @@ export default function TaskModal({
                                 ? 'Using saved Discord webhook'
                                 : 'https://discord.com/api/webhooks/...'
                             }
-                            className="w-full min-h-[36px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[#5865F2]"
+                            className="w-full min-h-[36px] px-2.5 rounded-lg bg-[var(--bg-surface)] text-xs text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--md-primary)]"
                           />
                         </div>
                       )}
@@ -937,26 +880,20 @@ export default function TaskModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {groups.length > 0 && (
                 <div className="content-tile p-3.5 rounded-xl space-y-2.5">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
                     Sub-Groups ({selectedGroupIds.length} selected)
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-[148px] overflow-y-auto">
                     {groups.map(g => {
                       const active = selectedGroupIds.includes(g.id)
                       return (
-                        <button
+                        <FilterChip
                           key={g.id}
-                          type="button"
+                          selected={active}
                           onClick={() => toggleGroup(g.id)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 min-h-[32px] rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
-                            active
-                              ? 'bg-[var(--teal)] text-white border-[var(--teal)]'
-                              : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)] hover:border-[var(--teal)]'
-                          }`}
-                        >
-                          {active ? <Check size={11} /> : <Layers size={11} />}
-                          <span>{cleanText(g.name)}</span>
-                        </button>
+                          leadingIcon={<Layers size={11} />}
+                          label={cleanText(g.name)}
+                        />
                       )
                     })}
                   </div>
@@ -966,7 +903,7 @@ export default function TaskModal({
               {everyone.length > 0 && (
                 <div className="content-tile p-3.5 rounded-xl space-y-2.5 sm:col-span-1">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    <div className="text-xs font-medium text-[var(--text-muted)]">
                       People ({previewResolvedAssignees.length} assigned)
                     </div>
                   </div>
@@ -1032,31 +969,25 @@ export default function TaskModal({
           </div>
 
           <div className="flex flex-col-reverse xs:flex-row items-stretch xs:items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
-            <button
-              type="button"
+            <Button
+              variant="text"
               onClick={onClose}
-              className="px-4 min-h-[42px] rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-sm font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="filled"
               type="submit"
-              disabled={busy || !title.trim()}
-              className="px-5 min-h-[42px] rounded-xl bg-[var(--blue)] text-white text-sm font-semibold border-none cursor-pointer hover:opacity-90 disabled:opacity-50 transition-opacity"
+              disabled={saveBlocked || !title.trim()}
+              pending={busy}
+              pendingLabel="Saving…"
             >
-              {busy
-                ? 'Saving…'
-                : isEditing
-                  ? isPersonalScope
-                    ? 'Save Changes'
-                    : 'Save Task'
-                  : isPersonalScope
-                    ? 'Add To-Do'
-                    : 'Create Task'}
-            </button>
+              {isEditing
+                ? (isPersonalScope ? 'Save Changes' : 'Save Task')
+                : (isPersonalScope ? 'Add personal task' : 'Create club task')}
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalDialog>
   )
 }
