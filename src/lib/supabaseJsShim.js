@@ -352,7 +352,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
 
         return { data: parsed ?? (state.method === 'GET' ? [] : null), error: null }
       } catch (err) {
-        return { data: null, error: { message: err.message } }
+        return { data: null, error: { message: err.message, outcomeUnknown: state.method !== 'GET' } }
       }
     }
 

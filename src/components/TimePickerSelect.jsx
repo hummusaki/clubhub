@@ -1,3 +1,4 @@
+import Select, { useAnchoredPopup } from './Select'
 import { useState, useEffect, useMemo, useRef, useId } from 'react'
 import { Calendar, Clock, ChevronDown, Check, X } from 'lucide-react'
 import { normalizeTime24h, formatClockTime } from '../utils/taskReminders'
@@ -12,22 +13,6 @@ const HALF_HOUR_SLOTS_24H = (() => {
   slots.push('23:59')
   return slots
 })()
-
-const COMMON_MINUTES = [
-  '00',
-  '05',
-  '10',
-  '15',
-  '20',
-  '25',
-  '30',
-  '35',
-  '40',
-  '45',
-  '50',
-  '55',
-  '59',
-]
 
 function parseParts(hhmm, is24h) {
   const clean = normalizeTime24h(hhmm) || '17:00'
@@ -71,6 +56,8 @@ export function TimePickerSelect({
   const rootRef = useRef(null)
   const triggerRef = useRef(null)
   const listRef = useRef(null)
+  const popupRef = useRef(null)
+  useAnchoredPopup(open, rootRef, popupRef, { minWidth: 260 })
   const activeOptionRef = useRef(null)
   const optionsId = useId()
 
@@ -78,10 +65,7 @@ export function TimePickerSelect({
   const cleanVal = normalizeTime24h(value)
   const parts = useMemo(() => parseParts(cleanVal, is24h), [cleanVal, is24h])
 
-  const minuteChoices = useMemo(() => {
-    if (COMMON_MINUTES.includes(parts.minute)) return COMMON_MINUTES
-    return [...COMMON_MINUTES, parts.minute].sort()
-  }, [parts.minute])
+  const minuteChoices = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, '0'))
 
   useEffect(() => {
     if (!open) return undefined
@@ -159,7 +143,6 @@ export function TimePickerSelect({
         </button>
 
         <div className="flex items-center gap-1 shrink-0">
-          {cleanVal && (
             <button
               type="button"
               onClick={e => {
@@ -167,19 +150,22 @@ export function TimePickerSelect({
                 if (onChange) onChange('')
               }}
               aria-label="Clear due time"
+              aria-hidden={!cleanVal || undefined}
+              disabled={!cleanVal}
               title="Clear time (set to All day)"
-              className="ui-touch w-5 h-5 rounded-md bg-transparent hover:bg-[var(--bg-subtle)] text-[var(--text-light)] hover:text-[var(--text)] border-none flex items-center justify-center cursor-pointer"
+              className="ui-touch w-5 h-5 rounded-md bg-transparent hover:bg-[var(--bg-subtle)] text-[var(--text-light)] hover:text-[var(--text)] border-none flex items-center justify-center cursor-pointer disabled:invisible"
             >
               <X size={12} />
             </button>
-          )}
         </div>
       </div>
 
       {open && (
         <div
+          ref={popupRef}
           id={optionsId}
-          className="dense-controls mt-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-strong)] overflow-hidden fade-in"
+          popover="manual"
+          className="anchored-popup dense-controls rounded-xl bg-[var(--bg-card)] border border-[var(--border-strong)] shadow-[var(--shadow-md)]"
         >
           {/* 1. All-Day Option */}
           <div className="p-1.5 border-b border-[var(--border-subtle)]">
@@ -233,47 +219,35 @@ export function TimePickerSelect({
               <span className="text-[10.5px] font-semibold text-[var(--text-muted)] mr-0.5 shrink-0">
                 Exact:
               </span>
-              <select
+              <Select
                 aria-label="Hour"
                 value={parts.hour}
-                onChange={e => handlePartChange({ hour: e.target.value })}
-                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer"
-              >
-                {is24h
-                  ? Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
-                      <option key={h} value={h}>
-                        {h}
-                      </option>
-                    ))
-                  : [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => (
-                      <option key={h} value={String(h)}>
-                        {h}
-                      </option>
-                    ))}
-              </select>
+                onValueChange={nextValue => handlePartChange({ hour: nextValue })}
+                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
+                options={(is24h
+                  ? Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'))
+                  : ['12', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+                ).map(hour => ({ value: hour, label: hour }))}
+              />
               <span className="text-xs font-bold text-[var(--text-muted)]">:</span>
-              <select
+              <Select
                 aria-label="Minute"
                 value={parts.minute}
-                onChange={e => handlePartChange({ minute: e.target.value })}
-                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer"
-              >
-                {minuteChoices.map(m => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+                onValueChange={nextValue => handlePartChange({ minute: nextValue })}
+                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
+                options={minuteChoices.map(m => ({ value: m, label: String(m) }))}
+              />
               {!is24h && (
-                <select
+                <Select
                   aria-label="AM or PM"
                   value={parts.period}
-                  onChange={e => handlePartChange({ period: e.target.value })}
-                  className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer"
-                >
-                  <option value="AM">AM</option>
-                  <option value="PM">PM</option>
-                </select>
+                  onValueChange={nextValue => handlePartChange({ period: nextValue })}
+                  className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.75rem]"
+                  options={[
+                    { value: "AM", label: String("AM") },
+                    { value: "PM", label: String("PM") },
+                  ]}
+                />
               )}
             </div>
 

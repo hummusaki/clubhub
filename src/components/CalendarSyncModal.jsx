@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState } from 'react'
 import {
   Calendar,
@@ -258,12 +259,12 @@ export default function CalendarSyncModal({
                 <Button
                   variant="filled"
                   size="md"
-                  disabled={googleSyncBusy}
+                  pending={googleSyncBusy} pendingLabel="Syncing…"
                   leadingIcon={<RefreshCw size={14} className={googleSyncBusy ? 'animate-spin' : ''} />}
                   onClick={() => onConnectGoogleLive && onConnectGoogleLive()}
                   className="flex-1"
                 >
-                  {googleSyncBusy ? 'Syncing…' : 'Sync Google Calendar Now'}
+                  Sync Google Calendar Now
                 </Button>
                 <Button
                   variant="outlined-neutral"
@@ -278,12 +279,12 @@ export default function CalendarSyncModal({
               <Button
                 variant="filled"
                 size="md"
-                disabled={googleSyncBusy}
+                pending={googleSyncBusy} pendingLabel="Connecting…"
                 leadingIcon={<GoogleCalendarLogo size={16} />}
                 onClick={() => onConnectGoogleLive && onConnectGoogleLive()}
                 className="w-full"
               >
-                {googleSyncBusy ? 'Connecting…' : 'Connect Google Calendar (Auto-Sync)'}
+                Connect Google Calendar (Auto-Sync)
               </Button>
             ) : (
               <Button
@@ -573,34 +574,38 @@ export default function CalendarSyncModal({
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Default Calendar Alert
             </label>
-            <select
+            <Select
+              aria-label="Default event reminder"
               value={String(settings.reminderMinutes)}
-              onChange={e => onUpdateSyncSettings({ reminderMinutes: Number(e.target.value) })}
+              onValueChange={nextValue => onUpdateSyncSettings({ reminderMinutes: Number(nextValue) })}
               className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
-            >
-              <option value="0">None (No reminder alert)</option>
-              <option value="10">10 minutes before</option>
-              <option value="15">15 minutes before</option>
-              <option value="30">30 minutes before</option>
-              <option value="60">1 hour before</option>
-              <option value="1440">1 day before</option>
-            </select>
+              options={[
+                { value: "0", label: "None (No reminder alert)" },
+                { value: "10", label: "10 minutes before" },
+                { value: "15", label: "15 minutes before" },
+                { value: "30", label: "30 minutes before" },
+                { value: "60", label: "1 hour before" },
+                { value: "1440", label: "1 day before" },
+              ]}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
               Subscription Auto-Refresh
             </label>
-            <select
+            <Select
+              aria-label="Calendar refresh interval"
               value={settings.refreshInterval}
-              onChange={e => onUpdateSyncSettings({ refreshInterval: e.target.value })}
+              onValueChange={nextValue => onUpdateSyncSettings({ refreshInterval: nextValue })}
               className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--md-outline)] outline-none focus:border-[var(--blue)]"
-            >
-              <option value="PT15M">Every 15 minutes</option>
-              <option value="PT1H">Every hour (Recommended)</option>
-              <option value="PT6H">Every 6 hours</option>
-              <option value="P1D">Once daily</option>
-            </select>
+              options={[
+                { value: "PT15M", label: "Every 15 minutes" },
+                { value: "PT1H", label: "Every hour (Recommended)" },
+                { value: "PT6H", label: "Every 6 hours" },
+                { value: "P1D", label: "Once daily" },
+              ]}
+            />
           </div>
         </div>
 

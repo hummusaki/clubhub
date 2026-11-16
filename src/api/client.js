@@ -161,12 +161,18 @@ export async function fetchActionJSON(path, options = {}) {
   const activeBase = await resolveActiveApiBase();
   if (!activeBase) return { ok: false, offline: true, error: 'Backend API server is not reachable.' };
 
+  const writes = !['GET', 'HEAD'].includes(String(options.method || 'GET').toUpperCase());
+  const taskWrite = writes && /^\/workspace\/clubs\/[^/]+\/task(?:s|-sections)(?:\/|$)/.test(path);
   try {
     const res = await fetch(`${activeBase}${path}`, {
       ...options,
       headers: buildAuthHeaders(options.headers),
     });
-    const body = await res.json().catch(() => ({}));
+    let body = await res.json().catch(() => null);
+    if (res.ok && body === null && taskWrite && res.status !== 204) {
+      return { ok: false, outcomeUnknown: true, error: 'The server response was incomplete.' };
+    }
+    body ??= {};
     if (!res.ok) {
       return {
         ok: false,
@@ -179,13 +185,13 @@ export async function fetchActionJSON(path, options = {}) {
     return { ok: true, offline: false, data: body, ...body };
   } catch (err) {
     if (err?.name === 'AbortError') {
-      return { ok: false, aborted: true, error: 'Request aborted' };
+      return { ok: false, aborted: true, outcomeUnknown: writes, error: 'Request aborted' };
     }
-    if (!EXPLICIT_API_BASE && isLocalhostHost()) {
+    if (!taskWrite && !EXPLICIT_API_BASE && isLocalhostHost()) {
       apiAvailabilityState = 'disabled';
       localRetryAfter = Date.now() + 15_000;
     }
-    return { ok: false, offline: true, error: err.message || 'Network request failed' };
+    return { ok: false, offline: true, outcomeUnknown: writes, error: err.message || 'Network request failed' };
   }
 }
 

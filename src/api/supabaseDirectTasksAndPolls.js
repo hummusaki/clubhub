@@ -204,6 +204,11 @@ export async function handleDirectTasksAction(path, options = {}) {
   const profile = await getDirectUserProfile()
   if (!profile) return { ok: false, status: 401, error: 'Sign in required.' }
 
+  async function readAfterWrite() {
+    const board = await buildDirectTasksBoard(sb, cid)
+    return board?.ok ? board : { ok: false, outcomeUnknown: true, error: board?.error }
+  }
+
   if (method === 'POST' && !tid) {
     const cp = await buildDirectClubPeople(cid)
     if (!cp.permission.isMember && !cp.permission.isBoard) {
@@ -242,7 +247,7 @@ export async function handleDirectTasksAction(path, options = {}) {
         created_by: profile.id,
       }
       let { error } = await sb.from('tasks').insert(insertRow)
-      if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+      if (error && !error.outcomeUnknown && !(error.status >= 500) && /(due_time|reminder_config)/i.test(error.message || '')) {
         const { due_time: _dt, reminder_config: _rc, ...legacyRow } = insertRow
         ;({ error } = await sb.from('tasks').insert(legacyRow))
       }
@@ -256,9 +261,11 @@ export async function handleDirectTasksAction(path, options = {}) {
               'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
           }
         }
-        return { ok: false, status: 403, error: error.message }
+        return error.outcomeUnknown || error.status >= 500
+          ? { ok: false, outcomeUnknown: true, error: error.message }
+          : { ok: false, status: error.status === 401 ? 401 : 403, error: error.message }
       }
-      return buildDirectTasksBoard(sb, cid)
+      return readAfterWrite()
     }
 
     if (!cp.permission.isBoard) {
@@ -299,7 +306,7 @@ export async function handleDirectTasksAction(path, options = {}) {
       created_by: profile.id,
     }
     let { error } = await sb.from('tasks').insert(sharedInsertRow)
-    if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+    if (error && !error.outcomeUnknown && !(error.status >= 500) && /(due_time|reminder_config)/i.test(error.message || '')) {
       const { due_time: _dt, reminder_config: _rc, ...legacyRow } = sharedInsertRow
       ;({ error } = await sb.from('tasks').insert(legacyRow))
     }
@@ -313,9 +320,11 @@ export async function handleDirectTasksAction(path, options = {}) {
             'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
         }
       }
-      return { ok: false, status: 403, error: error.message }
+      return error.outcomeUnknown || error.status >= 500
+          ? { ok: false, outcomeUnknown: true, error: error.message }
+          : { ok: false, status: error.status === 401 ? 401 : 403, error: error.message }
     }
-    return buildDirectTasksBoard(sb, cid)
+    return readAfterWrite()
   }
 
   if (method === 'PATCH' && tid) {
@@ -356,7 +365,7 @@ export async function handleDirectTasksAction(path, options = {}) {
       }
     }
     let { error } = await sb.from('tasks').update(patch).eq('id', tid)
-    if (error && /(due_time|reminder_config)/i.test(error.message || '')) {
+    if (error && !error.outcomeUnknown && !(error.status >= 500) && /(due_time|reminder_config)/i.test(error.message || '')) {
       const { due_time: _dt, reminder_config: _rc, ...legacyPatch } = patch
       if (Object.keys(legacyPatch).length > 0) {
         ;({ error } = await sb.from('tasks').update(legacyPatch).eq('id', tid))
@@ -374,9 +383,11 @@ export async function handleDirectTasksAction(path, options = {}) {
             'Database check constraint "tasks_audience_check" violated. Your Supabase schema needs the personal tasks constraint update (see supabase/schema.sql).',
         }
       }
-      return { ok: false, status: 403, error: error.message }
+      return error.outcomeUnknown || error.status >= 500
+          ? { ok: false, outcomeUnknown: true, error: error.message }
+          : { ok: false, status: error.status === 401 ? 401 : 403, error: error.message }
     }
-    return buildDirectTasksBoard(sb, cid)
+    return readAfterWrite()
   }
 
   if (method === 'DELETE' && tid) {
@@ -389,8 +400,10 @@ export async function handleDirectTasksAction(path, options = {}) {
       }
     }
     const { error } = await sb.from('tasks').delete().eq('id', tid)
-    if (error) return { ok: false, status: 403, error: error.message }
-    return buildDirectTasksBoard(sb, cid)
+    if (error) return error.outcomeUnknown || error.status >= 500
+          ? { ok: false, outcomeUnknown: true, error: error.message }
+          : { ok: false, status: error.status === 401 ? 401 : 403, error: error.message }
+    return readAfterWrite()
   }
 
   return null

@@ -3,6 +3,7 @@ import { ExternalLink, ArrowRight } from 'lucide-react'
 import { Card, BubbleTag, IconBadge, Button, cleanText } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
 import { filterAndRankBySearch } from '../utils/search'
+import { announcementKey, announcementPermalink } from '../utils/announcementLinks'
 
 export default function Announcements({
   items,
@@ -10,6 +11,7 @@ export default function Announcements({
   userSettings = {},
   searchQuery = '',
   onNav,
+  onOpenAnnouncement,
 }) {
   const base = useMemo(
     () => (joinedCount > 0 && Array.isArray(items) ? items : []),
@@ -65,10 +67,11 @@ export default function Announcements({
               const isDiscord = item.source === 'discord'
               const isStory = item.source === 'instagram_story'
               const isEmail = item.source === 'email'
+              const permalink = announcementPermalink(item)
 
               return (
                 <div
-                  key={item.id}
+                  key={announcementKey(item)}
                   className={`content-tile rounded-[var(--radius-sm)] flex items-start ${
                     isCompact ? 'p-2 gap-2' : 'px-2.5 py-2 gap-2.5'
                   }`}
@@ -96,9 +99,9 @@ export default function Announcements({
                       <span className="text-xs text-[var(--text-muted)]">{item.time}</span>
                     </div>
 
-                    {item.permalink ? (
+                    {permalink ? (
                       <a
-                        href={item.permalink}
+                        href={permalink}
                         target="_blank"
                         rel="noreferrer"
                         className={`inline-flex items-center gap-1 ${
@@ -108,10 +111,10 @@ export default function Announcements({
                         <span>{cleanText(item.title)}</span>
                         <ExternalLink size={12} className="shrink-0 opacity-60" />
                       </a>
-                    ) : item.navTarget && onNav ? (
+                    ) : onOpenAnnouncement ? (
                       <button
                         type="button"
-                        onClick={() => onNav(item.navTarget)}
+                        onClick={() => onOpenAnnouncement(item)}
                         className={`text-left ${
                           isCompact ? 'text-[13px]' : 'text-sm'
                         } font-medium text-[var(--text)] hover:text-[var(--blue)] bg-transparent border-none p-0 cursor-pointer`}

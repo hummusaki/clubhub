@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
+import Select from './Select'
+import SearchDestination from './SearchDestination'
+import { useState, useMemo, useEffect, useId } from 'react'
 import {
   MapPin,
   Clock,
@@ -15,7 +17,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { Card, BubbleTag, IconBadge, Button, IconButton, PageToolbar, SegmentedControl, cleanText } from './ui'
+import { Card, BubbleTag, IconBadge, Button, IconButton, PageToolbar, SearchBox, SegmentedControl, cleanText } from './ui'
 import { ScheduleEventIcon } from './icons'
 import CalendarSyncModal from './CalendarSyncModal'
 import {
@@ -91,6 +93,9 @@ export default function CalendarView({
   calendarIntegration = null,
   onPageContextChange,
   searchQuery = '',
+  onSearchChange,
+  searchTarget,
+  onDismissSearchTarget,
   compact = false,
   onOpenCalendar,
   onBrowseClubs,
@@ -100,6 +105,7 @@ export default function CalendarView({
   onToggleRsvp,
   onNotify,
 }) {
+  const eventFieldId = useId()
   const use24h = userSettings?.timeFormat === '24h'
   const weekStartsOn = userSettings?.weekStartsOn === 'monday' ? 'monday' : 'sunday'
   const isCompactDensity = Boolean(userSettings?.compactCards)
@@ -718,6 +724,9 @@ export default function CalendarView({
     day: 'numeric',
   })
 
+  const selectedSearchEvent = searchTarget?.type === 'event'
+    ? enrichedEvents.find(event => String(event.id) === searchTarget.id) : null
+
   const calendarViews = [
     { value: 'month', label: 'Month' },
     { value: 'week', label: 'Week' },
@@ -725,7 +734,7 @@ export default function CalendarView({
   ]
 
   return (
-    <div className="page-stack">
+    <div className={`page-stack ${viewMode === 'week' ? 'calendar-week-page' : ''}`}>
       <PageToolbar title="Calendar" actions={
         <>
           {syncStatus}
@@ -733,6 +742,7 @@ export default function CalendarView({
           {hasJoinedClubs && onAddEvent && (
             <Button size="sm" icon={showAddForm ? <X size={15} /> : <Plus size={15} />}
               variant={showAddForm ? 'outlined-neutral' : 'filled'}
+              reserveLabels={['Add event', 'Close event form']}
               aria-expanded={showAddForm} aria-controls="calendar-add-event"
               onClick={() => setShowAddForm(prev => !prev)}>
               {showAddForm ? 'Close event form' : 'Add event'}
@@ -741,12 +751,23 @@ export default function CalendarView({
         </>
       } />
 
+      {selectedSearchEvent && (
+        <SearchDestination key={searchTarget.revision} heading={cleanText(selectedSearchEvent.event || selectedSearchEvent.title)} onDismiss={onDismissSearchTarget}>
+          {renderEventRow(selectedSearchEvent, true)}
+        </SearchDestination>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {onSearchChange && <div className="w-full sm:w-56 min-w-0">
+          <SearchBox placeholder="Filter this calendar" value={searchQuery} onChange={onSearchChange} />
+        </div>}
         <div className="flex flex-wrap items-center gap-2">
-          <select className="ui-touch sm:hidden control-select" value={viewMode}
-            aria-label="Calendar view" onChange={e => selectView(e.target.value)}>
-            {calendarViews.map(view => <option key={view.value} value={view.value}>{view.label}</option>)}
-          </select>
+          <Select
+            className="ui-touch sm:hidden control-select [--select-width:7rem]"
+            value={viewMode}
+            aria-label="Calendar view"
+            onValueChange={selectView}
+            options={calendarViews.map(view => ({ value: view.value, label: view.label }))}
+          />
           <SegmentedControl className="!hidden sm:!inline-flex" size="sm" options={calendarViews}
             value={viewMode} onChange={selectView} ariaLabel="Calendar view" />
           {hasJoinedClubs && onUpdateSettings && (
@@ -757,12 +778,17 @@ export default function CalendarView({
             </Button>
           )}
           {viewMode === 'agenda' && (
-            <select className="ui-touch control-select" value={agendaFilter}
-              aria-label="Agenda date range" onChange={e => setAgendaFilter(e.target.value)}>
-              <option value="upcoming">Upcoming ({agendaCounts.upcoming})</option>
-              <option value="past">Past ({agendaCounts.past})</option>
-              <option value="all">All events ({agendaCounts.all})</option>
-            </select>
+            <Select
+              className="ui-touch control-select [--select-width:10rem]"
+              value={agendaFilter}
+              aria-label="Agenda date range"
+              onValueChange={setAgendaFilter}
+              options={[
+                { value: "upcoming", label: `Upcoming (${agendaCounts.upcoming})` },
+                { value: "past", label: `Past (${agendaCounts.past})` },
+                { value: "all", label: `All events (${agendaCounts.all})` },
+              ]}
+            />
           )}
         </div>
         {viewMode !== 'agenda' && (
@@ -848,74 +874,76 @@ export default function CalendarView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+              <label htmlFor={`${eventFieldId}-title`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Event Title
               </label>
               <input
+                id={`${eventFieldId}-title`}
                 type="text"
                 required
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
                 placeholder="e.g. Intro to Web Dev Workshop"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="calendar-event-field"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+              <label htmlFor={`${eventFieldId}-club`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Club
               </label>
-              <select
+              <Select
+                id={`${eventFieldId}-club`}
                 value={eventClubId}
-                onChange={e => setEventClubId(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {memberClubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setEventClubId}
+                className="calendar-event-field"
+                fullWidth
+                search
+                options={memberClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                <label htmlFor={`${eventFieldId}-date`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                   Date
                 </label>
                 <input
                   type="date"
+                  id={`${eventFieldId}-date`}
                   required
                   value={eventDate}
                   onChange={e => setEventDate(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="calendar-event-field"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+                <label htmlFor={`${eventFieldId}-time`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                   Start Time
                 </label>
                 <input
                   type="time"
+                  id={`${eventFieldId}-time`}
                   required
                   value={eventTime}
                   onChange={e => setEventTime(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                  className="calendar-event-field"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
+              <label htmlFor={`${eventFieldId}-location`} className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Location
               </label>
               <input
                 type="text"
+                id={`${eventFieldId}-location`}
                 value={eventLocation}
                 onChange={e => setEventLocation(e.target.value)}
                 placeholder="e.g. Baskin Engineering 152 or Zoom"
-                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                className="calendar-event-field"
               />
             </div>
           </div>
@@ -924,8 +952,8 @@ export default function CalendarView({
             <Button variant="text" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="filled" disabled={savingEvent}>
-              {savingEvent ? 'Saving…' : 'Save event'}
+            <Button type="submit" variant="filled" pending={savingEvent} pendingLabel="Saving…">
+              Save event
             </Button>
           </div>
         </form>
@@ -977,7 +1005,7 @@ export default function CalendarView({
 
       {/* ── VIEW 2: WEEK VIEW (Mobile 7-day strip + cards; Desktop 7-col board) ── */}
       {viewMode === 'week' && (
-        <div>
+        <div className="calendar-week-view">
           {/* Mobile Day Strip (< md): fits 100% width with zero scrollbar */}
           <div className="grid grid-cols-7 gap-1 md:hidden mb-4">
             {weekDates.map(ymd => {
@@ -1068,7 +1096,7 @@ export default function CalendarView({
           </div>
 
           {/* Desktop 7-Column Week Board (md+) */}
-          <div className="hidden md:grid grid-cols-7 gap-2">
+          <div className="calendar-week-grid hidden md:grid grid-cols-7 gap-2">
             {weekDates.map(ymd => {
               const dt = parseYmdLocal(ymd)
               const dayName = dt.toLocaleDateString('en-US', { weekday: 'short' })
@@ -1146,8 +1174,8 @@ export default function CalendarView({
                       )
                     })
                   ) : (
-                    <div className="text-[11px] text-[var(--text-light)] text-center my-auto">
-                      Open
+                    <div className="text-xs text-[var(--text-muted)]">
+                      No events
                     </div>
                   )}
                 </div>

@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useEffect, useCallback } from 'react'
 import {
   Check,
@@ -1002,17 +1003,14 @@ export default function IntegrationsPanel({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Bot Destination Channel
                   </label>
-                  <select
+                  <Select
+                    aria-label="Discord bot channel"
                     value={selectedBotChannelId}
-                    onChange={e => setSelectedBotChannelId(e.target.value)}
+                    onValueChange={setSelectedBotChannelId}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    {botChannels.map(ch => (
-                      <option key={ch.id} value={ch.id}>
-                        #{ch.name} — {ch.guildName || ch.guildId}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={botChannels.map(ch => ({ value: ch.id, label: `#${ch.name} — ${ch.guildName || ch.guildId}` }))}
+                  />
                 </div>
               )}
 
@@ -1049,9 +1047,9 @@ export default function IntegrationsPanel({
                 size="md"
                 leadingIcon={<Send size={13} />}
                 onClick={handleSendDiscordTest}
-                disabled={busyAction === 'test_discord'}
+                pending={busyAction === 'test_discord'} pendingLabel="Sending…"
               >
-                {busyAction === 'test_discord' ? 'Sending…' : 'Send Test Embed'}
+                Send Test Embed
               </Button>
 
               <Button
@@ -1059,11 +1057,9 @@ export default function IntegrationsPanel({
                 size="md"
                 leadingIcon={<Calendar size={13} />}
                 onClick={handleSendDiscordDigest}
-                disabled={busyAction === 'digest_discord'}
+                pending={busyAction === 'digest_discord'} pendingLabel="Posting…"
               >
-                {busyAction === 'digest_discord'
-                  ? 'Posting…'
-                  : `Post Schedule Digest (${syncedEvents.length})`}
+                {`Post Schedule Digest (${syncedEvents.length})`}
               </Button>
             </div>
           </div>
@@ -1090,10 +1086,10 @@ export default function IntegrationsPanel({
                   />
                 }
                 onClick={handleSyncDiscordNow}
-                disabled={busyAction === 'sync_discord'}
+                pending={busyAction === 'sync_discord'} pendingLabel="Syncing…"
                 className="shrink-0"
               >
-                {busyAction === 'sync_discord' ? 'Syncing…' : 'Sync Discord Now'}
+                Sync Discord Now
               </Button>
             </div>
 
@@ -1101,34 +1097,31 @@ export default function IntegrationsPanel({
               onSubmit={handleConnectDiscordSource}
               className="grid grid-cols-1 sm:grid-cols-[1fr_1.3fr_auto] gap-2.5 pt-1"
             >
-              <select
+              <Select
+                aria-label="Discord source club"
                 value={discordSourceClubId}
-                onChange={e => setDiscordSourceClubId(e.target.value)}
+                onValueChange={setDiscordSourceClubId}
                 className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="all">Auto-detect Club (Aggregator Channel)</option>
-                {clubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="text"
-                value={discordSourceIdentifier}
-                onChange={e => setDiscordSourceIdentifier(e.target.value)}
-                placeholder="Channel ID or https://discord.com/channels/..."
-                list="clubhub-bot-channels"
-                className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
+                search
+                options={[
+                  { value: "all", label: "Auto-detect Club (Aggregator Channel)" },
+                  ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                ]}
               />
-              <datalist id="clubhub-bot-channels">
-                {botChannels.map(ch => (
-                  <option key={ch.id} value={ch.id}>
-                    #{ch.name} ({ch.guildName})
-                  </option>
-                ))}
-              </datalist>
+
+              <Select
+                aria-label="Discord channel identifier"
+                value={discordSourceIdentifier}
+                onValueChange={setDiscordSourceIdentifier}
+                placeholder="Channel ID or https://discord.com/channels/…"
+                freeText
+                className="w-full min-h-[42px] px-3.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)]"
+                options={botChannels.map(channel => ({
+                  value: channel.id,
+                  label: `#${channel.name} (${channel.guildName})`,
+                  searchText: channel.id,
+                }))}
+              />
 
               <button
                 type="submit"
@@ -1214,18 +1207,17 @@ export default function IntegrationsPanel({
                       <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Fallback Club for Unmatched Aggregator Posts
                       </label>
-                      <select
+                      <Select
+                        aria-label="Default Discord club"
                         value={defaultDiscordClubId}
-                        onChange={e => setDefaultDiscordClubId(e.target.value)}
+                        onValueChange={setDefaultDiscordClubId}
                         className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                      >
-                        <option value="">Require club match (@handle, Follow, or [Club Name])</option>
-                        {clubs.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {cleanText(c.name)}
-                          </option>
-                        ))}
-                      </select>
+                        search
+                        options={[
+                          { value: "", label: "Require club match (@handle, Follow, or [Club Name])" },
+                          ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                        ]}
+                      />
                     </div>
 
                     <div>
@@ -1265,10 +1257,10 @@ export default function IntegrationsPanel({
                       variant="filled"
                       size="md"
                       type="submit"
-                      disabled={busyAction === 'save_discord_cfg'}
+                      pending={busyAction === 'save_discord_cfg'} pendingLabel="Saving…"
                       className="w-full sm:w-auto shrink-0"
                     >
-                      {busyAction === 'save_discord_cfg' ? 'Saving…' : 'Save & Verify Bot'}
+                      Save &amp; Verify Bot
                     </Button>
                   </div>
                 </form>
@@ -1591,9 +1583,9 @@ export default function IntegrationsPanel({
                 size="md"
                 leadingIcon={<Send size={13} />}
                 onClick={handleSendEmailTest}
-                disabled={busyAction === 'test_email'}
+                pending={busyAction === 'test_email'} pendingLabel="Sending…"
               >
-                {busyAction === 'test_email' ? 'Sending…' : 'Send Test Email'}
+                Send Test Email
               </Button>
 
               <Button
@@ -1601,11 +1593,9 @@ export default function IntegrationsPanel({
                 size="md"
                 leadingIcon={<Sparkles size={13} />}
                 onClick={handleSendEmailDigest}
-                disabled={busyAction === 'digest_email'}
+                pending={busyAction === 'digest_email'} pendingLabel="Sending…"
               >
-                {busyAction === 'digest_email'
-                  ? 'Sending…'
-                  : `Email Schedule Digest + .ics (${syncedEvents.length})`}
+                {`Email Schedule Digest + .ics (${syncedEvents.length})`}
               </Button>
             </div>
           </div>
@@ -1633,10 +1623,10 @@ export default function IntegrationsPanel({
                   <RefreshCw size={13} className={busyAction === 'sync_email' ? 'animate-spin' : ''} />
                 }
                 onClick={handleSyncEmailNow}
-                disabled={busyAction === 'sync_email'}
+                pending={busyAction === 'sync_email'} pendingLabel="Syncing…"
                 className="shrink-0"
               >
-                {busyAction === 'sync_email' ? 'Syncing…' : 'Sync Email Inbox Now'}
+                Sync Email Inbox Now
               </Button>
             </div>
 
@@ -1644,17 +1634,14 @@ export default function IntegrationsPanel({
               onSubmit={handleConnectEmailSource}
               className="grid grid-cols-1 sm:grid-cols-[1fr_1.2fr_auto] gap-2.5 pt-1"
             >
-              <select
+              <Select
+                aria-label="Email source club"
                 value={emailSourceClubId}
-                onChange={e => setEmailSourceClubId(e.target.value)}
+                onValueChange={setEmailSourceClubId}
                 className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {clubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
+                search
+                options={clubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
 
               <input
                 type="email"
@@ -1722,15 +1709,17 @@ export default function IntegrationsPanel({
                       <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                         Outbound Transport Mode
                       </label>
-                      <select
+                      <Select
+                        aria-label="Email provider"
                         value={emailProvider}
-                        onChange={e => setEmailProvider(e.target.value)}
+                        onValueChange={setEmailProvider}
                         className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                      >
-                        <option value="auto">Auto (Resend API or Gmail/SMTP)</option>
-                        <option value="smtp">Gmail / UCSC / Standard SMTP + IMAP</option>
-                        <option value="resend">Resend HTTP API</option>
-                      </select>
+                        options={[
+                          { value: "auto", label: "Auto (Resend API or Gmail/SMTP)" },
+                          { value: "smtp", label: "Gmail / UCSC / Standard SMTP + IMAP" },
+                          { value: "resend", label: "Resend HTTP API" },
+                        ]}
+                      />
                     </div>
 
                     <div>

@@ -112,16 +112,22 @@ function isMissingBackendEndpoint(res) {
 const AUTH_SKIP_PATHS = new Set(['/auth/sync-external', '/auth/session', '/auth/logout'])
 
 async function workspaceRequest(path, options = {}) {
+  const cancelled = () => options.signal?.aborted
+  const aborted = { ok: false, aborted: true }
+  if (cancelled()) return aborted
   const skipAuthBootstrap = AUTH_SKIP_PATHS.has(path)
   if (!skipAuthBootstrap) {
     await ensureWorkspaceAuthReady()
   }
 
+  if (cancelled()) return aborted
   let res = await fetchActionJSON(`/workspace${path}`, options)
+  if (cancelled()) return aborted
 
   // Transparently refresh stale in-memory Express sessions (`ch_sess_...`) after server restarts
   if (!res.ok && res.status === 401 && !skipAuthBootstrap) {
     const refreshed = await ensureWorkspaceAuthReady(null, { forceRefresh: true })
+    if (cancelled()) return aborted
     if (refreshed) {
       res = await fetchActionJSON(`/workspace${path}`, options)
     } else {
@@ -130,7 +136,11 @@ async function workspaceRequest(path, options = {}) {
     }
   }
 
-  // Serverless GitHub Pages / standalone fallback: talk directly to Supabase Cloud!
+  if (cancelled()) return aborted
+  // A task write may have committed before a connection failure. Only use the
+  // direct fallback when no backend request was sent or the endpoint was absent.
+  const ambiguousTaskWrite = res.outcomeUnknown && /^\/clubs\/[^/]+\/task(?:s|-sections)(?:\/|$)/.test(path)
+  if (ambiguousTaskWrite) return res
   if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
     const directRes =
       (await handleDirectTasksAction(path, options)) ||
@@ -144,6 +154,7 @@ async function workspaceRequest(path, options = {}) {
     }
   }
 
+  if (cancelled()) return aborted
   if (!res.ok && !skipAuthBootstrap) {
     const reqMethod = String(options?.method || 'GET').toUpperCase()
     if (res.status === 403 && res.code !== 'NOT_CLUB_MEMBER') {
@@ -281,8 +292,8 @@ export async function logoutWorkspaceSession() {
 
 // ── 2. Club Membership, Roster Claiming & Board Claim Review ──
 
-export const joinWorkspaceClub = clubId =>
-  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/join`, { method: 'POST' })
+export const joinWorkspaceClub = (clubId, signal) =>
+  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/join`, { method: 'POST', signal })
 
 export const leaveWorkspaceClub = clubId =>
   workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/leave`, { method: 'POST' })
@@ -293,8 +304,8 @@ export const syncWorkspaceMemberships = clubIds =>
     body: JSON.stringify({ clubIds }),
   })
 
-export const getClubPeopleAndGroups = clubId =>
-  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/people`)
+export const getClubPeopleAndGroups = (clubId, signal) =>
+  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/people`, { signal })
 
 export const claimClubRosterPosition = (clubId, payload) =>
   workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/claims`, {
@@ -361,48 +372,52 @@ export const createClubAnnouncement = (clubId, payload) =>
 
 // ── 5. Two-Tier Monday.com Club Task Board ──
 
-export const getClubTasksBoard = clubId =>
-  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/tasks`)
+export const getClubTasksBoard = (clubId, signal) =>
+  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/tasks`, { signal })
 
-export const createClubTaskSection = (clubId, payload) =>
+export const createClubTaskSection = (clubId, payload, signal) =>
   workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/task-sections`, {
     method: 'POST',
     body: JSON.stringify(payload),
+    signal,
   })
 
-export const deleteClubTaskSection = (clubId, sectionId) =>
+export const deleteClubTaskSection = (clubId, sectionId, signal) =>
   workspaceRequest(
     `/clubs/${encodeURIComponent(clubId)}/task-sections/${encodeURIComponent(sectionId)}`,
-    { method: 'DELETE' }
+    { method: 'DELETE', signal }
   )
 
-export const createClubTask = (clubId, payload) =>
+export const createClubTask = (clubId, payload, signal) =>
   workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/tasks`, {
     method: 'POST',
     body: JSON.stringify(payload),
+    signal,
   })
 
-export const updateClubTask = (clubId, taskId, payload) =>
+export const updateClubTask = (clubId, taskId, payload, signal) =>
   workspaceRequest(
     `/clubs/${encodeURIComponent(clubId)}/tasks/${encodeURIComponent(taskId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(payload),
+      signal,
     }
   )
 
-export const deleteClubTask = (clubId, taskId) =>
+export const deleteClubTask = (clubId, taskId, signal) =>
   workspaceRequest(
     `/clubs/${encodeURIComponent(clubId)}/tasks/${encodeURIComponent(taskId)}`,
-    { method: 'DELETE' }
+    { method: 'DELETE', signal }
   )
 
-export const sendClubTaskReminder = (clubId, taskId, payload = {}) =>
+export const sendClubTaskReminder = (clubId, taskId, payload = {}, signal) =>
   workspaceRequest(
     `/clubs/${encodeURIComponent(clubId)}/tasks/${encodeURIComponent(taskId)}/remind`,
     {
       method: 'POST',
       body: JSON.stringify(payload),
+      signal,
     }
   )
 

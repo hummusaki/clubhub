@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useEffect } from 'react'
 import {
   User,
@@ -398,60 +399,67 @@ export default function SettingsView({
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Time Format
               </label>
-              <select
+              <Select
+                aria-label="Time format"
                 value={userSettings?.timeFormat || '12h'}
-                onChange={e => onUpdateSettings({ timeFormat: e.target.value })}
+                onValueChange={nextValue => onUpdateSettings({ timeFormat: nextValue })}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="12h">12-hour (2:30 PM)</option>
-                <option value="24h">24-hour (14:30)</option>
-              </select>
+                options={[
+                  { value: "12h", label: "12-hour (2:30 PM)" },
+                  { value: "24h", label: "24-hour (14:30)" },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Week Starts On
               </label>
-              <select
+              <Select
+                aria-label="First day of week"
                 value={userSettings?.weekStartsOn || 'monday'}
-                onChange={e => onUpdateSettings({ weekStartsOn: e.target.value })}
+                onValueChange={nextValue => onUpdateSettings({ weekStartsOn: nextValue })}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="monday">Monday</option>
-                <option value="sunday">Sunday</option>
-              </select>
+                options={[
+                  { value: "monday", label: "Monday" },
+                  { value: "sunday", label: "Sunday" },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Default Calendar View
               </label>
-              <select
+              <Select
                 aria-label="Default calendar view"
                 value={userSettings?.defaultCalendarView || ''}
-                onChange={e => onUpdateSettings({ defaultCalendarView: e.target.value })}
+                onValueChange={nextValue => onUpdateSettings({ defaultCalendarView: nextValue })}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="">Automatic (agenda on phones, month elsewhere)</option>
-                <option value="month">Full Calendar (Month Grid)</option>
-                <option value="week">Week Board</option>
-                <option value="agenda">Agenda List</option>
-              </select>
+                options={[
+                  { value: "", label: "Automatic (agenda on phones, month elsewhere)" },
+                  { value: "month", label: "Full Calendar (Month Grid)" },
+                  { value: "week", label: "Week Board" },
+                  { value: "agenda", label: "Agenda List" },
+                ]}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Availability Poll Hours
               </label>
-              <select
+              <Select
+                aria-label="Availability hours"
                 value={userSettings?.availabilityHours || '9-19'}
-                onChange={e => onUpdateSettings({ availabilityHours: e.target.value })}
+                onValueChange={nextValue => onUpdateSettings({ availabilityHours: nextValue })}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="9-17">Workday (9:00 AM – 5:00 PM)</option>
-                <option value="9-19">Standard (9:00 AM – 7:00 PM)</option>
-                <option value="8-21">Extended (8:00 AM – 9:00 PM)</option>
-              </select>
+                options={[
+                  { value: "9-17", label: "Workday (9:00 AM – 5:00 PM)" },
+                  { value: "9-19", label: "Standard (9:00 AM – 7:00 PM)" },
+                  { value: "8-21", label: "Extended (8:00 AM – 9:00 PM)" },
+                ]}
+              />
             </div>
           </div>
         </Card>

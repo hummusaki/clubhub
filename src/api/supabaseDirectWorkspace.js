@@ -629,7 +629,8 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
         if (error) return { ok: false, status: 400, error: error.message }
       } else {
         await sb.from('group_members').delete().eq('club_id', cid).eq('user_id', profile.id)
-        await sb.from('club_members').delete().eq('club_id', cid).eq('user_id', profile.id)
+        const { error } = await sb.from('club_members').delete().eq('club_id', cid).eq('user_id', profile.id)
+        if (error) return { ok: false, status: 400, error: error.message }
       }
       return buildDirectOverview(sb, profile)
     }

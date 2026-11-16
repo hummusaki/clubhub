@@ -1,11 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
-import AiOverviewSearchBar from './components/AiOverviewSearchBar'
-import OverviewSearchResults from './components/OverviewSearchResults'
+import ClubDiscoveryDialog, { FindClubsButton } from './components/ClubDiscoveryDialog'
+import { workspaceSearchDestination } from './utils/workspaceSearch'
+import { announcementKey } from './utils/announcementLinks'
+import { getPublicDirectoryOfficers } from './utils/clubDirectory'
 import CalendarView from './components/CalendarView'
 import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
@@ -14,7 +16,7 @@ import ClubTaskBoard from './components/ClubTaskBoard'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Button, Card, PageToolbar, ToastViewport, cleanText } from './components/ui'
+import { Button, Card, PageToolbar, ToastViewport, cleanText, cleanMultilineText } from './components/ui'
 import {
   getWorkspaceMe,
   updateWorkspaceProfile,
@@ -602,6 +604,23 @@ function MainDashboard({
     if (accountEmail) return `email:${accountEmail}`
     return 'guest'
   }, [isDemo, hasClerkKey, effectiveUser?.id, accountEmail])
+  const membershipQueue = useMemo(() => ({
+    tail: Promise.resolve(),
+    pending: new Set(),
+  }), [accountKey])
+  const activeMembershipQueue = useRef(membershipQueue)
+  useLayoutEffect(() => {
+    activeMembershipQueue.current = membershipQueue
+    return () => { activeMembershipQueue.current = null }
+  }, [membershipQueue])
+
+  const queueMembershipRequest = useCallback(task => {
+    const request = membershipQueue.tail.then(() => {
+      if (activeMembershipQueue.current === membershipQueue) return task()
+    })
+    membershipQueue.tail = request.catch(() => {})
+    return request
+  }, [membershipQueue])
 
   const demoTargetCountRef = useRef(randomDemoClubCount())
   const demoLiveSeededRef = useRef(false)
@@ -643,7 +662,13 @@ function MainDashboard({
   const [calendarSelectedView, setCalendarSelectedView] = useState(null)
   useEffect(() => { setCalendarSelectedView(null) }, [userSettings?.defaultCalendarView, accountKey])
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const [pageFilters, setPageFilters] = useState({})
+  const [searchTarget, setSearchTarget] = useState(null)
+  const searchSequence = useRef(0)
+  const searchQuery = pageFilters[activeNav] || ''
+  function setPageFilter(nav, value) {
+    setPageFilters(prev => ({ ...prev, [nav]: value }))
+  }
   const [clubsData] = useState(initialClubs)
   const [joinedClubIds, setJoinedClubIds] = useState(() =>
     isDemo
@@ -654,6 +679,7 @@ function MainDashboard({
         })
       : getStoredJoinedClubIds(accountKey)
   )
+  const joinedClubIdsRef = useRef(joinedClubIds)
   const [linksCount] = useState(fallbackLinks.length)
   const [rsvpMap, setRsvpMap] = useState(() => (isDemo ? {} : getStoredRsvps()))
   const [resetGeneration, setResetGeneration] = useState(0)
@@ -748,15 +774,10 @@ function MainDashboard({
   }, [])
 
   const applyJoinedClubIds = useCallback(nextIds => {
-    setJoinedClubIds(prev => {
-      if (
-        prev.length === nextIds.length &&
-        prev.every((val, idx) => String(val) === String(nextIds[idx]))
-      ) {
-        return prev
-      }
-      return nextIds
-    })
+    const prev = joinedClubIdsRef.current
+    if (prev.length === nextIds.length && prev.every((id, idx) => id === nextIds[idx])) return
+    joinedClubIdsRef.current = nextIds
+    setJoinedClubIds(nextIds)
   }, [])
 
   // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined for signed-in accounts)
@@ -837,7 +858,7 @@ function MainDashboard({
 
         const catId = categorizeClub(c)
         const catMeta = getClubCategoryMeta(catId)
-        const rawDesc = c.bio || c.directoryDescription || (c.posts || [])[0]?.summary || ''
+        const rawDesc = c.description || c.bio || c.directoryDescription || (c.posts || [])[0]?.summary || ''
         const clubLinks = Array.isArray(c.links) ? c.links : []
         const discordLink = clubLinks.find(
           l =>
@@ -880,6 +901,11 @@ function MainDashboard({
           category: catId,
           categoryLabel: catMeta.label,
           description: rawDesc ? cleanText(rawDesc) : '',
+          bio: c.bio ? cleanText(c.bio) : '',
+          officialName: c.officialName,
+          displayName: c.displayName,
+          aliases: c.aliases,
+          handle: c.handle,
           directoryDescription: c.directoryDescription ? cleanText(c.directoryDescription) : '',
           alsoKnownAs: Array.isArray(c.alsoKnownAs) ? c.alsoKnownAs : [],
           profilePictureUrl: c.discordIconUrl || c.profilePictureUrl || null,
@@ -889,6 +915,8 @@ function MainDashboard({
           extraEmails: emailLinks.filter(e => e !== resolvedEmail),
           website: c.website || null,
           tags: [
+            ...(Array.isArray(c.tags) ? c.tags : c.tags ? [c.tags] : [])
+              .map(tag => typeof tag === 'string' ? { label: tag } : tag).filter(tag => tag?.label),
             ...(c.instagram ? [{ label: `@${c.instagram}`, color: 'blue' }] : []),
             { label: catMeta.shortLabel, color: catMeta.color },
           ],
@@ -974,8 +1002,7 @@ function MainDashboard({
               color: a.important ? 'red' : isDiscord ? 'blue' : isStory ? 'purple' : 'yellow',
               time: a.postedAt ? new Date(a.postedAt).toLocaleDateString() : 'Just now',
               title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
-              description: cleanText(a.summary || ''),
-              navTarget: 'clubs',
+              description: cleanMultilineText(a.summary || ''),
             }
           })
         : null
@@ -987,6 +1014,8 @@ function MainDashboard({
             clubId: l.clubId || null,
             clubName: l.clubName ? cleanText(l.clubName) : '',
             rawLabel: l.label ? cleanText(l.label) : '',
+            visibility: l.visibility,
+            isPrivate: l.isPrivate,
             kind: l.kind || 'website',
             postId: l.postId || null,
             title: cleanText(
@@ -1023,38 +1052,57 @@ function MainDashboard({
     loadBackendData()
   }, [loadBackendData])
 
-  // Hydrate authenticated workspace memberships & targeted RBAC announcements
+  // Serialize membership reads and legacy syncs with explicit joins and leaves.
+  const loadWorkspaceMemberships = useCallback(clubId => {
+    if (!effectiveUser) return
+    return queueMembershipRequest(async () => {
+      if (hasClerkKey && accountEmail && !effectiveUser.workspaceSynced) {
+        await syncExternalWorkspaceSession({
+          provider: 'clerk',
+          clerkUserId: effectiveUser.id,
+          email: accountEmail,
+          fullName: effectiveUser.fullName || accountEmail.split('@')[0],
+        }).catch(() => {})
+      }
+      if (activeMembershipQueue.current !== membershipQueue) return
+      const meRes = await getWorkspaceMe(effectiveUser)
+      if (activeMembershipQueue.current !== membershipQueue) return
+      if (!meRes?.ok || !Array.isArray(meRes.memberships)) return
+
+      const dbClubIds = meRes.memberships.map(m => String(m.clubId || m.club_id || '')).filter(Boolean)
+      const dbClubKeys = new Set(dbClubIds.map(normalizeClubKey))
+      const requestedKey = normalizeClubKey(clubId)
+      const unsyncedIds = getStoredJoinedClubIds(accountKey).filter(cid => {
+        const key = normalizeClubKey(cid)
+        return key && (!requestedKey || key === requestedKey) &&
+          !dbClubKeys.has(key) && !membershipQueue.pending.has(key)
+      })
+      if (unsyncedIds.length > 0) {
+        await syncWorkspaceMemberships(unsyncedIds).catch(() => {})
+      }
+      if (activeMembershipQueue.current !== membershipQueue) return
+
+      const current = joinedClubIdsRef.current
+      const joinedKeys = new Set(current.map(normalizeClubKey))
+      const additions = dbClubIds.filter(id => {
+        const key = normalizeClubKey(id)
+        if (!key || joinedKeys.has(key) || membershipQueue.pending.has(key)) return false
+        joinedKeys.add(key)
+        return true
+      })
+      applyJoinedClubIds([...current, ...additions])
+    })
+  }, [effectiveUser, hasClerkKey, accountEmail, accountKey, membershipQueue, queueMembershipRequest, applyJoinedClubIds])
+
   const loadWorkspaceState = useCallback(async () => {
     if (isDemo) {
       setWorkspaceAnnouncements(prev => (prev.length === 0 ? prev : []))
       return
     }
-    if (hasClerkKey && effectiveUser && accountEmail && !effectiveUser.workspaceSynced) {
-      await syncExternalWorkspaceSession({
-        provider: 'clerk',
-        clerkUserId: effectiveUser.id,
-        email: accountEmail,
-        fullName: effectiveUser.fullName || accountEmail.split('@')[0],
-      }).catch(() => {})
-    }
-    const meRes = effectiveUser ? await getWorkspaceMe(effectiveUser) : null
-    const dbClubIds =
-      meRes?.ok && Array.isArray(meRes.memberships) && meRes.memberships.length > 0
-        ? meRes.memberships.map(m => String(m.clubId || m.club_id || '')).filter(Boolean)
-        : null
-    if (meRes?.ok && Array.isArray(meRes.memberships) && accountKey !== 'guest') {
-      const existingLower = new Set(
-        meRes.memberships.map(m => String(m.clubId || m.club_id || '').toLowerCase())
-      )
-      const localClubIds = getStoredJoinedClubIds(accountKey)
-      const unsyncedIds = localClubIds.filter(
-        cid => cid && !existingLower.has(String(cid).toLowerCase())
-      )
-      if (unsyncedIds.length > 0) {
-        await syncWorkspaceMemberships(unsyncedIds).catch(() => {})
-      }
-    }
+    await loadWorkspaceMemberships()
+    if (activeMembershipQueue.current !== membershipQueue) return
     const annRes = effectiveUser ? await getWorkspaceAnnouncements() : null
+    if (activeMembershipQueue.current !== membershipQueue) return
     const mappedWorkspaceAnns =
       annRes?.ok && Array.isArray(annRes.announcements)
         ? annRes.announcements.map(a => ({
@@ -1076,26 +1124,16 @@ function MainDashboard({
                   : 'blue',
             time: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : 'Just now',
             title: cleanText(`${a.clubName ? a.clubName + ': ' : ''}${a.title}`),
-            description: cleanText(a.body || a.recipientsSummary || ''),
-            navTarget: 'clubs',
+            description: cleanMultilineText(a.body || a.recipientsSummary || ''),
           }))
         : null
 
-    if (dbClubIds) {
-      setJoinedClubIds(prev => {
-        const merged = Array.from(new Set([...prev, ...dbClubIds]))
-        if (merged.length === prev.length && merged.every((v, idx) => v === prev[idx])) {
-          return prev
-        }
-        return merged
-      })
-    }
     if (mappedWorkspaceAnns) {
       setWorkspaceAnnouncements(prev =>
         prev.length === 0 && mappedWorkspaceAnns.length === 0 ? prev : mappedWorkspaceAnns
       )
     }
-  }, [isDemo, hasClerkKey, effectiveUser, accountEmail, accountKey])
+  }, [isDemo, effectiveUser, membershipQueue, loadWorkspaceMemberships])
 
   useEffect(() => {
     loadWorkspaceState()
@@ -1141,15 +1179,20 @@ function MainDashboard({
     if (nextNav === 'overview' || nextNav === 'settings') {
       pageSubContextRef.current = null
     }
-    if (options.searchQuery !== undefined) {
-      setSearchQuery(options.searchQuery)
-    } else if (
-      nextNav === 'availability' ||
-      nextNav === 'settings' ||
-      nextNav === 'tasks'
-    ) {
-      setSearchQuery('')
-    }
+    if (options.searchQuery !== undefined) setPageFilter(nextNav, options.searchQuery)
+    setSearchTarget(options.searchTarget ? { ...options.searchTarget, revision: ++searchSequence.current } : null)
+  }
+
+  function selectSearchResult(type, item) {
+    const destination = workspaceSearchDestination(type, item)
+    if (destination) handleNavigate(destination.nav, destination.options)
+  }
+
+  function openAnnouncement(item) {
+    handleNavigate('clubs', {
+      section: 'updates',
+      searchTarget: { type: 'announcement', id: announcementKey(item) },
+    })
   }
 
   const joinedClubSet = useMemo(
@@ -1231,8 +1274,12 @@ function MainDashboard({
     const scopedLive = (Array.isArray(liveAnnouncements) ? liveAnnouncements : []).filter(
       a => a?.clubId && joinedClubKeySet.has(normalizeClubKey(a.clubId))
     )
-    return [...scopedWorkspace, ...scopedLive].slice(0, 15)
+    return [...scopedWorkspace, ...scopedLive]
   }, [workspaceAnnouncements, liveAnnouncements, joinedClubKeySet])
+  const recentAnnouncements = useMemo(() => personalizedAnnouncements.slice(0, 15), [personalizedAnnouncements])
+  const selectedAnnouncement = searchTarget?.type === 'announcement'
+    ? personalizedAnnouncements.find(item => announcementKey(item) === searchTarget.id)
+    : null
 
   const combinedRawEvents = useMemo(() => {
     if (joinedClubKeySet.size === 0) return []
@@ -1248,42 +1295,68 @@ function MainDashboard({
 
   function toggleJoinClub(clubId) {
     const targetId = String(clubId)
+    const targetKey = normalizeClubKey(clubId)
+    if (!targetKey || membershipQueue.pending.has(targetKey)) return false
+
+    const previousIds = joinedClubIdsRef.current
+    const previousId = previousIds.find(id => normalizeClubKey(id) === targetKey)
+    const currentlyJoined = Boolean(previousId)
+    const nextIds = currentlyJoined
+      ? previousIds.filter(id => normalizeClubKey(id) !== targetKey)
+      : [...previousIds, targetId]
+    applyJoinedClubIds(nextIds)
     if (isDemo) {
       demoUserModifiedClubsRef.current = true
+      return true
     }
-    const currentlyJoined = joinedClubSet.has(targetId)
-    if (!isDemo && effectiveUser?.id) {
-      const clubMeta = effectiveClubs.find(c => String(c.id) === targetId)
-      const syncPromise = currentlyJoined
-        ? leaveWorkspaceClub(targetId)
-        : joinWorkspaceClub(targetId, { clubName: clubMeta?.name || targetId })
-      syncPromise.then(() => loadWorkspaceState()).catch(() => {})
-    }
-    setJoinedClubIds(prev => {
-      const exists = prev.some(id => String(id) === targetId)
-      const next = exists
-        ? prev.filter(id => String(id) !== targetId)
-        : [...prev, targetId]
+    const emailKey = accountEmail ? `email:${accountEmail}` : null
+    const storageKeys = [accountKey, emailKey]
+    saveStoredJoinedClubIds(storageKeys, nextIds)
+    if (!effectiveUser?.id) return true
 
-      if (isDemo) {
-        return next
+    membershipQueue.pending.add(targetKey)
+    return queueMembershipRequest(async () => {
+      const request = currentlyJoined ? leaveWorkspaceClub : joinWorkspaceClub
+      const result = await request(targetKey).catch(error => ({ error: error.message }))
+      if (activeMembershipQueue.current !== membershipQueue) return false
+      membershipQueue.pending.delete(targetKey)
+      const stillJoined = currentlyJoined && Array.isArray(result?.memberships) && result.memberships.some(
+        membership => normalizeClubKey(membership.clubId || membership.club_id) === targetKey
+      )
+      if (stillJoined || (!result?.ok && !(result?.offline && !currentlyJoined))) {
+        const current = joinedClubIdsRef.current
+        const restored = currentlyJoined
+          ? [...current, previousId]
+          : current.filter(id => normalizeClubKey(id) !== targetKey)
+        applyJoinedClubIds(restored)
+        saveStoredJoinedClubIds(storageKeys, restored)
+        showToast(result?.error || (currentlyJoined ? 'Could not leave club.' : 'Could not join club.'), { type: 'error' })
+        return false
       }
-
-      const emailKey = accountEmail ? `email:${accountEmail}` : null
-      saveStoredJoinedClubIds([accountKey, emailKey], next)
-
       if (hasClerkKey && effectiveUser?.update) {
-        effectiveUser
-          .update({
-            unsafeMetadata: {
-              ...(effectiveUser.unsafeMetadata || {}),
-              joinedClubIds: next,
-            },
-          })
-          .catch(() => {})
+        await effectiveUser.update({
+          unsafeMetadata: {
+            ...(effectiveUser.unsafeMetadata || {}),
+            joinedClubIds: joinedClubIdsRef.current,
+          },
+        }).catch(() => {})
       }
-      return next
+      return true
+    }).then(saved => {
+      if (!saved || activeMembershipQueue.current !== membershipQueue) return false
+      loadWorkspaceState().catch(() => {})
+      return true
     })
+  }
+
+  function rememberConfirmedMembership(clubId) {
+    if (activeMembershipQueue.current !== membershipQueue) return
+    const key = normalizeClubKey(clubId)
+    if (!key || joinedClubIdsRef.current.some(id => normalizeClubKey(id) === key)) return
+    const nextIds = [...joinedClubIdsRef.current, String(clubId)]
+    applyJoinedClubIds(nextIds)
+    saveStoredJoinedClubIds([accountKey, accountEmail ? `email:${accountEmail}` : null], nextIds)
+    loadWorkspaceState().catch(() => {})
   }
 
   function handleToggleRsvp(eventId, isGoing) {
@@ -1389,6 +1462,9 @@ function MainDashboard({
   }
 
   function handleResetLocalData() {
+    setPageFilters({})
+    setSearchTarget(null)
+    setDiscoveryOpen(false)
     if (isDemo) {
       const freshCount = randomDemoClubCount()
       demoTargetCountRef.current = freshCount
@@ -1399,7 +1475,7 @@ function MainDashboard({
         links: liveLinks || fallbackLinks,
         hub: hubDict,
       })
-      setJoinedClubIds(freshDemoIds)
+      applyJoinedClubIds(freshDemoIds)
       setRsvpMap({})
       setLocalAddedEvents([])
       setRemovedEventIds(new Set())
@@ -1430,7 +1506,7 @@ function MainDashboard({
     } catch {
       // Ignore storage errors
     }
-    setJoinedClubIds([])
+    applyJoinedClubIds([])
     setRsvpMap({})
     setLocalAddedEvents([])
     setRemovedEventIds(new Set())
@@ -1441,8 +1517,16 @@ function MainDashboard({
     showToast('Reset local customizations to clean defaults.', { type: 'info' })
   }
 
-  const [overviewAiOpen, setOverviewAiOpen] = useState(false)
-  const overviewAiTrigger = useRef(null)
+  const [discoveryOpen, setDiscoveryOpen] = useState(false)
+  const publicPeople = useMemo(() => getPublicDirectoryOfficers(hubDict), [hubDict])
+  const searchSources = useMemo(() => ({
+    clubs: effectiveClubs,
+    memberEvents: memberScopedSchedule,
+    publicResources: liveLinks || fallbackLinks,
+    localResources: localAddedLinks,
+    publicPeople,
+  }), [effectiveClubs, memberScopedSchedule, liveLinks, localAddedLinks, publicPeople])
+
   const greeting = userSettings?.displayName?.trim().split(/\s+/)[0] ||
     effectiveUser?.firstName || effectiveUser?.fullName?.split(/\s+/)[0] ||
     effectiveUser?.email?.split('@')[0] || (isDemo ? 'Guest' : 'Student')
@@ -1909,64 +1993,50 @@ function MainDashboard({
         onSignOut={onSignOut}
       />
 
-      {/* Main Content Area (Offset by 64px Top Bar + 256px Fixed Drawer on Desktop, Cleared of Bottom Nav < lg) */}
-      <main className="w-full min-w-0 pt-16 lg:pl-[256px]">
-        <div className="app-content page-stack max-w-[1440px] mx-auto">
-          <Header
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            activeNav={activeNav}
-            onNav={handleNavigate}
-            dark={dark}
-            onToggleDark={toggleDark}
-            user={effectiveUser}
-            userSettings={userSettings}
-            isDemo={isDemo}
-            onExitDemo={onExitDemo}
-            onSignOut={onSignOut}
-            announcements={personalizedAnnouncements}
-            joinedCount={joinedCount}
-            clubs={effectiveClubs}
-            events={effectiveSchedule}
-            onToggleJoinClub={toggleJoinClub}
-            onNotify={showToast}
-          />
+      <Header key={`${accountKey}_${resetGeneration}`}
+        searchSources={searchSources}
+        onSearchSelect={selectSearchResult}
+        activeNav={activeNav}
+        onNav={handleNavigate}
+        dark={dark}
+        onToggleDark={toggleDark}
+        user={effectiveUser}
+        userSettings={userSettings}
+        isDemo={isDemo}
+        onExitDemo={onExitDemo}
+        onSignOut={onSignOut}
+        announcements={recentAnnouncements}
+        onOpenAnnouncement={openAnnouncement}
+        joinedCount={joinedCount}
+      />
 
+      <ClubDiscoveryDialog key={`${accountKey}_${resetGeneration}`}
+        open={discoveryOpen} onClose={() => setDiscoveryOpen(false)}
+        clubs={effectiveClubs} events={memberScopedSchedule}
+        userMajor={userSettings?.major}
+        onViewClub={club => {
+          setDiscoveryOpen(false)
+          selectSearchResult('club', club)
+        }}
+        onViewEvent={event => {
+          setDiscoveryOpen(false)
+          selectSearchResult('event', event)
+        }}
+        onJoinClub={async club => {
+          if (await toggleJoinClub(club.id) !== false) showToast(`Joined ${cleanText(club.name)}!`)
+        }}
+      />
+
+      <main className="workspace-main w-full min-w-0 lg:pl-[var(--sidebar-width)]">
+        <div className="app-content page-stack max-w-[var(--content-max-width)] mx-auto">
           <div key={`${activeNav}_${resetGeneration}`} className="view-enter page-stack">
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
             <div className="page-stack">
               <PageToolbar
                 title={`Welcome, ${greeting}`}
-                actions={
-                  <Button
-                    ref={overviewAiTrigger}
-                    variant="text"
-                    size="sm"
-                    className="px-2"
-                    icon={<Sparkles size={15} />}
-                    aria-expanded={overviewAiOpen}
-                    aria-controls="overview-ai"
-                    onClick={() => setOverviewAiOpen(open => !open)}
-                  >
-                    Find clubs with AI
-                  </Button>
-                }
+                actions={<FindClubsButton onClick={() => setDiscoveryOpen(true)} />}
               />
-              {searchQuery.trim() && (
-                <OverviewSearchResults
-                  query={searchQuery}
-                  onClearQuery={() => setSearchQuery('')}
-                  clubs={effectiveClubs}
-                  events={personalizedSchedule}
-                  announcements={personalizedAnnouncements}
-                  links={[...localAddedLinks, ...(liveLinks || fallbackLinks)]}
-                  userSettings={userSettings}
-                  onToggleJoinClub={toggleJoinClub}
-                  onNav={handleNavigate}
-                  onNotify={showToast}
-                />
-              )}
 
               <StatCards
                 items={effectiveStats}
@@ -1978,21 +2048,6 @@ function MainDashboard({
                     ? handleNavigate('clubs', { section: 'discover' })
                     : handleNavigate(target)
                 }
-              />
-
-              <AiOverviewSearchBar
-                open={overviewAiOpen}
-                onClose={() => {
-                  setOverviewAiOpen(false)
-                  overviewAiTrigger.current?.focus()
-                }}
-                clubs={effectiveClubs}
-                events={effectiveSchedule}
-                userSettings={userSettings}
-                onToggleJoinClub={toggleJoinClub}
-                onOpenClub={opts => handleNavigate('clubs', opts)}
-                onOpenCalendar={opts => handleNavigate('calendar', opts)}
-                onNotify={showToast}
               />
 
               {joinedCount === 0 && (
@@ -2016,7 +2071,6 @@ function MainDashboard({
                   onUpdateSettings={onUpdateSettings}
                   calendarIntegration={calendarIntegration}
                   onPageContextChange={handlePageContextChange}
-                  searchQuery={searchQuery}
                   rsvpMap={rsvpMap}
                   onToggleRsvp={handleToggleRsvp}
                   onDeleteEvent={handleDeleteCalendarEvent}
@@ -2024,10 +2078,10 @@ function MainDashboard({
                   onNotify={showToast}
                 />
                 <Announcements
-                  items={personalizedAnnouncements}
+                  items={recentAnnouncements}
+                  onOpenAnnouncement={openAnnouncement}
                   joinedCount={joinedCount}
                   userSettings={userSettings}
-                  searchQuery={searchQuery}
                   onNav={handleNavigate}
                 />
               </div>
@@ -2052,7 +2106,6 @@ function MainDashboard({
                 hubDict={hubDict}
                 userSettings={userSettings}
                 onToggleJoin={toggleJoinClub}
-                searchQuery={searchQuery}
                 onOpenClubs={opts => handleNavigate('clubs', opts)}
                 onNotify={showToast}
               />
@@ -2062,7 +2115,6 @@ function MainDashboard({
                 items={liveLinks}
                 clubs={effectiveClubs}
                 userSettings={userSettings}
-                searchQuery={searchQuery}
                 localAdded={localAddedLinks}
                 pinnedOverrides={pinnedLinkOverrides}
                 onTogglePinOverride={handleTogglePinOverride}
@@ -2086,7 +2138,10 @@ function MainDashboard({
               onUpdateSettings={onUpdateSettings}
               calendarIntegration={calendarIntegration}
               onPageContextChange={handlePageContextChange}
-              searchQuery={searchQuery}
+              searchQuery={pageFilters.calendar || ''}
+              onSearchChange={value => setPageFilter('calendar', value)}
+              searchTarget={searchTarget}
+              onDismissSearchTarget={() => setSearchTarget(null)}
               rsvpMap={rsvpMap}
               onToggleRsvp={handleToggleRsvp}
               onAddEvent={handleAddCalendarEvent}
@@ -2134,7 +2189,14 @@ function MainDashboard({
               initialRbacClubId={clubsInitialRbacClubId}
               userSettings={userSettings}
               onToggleJoin={toggleJoinClub}
-              searchQuery={searchQuery}
+              searchQuery={pageFilters.clubs || ''}
+              onSearchChange={value => setPageFilter('clubs', value)}
+              searchTarget={searchTarget}
+              publicPeople={publicPeople}
+              selectedAnnouncement={selectedAnnouncement}
+              onFindClubs={() => setDiscoveryOpen(true)}
+              onMembershipConfirmed={rememberConfirmedMembership}
+              onDismissSearchTarget={() => setSearchTarget(null)}
               onRefresh={loadBackendData}
               onRefreshAnnouncements={loadWorkspaceState}
               onOpenTasks={cid => handleNavigate('tasks', { clubId: cid })}
@@ -2158,12 +2220,8 @@ function MainDashboard({
               clubs={effectiveClubs}
               joinedClubIds={joinedClubIds}
               initialClubId={tasksInitialClubId}
-              onClubJoined={cid => {
-                if (!joinedClubSet.has(String(cid))) {
-                  toggleJoinClub(cid)
-                }
-                loadWorkspaceState()
-              }}
+              onClubJoined={loadWorkspaceState}
+              onSyncMemberships={loadWorkspaceMemberships}
               onOpenClubsRbac={cid => handleNavigate('clubs', { section: 'rbac', clubId: cid })}
               onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
               onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
@@ -2178,7 +2236,10 @@ function MainDashboard({
               items={liveLinks}
               clubs={effectiveClubs}
               userSettings={userSettings}
-              searchQuery={searchQuery}
+              searchQuery={pageFilters.links || ''}
+              onSearchChange={value => setPageFilter('links', value)}
+              searchTarget={searchTarget}
+              onDismissSearchTarget={() => setSearchTarget(null)}
               onRefresh={loadBackendData}
               localAdded={localAddedLinks}
               onAddLocalLink={handleAddLocalLink}

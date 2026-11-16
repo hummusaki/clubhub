@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Clock,
@@ -19,7 +20,7 @@ import {
   X,
   Mail,
 } from 'lucide-react'
-import { Card, BubbleTag, Avatar, cleanText, Button, IconButton, ActionDisclosure, ActionItem, ModalDialog, PageToolbar } from './ui'
+import { Card, BubbleTag, Avatar, cleanText, Button, IconButton, ActionDisclosure, ActionItem, ModalDialog, PageToolbar, SegmentedControl } from './ui'
 import { PlatformIcon } from './icons'
 import {
   getSchedulerPolls,
@@ -1303,7 +1304,8 @@ export default function AvailabilityView({
     }
 
     const res = await createVerifiedPoll(payload, effectiveUser)
-    setCreatePollBusy(false)
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setCreatePollBusy(false))
 
     const pollObj = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
     if (!res?.ok || !pollObj?.id) {
@@ -1339,7 +1341,8 @@ export default function AvailabilityView({
     }
     setPollActionBusy('archive')
     const res = await archiveVerifiedPoll(targetPoll.id, nextArchived, effectiveUser)
-    setPollActionBusy('')
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setPollActionBusy(''))
 
     const updatedPoll = res?.poll || res?.data || null
     if (!res?.ok || !updatedPoll?.id) {
@@ -1382,7 +1385,8 @@ export default function AvailabilityView({
     }
     setPollActionBusy('delete')
     const res = await deleteVerifiedPoll(targetPoll.id, effectiveUser)
-    setPollActionBusy('')
+      .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
+      .finally(() => setPollActionBusy(''))
 
     if (!res?.ok) {
       if (onNotify) {
@@ -1558,6 +1562,7 @@ export default function AvailabilityView({
       <PageToolbar title="Group availability" actions={
         <Button size="sm" variant={showNewPollForm ? 'outlined-neutral' : 'filled'}
           icon={showNewPollForm ? <X size={14} /> : <Plus size={14} />}
+          reserveLabels={['New poll', 'Close poll form']}
           aria-expanded={showNewPollForm} aria-controls="create-availability-poll"
           onClick={() => setShowNewPollForm(prev => !prev)}>
           {showNewPollForm ? 'Close poll form' : 'New poll'}
@@ -1567,28 +1572,22 @@ export default function AvailabilityView({
       <div className="flex flex-wrap items-center justify-between gap-2 dense-controls">
         <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
           {(activePolls.length > 0 || archivedPolls.length > 0) && (
-            <select
-              className="control-select w-full sm:w-auto sm:max-w-80"
+            <Select
+              className="control-select w-full sm:w-auto sm:max-w-80 [--select-width:19rem]"
               aria-label="Select poll"
               value={activePoll.id || ''}
-              onChange={event => {
-                setSelectedPollId(event.target.value)
+              onValueChange={nextValue => {
+                setSelectedPollId(nextValue)
                 setSpotlightUserId(null)
                 setConfirmDeletePollId(null)
               }}
-            >
-              {!hasActivePoll && <option value="" disabled>Select a poll</option>}
-              {activePolls.length > 0 && (
-                <optgroup label="Active polls">
-                  {activePolls.map(poll => <option key={poll.id} value={poll.id}>{cleanText(poll.title)}</option>)}
-                </optgroup>
-              )}
-              {archivedPolls.length > 0 && (
-                <optgroup label="Archived polls">
-                  {archivedPolls.map(poll => <option key={poll.id} value={poll.id}>{cleanText(poll.title)}</option>)}
-                </optgroup>
-              )}
-            </select>
+              search="auto"
+              options={[
+                ...(!hasActivePoll ? [{ value: "", label: "Select a poll", disabled: true }] : []),
+                ...(activePolls.length > 0 ? activePolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Active polls" })) : []),
+                ...(archivedPolls.length > 0 ? archivedPolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Archived polls" })) : []),
+              ]}
+            />
           )}
           {hasActivePoll && activePoll.location && (
             <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] min-w-0 break-words">
@@ -1606,16 +1605,16 @@ export default function AvailabilityView({
         {(hasActivePoll || isActivePollCreator) && (
           <div className="flex items-center gap-2 ml-auto">
             {!isActivePollArchived && (
-              <ActionDisclosure label={shareBusy ? 'Sharing…' : 'Share poll'} icon={<Share2 size={14} />}>
+              <ActionDisclosure label="Share poll" pending={Boolean(shareBusy)} pendingLabel="Sharing…" icon={<Share2 size={14} />}>
                 {() => (
                   <>
                     <ActionItem onClick={handleCopyShareLink}>Copy invite link</ActionItem>
                     <ActionItem disabled={Boolean(shareBusy)} onClick={handleSharePollDiscord}
-                      icon={<PlatformIcon type="discord" size={14} />}>
-                      {shareBusy === 'discord' ? 'Posting…' : 'Share to Discord'}
+                      icon={<PlatformIcon type="discord" size={14} />} pending={shareBusy === 'discord'} pendingLabel="Posting…">
+                      Share to Discord
                     </ActionItem>
-                    <ActionItem disabled={Boolean(shareBusy)} onClick={handleSharePollEmail} icon={<Mail size={14} />}>
-                      {shareBusy === 'email' ? 'Sending…' : 'Share by email'}
+                    <ActionItem disabled={Boolean(shareBusy)} onClick={handleSharePollEmail} icon={<Mail size={14} />} pending={shareBusy === 'email'} pendingLabel="Sending…">
+                      Share by email
                     </ActionItem>
                   </>
                 )}
@@ -1625,10 +1624,10 @@ export default function AvailabilityView({
               <ActionDisclosure key={activePoll.id} label="Poll actions" iconOnly>
                 {close => (
                   <>
-                    <ActionItem disabled={Boolean(pollActionBusy)}
+                    <ActionItem pending={pollActionBusy === 'archive'} pendingLabel="Updating…"
                       onClick={() => handleToggleArchivePoll(activePoll, !isActivePollArchived)}
                       icon={isActivePollArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}>
-                      {pollActionBusy === 'archive' ? 'Updating…' : isActivePollArchived ? 'Unarchive poll' : 'Archive poll'}
+                      {isActivePollArchived ? 'Unarchive poll' : 'Archive poll'}
                     </ActionItem>
                     <ActionItem danger disabled={Boolean(pollActionBusy)} icon={<Trash2 size={14} />}
                       onClick={() => {
@@ -1649,8 +1648,8 @@ export default function AvailabilityView({
         <ModalDialog title="Delete poll?" onClose={() => setConfirmDeletePollId(null)} footer={
           <>
             <Button variant="text" onClick={() => setConfirmDeletePollId(null)}>Cancel</Button>
-            <Button variant="danger" disabled={Boolean(pollActionBusy)} onClick={() => handleDeletePoll(activePoll)}>
-              {pollActionBusy === 'delete' ? 'Deleting…' : 'Delete poll'}
+            <Button variant="danger" pending={pollActionBusy === 'delete'} pendingLabel="Deleting…" onClick={() => handleDeletePoll(activePoll)}>
+              Delete poll
             </Button>
           </>
         }>
@@ -1715,22 +1714,21 @@ export default function AvailabilityView({
                   <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                     Host Club (Optional)
                   </label>
-                  <select
+                  <Select
+                    aria-label="Host club"
                     value={newPollClubId}
-                    onChange={e => {
-                      setNewPollClubId(e.target.value)
+                    onValueChange={nextValue => {
+                      setNewPollClubId(nextValue)
                       setNewPollShortcuts([])
                       setNewPollVisibility('public_link')
                     }}
                     className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                  >
-                    <option value="">Personal / Cross-Club Poll</option>
-                    {clubs.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {cleanText(c.name)}
-                      </option>
-                    ))}
-                  </select>
+                    search
+                    options={[
+                      { value: "", label: "Personal / Cross-Club Poll" },
+                      ...clubs.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                    ]}
+                  />
                 </div>
 
                 {newPollClubId && (
@@ -1738,17 +1736,17 @@ export default function AvailabilityView({
                     <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                       Poll Access Tier
                     </label>
-                    <select
+                    <Select
+                      aria-label="Poll access tier"
                       value={newPollVisibility}
-                      onChange={e => setNewPollVisibility(e.target.value)}
+                      onValueChange={setNewPollVisibility}
                       className="w-full min-h-[42px] px-3.5 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-                    >
-                      <option value="public_link">Anyone with Invite Link</option>
-                      <option value="club_members">Club Members & Board Only</option>
-                      {newPollClubPeople?.permission?.isBoard && (
-                        <option value="board_only">Board / Leadership Only</option>
-                      )}
-                    </select>
+                      options={[
+                        { value: "public_link", label: "Anyone with Invite Link" },
+                        { value: "club_members", label: "Club Members & Board Only" },
+                        ...(newPollClubPeople?.permission?.isBoard ? [{ value: "board_only", label: "Board / Leadership Only" }] : []),
+                      ]}
+                    />
                   </div>
                 )}
               </div>
@@ -1779,9 +1777,9 @@ export default function AvailabilityView({
                 variant="filled"
                 size="md"
                 type="submit"
-                disabled={createPollBusy}
+                pending={createPollBusy} pendingLabel="Creating…"
               >
-                {createPollBusy ? 'Creating…' : 'Create Poll'}
+                Create Poll
               </Button>
             </div>
           </form>
@@ -1811,51 +1809,17 @@ export default function AvailabilityView({
             )}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="segmented-track w-auto max-w-full">
-              <button
-                type="button"
-                aria-pressed={gridMode === 'mine'}
-                onClick={() => setGridMode('mine')}
-                className={`ui-touch flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-2 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
-                  gridMode === 'mine'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <span>My Availability</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-bold font-mono-num ${
-                    gridMode === 'mine'
-                      ? 'bg-[var(--green-light)] text-[var(--green-ink)]'
-                      : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  {formatHoursFromSlots(myWeekFreeCount)}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                aria-pressed={gridMode === 'group'}
-                onClick={() => setGridMode('group')}
-                className={`ui-touch flex-1 xs:flex-initial inline-flex items-center justify-center gap-1.5 px-2 min-h-[36px] rounded-lg text-xs sm:text-[13px] font-semibold border-none cursor-pointer transition-all ${
-                  gridMode === 'group'
-                    ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-2xs'
-                    : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                <span>Group Overlap</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10.5px] font-bold font-mono-num ${
-                    gridMode === 'group'
-                      ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
-                      : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
-                  }`}
-                >
-                  {allParticipants.length}
-                </span>
-              </button>
-            </div>
+            <SegmentedControl
+              ariaLabel="Availability view"
+              className="availability-mode max-w-full"
+              size="sm"
+              options={[
+                { value: 'mine', label: 'My Availability', badge: formatHoursFromSlots(myWeekFreeCount) },
+                { value: 'group', label: 'Group Overlap', badge: allParticipants.length },
+              ]}
+              value={gridMode}
+              onChange={setGridMode}
+            />
 
             {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
               <>
@@ -1920,16 +1884,19 @@ export default function AvailabilityView({
           {/* ── MOBILE VIEW (< md): 7-Day Selector + Chronological Time Slots ── */}
           <div className="poll-day-grid space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <select aria-label="Availability day" value={mobileDay}
-                onChange={event => setMobileDay(event.target.value)} className="control-select ui-touch">
-                {displayedWeekDates.map(ymd => {
+              <Select
+                aria-label="Availability day"
+                value={mobileDay}
+                onValueChange={setMobileDay}
+                className="control-select ui-touch [--select-width:12rem]"
+                options={displayedWeekDates.map(ymd => {
                   const { y, m, d } = parseDateParts(ymd)
                   const label = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-US', {
                     weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
                   })
-                  return <option value={ymd} key={ymd}>{label}</option>
+                  return { value: ymd, label: label }
                 })}
-              </select>
+              />
               {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
                 <div className="flex flex-wrap items-center gap-1">
                   {mobileDayFreeCount < timeRows.length && (
@@ -2619,10 +2586,10 @@ export default function AvailabilityView({
                   <Button
                     variant="filled"
                     size="sm"
-                    disabled={inviteBusy || existingInviteShortcuts.length === 0}
+                    disabled={existingInviteShortcuts.length === 0} pending={inviteBusy} pendingLabel="Adding…"
                     onClick={handleApplyExistingShortcuts}
                   >
-                    {inviteBusy ? 'Adding…' : 'Apply Invites'}
+                    Apply Invites
                   </Button>
                 </div>
               </div>

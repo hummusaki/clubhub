@@ -402,3 +402,23 @@ export function buildClubDirectoryData({
     clubMemberCounts,
   }
 }
+
+// Global search uses the public roster subset. Keep workspace people,
+// custom entries and contact information out of this cross-page index.
+export function getPublicDirectoryOfficers(hubDict = {}) {
+  const officers = []
+  const seen = new Set()
+  for (const [cid, club] of Object.entries(hubDict || {})) {
+    for (const entry of club?.roster || []) {
+      if (!entry?.id || !entry.name || entry.personType === 'member' ||
+          entry.isPrivate || (entry.visibility && entry.visibility !== 'public') ||
+          entry.isSyntheticContact || String(entry.id).endsWith('_official_contact')) continue
+      const id = `${cid}:${entry.id}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      officers.push({ id, clubId: cid, club: cleanText(club.name),
+        name: cleanText(entry.name), role: cleanText(entry.role || 'Officer') })
+    }
+  }
+  return officers
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ArrowRight } from 'lucide-react'
+import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ArrowRight, ChevronUp } from 'lucide-react'
 import {
   SearchBox,
   BubbleTag,
@@ -11,13 +11,16 @@ import {
   cleanText,
 } from './ui'
 import { AnnouncementTypeIcon, PlatformIcon } from './icons'
-import AiClubAgentModal from './AiClubAgentModal'
+import WorkspaceSearchResults from './WorkspaceSearchResults'
+import { GLOBAL_SEARCH_LABEL } from '../utils/workspaceSearch'
+import { announcementKey, announcementPermalink } from '../utils/announcementLinks'
 
 export default function Header({
-  searchQuery = '',
-  onSearchChange,
+  searchSources,
+  onSearchSelect,
   activeNav = 'overview',
   onNav,
+  onOpenAnnouncement,
   dark = false,
   onToggleDark,
   user = null,
@@ -27,15 +30,15 @@ export default function Header({
   onSignOut,
   announcements = null,
   joinedCount = 0,
-  clubs = [],
-  events = [],
-  onToggleJoinClub,
-  onNotify,
 }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [readIds, setReadIds] = useState({})
   const searchInputRef = useRef(null)
+  const searchRoot = useRef(null)
+  const searchPanel = useRef(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const notifBtnRef = useRef(null)
   const notifPanelRef = useRef(null)
   const userMenuBtnRef = useRef(null)
@@ -60,7 +63,7 @@ export default function Header({
 
   const unreadCount = useMemo(() => {
     return items.filter(i => {
-      if (readIds[i.id] || i.unread === false) return false
+      if (readIds[announcementKey(i)] || i.unread === false) return false
       if (userSettings?.urgentOnlyBadge) {
         return String(i.type || '').toLowerCase() === 'urgent' || i.color === 'red'
       }
@@ -71,11 +74,12 @@ export default function Header({
   useEffect(() => {
     setNotifOpen(false)
     setUserMenuOpen(false)
+    setSearchOpen(false)
   }, [activeNav])
 
   useEffect(() => {
     function handleKeyDown(e) {
-      if (e.defaultPrevented || e.target?.closest?.('[role="dialog"]')) return
+      if (e.defaultPrevented || e.isComposing || e.target?.closest?.('[role="dialog"]')) return
       if (e.key === 'Escape') {
         if (notifPanelRef.current?.contains(e.target)) notifBtnRef.current?.focus()
         if (userMenuPanelRef.current?.contains(e.target)) userMenuBtnRef.current?.focus()
@@ -99,6 +103,7 @@ export default function Header({
           e.preventDefault()
           setNotifOpen(false)
           setUserMenuOpen(false)
+          setSearchOpen(true)
           searchInputRef.current.focus()
           searchInputRef.current.select()
         }
@@ -133,7 +138,7 @@ export default function Header({
 
   function markAllRead() {
     const next = {}
-    for (const item of items) next[item.id] = true
+    for (const item of items) next[announcementKey(item)] = true
     setReadIds(next)
   }
 
@@ -162,22 +167,81 @@ export default function Header({
 
   const avatarGradient = userSettings?.avatarBg || effectiveUser?.avatarBg || '#1A73E8'
 
-  const searchPlaceholders = {
-    overview: 'Search clubs, events, links…',
-    calendar: 'Search events, clubs, rooms…',
-    clubs: 'Search clubs, people, @handles…',
-    links: 'Search links, docs, clubs…',
+  useEffect(() => {
+    if (!searchOpen) return
+    const viewport = window.visualViewport
+    const panel = searchPanel.current
+    function position() {
+      const bottom = (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight)
+      panel.style.setProperty('--search-panel-height', `${Math.max(0, bottom - panel.getBoundingClientRect().top - 8)}px`)
+    }
+    position()
+    viewport?.addEventListener('resize', position)
+    viewport?.addEventListener('scroll', position)
+    window.addEventListener('resize', position)
+    return () => {
+      viewport?.removeEventListener('resize', position)
+      viewport?.removeEventListener('scroll', position)
+      window.removeEventListener('resize', position)
+    }
+  }, [searchOpen])
+
+  function openSearch() {
+    setNotifOpen(false)
+    setUserMenuOpen(false)
+    setSearchOpen(true)
   }
 
-  const showSearch =
-    activeNav !== 'availability' && activeNav !== 'settings' && activeNav !== 'tasks'
+  function closeSearch() {
+    searchInputRef.current?.focus({ preventScroll: true })
+    setSearchOpen(false)
+  }
+
+  function handleSearchKeys(event) {
+    if (event.nativeEvent.isComposing || event.defaultPrevented) return
+    if (event.key === 'Escape' && searchOpen) {
+      event.preventDefault()
+      event.stopPropagation()
+      closeSearch()
+      return
+    }
+    if (!searchOpen && (event.key === 'ArrowDown' || event.key === 'Enter')) {
+      event.preventDefault()
+      openSearch()
+      return
+    }
+    if (!searchOpen) return
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault()
+      searchInputRef.current.focus()
+      searchInputRef.current.select()
+      return
+    }
+    const results = [...searchRoot.current.querySelectorAll('[data-search-result]')]
+    const index = results.indexOf(event.target)
+    if (event.key === 'ArrowDown' || (event.key === 'ArrowUp' && index !== -1)) {
+      event.preventDefault()
+      const next = index + (event.key === 'ArrowDown' ? 1 : -1)
+      if (next < 0) searchInputRef.current.focus()
+      else results[Math.min(next, results.length - 1)]?.focus()
+    } else if (event.key === 'Enter' && event.target === searchInputRef.current && results.length) {
+      event.preventDefault()
+      results[0].click()
+    } else if (event.key === 'Tab') {
+      const controls = [...searchRoot.current.querySelectorAll('input, button:not(:disabled)')]
+      if (event.shiftKey && event.target === controls[0]) {
+        event.preventDefault()
+        controls.at(-1)?.focus()
+      } else if (!event.shiftKey && event.target === controls.at(-1)) {
+        event.preventDefault()
+        controls[0]?.focus()
+      }
+    }
+  }
 
   return (
-    <>
-      {/* ── Fixed 64px Google Workspace Top App Bar ── */}
-      <div className="fixed top-0 inset-x-0 h-16 bg-[var(--bg)] z-40 px-3 sm:px-4 lg:px-5 flex items-center justify-between gap-3">
-        {/* Left: Brand Lockup (Aligned with 256px Nav Drawer on lg+) */}
-        <div className="flex items-center lg:w-[236px] shrink-0">
+    <header className="workspace-header" data-search-open={searchOpen || undefined}>
+        <div className="workspace-brand flex items-center shrink-0">
           <button
             type="button"
             onClick={() => onNav && onNav('overview')}
@@ -190,8 +254,48 @@ export default function Header({
           </button>
         </div>
 
+        {searchOpen && <div className="workspace-search-scrim" aria-hidden="true" onClick={closeSearch} />}
+        <div ref={searchRoot} className="workspace-search"
+          role={searchOpen ? 'dialog' : 'search'} aria-modal={searchOpen || undefined}
+          aria-label={searchOpen ? 'ClubHub search' : undefined} onKeyDown={handleSearchKeys}>
+          <SearchBox
+            inputRef={searchInputRef}
+            placeholder={GLOBAL_SEARCH_LABEL}
+            value={searchQuery}
+            onChange={value => {
+              setSearchQuery(value)
+              openSearch()
+            }}
+            onFocus={() => { setNotifOpen(false); setUserMenuOpen(false) }}
+            onKeyDown={event => {
+              if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+              if (searchOpen) handleSearchKeys(event)
+              else if (searchQuery) {
+                event.preventDefault()
+                setSearchQuery('')
+              }
+            }}
+            onClick={openSearch}
+            shortcutHint="/"
+            variant="topbar"
+            trailingSlot={searchOpen && (
+              <IconButton size="sm" ariaLabel="Close search" title="Close search" onClick={closeSearch} className="-mr-2">
+                <ChevronUp size={18} aria-hidden="true" />
+              </IconButton>
+            )}
+          />
+          {searchOpen && (
+            <div ref={searchPanel} className="workspace-search-panel">
+              <WorkspaceSearchResults query={searchQuery} sources={searchSources} onSelect={(type, item) => {
+                setSearchOpen(false)
+                onSearchSelect?.(type, item)
+              }} />
+            </div>
+          )}
+        </div>
+
         {/* Right: 40x40px Circular Google Workspace Utility Controls */}
-        <div className="flex items-center gap-1 shrink-0 relative">
+        <div className="workspace-utilities flex items-center gap-1 shrink-0 relative">
           <IconButton
             ref={notifBtnRef}
             selected={notifOpen}
@@ -326,22 +430,23 @@ export default function Header({
               {items.length > 0 ? (
                 <div className="flex flex-col gap-1 max-h-[min(56vh,calc(100dvh-14rem))] overflow-y-auto">
                   {items.map(item => {
-                    const isUnread = !readIds[item.id] && item.unread !== false
+                    const key = announcementKey(item)
+                    const isUnread = !readIds[key] && item.unread !== false
+                    const permalink = announcementPermalink(item)
+                    const Control = permalink ? 'a' : 'button'
                     return (
-                      <button
-                        key={item.id}
-                        type="button"
+                      <Control
+                        key={key}
+                        {...(permalink
+                          ? { href: permalink, target: '_blank', rel: 'noopener noreferrer' }
+                          : { type: 'button' })}
                         onClick={() => {
-                          setReadIds(prev => ({ ...prev, [item.id]: true }))
-                          if (item.navTarget && onNav) {
-                            onNav(item.navTarget)
-                            setNotifOpen(false)
-                          } else if (item.permalink) {
-                            window.open(item.permalink, '_blank', 'noopener,noreferrer')
-                            setNotifOpen(false)
-                          }
+                          setReadIds(prev => ({ ...prev, [key]: true }))
+                          setNotifOpen(false)
+                          if (permalink) notifBtnRef.current?.focus({ preventScroll: true })
+                          else onOpenAnnouncement?.(item)
                         }}
-                        className={`w-full text-left p-3 rounded-2xl border-none transition-colors cursor-pointer hover:bg-[var(--md-surface-container)] flex items-start gap-3 ${
+                        className={`w-full text-left p-3 rounded-2xl border-none no-underline transition-colors cursor-pointer hover:bg-[var(--md-surface-container)] flex items-start gap-3 ${
                           isUnread ? 'bg-[var(--md-surface-container)]/75' : 'bg-transparent'
                         }`}
                       >
@@ -374,14 +479,14 @@ export default function Header({
                               {item.time}
                             </span>
                           </div>
-                          <div className="text-xs sm:text-sm font-medium text-[var(--text)]">
+                          <div className="text-xs sm:text-sm font-medium text-[var(--text)] wrap-anywhere">
                             {cleanText(item.title)}
                           </div>
                           <div className="text-xs text-[var(--text-muted)] mt-0.5 leading-snug line-clamp-2">
                             {cleanText(item.description)}
                           </div>
                         </div>
-                      </button>
+                      </Control>
                     )
                   })}
                 </div>
@@ -412,40 +517,6 @@ export default function Header({
             </div>
           )}
         </div>
-      </div>
-
-      {showSearch && (
-        <div className="global-search flex items-center gap-2 min-w-0">
-          <div
-            className="flex-1 min-w-0"
-            onFocusCapture={() => {
-              setNotifOpen(false)
-              setUserMenuOpen(false)
-            }}
-          >
-            <SearchBox
-              inputRef={searchInputRef}
-              placeholder={searchPlaceholders[activeNav]}
-              width="100%"
-              value={searchQuery}
-              onChange={onSearchChange}
-              shortcutHint="/"
-              variant="topbar"
-            />
-          </div>
-          {activeNav !== 'overview' && (
-            <AiClubAgentModal
-              clubs={clubs}
-              events={events}
-              userSettings={userSettings}
-              onToggleJoinClub={onToggleJoinClub}
-              onOpenClub={opts => onNav && onNav('clubs', opts)}
-              onOpenCalendar={opts => onNav && onNav('calendar', opts)}
-              onNotify={onNotify}
-            />
-          )}
-        </div>
-      )}
-    </>
+    </header>
   )
 }

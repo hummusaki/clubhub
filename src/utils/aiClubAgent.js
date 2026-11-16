@@ -1,42 +1,9 @@
+import { getClubSearchDocument, isClubExcluded, parseSearchQuery, scoreClubSearchDocument } from './search.js'
+
 // ── ClubHub Hybrid AI Search, Intent Parser & Grounded RAG Engine ──────────
-// Combines natural-language intent & negation/constraint parsing, BM25 lexical
+// Combines natural-language intent & negation/constraint parsing, normalized lexical
 // scoring, 20-domain UCSC semantic concept matching, upcoming-event grounding,
 // multi-turn conversational refinement, and grounded AI Overview synthesis.
-
-export const SAMPLE_INTEREST_PROMPTS = [
-  {
-    label: '💻 CS + Creative Balance',
-    query: "I'm into coding and hackathons, plus something creative like design or film",
-  },
-  {
-    label: '🌱 Beginner-Friendly Social',
-    query: 'Beginner friendly clubs open to all levels where I can meet people, no Greek life',
-  },
-  {
-    label: '🤖 Robotics, Physics & Space',
-    query: 'Hands-on robotics, engineering, physics, or quantum computing projects',
-  },
-  {
-    label: '🩺 Pre-Med & Neuroscience',
-    query: 'Pre-med clinical experience, emergency medicine, or neuroscience research',
-  },
-  {
-    label: '🗣️ Law, Mock Trial & Policy',
-    query: 'Public speaking, mock trial, Model UN, or pre-law debate tournaments',
-  },
-  {
-    label: '🎵 Music, A Cappella & Dance',
-    query: 'Singing harmonies, a cappella, hip hop, or ballroom dance performances',
-  },
-  {
-    label: '📈 Finance & Consulting',
-    query: 'Investing, stock portfolio management, economics, or business case competitions',
-  },
-  {
-    label: '🌲 Outdoors, Chess & Games',
-    query: 'Hiking redwoods, chess tournaments, tabletop RPGs, or casual esports',
-  },
-]
 
 const STOP_WORDS = new Set([
   'a', 'about', 'actually', 'after', 'all', 'also', 'am', 'an', 'and', 'any',
@@ -786,6 +753,13 @@ export function recommendClubsForInterests(
   }
 
   const intent = parseQueryIntent(cleanQ, { userMajor })
+  const modifierTerms = new Set([
+    ...(intent.prefersBeginner ? ['beginner', 'beginners', 'beginner-friendly', 'friendly', 'experience', 'welcoming'] : []),
+    ...(intent.prefersUpcomingEvents ? ['event', 'events', 'meeting', 'meetings', 'soon', 'upcoming', 'today', 'tomorrow', 'schedule'] : []),
+    ...(intent.prefersSmall ? ['small', 'smaller', 'tight-knit'] : []),
+    ...(intent.prefersLarge ? ['big', 'large', 'popular'] : []),
+  ])
+  intent.tokens = intent.tokens.filter(token => !modifierTerms.has(token))
   const { byId: eventsById, byName: eventsByName } = buildUpcomingEventsByClub(upcomingEvents)
 
   // Check if user only entered constraints/modifiers (e.g., "beginner friendly clubs with events soon")
@@ -843,51 +817,17 @@ export function recommendClubsForInterests(
     }
   }
 
-  const positiveTargetClubIds = new Set(
-    matchedClusters.flatMap(mc => mc.cluster.targetClubIds)
-  )
-
-  // Compute IDF-like document frequencies for BM25 lexical weighting across club corpus
-  const docCount = Math.max(1, clubs.length)
-  const tokenDocFreq = new Map()
-  for (const token of intent.tokens) {
-    let df = 0
-    for (const c of clubs) {
-      const blob = `${c.name || ''} ${c.description || ''} ${c.directoryDescription || ''} ${c.categoryLabel || ''}`.toLowerCase()
-      if (containsWholeTerm(blob, token) || containsWordStem(blob, token)) df++
-    }
-    tokenDocFreq.set(token, df)
-  }
-
-  // 2. Score every club with BM25 lexical + Concept Cluster + Constraint/Vibe satisfaction
+  const parsed = { ...parseSearchQuery(intent.positiveText), tokens: intent.tokens }
   const scoredClubs = []
 
   for (const club of clubs) {
-    if (!club) continue
-
-    // Hard exclusions from natural-language negation
-    if (intent.excludeJoined && club.joined) continue
+    if (!club?.id || isClubExcluded(club, intent, intent.tokens)) continue
+    const doc = getClubSearchDocument(club)
+    const baseline = scoreClubSearchDocument(doc, parsed, { partial: true })
     const catLower = String(club.category || '').toLowerCase()
-    if (intent.excludedCategories.includes(catLower)) continue
-    if (
-      intent.excludedClubIds.includes(club.id) &&
-      !positiveTargetClubIds.has(club.id)
-    ) {
-      continue
-    }
-
-    const clubName = String(club.name || '').toLowerCase()
-    const clubAliases = Array.isArray(club.alsoKnownAs)
-      ? club.alsoKnownAs.join(' ').toLowerCase()
-      : ''
-    const rawClubSummary = club.directoryDescription || club.description || club.bio || ''
-    const clubDesc = `${club.description || ''} ${club.directoryDescription || ''} ${club.bio || ''}`.toLowerCase()
-    const clubCat = `${club.category || ''} ${club.categoryLabel || ''}`.toLowerCase()
-
-    // Check explicit negated keywords in club name (skip generic category labels so sibling clubs survive)
-    if (intent.excludedTerms.some(neg => containsWholeTerm(clubName, neg))) {
-      continue
-    }
+    const clubName = doc.identities[0] || ''
+    const rawClubSummary = doc.descriptions.join(' · ')
+    const clubDesc = doc.descriptiveText
 
     const clubEvents =
       eventsById.get(String(club.id)) || eventsByName.get(clubName.trim()) || []
@@ -898,46 +838,13 @@ export function recommendClubsForInterests(
       .join(' ')
       .toLowerCase()
 
-    const semanticTags = (club.tags || [])
-      .map(t => (t?.label || '').toLowerCase())
-      .filter(lbl => lbl && !lbl.startsWith('@'))
-
-    let score = 0
+    let score = baseline.score
     const matchedReasons = []
-    const matchedTermsSet = new Set()
+    const matchedTermsSet = new Set(baseline.terms)
 
-    // A. Lexical BM25-weighted token scoring across Name, Aliases, Tags, Bio/Directory & Upcoming Events
     for (const token of intent.tokens) {
-      const df = tokenDocFreq.get(token) || 0
-      const idfBoost = df > 0 ? Math.min(1.45, Math.max(0.85, Math.log((docCount + 1) / (df + 0.5)) / 2.2)) : 1
-
-      if (containsWholeTerm(clubName, token) || containsWordStem(clubName, token)) {
-        score += Math.round(38 * idfBoost)
-        matchedTermsSet.add(token)
-      } else if (clubAliases && containsWholeTerm(clubAliases, token)) {
-        score += Math.round(32 * idfBoost)
-        matchedTermsSet.add(token)
-      }
-
-      for (const tag of semanticTags) {
-        if (containsWholeTerm(tag, token) || containsWordStem(tag, token)) {
-          score += 20
-          matchedTermsSet.add(tag)
-        }
-      }
-
-      if (containsWholeTerm(clubDesc, token) || containsWordStem(clubDesc, token)) {
-        score += Math.round(20 * idfBoost)
-        matchedTermsSet.add(token)
-      }
-
-      if (eventsText && (containsWholeTerm(eventsText, token) || containsWordStem(eventsText, token))) {
+      if (containsWholeTerm(eventsText, token)) {
         score += 18
-        matchedTermsSet.add(token)
-      }
-
-      if (containsWholeTerm(clubCat, token)) {
-        score += 14
         matchedTermsSet.add(token)
       }
     }
@@ -977,6 +884,8 @@ export function recommendClubsForInterests(
         }
       }
     }
+
+    if (!score && !hasModifierOnlyQuery) continue
 
     // C. Vibe, Experience, Size & Schedule Modifier Scoring
     const isWelcomingText =
@@ -1031,11 +940,6 @@ export function recommendClubsForInterests(
       }
     }
 
-    // Mild penalty if negated term appears in club description
-    if (intent.excludedTerms.some(neg => containsWholeTerm(clubDesc, neg))) {
-      score -= 22
-    }
-
     const finalScore = Math.min(99, Math.max(0, Math.round(score)))
     if (finalScore < 24) continue
 
@@ -1061,6 +965,7 @@ export function recommendClubsForInterests(
     scoredClubs.push({
       club,
       matchScore: finalScore,
+      relevance: score,
       matchLabel: finalScore >= 86 ? 'Best Fit' : finalScore >= 68 ? 'Strong Match' : 'Good Match',
       matchedTerms,
       aiRationale,
@@ -1070,13 +975,20 @@ export function recommendClubsForInterests(
   }
 
   // 3. Sort descending by matchScore, then upcoming event presence, then members
+  const seenMatches = new Set()
   const matches = scoredClubs
     .sort((a, b) => {
-      if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore
+      if (b.relevance !== a.relevance) return b.relevance - a.relevance
       const aEv = a.nextEvent ? 1 : 0
       const bEv = b.nextEvent ? 1 : 0
       if (bEv !== aEv) return bEv - aEv
-      return (b.club.members || 0) - (a.club.members || 0)
+      return String(a.club.id).localeCompare(String(b.club.id))
+    })
+    .filter(({ club }) => {
+      const id = String(club.id)
+      if (seenMatches.has(id)) return false
+      seenMatches.add(id)
+      return true
     })
     .slice(0, maxResults)
 

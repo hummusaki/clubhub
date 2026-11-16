@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useMemo } from 'react'
 import { Megaphone, Send } from 'lucide-react'
 import { BubbleTag, ModalDialog, cleanText, Button } from './ui'
@@ -45,6 +46,7 @@ export default function TargetedAnnouncementModal({
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (busy) return
     if (!title.trim()) {
       setError('Announcement title is required.')
       return
@@ -56,19 +58,28 @@ export default function TargetedAnnouncementModal({
       .filter(s => s.startsWith('group:'))
       .map(s => s.slice(6))
 
-    const res = await createClubAnnouncement(clubId, {
-      title: title.trim(),
-      body: body.trim(),
-      type,
-      visibility,
-      targetGroupIds,
-      shortcutTargets: selectedShortcuts,
-      permalink: permalink.trim(),
-    })
-    setBusy(false)
+    let res
+    try {
+      res = await createClubAnnouncement(clubId, {
+        title: title.trim(),
+        body: body.trim(),
+        type,
+        visibility,
+        targetGroupIds,
+        shortcutTargets: selectedShortcuts,
+        permalink: permalink.trim(),
+      })
+    } catch {
+      setError('Could not confirm publication. Check the announcement feed before publishing again.')
+      return
+    } finally {
+      setBusy(false)
+    }
 
-    if (!res.ok) {
-      setError(res.error || 'Could not publish announcement.')
+    if (!res?.ok) {
+      setError(res?.outcomeUnknown
+        ? 'Could not confirm publication. Check the announcement feed before publishing again.'
+        : res?.error || 'Could not publish announcement.')
       return
     }
 
@@ -118,32 +129,30 @@ export default function TargetedAnnouncementModal({
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Category
               </label>
-              <select
+              <Select
+                aria-label="Announcement type"
                 value={type}
-                onChange={e => setType(e.target.value)}
+                onValueChange={setType}
                 className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm font-medium text-[var(--text)] outline-none focus:border-[var(--blue)]"
-              >
-                {ANNOUNCEMENT_TYPES.map(t => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                options={ANNOUNCEMENT_TYPES.map(t => ({ value: t, label: String(t) }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Visibility Tier
               </label>
-              <select
+              <Select
+                aria-label="Announcement audience"
                 value={visibility}
-                onChange={e => setVisibility(e.target.value)}
+                onValueChange={setVisibility}
                 className="w-full min-h-[40px] px-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--md-outline)] text-base sm:text-sm font-medium text-[var(--text)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="members">All Club Members</option>
-                <option value="group">Targeted Sub-Groups Only</option>
-                <option value="board">Board / Leadership Only</option>
-                <option value="public">Public Campus Feed</option>
-              </select>
+                options={[
+                  { value: "members", label: "All Club Members" },
+                  { value: "group", label: "Targeted Sub-Groups Only" },
+                  { value: "board", label: "Board / Leadership Only" },
+                  { value: "public", label: "Public Campus Feed" },
+                ]}
+              />
             </div>
           </div>
 
@@ -202,10 +211,10 @@ export default function TargetedAnnouncementModal({
             <Button
               variant="filled"
               type="submit"
-              disabled={busy}
+              pending={busy} pendingLabel="Publishing…"
               leadingIcon={<Send size={14} />}
             >
-              {busy ? 'Publishing…' : 'Publish Announcement'}
+              Publish Announcement
             </Button>
           </div>
         </form>

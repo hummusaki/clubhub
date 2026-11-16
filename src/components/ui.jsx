@@ -1,6 +1,5 @@
 import { useState, useEffect, useId, useRef } from 'react'
-import { X, Check, Search, ChevronDown, MoreHorizontal } from 'lucide-react'
-import { ClubEmblemSvg } from './icons'
+import { X, Check, Search, ChevronDown, MoreHorizontal, LoaderCircle, Users } from 'lucide-react'
 
 /**
  * Google Material Design 3 (M3) & Google Workspace UI Primitives for ClubHub.
@@ -79,6 +78,8 @@ export function ClubHubLogo({ size = 36, className = '' }) {
 // ── Material 3 Button Primitive ──
 // Variants: 'filled' | 'tonal' | 'outlined' | 'text' | 'danger' | 'danger-tonal'
 // Sizes: 'sm' (32px) | 'md' (40px) | 'lg' (44px)
+// Keep pending labels in the same centered space as the idle label.
+// pendingLabel and reserveLabels participate in sizing while hidden from assistive technology.
 export function Button({
   children,
   variant = 'filled',
@@ -88,6 +89,9 @@ export function Button({
   trailingIcon = null,
   type = 'button',
   disabled = false,
+  pending,
+  pendingLabel,
+  reserveLabels = [],
   className = '',
   onClick,
   title,
@@ -97,15 +101,17 @@ export function Button({
   const leading = icon || leadingIcon
   const hasLeading = Boolean(leading)
   const hasTrailing = Boolean(trailingIcon)
+  const hasLabel = children != null
+  const labelSpinner = pending !== undefined && !hasLeading && !hasTrailing
 
   let sizeClasses = ''
   if (size === 'sm') {
     const pad =
       variant === 'text'
         ? 'px-3'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-3 pr-4'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-4 pr-3'
             : 'px-4'
     sizeClasses = `h-8 min-h-[32px] text-xs gap-1.5 ${pad}`
@@ -113,9 +119,9 @@ export function Button({
     const pad =
       variant === 'text'
         ? 'px-4'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-5 pr-6'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-6 pr-5'
             : 'px-6'
     sizeClasses = `h-11 min-h-[44px] text-sm gap-2 ${pad}`
@@ -123,9 +129,9 @@ export function Button({
     const pad =
       variant === 'text'
         ? 'px-3.5'
-        : hasLeading && !hasTrailing
+        : hasLabel && hasLeading && !hasTrailing
           ? 'pl-4 pr-6'
-          : !hasLeading && hasTrailing
+          : hasLabel && !hasLeading && hasTrailing
             ? 'pl-6 pr-4'
             : 'px-6'
     sizeClasses = `min-h-9 py-1.5 text-sm gap-2 ${pad}`
@@ -156,17 +162,50 @@ export function Button({
     <button
       type={type}
       disabled={disabled}
-      onClick={onClick}
+      onClick={event => {
+        if (pending) {
+          event.preventDefault()
+          return
+        }
+        onClick?.(event)
+      }}
       title={title}
       aria-label={ariaLabel}
+      aria-busy={pending || undefined}
+      data-button-padding={labelSpinner && size !== 'sm' && !variant.startsWith('text') ? 'wide' : undefined}
+      aria-disabled={pending || undefined}
       className={`ui-touch md-state-layer inline-flex items-center justify-center rounded-full font-medium tracking-[0.01em] select-none shrink-0 transition-[box-shadow,border-color,background-color,color] duration-150 ${
         disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
-      } ${sizeClasses} ${variantClasses} ${className}`}
+      } ${sizeClasses} ${variantClasses} ${className} ${labelSpinner ? 'async-label-button' : ''}`}
       {...rest}
     >
-      {leading && <span className="inline-flex items-center shrink-0">{leading}</span>}
-      {children !== undefined && children !== null && <span>{children}</span>}
-      {trailingIcon && <span className="inline-flex items-center shrink-0">{trailingIcon}</span>}
+      {hasLeading && (
+        <span className="relative inline-grid place-items-center shrink-0">
+          <span className={`col-start-1 row-start-1 inline-flex ${pending ? 'invisible' : ''}`}>{leading}</span>
+          {pending && <LoaderCircle aria-hidden="true" size={14} className="absolute motion-safe:animate-spin" />}
+        </span>
+      )}
+      {children != null && (pendingLabel || reserveLabels.length ? (
+        <span className="inline-grid min-w-0 place-items-center">
+          {pendingLabel && <span aria-hidden="true" className="invisible col-start-1 row-start-1">{pendingLabel}</span>}
+          {reserveLabels.map(label => (
+            <span aria-hidden="true" key={label} className="invisible col-start-1 row-start-1">{label}</span>
+          ))}
+          <span className={`col-start-1 row-start-1 ${pending && pendingLabel ? 'invisible' : ''}`} aria-hidden={pending && pendingLabel ? true : undefined}>
+            {children}
+          </span>
+          {pending && pendingLabel && <span className="col-start-1 row-start-1">{pendingLabel}</span>}
+        </span>
+      ) : <span>{children}</span>)}
+      {trailingIcon && (
+        <span className="relative inline-grid place-items-center shrink-0">
+          <span className={`inline-flex ${pending && !hasLeading ? 'invisible' : ''}`}>{trailingIcon}</span>
+          {pending && !hasLeading && <LoaderCircle aria-hidden="true" size={14} className="absolute motion-safe:animate-spin" />}
+        </span>
+      )}
+      {pending && labelSpinner && (
+        <LoaderCircle aria-hidden="true" size={12} className="async-label-spinner motion-safe:animate-spin" />
+      )}
     </button>
   )
 }
@@ -254,8 +293,8 @@ export function SegmentedControl({
                 : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
-            {isSelected && showCheck ? (
-              <Check size={size === 'sm' ? 14 : 16} className="shrink-0" />
+            {showCheck && (isSelected || !opt.icon) ? (
+              <Check aria-hidden="true" size={size === 'sm' ? 14 : 16} className={`shrink-0 ${isSelected ? '' : 'invisible'}`} />
             ) : opt.icon ? (
               <span className="inline-flex items-center shrink-0">{opt.icon}</span>
             ) : null}
@@ -377,7 +416,7 @@ export function PageToolbar({ title, context, actions }) {
   return (
     <div className="page-toolbar">
       <div className="min-w-0">
-        <h1 className="page-title">{title}</h1>
+        <h1 tabIndex={-1} className="page-title">{title}</h1>
         {context}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 min-w-0">{actions}</div>}
@@ -385,7 +424,9 @@ export function PageToolbar({ title, context, actions }) {
   )
 }
 
-export function ActionDisclosure({ label, icon, iconOnly = false, children, className = '', panelClassName = '' }) {
+export function ActionDisclosure({
+  label, count, pending, pendingLabel, icon, iconOnly = false, children, className = '', panelClassName = '',
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef(null)
   const id = useId()
@@ -416,12 +457,22 @@ export function ActionDisclosure({ label, icon, iconOnly = false, children, clas
       }}
     >
       {iconOnly ? (
-        <IconButton variant="outlined" size="sm" ariaLabel={label} title={label} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        <IconButton variant="outlined" size="sm" selected={Boolean(count)} ariaLabel={label} title={label} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
           {icon || <MoreHorizontal size={18} />}
         </IconButton>
       ) : (
-        <Button variant="outlined-neutral" size="sm" icon={icon} trailingIcon={<ChevronDown size={14} />} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-          {label}
+        <Button variant="outlined-neutral" size="sm"
+          icon={pending ? <LoaderCircle size={14} className="motion-safe:animate-spin" /> : icon}
+          trailingIcon={<ChevronDown size={14} />}
+          reserveLabels={pendingLabel ? [label, pendingLabel] : undefined}
+          aria-busy={pending || undefined}
+          aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+          {pending && pendingLabel ? pendingLabel : label}
+          {count !== undefined && (
+            <span className={`ml-1 inline-block min-w-[2ch] tabular-nums ${count ? '' : 'invisible'}`}>
+              {count > 99 ? '99+' : count}
+            </span>
+          )}
         </Button>
       )}
       <div id={id} hidden={!open} className={`action-disclosure absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-[var(--shadow-md)] ${panelClassName}`}>
@@ -431,16 +482,26 @@ export function ActionDisclosure({ label, icon, iconOnly = false, children, clas
   )
 }
 
-export function ActionItem({ children, icon, onClick, disabled, danger = false }) {
+export function ActionItem({ children, icon, onClick, disabled, pending, pendingLabel, danger = false }) {
   return (
     <button
       type="button"
       className={`ui-touch flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-subtle)] disabled:opacity-45 ${danger ? 'text-[var(--red-ink)]' : 'text-[var(--text)]'}`}
-      onClick={onClick}
-      disabled={disabled}
+      onClick={event => {
+        if (!pending) onClick?.(event)
+      }}
+      disabled={disabled && !pending}
+      aria-disabled={pending || undefined}
+      aria-busy={pending || undefined}
     >
-      {icon}
-      {children}
+      {pending ? <LoaderCircle size={14} aria-hidden="true" className="shrink-0 motion-safe:animate-spin" /> : icon}
+      {pendingLabel ? (
+        <span className="inline-grid">
+          <span aria-hidden="true" className="invisible col-start-1 row-start-1">{pendingLabel}</span>
+          <span className={`col-start-1 row-start-1 ${pending ? 'invisible' : ''}`}>{children}</span>
+          {pending && <span className="col-start-1 row-start-1">{pendingLabel}</span>}
+        </span>
+      ) : children}
     </button>
   )
 }
@@ -638,13 +699,7 @@ export function ClubAvatar({ club, size = 40, className = '' }) {
           className="w-full h-full object-cover rounded-[inherit]"
         />
       ) : (
-        <ClubEmblemSvg
-          clubName={club?.name}
-          clubId={club?.id}
-          abbr={club?.abbr}
-          category={club?.category}
-          size={iconSize}
-        />
+        <Users size={iconSize} aria-hidden="true" />
       )}
     </div>
   )
@@ -705,6 +760,7 @@ export function Card({
   style = {},
   animate = false,
   onClick,
+  'data-task-section': taskSection,
 }) {
   const interactiveClasses = onClick
     ? 'cursor-pointer hover:bg-[var(--bg-tile-hover)] hover:shadow-[var(--shadow-tile-hover)] transition-[box-shadow,border-color,background-color] duration-150'
@@ -716,6 +772,7 @@ export function Card({
         animate ? 'fade-in' : ''
       } ${interactiveClasses} ${className}`}
       style={style}
+      data-task-section={taskSection}
     >
       {children}
     </div>
@@ -748,6 +805,12 @@ export function SearchBox({
   shortcutHint = null,
   variant = 'outlined',
   trailingSlot = null,
+  onFocus,
+  onClick,
+  onKeyDown,
+  label = placeholder,
+  initialFocus = false,
+  className = '',
 }) {
   const isControlled = value !== undefined
   const isTopbar = variant === 'topbar'
@@ -757,8 +820,8 @@ export function SearchBox({
       className={`flex items-center gap-3 rounded-full transition-all duration-150 max-w-full min-w-0 ${
         isTopbar
           ? 'px-4 h-11 sm:h-12 bg-[var(--md-surface-container)] border border-transparent focus-within:bg-[var(--bg-card)] focus-within:border-[var(--border)] focus-within:shadow-[var(--shadow-md)]'
-          : 'px-3.5 h-10 bg-[var(--bg-card)] border border-[var(--md-outline-variant)] hover:border-[var(--md-outline)] focus-within:border-[var(--blue)] focus-within:shadow-[0_0_0_1px_var(--blue)]'
-      }`}
+          : 'px-3.5 h-11 sm:h-10 bg-[var(--bg-card)] border border-[var(--md-outline-variant)] hover:border-[var(--md-outline)] focus-within:border-[var(--blue)] focus-within:shadow-[0_0_0_1px_var(--blue)]'
+      } ${className}`}
       style={{ width }}
     >
       <Search size={18} className="shrink-0 text-[var(--text-muted)]" />
@@ -766,11 +829,16 @@ export function SearchBox({
         ref={inputRef}
         type="text"
         placeholder={placeholder}
-        aria-label={placeholder}
+        aria-label={label}
+        data-initial-focus={initialFocus || undefined}
+        onFocus={onFocus}
+        onClick={onClick}
         value={isControlled ? value : undefined}
         onChange={onChange ? e => onChange(e.target.value) : undefined}
         onKeyDown={e => {
-          if (e.key === 'Escape') {
+          if (e.nativeEvent.isComposing) return
+          onKeyDown?.(e)
+          if (!e.defaultPrevented && e.key === 'Escape') {
             if (isControlled && value && onChange) {
               onChange('')
             } else {
@@ -778,12 +846,12 @@ export function SearchBox({
             }
           }
         }}
-        className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm w-full min-w-0 placeholder:text-[var(--text-muted)]"
+        className="border-none outline-none focus-visible:shadow-none bg-transparent text-[var(--text)] text-base sm:text-sm h-full w-full min-w-0 placeholder:text-[var(--text-muted)]"
       />
       {isControlled && value ? (
         <button
           type="button"
-          onClick={() => onChange && onChange('')}
+          onClick={() => { onChange?.(''); inputRef?.current?.focus() }}
           className="ui-touch -mr-2 w-7 h-7 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] cursor-pointer bg-transparent border-none flex items-center justify-center shrink-0 transition-colors"
           aria-label="Clear search"
         >

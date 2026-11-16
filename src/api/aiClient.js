@@ -4,7 +4,8 @@
 // Gemini API key, while strictly preventing hallucinated clubs.
 
 import { fetchActionJSON } from './client.js';
-import { formatEventWhenLabel } from '../utils/aiClubAgent.js';
+import { formatEventWhenLabel, recommendClubsForInterests } from '../utils/aiClubAgent.js';
+import { getClubSearchDocument, isClubExcluded } from '../utils/search.js';
 
 const GEMINI_KEY_STORAGE = 'clubhub_gemini_api_key_v1';
 const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1/interactions';
@@ -221,136 +222,77 @@ async function callDirectGeminiInteractions({
 /**
  * Build compact candidate catalog for Gemini 4 grounding from top RAG matches + diverse fallback pool.
  */
-function buildCandidateCatalog(clubs, ragResult) {
+const CANDIDATE_LIMIT = 16;
+
+export function buildCandidateCatalog(clubs, ragResult) {
   const intent = ragResult?.intent || {};
-  const excludedCats = new Set(intent.excludedCategories || []);
+  const clubById = new Map(clubs.filter(club => club?.id).map(club => [String(club.id), club]));
+  const matches = ragResult?.matches || [];
+  const relevant = matches.length >= CANDIDATE_LIMIT || !ragResult?.query
+    ? matches
+    : [...matches, ...recommendClubsForInterests(clubs, ragResult.query, {
+      maxResults: CANDIDATE_LIMIT,
+      events: ragResult.relatedEvents,
+      userMajor: intent.userMajor,
+    }).matches];
+
   const seen = new Set();
   const candidates = [];
-
-  for (const m of ragResult?.matches || []) {
-    if (!m?.club?.id || seen.has(String(m.club.id))) continue;
-    seen.add(String(m.club.id));
+  for (const match of relevant) {
+    const id = String(match?.club?.id ?? '');
+    const club = clubById.get(id);
+    if (!club || seen.has(id) || isClubExcluded(club, intent, intent.tokens)) continue;
+    seen.add(id);
+    const doc = getClubSearchDocument(club);
+    const budget = Math.floor(480 / Math.max(1, doc.descriptions.length));
     candidates.push({
-      id: String(m.club.id),
-      name: m.club.name,
-      categoryLabel: m.club.categoryLabel || m.club.category,
-      members: m.club.members || 0,
-      joined: Boolean(m.club.joined),
-      summary: m.club.directoryDescription || m.club.description || '',
-      tags: m.matchedTerms || [],
-      ragScore: m.matchScore,
-      nextEvent: m.nextEvent
-        ? {
-            title: m.nextEvent.event || m.nextEvent.title || '',
-            when: formatEventWhenLabel(m.nextEvent),
-            location: m.nextEvent.location || '',
-          }
-        : null,
+      id,
+      name: club.name,
+      categoryLabel: club.categoryLabel || club.category,
+      members: club.members || 0,
+      joined: Boolean(club.joined),
+      summary: doc.descriptions.map(text => text.trim().slice(0, budget)).join(' · '),
+      tags: [...new Set([...(match.matchedTerms || []), ...doc.tags])].slice(0, 6),
+      ragScore: match.matchScore,
+      nextEvent: match.nextEvent ? {
+        title: match.nextEvent.event || match.nextEvent.title || '',
+        when: formatEventWhenLabel(match.nextEvent),
+        location: match.nextEvent.location || '',
+      } : null,
     });
+    if (candidates.length === CANDIDATE_LIMIT) break;
   }
-
-  // Supplement up to 16 candidates so Gemini can catch nuanced semantic connections
-  if (candidates.length < 16) {
-    for (const c of clubs) {
-      if (!c?.id || seen.has(String(c.id))) continue;
-      if (intent.excludeJoined && c.joined) continue;
-      if (excludedCats.has(String(c.category || '').toLowerCase())) continue;
-      seen.add(String(c.id));
-      candidates.push({
-        id: String(c.id),
-        name: c.name,
-        categoryLabel: c.categoryLabel || c.category,
-        members: c.members || 0,
-        joined: Boolean(c.joined),
-        summary: c.directoryDescription || c.description || '',
-        tags: (c.tags || [])
-          .map(t => t?.label)
-          .filter(lbl => lbl && !lbl.startsWith('@'))
-          .slice(0, 3),
-        ragScore: 25,
-        nextEvent: null,
-      });
-      if (candidates.length >= 16) break;
-    }
-  }
-
   return candidates;
 }
 
 /**
- * Strictly validate and merge Gemini 4 structured recommendations against real UCSC club objects.
+ * A model may point out supplied clubs. All rendered evidence and ordering
+ * continue to come from the local catalog; free-form activity claims cannot
+ * be validated merely by checking a club ID.
  */
-export function mergeGenerativeWithRag({ clubs, ragResult, llmPayload, maxResults = 6 }) {
-  if (!llmPayload?.result) return null;
-  const { result, interactionId = '', model = DEFAULT_GEMINI_MODEL } = llmPayload;
-
-  const clubsById = new Map(clubs.map(c => [String(c.id), c]));
-  const ragById = new Map((ragResult?.matches || []).map(m => [String(m.club.id), m]));
+export function mergeGenerativeWithRag({
+  clubs, ragResult, llmPayload, maxResults = 6,
+  candidateClubs = buildCandidateCatalog(clubs, ragResult),
+}) {
+  if (!Array.isArray(llmPayload?.result?.recommendations)) return null;
+  const candidates = new Set(candidateClubs.map(candidate => candidate.id));
+  const allowed = new Map(clubs.map(club => [String(club.id), club]));
   const intent = ragResult?.intent || {};
-  const excludedCats = new Set(intent.excludedCategories || []);
-
-  const validatedMatches = [];
-  const usedIds = new Set();
-
-  for (const rec of result.recommendations || []) {
-    const cid = String(rec?.clubId || '').trim();
-    if (!cid || usedIds.has(cid)) continue;
-    const club = clubsById.get(cid);
-    if (!club) continue; // Reject hallucinated club IDs
-    if (intent.excludeJoined && club.joined) continue;
-    if (excludedCats.has(String(club.category || '').toLowerCase())) continue;
-
-    usedIds.add(cid);
-    const ragEntry = ragById.get(cid);
-    const clampedScore = Math.min(99, Math.max(40, Math.round(Number(rec.matchScore) || ragEntry?.matchScore || 78)));
-
-    validatedMatches.push({
-      club,
-      matchScore: clampedScore,
-      matchLabel:
-        rec.matchLabel ||
-        (clampedScore >= 86 ? 'Best Fit' : clampedScore >= 68 ? 'Strong Match' : 'Good Match'),
-      matchedTerms:
-        Array.isArray(rec.highlightTags) && rec.highlightTags.length > 0
-          ? rec.highlightTags.slice(0, 4)
-          : ragEntry?.matchedTerms || [],
-      aiRationale: String(rec.rationale || ragEntry?.aiRationale || '').trim(),
-      nextEvent: ragEntry?.nextEvent || null,
-      matchTier: clampedScore >= 80 ? 'top' : clampedScore >= 55 ? 'strong' : 'good',
-    });
-
-    if (validatedMatches.length >= maxResults) break;
+  const matched = new Set();
+  const assistantPicks = [];
+  for (const rec of llmPayload.result.recommendations) {
+    const id = String(rec?.clubId ?? '').trim();
+    const club = allowed.get(id);
+    if (!club || !candidates.has(id) || matched.has(id) || isClubExcluded(club, intent, intent.tokens)) continue;
+    matched.add(id);
+    assistantPicks.push(club);
+    if (assistantPicks.length >= Math.min(3, maxResults)) break;
   }
-
-  // If LLM returned fewer valid clubs than RAG had strong hits, preserve remaining top RAG hits
-  if (validatedMatches.length === 0 && (ragResult?.matches?.length || 0) > 0) {
-    return null;
-  }
-
-  const validIntents =
-    Array.isArray(result.interpretedIntents) && result.interpretedIntents.length > 0
-      ? result.interpretedIntents.slice(0, 6)
-      : ragResult.interpretedIntents;
-
-  const validFollowUps =
-    Array.isArray(result.followUpSuggestions) && result.followUpSuggestions.length > 0
-      ? result.followUpSuggestions.slice(0, 4)
-      : ragResult.followUpSuggestions;
-
+  if (!assistantPicks.length) return null;
   return {
     ...ragResult,
-    hasMatches: validatedMatches.length > 0,
-    matches: validatedMatches,
-    aiOverview: String(result.overview || ragResult.aiOverview || '').trim(),
-    interpretedIntents: validIntents,
-    followUpSuggestions: validFollowUps,
-    summary:
-      validatedMatches.length > 0
-        ? `Synthesized ${validatedMatches.length} Gemini 4 club ${validatedMatches.length === 1 ? 'match' : 'matches'}`
-        : ragResult.summary,
-    interactionId,
-    mode: 'gemini-4',
-    model,
+    assistantPicks,
+    interactionId: llmPayload.interactionId || '',
   };
 }
 
@@ -372,12 +314,16 @@ export async function runGenerativeClubSearch({
   const cleanQuery = String(query || '').trim();
   if (!cleanQuery || !ragResult) return null;
 
+  const candidateClubs = buildCandidateCatalog(clubs, ragResult);
+  if (!candidateClubs.length) return null;
+
   const caps = await getAiCapabilities();
   if (!caps.generativeEnabled) return null;
   if (signal?.aborted) return null;
 
-  const candidateClubs = buildCandidateCatalog(clubs, ragResult);
+  const candidateIds = new Set(candidateClubs.map(club => club.id));
   const upcomingEvents = (ragResult.relatedEvents?.length ? ragResult.relatedEvents : events)
+    .filter(ev => candidateIds.has(String(ev.clubId || '')))
     .slice(0, 8)
     .map(ev => ({
       clubId: ev.clubId || '',
@@ -412,6 +358,7 @@ export async function runGenerativeClubSearch({
         ragResult,
         llmPayload: res,
         maxResults,
+        candidateClubs,
       });
     }
   }
@@ -440,6 +387,7 @@ export async function runGenerativeClubSearch({
         ragResult,
         llmPayload: directPayload,
         maxResults,
+        candidateClubs,
       });
     } catch (err) {
       if (err?.name === 'AbortError') return null;

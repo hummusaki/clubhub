@@ -23,7 +23,7 @@ export default function Sidebar({
       {/* ── Desktop Google Workspace Navigation Drawer (lg+): Below 64px Top App Bar ── */}
       <aside
         aria-label="Primary navigation"
-        className="hidden lg:flex fixed top-16 bottom-0 left-0 w-[256px] bg-[var(--bg-sidebar)]
+        className="hidden lg:flex fixed top-16 bottom-0 left-0 w-[var(--sidebar-width)] bg-[var(--bg-sidebar)]
           flex-col px-3 py-3 z-30 select-none overflow-y-auto"
       >
         <nav className="flex-1 flex flex-col gap-0.5">

@@ -20,12 +20,12 @@ export default function StatCards({
         })
 
   return (
-    <ul className="grid grid-cols-2 sm:grid-cols-4 list-none rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+    <ul className="stat-strip grid list-none rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
       {stats.map(stat => {
         const interactive = stat.navTarget && onNav
         const Element = interactive ? 'button' : 'div'
         return (
-          <li key={stat.label} className="min-w-0 border-b border-r border-[var(--border)] [&:nth-child(2n)]:border-r-0 [&:nth-last-child(-n+2)]:border-b-0 sm:border-b-0 sm:[&:nth-child(2)]:border-r">
+          <li key={stat.label} className="min-w-0">
             <Element
               {...(interactive ? { type: 'button', onClick: () => onNav(stat.navTarget) } : {})}
               className={`flex h-full w-full items-center gap-2 px-2 py-2 sm:px-3 text-left ${interactive ? 'ui-touch md-state-layer hover:bg-[var(--bg-subtle)] focus-visible:outline-offset-[-3px]' : ''}`}

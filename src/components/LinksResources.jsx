@@ -1,3 +1,5 @@
+import Select from './Select'
+import SearchDestination from './SearchDestination'
 import { useState, useMemo, useEffect } from 'react'
 import {
   ExternalLink,
@@ -16,7 +18,7 @@ import {
   Mail,
 } from 'lucide-react'
 import { links as defaultLinks } from '../data/sampleData'
-import { Card, IconBadge, BubbleTag, ClubAvatar, cleanText, Button, IconButton, PageToolbar, ActionDisclosure } from './ui'
+import { Card, IconBadge, BubbleTag, ClubAvatar, cleanText, Button, IconButton, PageToolbar, ActionDisclosure, SearchBox } from './ui'
 import { PlatformIcon } from './icons'
 import { createLink } from '../api/client'
 import { filterAndRankBySearch } from '../utils/search'
@@ -243,6 +245,9 @@ export default function LinksResources({
   isDemo = false,
   userSettings = {},
   searchQuery = '',
+  onSearchChange,
+  searchTarget,
+  onDismissSearchTarget,
   onRefresh,
   onCountChange,
   localAdded: externalLocalAdded,
@@ -561,54 +566,82 @@ export default function LinksResources({
     )
   }
 
+  const selectedSearchLink = searchTarget?.type === 'resource'
+    ? allLinks.find(link => String(link.id) === searchTarget.id) : null
   const filterCount = Number(filterTab !== 'All') + Number(clubFilter !== 'all') + Number(groupMode !== 'category')
 
   return (
     <div className="page-stack">
       <PageToolbar title="Shared resources" actions={
         <>
-          <ActionDisclosure label={filterCount > 0 ? `Filters (${filterCount})` : 'Filters'} icon={<SlidersHorizontal size={14} />}
+          {onSearchChange && <div className="w-full sm:w-48 min-w-0">
+            <SearchBox placeholder="Filter resources" value={searchQuery} onChange={onSearchChange} />
+          </div>}
+          <ActionDisclosure label="Filters" count={filterCount} icon={<SlidersHorizontal size={14} />}
             panelClassName="left-0 right-auto w-52 p-2">
             {() => (
               <div className="grid gap-2">
                 <label className="grid gap-1 text-xs">
                   Group by
-                  <select className="control-select" value={groupMode} onChange={e => setGroupMode(e.target.value)}>
-                    <option value="category">Category</option>
-                    <option value="club">Club</option>
-                  </select>
+                  <Select
+                    aria-label="Group resources by"
+                    className="control-select"
+                    value={groupMode}
+                    onValueChange={setGroupMode}
+                    options={[
+                      { value: "category", label: "Category" },
+                      { value: "club", label: "Club" },
+                    ]}
+                  />
                 </label>
                 <label className="grid gap-1 text-xs">
                   Club
-                  <select className="control-select" value={clubFilter} onChange={e => setClubFilter(e.target.value)}>
-                    <option value="all">All campus clubs</option>
-                    {joinedClubIdSet.size > 0 && <option value="myclubs">My joined clubs</option>}
-                    {clubsWithResources.map(c => <option key={c.id} value={c.id}>{cleanText(c.name)}</option>)}
-                  </select>
+                  <Select
+                    aria-label="Resource club filter"
+                    className="control-select"
+                    value={clubFilter}
+                    onValueChange={setClubFilter}
+                    search
+                    options={[
+                      { value: "all", label: "All campus clubs" },
+                      ...(joinedClubIdSet.size > 0 ? [{ value: "myclubs", label: "My joined clubs" }] : []),
+                      ...clubsWithResources.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                    ]}
+                  />
                 </label>
                 <label className="grid gap-1 text-xs">
                   Resource type
-                  <select className="control-select" value={filterTab} onChange={e => setFilterTab(e.target.value)}>
-                    <option value="All">All resources ({sectionCounts.All})</option>
-                    {(sectionCounts.Pinned > 0 || filterTab === 'Pinned') && (
-                      <option value="Pinned">Pinned ({sectionCounts.Pinned})</option>
-                    )}
-                    {RESOURCE_SECTIONS.filter(section => sectionCounts[section.id] > 0 || filterTab === section.id).map(section => (
-                      <option key={section.id} value={section.id}>{section.shortLabel} ({sectionCounts[section.id]})</option>
-                    ))}
-                  </select>
+                  <Select
+                    aria-label="Resource type filter"
+                    className="control-select"
+                    value={filterTab}
+                    onValueChange={setFilterTab}
+                    search="auto"
+                    options={[
+                      { value: "All", label: `All resources (${sectionCounts.All})` },
+                      ...(sectionCounts.Pinned > 0 || filterTab === 'Pinned' ? [{ value: "Pinned", label: `Pinned (${sectionCounts.Pinned})` }] : []),
+                      ...RESOURCE_SECTIONS.filter(section => sectionCounts[section.id] > 0 || filterTab === section.id).map(section => ({ value: section.id, label: `${section.shortLabel} (${sectionCounts[section.id]})` })),
+                    ]}
+                  />
                 </label>
               </div>
             )}
           </ActionDisclosure>
           <Button size="sm" variant={showAdd ? 'outlined-neutral' : 'filled'}
             icon={showAdd ? <X size={14} /> : <Plus size={14} />}
+            reserveLabels={['Add resource', 'Close resource form']}
             aria-expanded={showAdd} aria-controls="add-resource-form"
             onClick={() => setShowAdd(prev => !prev)}>
             {showAdd ? 'Close resource form' : 'Add resource'}
           </Button>
         </>
       } />
+      {selectedSearchLink && (
+        <SearchDestination key={searchTarget.revision} heading={cleanText(selectedSearchLink.displayLabel)} onDismiss={onDismissSearchTarget}>
+          {renderResourceCard(selectedSearchLink)}
+        </SearchDestination>
+      )}
+
 
       {/* ── Add Resource Form ── */}
       {showAdd && (
@@ -652,34 +685,33 @@ export default function LinksResources({
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Club
               </label>
-              <select
+              <Select
+                aria-label="Resource club"
                 value={selectedClubId}
-                onChange={e => setSelectedClubId(e.target.value)}
+                onValueChange={setSelectedClubId}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                {clubs.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {cleanText(c.name)}
-                  </option>
-                ))}
-              </select>
+                search
+                options={clubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Category
               </label>
-              <select
+              <Select
+                aria-label="Resource category"
                 value={kind}
-                onChange={e => setKind(e.target.value)}
+                onValueChange={setKind}
                 className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)]"
-              >
-                <option value="form">Form / Sign-Up</option>
-                <option value="document">Document / Slides / Sheet</option>
-                <option value="discord">Discord / Group Chat</option>
-                <option value="event">Calendar / Event Page</option>
-                <option value="website">Website / Link Hub</option>
-              </select>
+                options={[
+                  { value: "form", label: "Form / Sign-Up" },
+                  { value: "document", label: "Document / Slides / Sheet" },
+                  { value: "discord", label: "Discord / Group Chat" },
+                  { value: "event", label: "Calendar / Event Page" },
+                  { value: "website", label: "Website / Link Hub" },
+                ]}
+              />
             </div>
           </div>
 
@@ -693,9 +725,9 @@ export default function LinksResources({
             <Button
               variant="filled"
               type="submit"
-              disabled={saving}
+              pending={saving} pendingLabel="Saving…"
             >
-              {saving ? 'Saving…' : 'Save resource'}
+              Save resource
             </Button>
           </div>
         </form>

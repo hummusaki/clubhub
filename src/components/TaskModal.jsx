@@ -1,3 +1,4 @@
+import Select from './Select'
 import { useState, useMemo } from 'react'
 import {
   Check,
@@ -122,6 +123,7 @@ export default function TaskModal({
   accountEmail = '',
   timeFormat = '12h',
   busy = false,
+  saveBlocked = false,
   sendingReminder = false,
   onSaveIntegrationChannelPrefs,
   onSendReminderNow,
@@ -363,7 +365,7 @@ export default function TaskModal({
 
   function handleFormSubmit(e) {
     e.preventDefault()
-    if (!title.trim() || busy) return
+    if (!title.trim() || busy || saveBlocked) return
 
     const cleanWebhook = isValidDiscordWebhookUrl(customWebhook) ? customWebhook.trim() : ''
     const cleanEmail = String(customEmail || '').trim()
@@ -547,10 +549,11 @@ export default function TaskModal({
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 {isPersonalScope ? 'Personal List' : 'Board Section'}
               </label>
-              <select
+              <Select
+                aria-label="Task list or section"
                 value={sectionId}
-                onChange={e => {
-                  const sid = e.target.value
+                onValueChange={nextValue => {
+                  const sid = nextValue
                   setSectionId(sid)
                   const pSec = personalSections.find(s => s.id === sid)
                   if (pSec) {
@@ -562,54 +565,38 @@ export default function TaskModal({
                   else if (scopeMode === 'personal') setScopeMode('general')
                 }}
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {selectableSections.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {cleanText(s.title)}
-                    {s.visibility === 'personal'
-                      ? ' (Only You)'
-                      : s.visibility === 'board'
-                        ? ' (Board Only)'
-                        : ''}
-                  </option>
-                ))}
-              </select>
+                search="auto"
+                options={selectableSections.map(s => ({
+                  value: s.id,
+                  label: `${cleanText(s.title)}${s.visibility === 'personal' ? ' (Only You)' : s.visibility === 'board' ? ' (Board Only)' : ''}`,
+                }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Priority
               </label>
-              <select
+              <Select
                 value={priority}
-                onChange={e => setPriority(e.target.value)}
+                onValueChange={setPriority}
                 aria-label="Task priority"
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {Object.entries(TASK_PRIORITY_META).map(([k, meta]) => (
-                  <option key={k} value={k}>
-                    {meta.label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(TASK_PRIORITY_META).map(([k, meta]) => ({ value: k, label: meta.label }))}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">
                 Status
               </label>
-              <select
+              <Select
                 value={status}
-                onChange={e => setStatus(e.target.value)}
+                onValueChange={setStatus}
                 aria-label="Task status"
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--bg-surface)] text-base sm:text-sm font-medium text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-              >
-                {Object.entries(TASK_STATUS_META).map(([k, meta]) => (
-                  <option key={k} value={k}>
-                    {meta.label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(TASK_STATUS_META).map(([k, meta]) => ({ value: k, label: meta.label }))}
+              />
             </div>
           </div>
 
@@ -744,18 +731,13 @@ export default function TaskModal({
                       <label className="block text-[11px] font-semibold text-[var(--text-muted)] mb-1">
                         When to remind
                       </label>
-                      <select
+                      <Select
                         value={reminderOffset}
-                        onChange={e => setReminderOffset(Number(e.target.value))}
+                        onValueChange={nextValue => setReminderOffset(Number(nextValue))}
                         aria-label="Reminder timing"
                         className="w-full min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] outline-none focus:border-[var(--blue)] cursor-pointer"
-                      >
-                        {REMINDER_OFFSET_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={REMINDER_OFFSET_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }))}
+                      />
                     </div>
 
                     <div>
@@ -809,9 +791,14 @@ export default function TaskModal({
                     </button>
 
                     {isEditing && onSendReminderNow && initialTask?.id && (
-                      <button
+                      <Button
                         type="button"
-                        disabled={sendingReminder || busy}
+                        disabled={busy}
+                        variant="outlined-neutral"
+                        size="sm"
+                        icon={<Send size={11} />}
+                        pending={sendingReminder}
+                        pendingLabel="Sending…"
                         onClick={() =>
                           onSendReminderNow({
                             ...initialTask,
@@ -828,11 +815,9 @@ export default function TaskModal({
                             },
                           })
                         }
-                        className="inline-flex items-center gap-1.5 px-2.5 min-h-[28px] rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--blue-light)] text-[var(--text)] hover:text-[var(--blue-ink)] border border-[var(--border)] font-semibold cursor-pointer transition-colors disabled:opacity-50"
                       >
-                        <Send size={11} />
-                        <span>{sendingReminder ? 'Sending…' : 'Send reminder now'}</span>
-                      </button>
+                        Send reminder now
+                      </Button>
                     )}
                   </div>
 
@@ -993,17 +978,13 @@ export default function TaskModal({
             <Button
               variant="filled"
               type="submit"
-              disabled={busy || !title.trim()}
+              disabled={saveBlocked || !title.trim()}
+              pending={busy}
+              pendingLabel="Saving…"
             >
-              {busy
-                ? 'Saving…'
-                : isEditing
-                  ? isPersonalScope
-                    ? 'Save Changes'
-                    : 'Save Task'
-                  : isPersonalScope
-                    ? 'Add personal task'
-                    : 'Create club task'}
+              {isEditing
+                ? (isPersonalScope ? 'Save Changes' : 'Save Task')
+                : (isPersonalScope ? 'Add personal task' : 'Create club task')}
             </Button>
           </div>
         </form>
