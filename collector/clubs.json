@@ -11,7 +11,9 @@
     "discord": "https://discord.gg/yAv8gS5sF",
     "discordServerName": "UCSC 3D Animation Short Film Club",
     "discordOnlineCount": 10,
-    "discordMemberCount": 34
+    "discordMemberCount": 34,
+    "discordGuildId": "1569900005693726750",
+    "discordFollowable": false
   },
   {
     "name": "8th Rank Society",
@@ -235,17 +237,17 @@
     "email": null,
     "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
     "discord": "https://discord.gg/fhzvdq8c5E",
+    "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
+    "discordFollowable": false,
+    "discordMemberCount": 1408,
     "discordOnlineCount": 278,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/893648956372971552/7c567bd16423aee948187a2bb8c0b23f.png?size=128",
     "website": "https://ucscacm.vercel.app/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-acm-3a0a55b0935b4b65.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "893648956372971552",
-    "discordFollowable": false,
-    "discordMemberCount": 1408,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/893648956372971552/7c567bd16423aee948187a2bb8c0b23f.png?size=128"
+    ]
   },
   {
     "name": "Association for Women in Mathematics: Applied Math at UCSC",
@@ -276,15 +278,15 @@
     "category": "tech & science",
     "email": "bananbot@ucsc.edu",
     "description": "Banana Bots — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.gg/chappellroan",
+    "discordGuildId": "1123614912007110769",
+    "discordServerName": "✧ Popstars Only ✧",
+    "discordFollowable": true,
     "website": "https://bananabotsclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2026/01/2022_UCSC_research_day1-060-1024x683.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discord": "https://discord.gg/chappellroan",
-    "discordGuildId": "1123614912007110769",
-    "discordServerName": "✧ Popstars Only ✧",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "Bangladeshi Student Association",
@@ -414,19 +416,19 @@
     "category": "service & advocacy",
     "email": "ucsc@campkesem.org",
     "description": "University of California, Santa Cruz",
-    "website": "https://goslugs.com/sports/2025/7/14/campkesem.aspx",
-    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/61/61IP0HjigA9N9BltsznN9vcd5JuSKCHNb5uYhijk.jpg",
-    "sources": [
-      "sport_clubs",
-      "instagram_discovery"
-    ],
     "discord": "https://discord.gg/MEc9UX99S4",
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
     "discordMemberCount": 1171,
     "discordOnlineCount": 113,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
+    "website": "https://goslugs.com/sports/2025/7/14/campkesem.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/61/61IP0HjigA9N9BltsznN9vcd5JuSKCHNb5uYhijk.jpg",
+    "sources": [
+      "sport_clubs",
+      "instagram_discovery"
+    ]
   },
   {
     "name": "Central Americans For Empowerment (CAFE)",
@@ -605,17 +607,17 @@
     "category": "service & advocacy",
     "email": "c9senate@ucsc.edu",
     "description": "All affiliates are welcome, and voting rights are earned by attending three meetings. Senate funds College Nine events and supports international and social justice themes.",
-    "website": "https://collegenine.ucsc.edu/cocurricular/senate.html",
-    "sources": [
-      "college_government"
-    ],
     "discord": "https://discord.gg/MEc9UX99S4",
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
     "discordMemberCount": 1171,
     "discordOnlineCount": 113,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
+    "website": "https://collegenine.ucsc.edu/cocurricular/senate.html",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "name": "College Panhellenic Council",
@@ -677,17 +679,17 @@
     "category": "service & advocacy",
     "email": "csenate@ucsc.edu",
     "description": "All Cowell affiliates can attend; voting membership begins after four meetings and an original eight-line poem.",
-    "website": "https://cowell.ucsc.edu/activities/senate/index.html",
-    "sources": [
-      "college_government"
-    ],
     "discord": "https://discord.gg/MEc9UX99S4",
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
     "discordMemberCount": 1171,
     "discordOnlineCount": 113,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128"
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
+    "website": "https://cowell.ucsc.edu/activities/senate/index.html",
+    "sources": [
+      "college_government"
+    ]
   },
   {
     "id": "noig_creative_tech_design",
@@ -960,7 +962,9 @@
     "discord": "https://discord.gg/VheBwmdDG3",
     "discordServerName": "Girls in Gaming UCSC",
     "discordMemberCount": 126,
-    "discordOnlineCount": 25
+    "discordOnlineCount": 25,
+    "discordGuildId": "1066832243177291807",
+    "discordFollowable": true
   },
   {
     "name": "Girls Who Code",
@@ -969,16 +973,16 @@
     "email": null,
     "description": "Girls Who Code — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/ZhfPbNssF6",
+    "discordGuildId": "1143345399508238436",
     "discordServerName": "UCSC Girls Who Code",
+    "discordFollowable": true,
+    "discordMemberCount": 293,
     "discordOnlineCount": 0,
     "website": "https://gwcclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-girls-who-code-f56c3e85d4d2ae10.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "1143345399508238436",
-    "discordFollowable": true,
-    "discordMemberCount": 293
+    ]
   },
   {
     "name": "Glocal Strategy Politics",
@@ -1021,15 +1025,15 @@
     "email": null,
     "description": "Check out Google Developer Groups GDG on Campus University of California Santa Cruz - Santa Cruz, United States events, learn more or contact this organizer.",
     "discord": "https://discord.gg/6Ac3rPt",
+    "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
+    "discordFollowable": false,
     "discordOnlineCount": 0,
     "website": "https://gdg.community.dev/gdg-on-campus-university-of-california-santa-cruz-santa-cruz-united-states/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-google-devs-b38f741f3defd89d.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "765439019122163733",
-    "discordFollowable": false
+    ]
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
@@ -1154,12 +1158,12 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
+    "discordMemberCount": 1171,
     "discordOnlineCount": 113,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "sources": [
       "someca"
-    ],
-    "discordMemberCount": 1171,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128"
+    ]
   },
   {
     "name": "Iranian Student Union",
@@ -1567,15 +1571,15 @@
     "email": null,
     "description": "NeurotechSC — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/xq8q8wrAEc",
+    "discordGuildId": "848248845418758185",
     "discordServerName": "NeuroTechSC",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://neurotech.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/230420UCSC_day2_UCOP_tagged102.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "848248845418758185",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "Newman Catholic Club",
@@ -1713,14 +1717,14 @@
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
     "discord": "https://discord.gg/xMkchjNS7M",
+    "discordGuildId": "781445446400868372",
     "discordServerName": "Porter Senate",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://porter.ucsc.edu/student-opportunities/student-government/",
     "sources": [
       "college_government"
-    ],
-    "discordGuildId": "781445446400868372",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "Pre-Dental Society",
@@ -1905,15 +1909,15 @@
     "email": null,
     "description": "University of California Santa Cruz Artifical Intelligence club",
     "discord": "https://discord.gg/santacruzai",
+    "discordGuildId": "743134796808716409",
     "discordServerName": "Santa Cruz Artificial Intelligence",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://santacruzai.net/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-scai-02debde326ff0891.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "743134796808716409",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "Santa Cruz Fighting Game Community",
@@ -1959,10 +1963,10 @@
     "discordFollowable": true,
     "discordMemberCount": 627,
     "discordOnlineCount": 68,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/761266183315259420/a69c79a2313ca9cbbf1c7ca4054a9e75.png?size=128",
     "sources": [
       "someca"
-    ],
-    "discordIconUrl": "https://cdn.discordapp.com/icons/761266183315259420/a69c79a2313ca9cbbf1c7ca4054a9e75.png?size=128"
+    ]
   },
   {
     "name": "Sigma Lambda Beta",
@@ -2060,16 +2064,16 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-    "discord": "https://discord.gg/aTeeAAH",
+    "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
-    "discordServerName": "Slug Anime & Manga Association",
+    "discordServerName": "All Star",
     "discordFollowable": true,
     "discordMemberCount": 2256,
     "discordOnlineCount": 733,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/173295944765407232/b57a49c2278ad4481756dfe01993bcfa.png?size=128",
     "sources": [
       "someca"
-    ],
-    "discordIconUrl": "https://cdn.discordapp.com/icons/173295944765407232/b57a49c2278ad4481756dfe01993bcfa.png?size=128"
+    ]
   },
   {
     "name": "Slug Book Club",
@@ -2139,16 +2143,16 @@
     "email": null,
     "description": "Slug Linux User Group — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/XbscWTcv2H",
+    "discordGuildId": "1204151345612066827",
     "discordServerName": "SLUG Linux User Group",
+    "discordFollowable": true,
+    "discordMemberCount": 280,
     "discordOnlineCount": 0,
     "website": "https://sluglinuxusergroup.github.io/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/2-13-24-ScreenPrinting-Class-CL-004.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "1204151345612066827",
-    "discordFollowable": true,
-    "discordMemberCount": 280
+    ]
   },
   {
     "name": "Slug Rhythm Game Enthusiasts",
@@ -2162,12 +2166,12 @@
     "discordFollowable": true,
     "discordMemberCount": 571,
     "discordOnlineCount": 192,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/428792565135966208/8e6b7d20d5d5b8f5468765a509481474.png?size=128",
     "iconUrl": "https://scontent-sjc3-1.cdninstagram.com/v/t51.82787-19/622913222_17845358733674883_2711219168625996251_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-sjc3-1.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2gEiMiBvJd3ae9JFq-2hT_ezk3NpCyWSO14AuwMkyvQGBXfln2zdm7i-ACiCMzqZvwc&_nc_ohc=ZShUhthKfmoQ7kNvwGLn2IF&_nc_gid=FsGrdq4ahKr3IgPSFKGgfg&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GMbmICWDyTVcQmY-ANuxLh54L6AlbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRSgCRl2_iN1zYpm-FPrby207hx-xlp6cU_mjSUTu2lbw&oe=6AFFF8A3&_nc_sid=10d13b",
     "sources": [
       "someca",
       "instagram_discovery"
-    ],
-    "discordIconUrl": "https://cdn.discordapp.com/icons/428792565135966208/8e6b7d20d5d5b8f5468765a509481474.png?size=128"
+    ]
   },
   {
     "name": "Slug Security",
@@ -2176,15 +2180,15 @@
     "email": "slugsec@ucsc.edu",
     "description": "Cyber @ UC Santa Cruz",
     "discord": "https://discord.gg/NUVZCumQXB",
+    "discordGuildId": "991163002806091797",
     "discordServerName": "Slug Security",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://slugsec.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-security-0b28890be4e89a30.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "991163002806091797",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "Slug' n Boots",
@@ -2203,16 +2207,16 @@
     "email": null,
     "description": "Slugbotics — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/cnuWECSAHn",
+    "discordGuildId": "400052082373165076",
     "discordServerName": "Slugbotics",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://slugbotics.com/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slugbotics-862259b4fe70fa8f.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
-    ],
-    "discordGuildId": "400052082373165076",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "SlugMUN",
@@ -2265,16 +2269,16 @@
     "email": null,
     "description": "SlugSat — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/Tt6Aa3P",
+    "discordGuildId": "713234185204138065",
     "discordServerName": "SlugSat",
+    "discordFollowable": false,
     "discordOnlineCount": 0,
     "website": "https://slugsatclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-sat-ea94040b20f6297f.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
-    ],
-    "discordGuildId": "713234185204138065",
-    "discordFollowable": false
+    ]
   },
   {
     "name": "SlugSpeak",
@@ -2373,15 +2377,15 @@
     ],
     "description": "Society of Women Engineers (SWESLUGS) — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/PJ9euSKgF5",
+    "discordGuildId": "1283907994588942481",
     "discordServerName": "UCSC SWE 2026-2027",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://sweclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-sweslugs-879e2785a2453324.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "1283907994588942481",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "SOMOS Latinx en medicina",
@@ -2708,16 +2712,16 @@
     "email": null,
     "description": "UCSC Amateur Radio Club — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/yGrXvgUX9H",
+    "discordGuildId": "1159590773885513799",
     "discordServerName": "UCSC Amateur Radio Club",
+    "discordFollowable": false,
+    "discordMemberCount": 322,
     "discordOnlineCount": 0,
     "website": "https://amateurradioclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/08/Amateur-Radio-Club-group-photo.jpeg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordGuildId": "1159590773885513799",
-    "discordFollowable": false,
-    "discordMemberCount": 322
+    ]
   },
   {
     "name": "UCSC Anthro Society",
@@ -2824,16 +2828,16 @@
     "email": null,
     "description": "Blueprint strives to make technology accessible and useful for those who assist communities and promote public welfare.",
     "discord": "https://discord.gg/wxSSzQjsKg",
+    "discordGuildId": "1116935838044016674",
     "discordServerName": "UCSC Blueprint",
+    "discordFollowable": false,
     "discordOnlineCount": 0,
     "website": "https://ucscblueprint.org/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/12/10-29-24-Giving-Day-Blueprint-Club-CL-015-1.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
-    ],
-    "discordGuildId": "1116935838044016674",
-    "discordFollowable": false
+    ]
   },
   {
     "name": "UCSC Business Society",
@@ -2902,16 +2906,16 @@
     "email": null,
     "description": "UCSC Computer Networking Student Association (CNSA) — Baskin Engineering student organization at UC Santa Cruz.",
     "discord": "https://discord.gg/UbF26uDdnV",
+    "discordGuildId": "1134607285499465789",
     "discordServerName": "UCSC Computer Networking Student Association",
+    "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://cnsaclub.engineering.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-cnsa-5c70022f3ff101da.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
-    ],
-    "discordGuildId": "1134607285499465789",
-    "discordFollowable": true
+    ]
   },
   {
     "name": "UCSC Cosplay Club",
@@ -2960,16 +2964,16 @@
     "email": null,
     "description": "UCSC Cross Country Club — official UC Santa Cruz Recreation & Athletics Sport Club.",
     "discord": "https://discord.gg/YHrJQ38tmN",
+    "discordGuildId": "762005790360993842",
     "discordServerName": "Slug XC Club",
+    "discordFollowable": false,
     "discordOnlineCount": 0,
     "website": "https://goslugs.com/sports/2025/7/14/cross%20country.aspx",
     "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/dW/dWxh1PuP8oaQqRRPv2wK3xqiJlt5SdTFvWApiRzh.jpg",
     "sources": [
       "sport_clubs",
       "instagram_discovery"
-    ],
-    "discordGuildId": "762005790360993842",
-    "discordFollowable": false
+    ]
   },
   {
     "id": "noig_ucsc_current_athletes_club",
