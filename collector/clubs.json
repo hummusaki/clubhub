@@ -236,7 +236,7 @@
     "category": "tech & science",
     "email": null,
     "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
-    "discord": "https://discord.gg/fhzvdq8c5E",
+    "discord": "https://discord.com/invite/zxexESCz8N",
     "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
     "discordFollowable": false,
@@ -972,7 +972,7 @@
     "category": "tech & science",
     "email": null,
     "description": "Girls Who Code — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.gg/ZhfPbNssF6",
+    "discord": "https://discord.com/invite/ZhfPbNssF6",
     "discordGuildId": "1143345399508238436",
     "discordServerName": "UCSC Girls Who Code",
     "discordFollowable": true,
@@ -1024,18 +1024,18 @@
     "category": "tech & science",
     "email": null,
     "description": "Check out Google Developer Groups GDG on Campus University of California Santa Cruz - Santa Cruz, United States events, learn more or contact this organizer.",
-    "discord": "https://discord.gg/6Ac3rPt",
+    "discord": "http://discord.gg/6Ac3rPt",
     "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
     "discordFollowable": false,
+    "discordMemberCount": 1682,
     "discordOnlineCount": 119,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128",
     "website": "https://gdg.community.dev/gdg-on-campus-university-of-california-santa-cruz-santa-cruz-united-states/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-google-devs-b38f741f3defd89d.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordMemberCount": 1682,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128"
+    ]
   },
   {
     "name": "Grupo Folklorico Los Mejicas",
@@ -1572,7 +1572,7 @@
     "category": "tech & science",
     "email": null,
     "description": "NeurotechSC — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.gg/xq8q8wrAEc",
+    "discord": "https://discord.com/invite/xq8q8wrAEc",
     "discordGuildId": "848248845418758185",
     "discordServerName": "NeuroTechSC",
     "discordFollowable": true,
@@ -1718,7 +1718,7 @@
     "category": "service & advocacy",
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
-    "discord": "https://discord.gg/xMkchjNS7M",
+    "discord": "https://discord.com/invite/xMkchjNS7M",
     "discordGuildId": "781445446400868372",
     "discordServerName": "Porter Senate",
     "discordFollowable": true,
@@ -2032,12 +2032,12 @@
     "discordFollowable": false,
     "discordMemberCount": 47,
     "discordOnlineCount": 3,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/964795465763815444/5a25c6ea5b8656fd250709c7cb5c328b.png?size=128",
     "iconUrl": "https://scontent-sjc3-1.cdninstagram.com/v/t51.2885-19/275450912_128541319735662_2717307794664763104_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-sjc3-1.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2gFvzMB91CAYITQPtVHKLJvGPUdByoBvesgaWE84W9hWAvHoBHr3JhPZnUqeL97iOv4&_nc_ohc=1WAum5YpEkAQ7kNvwEdE1TJ&_nc_gid=xoREhOL3GlBkltDCVxPndQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCAMaxBuqbNb6HQAAOCuZNYK0bUlbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSCoz7_M2JlVYNksz1hxH72e1UaMtKgJuV8OOcEcl9GUA&oe=6AFFF56B&_nc_sid=10d13b",
     "sources": [
       "someca",
       "instagram_discovery"
-    ],
-    "discordIconUrl": "https://cdn.discordapp.com/icons/964795465763815444/5a25c6ea5b8656fd250709c7cb5c328b.png?size=128"
+    ]
   },
   {
     "name": "SKY at UC Santa Cruz",
@@ -2186,14 +2186,14 @@
     "discordGuildId": "991163002806091797",
     "discordServerName": "Slug Security",
     "discordFollowable": true,
+    "discordMemberCount": 950,
     "discordOnlineCount": 227,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/991163002806091797/43ab04d5feaf32f061af2950caf9fe18.png?size=128",
     "website": "https://slugsec.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-security-0b28890be4e89a30.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordMemberCount": 950,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/991163002806091797/43ab04d5feaf32f061af2950caf9fe18.png?size=128"
+    ]
   },
   {
     "name": "Slug' n Boots",
@@ -2273,7 +2273,7 @@
     "category": "tech & science",
     "email": null,
     "description": "SlugSat — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.gg/Tt6Aa3P",
+    "discord": "https://discord.com/invite/Tt6Aa3P",
     "discordGuildId": "713234185204138065",
     "discordServerName": "SlugSat",
     "discordFollowable": false,
@@ -2716,7 +2716,7 @@
     "category": "media & arts",
     "email": null,
     "description": "UCSC Amateur Radio Club — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.gg/yGrXvgUX9H",
+    "discord": "https://discord.com/invite/yGrXvgUX9H",
     "discordGuildId": "1159590773885513799",
     "discordServerName": "UCSC Amateur Radio Club",
     "discordFollowable": false,
