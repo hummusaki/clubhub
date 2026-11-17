@@ -16,7 +16,7 @@
     ]
   },
   {
-    "name": "8th Rank Society: Women's Chess Club at UC Santa Cruz",
+    "name": "8th Rank Society",
     "instagram": "8thrankchess.ucsc",
     "category": "gaming",
     "email": "8thrankucsc@gmail.com",
@@ -186,6 +186,25 @@
     ]
   },
   {
+    "name": "Aspiring Physician Assistant's Association",
+    "instagram": "ucsc_apaa",
+    "category": "pre-professional",
+    "email": "ucsc.apaa@gmail.com",
+    "description": "Committed to educating pre-PA students about their future health profession by organizing activities and providing mentorship support.",
+    "discord": "https://discord.gg/mz72Fdgn9f",
+    "discordGuildId": "765778907210448896",
+    "discordServerName": "Aspiring Physician Assistant Association",
+    "discordFollowable": false,
+    "discordMemberCount": 215,
+    "discordOnlineCount": 6,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/765778907210448896/bf2f76d04a1f17c631cee5372e194f82.png?size=128",
+    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/122715442_3635496619805249_7555055632297445214_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby43MzYuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=105&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=GDfYK2Xam5AQ7kNvwFHG4UG&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GDJ9UAdBCpsEd_oMAF5HZ7UR89hobkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQoJQ5OpBa_QuT-u-shCzRRrf9b7JLHxy7kIoX4QeQCFw&oe=6B0296D9&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "Association for Computing Machinery – Women at UCSC (ACM-W)",
     "instagram": "acmw.ucsc",
     "category": "tech & science",
@@ -231,13 +250,13 @@
     ]
   },
   {
-    "name": "autoslug",
+    "name": "Autoslug",
     "instagram": "autoslug.ucsc",
     "category": "tech & science",
     "email": null,
     "description": "Autoslug — Baskin Engineering student organization at UC Santa Cruz.",
     "website": "https://autoslug.xyz/",
-    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/375292588_1745921795842060_4252125875767381790_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gE_CigV8dNbXPfC3DGkYDgLeyKBspAmjsSugva2ToSntZ1Rr32Nry25-4JbPp9wX9Y&_nc_ohc=TUe5r-AUUOEQ7kNvwFpk3GG&_nc_gid=61igeKgymB0OALW3YSIjxA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GKyCXhYMYHIY6DMGAB6PXI30lQI7bkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQxHNsexpiDwd0H-vEJGg9ncu1klVKLWYafGmCG8KbR3w&oe=6B02886A&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-autoslug-35b5c3f42d56454c.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -314,7 +333,7 @@
     ]
   },
   {
-    "name": "Bioethics Club at UCSC",
+    "name": "Bioethics Club",
     "instagram": "ucscbioethics",
     "category": "pre-professional",
     "email": "bioethics-team-group@ucsc.edu",
@@ -333,6 +352,19 @@
     ]
   },
   {
+    "name": "Bioinformatics Club",
+    "instagram": "ucsc.bioinformatics.club",
+    "category": "tech & science",
+    "email": null,
+    "description": "Bioinformatics Club — Baskin Engineering student organization at UC Santa Cruz.",
+    "website": "https://ucscbioinformatics.wixsite.com/bioinformaticsclub",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-bioinformatics-c1c7178c0f079dad.jpg",
+    "sources": [
+      "baskin_engineering",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "Bioslugs Club at UCSC",
     "instagram": "bioslugsucsc",
     "category": "tech & science",
@@ -346,6 +378,18 @@
     "discordIconUrl": "https://cdn.discordapp.com/icons/1518003413269348433/5c1fc1799d37805a2aef2eacd6f649f5.png?size=128",
     "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/788304596_18096235727097345_334431227480543203_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=5vH6CJaB69AQ7kNvwFXiGxh&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GNSS-C4BDkk2bkpAAOOPxvNtI6QEbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTQkKinFTQV8ISh1xg036nmAiI_WyKuzkkFKtgF14csMg&oe=6B0264A4&_nc_sid=10d13b",
     "sources": [
+      "instagram_discovery"
+    ]
+  },
+  {
+    "name": "Black Student Union (BSU)",
+    "instagram": "ucscbsu",
+    "category": "cultural",
+    "email": "bsu.slugs@gmail.com",
+    "description": "The Black Student Union (BSU) serves as a unifying body for all Black organizations on campus, as well as the Black student body. The BSU also welcomes all individuals who are committed to advancing, supporting, and meaningfully engaging with issues affecting the Black community.",
+    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/381731115_661350349298105_8881948663189997938_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby43MzMuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=105&_nc_oc=Q6cZ2gFSbku5A-8tJOP0AcILfurBTCavXqQfr24cEs2UNPJsCKqLA8Wf6fqt0MVu9DiFTIo&_nc_ohc=shcycxyzB-QQ7kNvwFJjrlR&_nc_gid=CYUa7klOdKdM9Bj3GD_WpQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCvBwBa5WaSgflkCAHIJsiZABUN7bkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSiHqZWD_UFrgNyvA95OXCYXgftMcU3svaRMvppd38DNw&oe=6B0281C3&_nc_sid=10d13b",
+    "sources": [
+      "someca",
       "instagram_discovery"
     ]
   },
@@ -407,6 +451,25 @@
     ]
   },
   {
+    "name": "Chess Club",
+    "instagram": "ucscchessclub",
+    "category": "gaming",
+    "email": "ucsc.chess@gmail.com",
+    "description": "Chess. We also play variants like bughouse, and occasionally hold casual tournaments.",
+    "discord": "https://discord.gg/hgU4WFje6Y",
+    "discordGuildId": "892081729358143529",
+    "discordServerName": "UCSC Chess",
+    "discordFollowable": false,
+    "discordMemberCount": 561,
+    "discordOnlineCount": 44,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/892081729358143529/522dc591949f49a8c88c8d0638118de8.png?size=128",
+    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.82787-19/612046822_17949042375075815_8879026917212201606_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby41NzguYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=F8vGGOmwdpEQ7kNvwH4ioCt&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GOYXeyTnJ9MWj8Q-AIaikCfwozh7bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQnucqawoRf10hGAJ0dJK0vA6mVj1kQvNxGjAi6vqfCpA&oe=6B027915&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "Chicanx and Latine Educandose (ChALE)",
     "instagram": "e2.chale",
     "category": "cultural",
@@ -414,6 +477,25 @@
     "description": "ChALE is a needs-based retention program that is designed to respond to the students' social, academic, and cultural needs with the goal of keeping them retained on campus working towards their path to graduation.",
     "sources": [
       "someca"
+    ]
+  },
+  {
+    "name": "Chinese Student Association",
+    "instagram": "csa_ucsc",
+    "category": "cultural",
+    "email": "csaofucsc@gmail.com",
+    "description": "The Chinese Student Association is a student organization and resource devoted to promoting unity and empowerment among UCSC students through education and recognition of Asian and Asian American culture, emphasizing Chinese and Chinese Americans.",
+    "discord": "https://discord.gg/qtp8XFXgHa",
+    "discordGuildId": "692971099847262208",
+    "discordServerName": "CSA of UCSC",
+    "discordFollowable": true,
+    "discordMemberCount": 944,
+    "discordOnlineCount": 96,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/692971099847262208/fb775fbaabf803760a2954376f94422e.png?size=128",
+    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/461614487_517686524344715_677372816771561819_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=dpIWmqlyqJoQ7kNvwEDFVeQ&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GJetgxuLeWNJ1dYBAFu5LOz8gmYJbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQR8lqcp4SQC2OMfAUbSDUbVaPrLDjMle-i-XnfUOhYbJA&oe=6B028874&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
     ]
   },
   {
@@ -444,7 +526,7 @@
     ]
   },
   {
-    "name": "Christian Medical & Dental Association",
+    "name": "Christian Medical and Dental Association (CMDA)",
     "instagram": "cmda_ucsc",
     "category": "pre-professional",
     "email": "cmdaucsc@gmail.com",
@@ -548,6 +630,18 @@
     ]
   },
   {
+    "name": "College Panhellenic Council",
+    "instagram": "ucscpanhellenic",
+    "category": "greek",
+    "email": "collegepanhellenic@gmail.com",
+    "description": "Council composed of members from each of the three Panhellenic sororities on campus that oversee each organization",
+    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/892218395_18650919148049492_3810720045873669889_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45MTAuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=EgCRTHYLB-kQ7kNvwG78--A&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GBssLjVU1I2C6UJCAAGnwhCxZeI0bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRLW4Klbz4FYA2vdqWoCQkFiuJEgXpjjhOfO2Y3zq61eg&oe=6B02770A&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "Comedy Joust",
     "instagram": "comedyjoust",
     "category": "performing arts",
@@ -622,7 +716,7 @@
     ]
   },
   {
-    "name": "Crown Student Senate",
+    "name": "Crown College Student Senate",
     "instagram": "crown.senate",
     "category": "service & advocacy",
     "email": "crownsen@ucsc.edu",
@@ -652,6 +746,16 @@
     "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/402623034_3889204754699387_7514370344736106870_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDUzLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gEddVtb1uVMru67ukw9_YUQBJbnYervANCfxHDvgS3zoUTkMbaxMTVOx29xoX5wKOU&_nc_ohc=FNGnDyPKhPUQ7kNvwFmHhmY&_nc_gid=X1K_mkq2VhcNpc8oITVHAg&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GDqK-xd71NwLNtENAHapuQQEaEhobkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTifz3p4z-AkD9BVfWAqZDDumag6cYEbmZTIKfwwmSIyw&oe=6B026ECD&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
+    ]
+  },
+  {
+    "name": "Dance Club",
+    "instagram": "ucscdanceclub",
+    "category": "performing arts",
+    "email": "ucscdanceclub@gmail.com",
+    "description": "A club where we provide weekly dance workshops in different styles, which are open to all UCSC students",
+    "sources": [
+      "someca"
     ]
   },
   {
@@ -768,25 +872,6 @@
     ]
   },
   {
-    "name": "Financial Literacy Club",
-    "instagram": "wsb_ucsc",
-    "category": "pre-professional",
-    "email": "wbucsc@gmail.com",
-    "description": "WSB Financial Literacy Club brings Wall Street to Main Street by making personal finance practical and accessible through workshops on saving, budgeting, credit, investing, financial planning, and opportunities to learn about financial services licensing.",
-    "discord": "https://discord.gg/mYCFbmMqzA",
-    "discordGuildId": "1421593699053338664",
-    "discordServerName": "WSB UCSC",
-    "discordFollowable": false,
-    "discordMemberCount": 28,
-    "discordOnlineCount": 5,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/1421593699053338664/cc6babe946099b44c6ff2a6eea807274.png?size=128",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/658798027_17883458469532448_3825239557511430409_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDI0LmMyIn0&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gFXMyhXmPPaq7lw-onxF_gcp9FP5cOH7WWCe174EHt53qF3qH5cdg_bwTiy5v43YcI&_nc_ohc=2k6gKhYGXFkQ7kNvwE9CeQx&_nc_gid=bUWXM-nyHxzZXqZlF9sZfQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GMt1RCcgk24l6Yg-AAnBPU4c_xU1bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQqPpDIf7LMrWnSNdCQXuo7L1CYgx5uoRO_deAoUcZ0IA&oe=6B028F7F&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "Fishrap Live!",
     "instagram": "fishraplive",
     "category": "media & arts",
@@ -813,7 +898,7 @@
     "email": "formulaslug@gmail.com",
     "description": "Formula Slug — Baskin Engineering student organization at UC Santa Cruz.",
     "website": "https://formulaslug.com/",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.2885-19/458250535_1493621327940956_5441723656796881200_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby40MDAuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gHn7K3eiMyvDUmtBtekwM0G6h7IFSDyOdR5V7gG3IsYtYa7RfACjr7Qr9umWdrZUxE&_nc_ohc=C2osRpeU3nkQ7kNvwHlaUrY&_nc_gid=LOzE6xA2tR4FgIoLG16Asg&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCdZUBtcTa7QcE4FADDBN5nV4oRLbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSul1_BeG2Al8lFbPry-cTDLq9gZ45hvgB6yAsn2fBxEg&oe=6B026DC8&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/07/IMG_2861-1024x682.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -945,6 +1030,22 @@
     ]
   },
   {
+    "name": "Google Developer Student Club at UCSC",
+    "instagram": "dscucsc",
+    "category": "tech & science",
+    "email": null,
+    "description": "Check out Google Developer Groups GDG on Campus University of California Santa Cruz - Santa Cruz, United States events, learn more or contact this organizer.",
+    "discord": "https://discord.gg/6Ac3rPt",
+    "website": "https://gdg.community.dev/gdg-on-campus-university-of-california-santa-cruz-santa-cruz-united-states/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-google-devs-b38f741f3defd89d.jpg",
+    "sources": [
+      "baskin_engineering"
+    ],
+    "discordGuildId": "765439019122163733",
+    "discordServerName": "Google DGC at UCSC!",
+    "discordFollowable": false
+  },
+  {
     "name": "Grupo Folklorico Los Mejicas",
     "instagram": "losmejicas",
     "category": "performing arts",
@@ -1034,12 +1135,24 @@
     ]
   },
   {
-    "name": "Indian Student Association at UC Santa Cruz",
+    "name": "Indian Student Association (ISA)",
     "instagram": "ucsc_isa",
     "category": "cultural",
     "email": "ucsc.isa@gmail.com",
     "description": "The UCSC Indian Student Association (ISA) is a student-led organization that celebrates Indian culture and brings together students through social, cultural, and community-building events. ISA provides a welcoming space for students to connect, celebrate traditions, and feel a sense of belonging.",
     "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/484282112_1887006092127606_6909076621216174520_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby42NzMuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=fRzYTBEFdZ8Q7kNvwH12obk&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GACP3Rx2bc-XOLQGALjRi8WU_OFfbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRu9APwY7vSJEdhvl0G_M793igHXlQDuXODECnM94kZVw&oe=6B0269AE&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
+    "name": "Inter-Greek Council (IGC)",
+    "instagram": "ucscigc",
+    "category": "greek",
+    "email": "igc@ucsc.edu",
+    "description": "A governing council that is typically comprised of five elected official officers and at least one representative from each of our Greek letter Organizations.",
+    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/23164005_568769260122258_2056468875771379712_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NjAuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2gHlreL6PSUY4fyPsurHosEPBbkAxZRyXBLyziXPKl8ybmt1JI7DkiUZMRjssfO5iLk&_nc_ohc=S5IkfeWFJjIQ7kNvwGpwmhh&_nc_gid=y9LVno--L_iVjsc4OHLOGA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GGV0YQGScLXpSgUCAAAAAACMC4ocbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTrPhtpuQE0JGylGvBcFrQehyiizzAbXPjOEsoCYG2IRg&oe=6B026AB7&_nc_sid=10d13b",
     "sources": [
       "someca",
       "instagram_discovery"
@@ -1130,7 +1243,7 @@
     ]
   },
   {
-    "name": "Jewish Student Union at UC Santa Cruz",
+    "name": "Jewish Student Union",
     "instagram": "jsu_ucsc",
     "category": "faith",
     "email": "dbenisra@ucsc.edu",
@@ -1231,6 +1344,18 @@
     "email": "kasamaucsc@gmail.com",
     "description": "The Kasama Ballroom Dance Troupe was founded in 2017 as a performing aspect housed under Bayanihan at the University of California, Santa Cruz. Kasama in Tagalog roughly translates to “together”, we — as a team — promote the idea of family, community, culture.",
     "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.2885-19/65492006_1293434530819364_8857076700203188224_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zNDQuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gGhH9yLpNnDiRuR3SWMZBDWPtrBWlaWXOs4_C0pTVJawIaODSJsDGJEBEGA_k_YaRE&_nc_ohc=L8ySAV80AzsQ7kNvwFLBeri&_nc_gid=Wz3B__VKyL-jtRu-sD8A3w&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCZU5wMk7b8xX5gEAAAAAABVqOp6bkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQROt81b0hN2o56nf8D7dc6kHJoT9NilROtugGsH1r74sQ&oe=6B026FD2&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
+    "name": "Khmer Student Association",
+    "instagram": "ksa_ucsc",
+    "category": "cultural",
+    "email": "khmer.ucsc@gmail.com",
+    "description": "The Khmer Student Association aims to foster an empathetic, conscious, and welcoming community for members and Khmer students. We aim to promote academic success, cultural, awareness, and social engagement.",
+    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/460554499_1250760266061103_1238964366393484286_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby42NTEuYzIifQ&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=107&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=KLenGplVrlAQ7kNvwHRuRXY&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GAOBcxsvlVtRj3EEAP4jQOSGrzERbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRjYX7af3IyIRILh01kEiUxRmUGMOQUXeM4ZOSJqT6iQw&oe=6B026938&_nc_sid=10d13b",
     "sources": [
       "someca",
       "instagram_discovery"
@@ -1476,14 +1601,14 @@
     "discordGuildId": "848248845418758185",
     "discordServerName": "NeuroTechSC",
     "discordFollowable": true,
+    "discordMemberCount": 361,
     "discordOnlineCount": 28,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/848248845418758185/c04edd18c2bef4d76c1ca20855069b5b.png?size=128",
     "website": "https://neurotech.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/05/230420UCSC_day2_UCOP_tagged102.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordMemberCount": 361,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/848248845418758185/c04edd18c2bef4d76c1ca20855069b5b.png?size=128"
+    ]
   },
   {
     "name": "Newman Catholic Club",
@@ -1523,7 +1648,11 @@
     "website": "https://oakes.ucsc.edu/student-opportunities/student-leadership/",
     "sources": [
       "college_government"
-    ]
+    ],
+    "discord": "https://discord.gg/MEc9UX99S4",
+    "discordGuildId": "1445915582825369631",
+    "discordServerName": "🌳 Linktree Community",
+    "discordFollowable": true
   },
   {
     "name": "On The Spot (OTS)",
@@ -1566,7 +1695,7 @@
     ]
   },
   {
-    "name": "Pagkakaisa Dance Troupe",
+    "name": "Pagkakaisa Dance Troupe (PDT)",
     "instagram": "pdt.ucsc",
     "category": "performing arts",
     "email": "pdt.ucsc@gmail.com",
@@ -1630,20 +1759,20 @@
     "category": "service & advocacy",
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
-    "discord": "https://discord.gg/xMkchjNS7M",
-    "discordGuildId": "781445446400868372",
-    "discordServerName": "Porter Senate",
+    "discord": "https://discord.gg/vZYKafSQB4",
+    "discordGuildId": "695571084325421137",
+    "discordServerName": "Porter Activities",
     "discordFollowable": true,
+    "discordMemberCount": 172,
     "discordOnlineCount": 3,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/781445446400868372/743ff90a6083ea717ebf96d8cf0e4f5e.png?size=128",
     "website": "https://porter.ucsc.edu/student-opportunities/student-government/",
     "sources": [
       "college_government"
-    ],
-    "discordMemberCount": 172,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/781445446400868372/743ff90a6083ea717ebf96d8cf0e4f5e.png?size=128"
+    ]
   },
   {
-    "name": "Pre-Dental Society at UCSC",
+    "name": "Pre-Dental Society",
     "instagram": "ucscpredental",
     "category": "pre-professional",
     "email": "predentalslugs@gmail.com",
@@ -1684,6 +1813,16 @@
     "sources": [
       "someca",
       "instagram_discovery"
+    ]
+  },
+  {
+    "name": "Pre-Veterinary Club at UCSC",
+    "instagram": "ucscpreveterinaryclub",
+    "category": "pre-professional",
+    "email": "ucscpreveterinaryclub@gmail.com",
+    "description": "The Pre-Veterinary Club at UCSC is a community of students interested in veterinary medicine. We focus on supporting our members by providing volunteer and research opportunities.",
+    "sources": [
+      "someca"
     ]
   },
   {
@@ -1787,19 +1926,6 @@
     ]
   },
   {
-    "name": "Rocket Team @ UCSC",
-    "instagram": "ucscrocketry",
-    "category": "tech & science",
-    "email": null,
-    "description": "The UCSC Rocket Team is the leading aerospace organization for the University of California, Santa Cruz. We design and build high-powered rockets.",
-    "website": "https://ucscrocketry.org/",
-    "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.82787-19/526981224_18313420102215577_3632280725583860116_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2gHVb_9_8hjRsfEZT57r5linf8rCjzOU5c5jOpyhI-2ngZLn7KfQ_dVW8VEqgv0sWRE&_nc_ohc=fCLl9srLtloQ7kNvwFXBh78&_nc_gid=J9AJdQ9XuHf5fPUxphdrxw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GGgYaR_Zp9Bj9Q9BAJSR7EQTdGgybmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRq1EXjjXh6PiduVkmeO-jQa79uDlxluBBgART7mptyAQ&oe=6B02917F&_nc_sid=10d13b",
-    "sources": [
-      "baskin_engineering",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "Sankofa Sky Farm",
     "instagram": "ucsc.sankofaskyfarm",
     "category": "service & advocacy",
@@ -1819,14 +1945,14 @@
     "discordGuildId": "743134796808716409",
     "discordServerName": "Santa Cruz Artificial Intelligence",
     "discordFollowable": true,
+    "discordMemberCount": 1442,
     "discordOnlineCount": 128,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/743134796808716409/e2652cf8f54b876184a1dc58248aca97.png?size=128",
     "website": "https://santacruzai.net/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-scai-02debde326ff0891.jpg",
     "sources": [
       "baskin_engineering"
-    ],
-    "discordMemberCount": 1442,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/743134796808716409/e2652cf8f54b876184a1dc58248aca97.png?size=128"
+    ]
   },
   {
     "name": "Santa Cruz Fighting Game Community",
@@ -1974,15 +2100,27 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-    "discord": "https://discord.gg/aTeeAAH",
+    "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
-    "discordServerName": "Slug Anime & Manga Association",
+    "discordServerName": "All Star",
     "discordFollowable": true,
     "discordMemberCount": 2256,
     "discordOnlineCount": 340,
     "discordIconUrl": "https://cdn.discordapp.com/icons/173295944765407232/b57a49c2278ad4481756dfe01993bcfa.png?size=128",
     "sources": [
       "someca"
+    ]
+  },
+  {
+    "name": "Slug Book Club",
+    "instagram": "slugbookclub",
+    "category": "media & arts",
+    "email": "slugbookclub@gmail.com",
+    "description": "Slug Book Club brings together a community of undergraduate students at UCSC who are interested in reading and thoughtful discussion. Members are challenged to engage with a variety of different genres, themes, and authors in a fun and welcoming environment.",
+    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.82787-19/847338865_18098622824647080_6776890063499456396_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=100&_nc_oc=Q6cZ2gHjqS9kea15b00BJEPUdYVOzUI-hiolE8YThLbae_9908AclCMo1_Y5pLNGz9Lltm8&_nc_ohc=WGmDzGEbVMYQ7kNvwEU0Zob&_nc_gid=1OqkzkSWwfOUwMTwMN0QRQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GHFdgTKoCWMAmkxAAIxvwnSbWQxebmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTOarCIcGW3I6wfRpjZZUOBjIJ1Ci_FDUZPI8rWXpGZvQ&oe=6B027DF8&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
     ]
   },
   {
@@ -2007,13 +2145,13 @@
     "discordFollowable": true,
     "discordMemberCount": 576,
     "discordOnlineCount": 63,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/629463398039683082/deab6a04c325692b15300ba34ff178bc.png?size=128",
     "sources": [
       "someca"
-    ],
-    "discordIconUrl": "https://cdn.discordapp.com/icons/629463398039683082/deab6a04c325692b15300ba34ff178bc.png?size=128"
+    ]
   },
   {
-    "name": "Slug Gaming | UCSC Esports Club",
+    "name": "Slug Gaming",
     "instagram": "sluggamingucsc",
     "category": "gaming",
     "email": "ucscesportsclub@gmail.com",
@@ -2021,7 +2159,7 @@
     "discord": "https://discord.gg/GKQdtHf32t",
     "discordGuildId": "97748273074302976",
     "discordServerName": "Slug Gaming",
-    "discordFollowable": true,
+    "discordFollowable": false,
     "discordMemberCount": 4002,
     "discordOnlineCount": 1290,
     "discordIconUrl": "https://cdn.discordapp.com/icons/97748273074302976/33ce8f61bfe89989d0d61f15bbfb31a5.png?size=128",
@@ -2054,7 +2192,7 @@
     ]
   },
   {
-    "name": "Slug Rhythm Gaming Enthusiasts",
+    "name": "Slug Rhythm Game Enthusiasts",
     "instagram": "ucscsrge",
     "category": "gaming",
     "email": "srgeucsc@gmail.com",
@@ -2115,7 +2253,7 @@
     "discordOnlineCount": 292,
     "discordIconUrl": "https://cdn.discordapp.com/icons/400052082373165076/1ca91127ca4332c34bbd65df63476db2.png?size=128",
     "website": "https://slugbotics.com/",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/559589383_18307785154218525_3641409986096922552_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby41MTIuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2gE-5gQeLgt4FPe9h6SGoVzaLPCwmxEDII0m6k104vJsxKeFGVHdbjilfuPuxYAs0cI&_nc_ohc=BCQvAi7Jb7EQ7kNvwHk1ppQ&_nc_gid=Lhtvfti4KtnJREiwiIgMHg&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GAeoWiEdyr1m1QpBALj-3d4W44gybmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTqmKhpKo5A3m3A8mhejkWXJZnpvgmsAF_7zpIsrd_U3g&oe=6B028F93&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slugbotics-862259b4fe70fa8f.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -2181,7 +2319,7 @@
     "discordOnlineCount": 60,
     "discordIconUrl": "https://cdn.discordapp.com/icons/713234185204138065/f0c9f72498d708e3ee1f6234c0b49e6f.png?size=128",
     "website": "https://slugsatclub.engineering.ucsc.edu/",
-    "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.2885-19/120302169_3289092274519190_1791706614254865381_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby42MDUuYzIifQ&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=102&_nc_oc=Q6cZ2gENyGCqhk4c2blT0HFvu_aIjcxwaqlkmt9sAU039DstZCj4tuUiVcJU9okGzo24OWM&_nc_ohc=5PriiQUD7fYQ7kNvwHY6C1D&_nc_gid=rJ7mQPfZN980AzFMrmJWeQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GFmqKweW-Kd4aa8LAOULYTysa90YbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTxiHiXwEk_PK5PmRG3wKkHczZpLYMF9QJNCzRGJp1Mag&oe=6B026C2F&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-sat-ea94040b20f6297f.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -2201,6 +2339,18 @@
     "discordOnlineCount": 56,
     "sources": [
       "someca"
+    ]
+  },
+  {
+    "name": "Society for the Advancement of Chicanos and Native Americans in Science (SACNAS)",
+    "instagram": "ucsc.sacnas",
+    "category": "tech & science",
+    "email": null,
+    "description": "Society for the Advancement of Chicanos and Native Americans in Science (SACNAS) — Baskin Engineering student organization at UC Santa Cruz.",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-sacnas-40e6672755a81374.jpg",
+    "sources": [
+      "baskin_engineering",
+      "instagram_discovery"
     ]
   },
   {
@@ -2283,18 +2433,6 @@
     ]
   },
   {
-    "name": "SOL Council",
-    "instagram": "solatucsc",
-    "category": "service & advocacy",
-    "email": "solcouncilucsantacruz@gmail.com",
-    "description": "Empowering students through organizing & civic engagement Advocacy • Education • Student Voice",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/814400282_18102436625082416_8092916463474839131_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NzguYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gHlreL6PSUY4fyPsurHosEPBbkAxZRyXBLyziXPKl8ybmt1JI7DkiUZMRjssfO5iLk&_nc_ohc=8r-rDifb9awQ7kNvwFilK-h&_nc_gid=y9LVno--L_iVjsc4OHLOGA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GBrDijAwaJv4EVBAAFsOVDql0E9wbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQErgkyplfivL9G-JVTQnDKO_8Oub2N2VX7ZXasHrTlKA&oe=6B02784F&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "SOMOS Latinx en medicina",
     "instagram": "ucsc_slm",
     "category": "pre-professional",
@@ -2363,6 +2501,18 @@
     "description": "Student initiated outreach program that is under engaging education.",
     "sources": [
       "someca"
+    ]
+  },
+  {
+    "name": "Student Organization Leadership (SOL) Council",
+    "instagram": "solatucsc",
+    "category": "service & advocacy",
+    "email": "solcouncilucsantacruz@gmail.com",
+    "description": "Empowering students through organizing & civic engagement Advocacy • Education • Student Voice",
+    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/814400282_18102436625082416_8092916463474839131_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NzguYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gHlreL6PSUY4fyPsurHosEPBbkAxZRyXBLyziXPKl8ybmt1JI7DkiUZMRjssfO5iLk&_nc_ohc=8r-rDifb9awQ7kNvwFilK-h&_nc_gid=y9LVno--L_iVjsc4OHLOGA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GBrDijAwaJv4EVBAAFsOVDql0E9wbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQErgkyplfivL9G-JVTQnDKO_8Oub2N2VX7ZXasHrTlKA&oe=6B02784F&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
     ]
   },
   {
@@ -2478,6 +2628,18 @@
     ]
   },
   {
+    "name": "The Historical Society at UC Santa Cruz",
+    "instagram": "historicalsociety_ucsc",
+    "category": "pre-professional",
+    "email": "ucschistoricalsociety@gmail.com",
+    "description": "The Historical Society at UCSC is a place for students interested in history to come together socially and academically. All majors welcome.",
+    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/567932972_17849109507579789_243486878593212600_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zMzYuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2gF9qb7q5yyVWWvPmuJ43Qn7lSGPOWOatcV_wUfU50F94ipKLnDcdF1dyTb4yaEzCVU&_nc_ohc=lMllYnFU2IcQ7kNvwHoQaFH&_nc_gid=J5zrCInYSV31yaA33pe9kA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCz42SGNn8Gnq2k-ALhgBKoGCmEDbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRO1eJhkxc7-NdZ1EkQXNcPT2Gg5ccbxGP7tZY3pQdcTg&oe=6B027369&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "The Slug Collective",
     "instagram": "slugcollective",
     "category": "media & arts",
@@ -2498,7 +2660,7 @@
     ]
   },
   {
-    "name": "Trans Student Union of UCSC",
+    "name": "Transgender Student Union",
     "instagram": "tsu.ucsc",
     "category": "service & advocacy",
     "email": "tsu.ucsc@gmail.com",
@@ -2557,18 +2719,6 @@
     ]
   },
   {
-    "name": "UC Santa Cruz Historical Society",
-    "instagram": "historicalsociety_ucsc",
-    "category": "pre-professional",
-    "email": "ucschistoricalsociety@gmail.com",
-    "description": "The Historical Society at UCSC is a place for students interested in history to come together socially and academically. All majors welcome.",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/567932972_17849109507579789_243486878593212600_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zMzYuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2gF9qb7q5yyVWWvPmuJ43Qn7lSGPOWOatcV_wUfU50F94ipKLnDcdF1dyTb4yaEzCVU&_nc_ohc=lMllYnFU2IcQ7kNvwHoQaFH&_nc_gid=J5zrCInYSV31yaA33pe9kA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCz42SGNn8Gnq2k-ALhgBKoGCmEDbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRO1eJhkxc7-NdZ1EkQXNcPT2Gg5ccbxGP7tZY3pQdcTg&oe=6B027369&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "UC Santa Cruz ROTC Association",
     "instagram": "ucsc.rotc",
     "category": "service & advocacy",
@@ -2593,10 +2743,17 @@
     "instagram": "ucsc_w6slg",
     "category": "media & arts",
     "email": null,
-    "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.82787-19/657601921_18067358180370398_1528974441137146126_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=102&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=mtVS2ho94WEQ7kNvwHc7DIh&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GIE1Mife516iKjBAAA6JoUInAjgVbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQhF4QYx4c0dTfqka3IF4nfYHMZ8pgMv9RN8RoBkowsnQ&oe=6B027009&_nc_sid=10d13b",
+    "description": "UCSC Amateur Radio Club — Baskin Engineering student organization at UC Santa Cruz.",
+    "discord": "https://discord.gg/yGrXvgUX9H",
+    "website": "https://amateurradioclub.engineering.ucsc.edu/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/08/Amateur-Radio-Club-group-photo.jpeg",
     "sources": [
-      "instagram_discovery"
-    ]
+      "instagram_discovery",
+      "baskin_engineering"
+    ],
+    "discordGuildId": "1159590773885513799",
+    "discordServerName": "UCSC Amateur Radio Club",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Anthro Society",
@@ -2615,25 +2772,6 @@
     "email": null,
     "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/136688247_1010067692850521_108497785766737907_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=105&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=2CBrpvgZEIgQ7kNvwEQUpgS&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GHeyJQhZDQi2ppYDAPP3ikspdoEBbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRSTLUS7g7hEBmsUlpi0MRqzUmR3t1-vc1Ld1tg9s_aKw&oe=6B027D31&_nc_sid=10d13b",
     "sources": [
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC Aspiring PA Association",
-    "instagram": "ucsc_apaa",
-    "category": "pre-professional",
-    "email": "ucsc.apaa@gmail.com",
-    "description": "Committed to educating pre-PA students about their future health profession by organizing activities and providing mentorship support.",
-    "discord": "https://discord.gg/mz72Fdgn9f",
-    "discordGuildId": "765778907210448896",
-    "discordServerName": "Aspiring Physician Assistant Association",
-    "discordFollowable": false,
-    "discordMemberCount": 215,
-    "discordOnlineCount": 6,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/765778907210448896/bf2f76d04a1f17c631cee5372e194f82.png?size=128",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/122715442_3635496619805249_7555055632297445214_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby43MzYuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=105&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=GDfYK2Xam5AQ7kNvwFHG4UG&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GDJ9UAdBCpsEd_oMAF5HZ7UR89hobkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQoJQ5OpBa_QuT-u-shCzRRrf9b7JLHxy7kIoX4QeQCFw&oe=6B0296D9&_nc_sid=10d13b",
-    "sources": [
-      "someca",
       "instagram_discovery"
     ]
   },
@@ -2706,31 +2844,6 @@
     ]
   },
   {
-    "name": "UCSC Bioinformatics Club",
-    "instagram": "ucsc.bioinformatics.club",
-    "category": "tech & science",
-    "email": null,
-    "description": "Bioinformatics Club — Baskin Engineering student organization at UC Santa Cruz.",
-    "website": "https://ucscbioinformatics.wixsite.com/bioinformaticsclub",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/242312775_402092041300427_1087767676655618365_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zMjAuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=XzHmvCx-bJwQ7kNvwGxiX_n&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GEdmcQ7L6UlZs20BAD3JNU3whhgPbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRrU68qaUiVOuP2snkV17GY9hC72ErbK6dUEJ4IU95vYw&oe=6B026E87&_nc_sid=10d13b",
-    "sources": [
-      "baskin_engineering",
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC Black Student Union",
-    "instagram": "ucscbsu",
-    "category": "cultural",
-    "email": "bsu.slugs@gmail.com",
-    "description": "The Black Student Union (BSU) serves as a unifying body for all Black organizations on campus, as well as the Black student body. The BSU also welcomes all individuals who are committed to advancing, supporting, and meaningfully engaging with issues affecting the Black community.",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/381731115_661350349298105_8881948663189997938_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby43MzMuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=105&_nc_oc=Q6cZ2gFSbku5A-8tJOP0AcILfurBTCavXqQfr24cEs2UNPJsCKqLA8Wf6fqt0MVu9DiFTIo&_nc_ohc=shcycxyzB-QQ7kNvwFJjrlR&_nc_gid=CYUa7klOdKdM9Bj3GD_WpQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCvBwBa5WaSgflkCAHIJsiZABUN7bkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSiHqZWD_UFrgNyvA95OXCYXgftMcU3svaRMvppd38DNw&oe=6B0281C3&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "UCSC Blueprint",
     "instagram": "ucscblueprint",
     "category": "tech & science",
@@ -2742,7 +2855,7 @@
     "discordFollowable": false,
     "discordOnlineCount": 0,
     "website": "https://ucscblueprint.org/",
-    "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.2885-19/461434769_1074502760738521_705105743259218241_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zMDAuYzIifQ&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2gHG0mGw1LzIbSTd0Gjoy8_fjXHHYJ_NvgG9p6oL2piMsBxowRs3HxXxkc89djEmAes&_nc_ohc=2LVec6X4PH0Q7kNvwEcQ8Tj&_nc_gid=CJT0VKTqDGKZtV9FAQei0Q&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GJHvgBvZLl0rQdEDAEGxDQzwCckJbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQR1JnNIZ7IHaH0031KsVfLC2TGRGptfdLuuzo-IU46sig&oe=6B029095&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/12/10-29-24-Giving-Day-Blueprint-Club-CL-015-1.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -2755,44 +2868,6 @@
     "email": null,
     "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/515902263_17845619358522224_6925396119009297587_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby44NTEuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gF9qb7q5yyVWWvPmuJ43Qn7lSGPOWOatcV_wUfU50F94ipKLnDcdF1dyTb4yaEzCVU&_nc_ohc=Fv3Exdzti-EQ7kNvwHaWPQN&_nc_gid=J5zrCInYSV31yaA33pe9kA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GDcLwB5wW6kKf2Y-ALMEa-IT8xtgbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQzdqAWJXTMsRIpnROqgNynWVr_d4KlLZkAaW9PDQE-cQ&oe=6B02959A&_nc_sid=10d13b",
     "sources": [
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC Chess Club",
-    "instagram": "ucscchessclub",
-    "category": "gaming",
-    "email": "ucsc.chess@gmail.com",
-    "description": "Chess. We also play variants like bughouse, and occasionally hold casual tournaments.",
-    "discord": "https://discord.gg/hgU4WFje6Y",
-    "discordGuildId": "892081729358143529",
-    "discordServerName": "UCSC Chess",
-    "discordFollowable": false,
-    "discordMemberCount": 561,
-    "discordOnlineCount": 44,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/892081729358143529/522dc591949f49a8c88c8d0638118de8.png?size=128",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.82787-19/612046822_17949042375075815_8879026917212201606_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby41NzguYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=F8vGGOmwdpEQ7kNvwH4ioCt&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GOYXeyTnJ9MWj8Q-AIaikCfwozh7bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQnucqawoRf10hGAJ0dJK0vA6mVj1kQvNxGjAi6vqfCpA&oe=6B027915&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC Chinese Student Association",
-    "instagram": "csa_ucsc",
-    "category": "cultural",
-    "email": "csaofucsc@gmail.com",
-    "description": "The Chinese Student Association is a student organization and resource devoted to promoting unity and empowerment among UCSC students through education and recognition of Asian and Asian American culture, emphasizing Chinese and Chinese Americans.",
-    "discord": "https://discord.gg/qtp8XFXgHa",
-    "discordGuildId": "692971099847262208",
-    "discordServerName": "CSA of UCSC",
-    "discordFollowable": true,
-    "discordMemberCount": 944,
-    "discordOnlineCount": 96,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/692971099847262208/fb775fbaabf803760a2954376f94422e.png?size=128",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/461614487_517686524344715_677372816771561819_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=dpIWmqlyqJoQ7kNvwEDFVeQ&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GJetgxuLeWNJ1dYBAFu5LOz8gmYJbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQR8lqcp4SQC2OMfAUbSDUbVaPrLDjMle-i-XnfUOhYbJA&oe=6B028874&_nc_sid=10d13b",
-    "sources": [
-      "someca",
       "instagram_discovery"
     ]
   },
@@ -2827,7 +2902,7 @@
     ]
   },
   {
-    "name": "UCSC Computer Networking Student Association",
+    "name": "UCSC Computer Networking Student Association (CNSA)",
     "instagram": "ucsc.cnsa",
     "category": "tech & science",
     "email": null,
@@ -2838,7 +2913,7 @@
     "discordFollowable": true,
     "discordOnlineCount": 0,
     "website": "https://cnsaclub.engineering.ucsc.edu/",
-    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/472768591_623097020154556_929549496408240817_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45MTQuYzIifQ&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=puGSmj-4OgAQ7kNvwHEoF8R&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GE-gLRy8AowUtDYCALFyjo5XbOYMbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRLK6-Ekdg1LlukXZH_GS6C8SpWV08-fwNdZm5uSb6O0A&oe=6B026039&_nc_sid=10d13b",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-cnsa-5c70022f3ff101da.jpg",
     "sources": [
       "baskin_engineering",
       "instagram_discovery"
@@ -3023,18 +3098,6 @@
     ]
   },
   {
-    "name": "UCSC Inter-Greek Council",
-    "instagram": "ucscigc",
-    "category": "greek",
-    "email": "igc@ucsc.edu",
-    "description": "A governing council that is typically comprised of five elected official officers and at least one representative from each of our Greek letter Organizations.",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/23164005_568769260122258_2056468875771379712_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NjAuYzIifQ&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2gHlreL6PSUY4fyPsurHosEPBbkAxZRyXBLyziXPKl8ybmt1JI7DkiUZMRjssfO5iLk&_nc_ohc=S5IkfeWFJjIQ7kNvwGpwmhh&_nc_gid=y9LVno--L_iVjsc4OHLOGA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GGV0YQGScLXpSgUCAAAAAACMC4ocbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTrPhtpuQE0JGylGvBcFrQehyiizzAbXPjOEsoCYG2IRg&oe=6B026AB7&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "UCSC Judo Club",
     "instagram": "ucsc_judo",
     "category": "gaming",
@@ -3044,18 +3107,6 @@
     "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/RM/RM4oumCXIFhbwhoFHr1NgtwccecJ9w83MxMIjETA.jpg",
     "sources": [
       "sport_clubs",
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC Khmer Student Association",
-    "instagram": "ksa_ucsc",
-    "category": "cultural",
-    "email": "khmer.ucsc@gmail.com",
-    "description": "The Khmer Student Association aims to foster an empathetic, conscious, and welcoming community for members and Khmer students. We aim to promote academic success, cultural, awareness, and social engagement.",
-    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/460554499_1250760266061103_1238964366393484286_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby42NTEuYzIifQ&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=107&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=KLenGplVrlAQ7kNvwHRuRXY&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GAOBcxsvlVtRj3EEAP4jQOSGrzERbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRjYX7af3IyIRILh01kEiUxRmUGMOQUXeM4ZOSJqT6iQw&oe=6B026938&_nc_sid=10d13b",
-    "sources": [
-      "someca",
       "instagram_discovery"
     ]
   },
@@ -3183,33 +3234,17 @@
     ]
   },
   {
-    "name": "UCSC Neuroscience Club",
-    "instagram": "ucsc.neuroclub",
-    "category": "tech & science",
-    "email": "ucscneuroscienceclub@gmail.com",
-    "description": "An educational club motivated to foster an environment of like-minded individuals interested in the field of neuroscience, healthcare, and research. We continue to serve as an established community capable of supporting and inspiring students.",
-    "discord": "https://discord.gg/GFV5bn69gd",
-    "discordGuildId": "1166886826078912602",
-    "discordServerName": "UCSC Undergraduate Neuroscience Club",
-    "discordFollowable": false,
-    "discordMemberCount": 200,
-    "discordOnlineCount": 22,
-    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/347452995_647855133824632_2563642947634613445_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=hxmMsBXukPcQ7kNvwFMQcqA&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GEO2tRR4Fh6HOE0CAMVMspit45MjbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTdD4R2O3UysQxW_MT8Kb8UffAi_6alif7TNmwgGjcEnw&oe=6B0276B1&_nc_sid=10d13b",
+    "id": "noig_ucsc_page_not_found_404_club",
+    "noInstagram": true,
+    "name": "UCSC Page Not Found (404) Club",
+    "instagram": "",
+    "category": "community",
+    "email": null,
+    "description": "Page Not Found (404): It looks like you",
+    "website": "https://goslugs.com/sports/2025/7/14/cross%20country.aspx",
+    "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/dW/dWxh1PuP8oaQqRRPv2wK3xqiJlt5SdTFvWApiRzh.jpg",
     "sources": [
-      "someca",
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC PANHELLENIC ASSOCIATION",
-    "instagram": "ucscpanhellenic",
-    "category": "greek",
-    "email": "collegepanhellenic@gmail.com",
-    "description": "Council composed of members from each of the three Panhellenic sororities on campus that oversee each organization",
-    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/892218395_18650919148049492_3810720045873669889_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45MTAuYzIifQ&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gErXYxMtxixoGNC1G77irMaqIOVTqsibuipTwqaFnELjHvt2wLZaxXCh262lqitzi8&_nc_ohc=EgCRTHYLB-kQ7kNvwG78--A&_nc_gid=ROYyX5JH9mMAfKWOveCqiQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GBssLjVU1I2C6UJCAAGnwhCxZeI0bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRLW4Klbz4FYA2vdqWoCQkFiuJEgXpjjhOfO2Y3zq61eg&oe=6B02770A&_nc_sid=10d13b",
-    "sources": [
-      "someca",
-      "instagram_discovery"
+      "sport_clubs"
     ]
   },
   {
@@ -3243,16 +3278,6 @@
     ]
   },
   {
-    "name": "UCSC Pre-Veterinary Club",
-    "instagram": "ucscprevet",
-    "category": "pre-professional",
-    "email": null,
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.2885-19/307307333_397315955811359_7583760688146817601_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=AXIS0AJGhZcQ7kNvwGl1-gM&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GEUjURIf5GhUW2kBAEEikFYq7j5pbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSDsFdOkDq8rUQ3itMseG8OJtH_czssIhLgKp4sFEoruA&oe=6B028013&_nc_sid=10d13b",
-    "sources": [
-      "instagram_discovery"
-    ]
-  },
-  {
     "name": "UCSC Quidditch Team",
     "instagram": "ucscquidditch",
     "category": "gaming",
@@ -3273,24 +3298,25 @@
     ]
   },
   {
+    "name": "UCSC Rocket Team",
+    "instagram": "ucscrocketry",
+    "category": "tech & science",
+    "email": null,
+    "description": "The UCSC Rocket Team is the leading aerospace organization for the University of California, Santa Cruz. We design and build high-powered rockets.",
+    "website": "https://ucscrocketry.org/",
+    "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2025/07/UCSC-Rocket-Team-1024x672.png",
+    "sources": [
+      "baskin_engineering",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "UCSC Run Club",
     "instagram": "runclub.sc",
     "category": "gaming",
     "email": null,
     "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.82787-19/554632491_17893568022339996_2075711468704508479_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=100&_nc_oc=Q6cZ2gG1lhJckOA7hQLvZE785CyVf3trfRW8QAyLDZcc7nPJrpfivSCBhuj3dk88mu2xZL4&_nc_ohc=lDomTdgBh3sQ7kNvwF_WPFA&_nc_gid=8VV8C9Of5H0tA-LG0wOFvw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCsFDyGcYbz1GpI-AD8qVkyVaM4cbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQJgIEjsCEVIbG0PPgIlS1HJfWCuzveKgKxjADABJoglA&oe=6B028413&_nc_sid=10d13b",
     "sources": [
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "UCSC SACNAS",
-    "instagram": "ucsc.sacnas",
-    "category": "tech & science",
-    "email": null,
-    "description": "Society for the Advancement of Chicanos and Native Americans in Science (SACNAS) — Baskin Engineering student organization at UC Santa Cruz.",
-    "iconUrl": "https://scontent-dfw5-1.cdninstagram.com/v/t51.82787-19/669867881_18114231352737323_6436286547948647695_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gHJdxe_ti83GyGLkd3OWFkwQbkSrfDgVQVcC8v1xTjF_U8mRqS7askwiRREUCPrO7c&_nc_ohc=H6PndWNisboQ7kNvwEVaEmo&_nc_gid=irXYp-eRve11ifW_yD-Uwg&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GGlf7ScrviglzFpAAA_1GrODSFJZbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRrJ39rs0lHOFL19Gc7npTd0Xi0tpZM3IgkRHxGSbRiXg&oe=6B027ACF&_nc_sid=10d13b",
-    "sources": [
-      "baskin_engineering",
       "instagram_discovery"
     ]
   },
@@ -3324,18 +3350,6 @@
     "email": null,
     "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.82787-19/670805272_18081155036126164_7578014689278612955_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDA4LmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gF35G1zmzxgV1C6mHHByoUYFKvECIw90LU4PYt3skYEbKpJ2c1fornK4uamuGs4FaA&_nc_ohc=rfpx-ex2J4wQ7kNvwG-4LYQ&_nc_gid=7Uc-aktZJkyzL2F5x5WRvA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GBit_yfUmw73tjxAANvVJLk1hCppbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTXX4QjCGghKGiPQrT38p-OCMavVV7Kk-9yfC5xtEobnw&oe=6B0277F6&_nc_sid=10d13b",
     "sources": [
-      "instagram_discovery"
-    ]
-  },
-  {
-    "name": "ucsc slug book club",
-    "instagram": "slugbookclub",
-    "category": "media & arts",
-    "email": "slugbookclub@gmail.com",
-    "description": "Slug Book Club brings together a community of undergraduate students at UCSC who are interested in reading and thoughtful discussion. Members are challenged to engage with a variety of different genres, themes, and authors in a fun and welcoming environment.",
-    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.82787-19/847338865_18098622824647080_6776890063499456396_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=100&_nc_oc=Q6cZ2gHjqS9kea15b00BJEPUdYVOzUI-hiolE8YThLbae_9908AclCMo1_Y5pLNGz9Lltm8&_nc_ohc=WGmDzGEbVMYQ7kNvwEU0Zob&_nc_gid=1OqkzkSWwfOUwMTwMN0QRQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GHFdgTKoCWMAmkxAAIxvwnSbWQxebmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTOarCIcGW3I6wfRpjZZUOBjIJ1Ci_FDUZPI8rWXpGZvQ&oe=6B027DF8&_nc_sid=10d13b",
-    "sources": [
-      "someca",
       "instagram_discovery"
     ]
   },
@@ -3693,6 +3707,24 @@
     ]
   },
   {
+    "name": "Undergraduate Neuroscience Club",
+    "instagram": "ucsc.neuroclub",
+    "category": "tech & science",
+    "email": "ucscneuroscienceclub@gmail.com",
+    "description": "An educational club motivated to foster an environment of like-minded individuals interested in the field of neuroscience, healthcare, and research. We continue to serve as an established community capable of supporting and inspiring students.",
+    "discord": "https://discord.gg/GFV5bn69gd",
+    "discordGuildId": "1166886826078912602",
+    "discordServerName": "UCSC Undergraduate Neuroscience Club",
+    "discordFollowable": false,
+    "discordMemberCount": 200,
+    "discordOnlineCount": 22,
+    "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/347452995_647855133824632_2563642947634613445_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=hxmMsBXukPcQ7kNvwFMQcqA&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GEO2tRR4Fh6HOE0CAMVMspit45MjbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQTdD4R2O3UysQxW_MT8Kb8UffAi_6alif7TNmwgGjcEnw&oe=6B0276B1&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
+    ]
+  },
+  {
     "name": "Universities Allied for Essential Medicines at UCSC (UAEM at UCSC)",
     "instagram": "uaem_ucsc",
     "category": "pre-professional",
@@ -3722,12 +3754,12 @@
     "discordGuildId": "740648963329490997",
     "discordServerName": "UCSC VSA",
     "discordFollowable": false,
+    "discordMemberCount": 492,
     "discordOnlineCount": 75,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/740648963329490997/8b26f8fd84aea1ea6de01b1afe291b15.png?size=128",
     "sources": [
       "someca"
-    ],
-    "discordMemberCount": 492,
-    "discordIconUrl": "https://cdn.discordapp.com/icons/740648963329490997/8b26f8fd84aea1ea6de01b1afe291b15.png?size=128"
+    ]
   },
   {
     "name": "Women in Science and Engineering (WiSE)",
@@ -3752,7 +3784,7 @@
     ]
   },
   {
-    "name": "Women's Wellness Club UCSC",
+    "name": "Women's Wellness Club",
     "instagram": "wwc.ucsc",
     "category": "service & advocacy",
     "email": "wwc.ucsc@gmail.com",
@@ -3771,6 +3803,25 @@
     "description": "We are a pre-law club that empowers women to pursue their passion in law, regardless of its specification. We offer workshops, guest speakers and discussion nights to create a space where students can learn more about law within UCSC and different law schools.",
     "sources": [
       "someca"
+    ]
+  },
+  {
+    "name": "World System Builder at UCSC",
+    "instagram": "wsb_ucsc",
+    "category": "pre-professional",
+    "email": "wbucsc@gmail.com",
+    "description": "WSB Financial Literacy Club brings Wall Street to Main Street by making personal finance practical and accessible through workshops on saving, budgeting, credit, investing, financial planning, and opportunities to learn about financial services licensing.",
+    "discord": "https://discord.gg/mYCFbmMqzA",
+    "discordGuildId": "1421593699053338664",
+    "discordServerName": "WSB UCSC",
+    "discordFollowable": false,
+    "discordMemberCount": 28,
+    "discordOnlineCount": 5,
+    "discordIconUrl": "https://cdn.discordapp.com/icons/1421593699053338664/cc6babe946099b44c6ff2a6eea807274.png?size=128",
+    "iconUrl": "https://scontent-dfw6-2.cdninstagram.com/v/t51.82787-19/658798027_17883458469532448_3825239557511430409_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDI0LmMyIn0&_nc_ht=scontent-dfw6-2.cdninstagram.com&_nc_cat=108&_nc_oc=Q6cZ2gFXMyhXmPPaq7lw-onxF_gcp9FP5cOH7WWCe174EHt53qF3qH5cdg_bwTiy5v43YcI&_nc_ohc=2k6gKhYGXFkQ7kNvwE9CeQx&_nc_gid=bUWXM-nyHxzZXqZlF9sZfQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GMt1RCcgk24l6Yg-AAnBPU4c_xU1bmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQqPpDIf7LMrWnSNdCQXuo7L1CYgx5uoRO_deAoUcZ0IA&oe=6B028F7F&_nc_sid=10d13b",
+    "sources": [
+      "someca",
+      "instagram_discovery"
     ]
   },
   {
