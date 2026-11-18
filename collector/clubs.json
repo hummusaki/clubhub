@@ -9,7 +9,7 @@
     "discordServerName": "UCSC 3D Animation Short Film Club",
     "discordFollowable": false,
     "discordMemberCount": 38,
-    "discordOnlineCount": 3,
+    "discordOnlineCount": 6,
     "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.82787-19/825466661_18116831881864346_8147476868665764035_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby41NDAuYzIifQ&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=102&_nc_oc=Q6cZ2gG-NecmM5nPjhWGiUpcY3XU1KJrEUPH9UwOS6apaykiw6Vhs6SEVczPB3i5sokuhxQ&_nc_ohc=YGNyy3Wm2rgQ7kNvwHGsQA9&_nc_gid=o-s7o8Y3HCT_bSsroy3rYA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GCWfMzGaJMagKV1AAMPoiHwLpxFxbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQ6PpL0Zat0-XLDAdkUPpKFVIhorv8zBrOcQbEF-Own6Q&oe=6B0287B3&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
@@ -132,7 +132,7 @@
     "discordServerName": "UCSC ARCA",
     "discordFollowable": false,
     "discordMemberCount": 215,
-    "discordOnlineCount": 11,
+    "discordOnlineCount": 7,
     "discordIconUrl": "https://cdn.discordapp.com/icons/701555560818016330/b40db26eb6bf88d661b0cfa260ba197f.png?size=128",
     "sources": [
       "someca"
@@ -230,8 +230,8 @@
     "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
     "discordFollowable": false,
-    "discordMemberCount": 1409,
-    "discordOnlineCount": 177,
+    "discordMemberCount": 1407,
+    "discordOnlineCount": 176,
     "discordIconUrl": "https://cdn.discordapp.com/icons/893648956372971552/7c567bd16423aee948187a2bb8c0b23f.png?size=128",
     "website": "https://ucscacm.vercel.app/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-acm-3a0a55b0935b4b65.jpg",
@@ -299,7 +299,7 @@
     "discordServerName": "UCSC Bangladeshi Student Association",
     "discordFollowable": true,
     "discordMemberCount": 50,
-    "discordOnlineCount": 2,
+    "discordOnlineCount": 1,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1151284779988308088/6f942ba7d9e1a3ab6f76797afc971533.png?size=128",
     "sources": [
       "someca"
@@ -316,7 +316,7 @@
     "discordServerName": "Bayanihan @ UCSC",
     "discordFollowable": true,
     "discordMemberCount": 332,
-    "discordOnlineCount": 23,
+    "discordOnlineCount": 28,
     "discordIconUrl": "https://cdn.discordapp.com/icons/688612860032581676/0c37ed11a796d92903329717a161b5f3.png?size=128",
     "sources": [
       "someca"
@@ -342,8 +342,8 @@
     "discordGuildId": "1431012917326647399",
     "discordServerName": "UCSC Bioethics Club",
     "discordFollowable": false,
-    "discordMemberCount": 46,
-    "discordOnlineCount": 3,
+    "discordMemberCount": 47,
+    "discordOnlineCount": 4,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1431012917326647399/c76da9037111d913fee7548c5c6b8006.png?size=128",
     "iconUrl": "https://scontent-dfw6-1.cdninstagram.com/v/t51.82787-19/547918145_17845230654568921_3210975442731435786_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDI0LmMyIn0&_nc_ht=scontent-dfw6-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2gHRcUs-8TI19piVJMNf4NmAIkp_ovyDuNbxythBIpY0ufHO6paryXRzOn056LfsRsQ&_nc_ohc=dj3qovF8q1IQ7kNvwFJidKh&_nc_gid=HqxwPTxfHPaSSK5ssa73pw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GEGRqCDZuRmKJGY-AAqHghYnrY8sbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQ_ZNGpSesDwb8h7xlyNYuLoAPiGH_y9iEvUkg9Fay_Cg&oe=6B027CCB&_nc_sid=10d13b",
     "sources": [
@@ -414,7 +414,7 @@
     "discordServerName": "BEA | Business Economics Academia | UCSC",
     "discordFollowable": false,
     "discordMemberCount": 337,
-    "discordOnlineCount": 23,
+    "discordOnlineCount": 29,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1309026182364135445/f0ea217ef1e6d4cbd7ab75bdcf05b02b.png?size=128",
     "sources": [
       "someca"
@@ -430,8 +430,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "website": "https://goslugs.com/sports/2025/7/14/campkesem.aspx",
     "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/61/61IP0HjigA9N9BltsznN9vcd5JuSKCHNb5uYhijk.jpg",
@@ -509,7 +509,7 @@
     "discordServerName": "UCSC_CSSA赛博小屋",
     "discordFollowable": true,
     "discordMemberCount": 85,
-    "discordOnlineCount": 14,
+    "discordOnlineCount": 11,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1166539478446383134/da394376eb69d2a75667755cff9dda05.png?size=128",
     "sources": [
       "someca"
@@ -605,7 +605,7 @@
     "discordServerName": "CYD Bay Area Region Server",
     "discordFollowable": true,
     "discordMemberCount": 151,
-    "discordOnlineCount": 8,
+    "discordOnlineCount": 6,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1432956354179371071/face28b0eae3703f26fcee2f02766104.png?size=128",
     "sources": [
       "someca"
@@ -621,8 +621,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "website": "https://collegenine.ucsc.edu/cocurricular/senate.html",
     "sources": [
@@ -677,7 +677,7 @@
     "discordServerName": "UCSC Community Unified Student Network (CUSN)",
     "discordFollowable": true,
     "discordMemberCount": 35,
-    "discordOnlineCount": 2,
+    "discordOnlineCount": 0,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1327334964571803768/1b2ba0228f4d19ea1ec4209052a3ebf9.png?size=128",
     "sources": [
       "someca"
@@ -693,8 +693,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "website": "https://cowell.ucsc.edu/activities/senate/index.html",
     "sources": [
@@ -1022,8 +1022,8 @@
     "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
     "discordFollowable": false,
-    "discordMemberCount": 1681,
-    "discordOnlineCount": 193,
+    "discordMemberCount": 1682,
+    "discordOnlineCount": 178,
     "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128",
     "sources": [
       "someca"
@@ -1044,8 +1044,8 @@
     "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
     "discordFollowable": false,
-    "discordMemberCount": 1681,
-    "discordOnlineCount": 193,
+    "discordMemberCount": 1682,
+    "discordOnlineCount": 178,
     "discordIconUrl": "https://cdn.discordapp.com/icons/765439019122163733/df44fe23ff9587a6367562a7c95e3b7b.png?size=128"
   },
   {
@@ -1171,8 +1171,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "sources": [
       "someca"
@@ -1405,8 +1405,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.82787-19/517408063_18515105236040652_1042716786791625599_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDE5LmMyIn0&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=100&_nc_oc=Q6cZ2gHcHIjROZL8-gLJ7Idx5xve7jT9gbE_D6W48s71kSJk5TovIDz374kDgpTGVMbZx5w&_nc_ohc=koLwXqJ0T9YQ7kNvwH9BLzV&_nc_gid=0CYefgmZkvApyfNT60aVOw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GD8F1x7Mu5LeY8dBAH8zDZ5keXgObmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRGS7bPKn0kbfIvVSMfFIZtvM-_0Z7nSpfv_f63wNfCzA&oe=6B026ABE&_nc_sid=10d13b",
     "sources": [
@@ -1656,8 +1656,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128"
   },
   {
@@ -1983,8 +1983,8 @@
     "discordGuildId": "1445915582825369631",
     "discordServerName": "🌳 Linktree Community",
     "discordFollowable": true,
-    "discordMemberCount": 1180,
-    "discordOnlineCount": 76,
+    "discordMemberCount": 1181,
+    "discordOnlineCount": 111,
     "discordIconUrl": "https://cdn.discordapp.com/icons/1445915582825369631/e720a219c037140bc6729fffbba70365.png?size=128",
     "iconUrl": "https://scontent-dfw5-2.cdninstagram.com/v/t51.2885-19/246430402_106269098513731_6979738422301155985_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby43NTAuYzIifQ&_nc_ht=scontent-dfw5-2.cdninstagram.com&_nc_cat=107&_nc_oc=Q6cZ2gG6qijGLSZ7EAzSTLCE6pwvShXLn_laF7k-hMIWmHcWvGZfprLsy2LrNq0JFGQmtAI&_nc_ohc=luq7T0P7mGwQ7kNvwGcHj1E&_nc_gid=IXgtlyzdOAhLdqEd4UqutA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GMI6sA5DFd6zpmAAAJHiZ2YdA91gbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQXE-KKtJlJsGcaR8oLO-ysp7EQwa8S0zyOwwOjd0BUPA&oe=6B028C29&_nc_sid=10d13b",
     "sources": [
@@ -2226,8 +2226,8 @@
     "discordGuildId": "991163002806091797",
     "discordServerName": "Slug Security",
     "discordFollowable": true,
-    "discordMemberCount": 949,
-    "discordOnlineCount": 204,
+    "discordMemberCount": 948,
+    "discordOnlineCount": 165,
     "discordIconUrl": "https://cdn.discordapp.com/icons/991163002806091797/43ab04d5feaf32f061af2950caf9fe18.png?size=128",
     "website": "https://slugsec.ucsc.edu/",
     "iconUrl": "https://undergrad.engineering.ucsc.edu/files/2024/03/orgs-slug-security-0b28890be4e89a30.jpg",
