@@ -1,4 +1,4 @@
-import Select from './Select'
+import Select, { MenuSelect } from './Select'
 import SearchDestination from './SearchDestination'
 import { useState, useMemo, useEffect } from 'react'
 import {
@@ -578,52 +578,40 @@ export default function LinksResources({
             <SearchBox placeholder="Filter resources" value={searchQuery} onChange={onSearchChange} />
           </div>}
           <ActionDisclosure label="Filters" count={filterCount} icon={<SlidersHorizontal size={14} />}
-            panelClassName="left-0 right-auto w-52 p-2">
+            panelClassName="left-0 right-auto filter-popover">
             {() => (
-              <div className="grid gap-2">
-                <label className="grid gap-1 text-xs">
-                  Group by
-                  <Select
-                    aria-label="Group resources by"
-                    className="control-select"
-                    value={groupMode}
-                    onValueChange={setGroupMode}
-                    options={[
-                      { value: "category", label: "Category" },
-                      { value: "club", label: "Club" },
-                    ]}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs">
-                  Club
-                  <Select
-                    aria-label="Resource club filter"
-                    className="control-select"
-                    value={clubFilter}
-                    onValueChange={setClubFilter}
-                    search
-                    options={[
-                      { value: "all", label: "All campus clubs" },
-                      ...(joinedClubIdSet.size > 0 ? [{ value: "myclubs", label: "My joined clubs" }] : []),
-                      ...clubsWithResources.map(c => ({ value: c.id, label: cleanText(c.name) })),
-                    ]}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs">
-                  Resource type
-                  <Select
-                    aria-label="Resource type filter"
-                    className="control-select"
-                    value={filterTab}
-                    onValueChange={setFilterTab}
-                    search="auto"
-                    options={[
-                      { value: "All", label: `All resources (${sectionCounts.All})` },
-                      ...(sectionCounts.Pinned > 0 || filterTab === 'Pinned' ? [{ value: "Pinned", label: `Pinned (${sectionCounts.Pinned})` }] : []),
-                      ...RESOURCE_SECTIONS.filter(section => sectionCounts[section.id] > 0 || filterTab === section.id).map(section => ({ value: section.id, label: `${section.shortLabel} (${sectionCounts[section.id]})` })),
-                    ]}
-                  />
-                </label>
+              <div className="grid gap-3">
+                <MenuSelect
+                  label="Group by"
+                  value={groupMode}
+                  onValueChange={setGroupMode}
+                  options={[
+                    { value: "category", label: "Category" },
+                    { value: "club", label: "Club" },
+                  ]}
+                />
+                <MenuSelect
+                  label="Club"
+                  value={clubFilter}
+                  onValueChange={setClubFilter}
+                  search
+                  options={[
+                    { value: "all", label: "All campus clubs" },
+                    ...(joinedClubIdSet.size > 0 ? [{ value: "myclubs", label: "My joined clubs" }] : []),
+                    ...clubsWithResources.map(c => ({ value: c.id, label: cleanText(c.name) })),
+                  ]}
+                />
+                <MenuSelect
+                  label="Resource type"
+                  value={filterTab}
+                  onValueChange={setFilterTab}
+                  search="auto"
+                  options={[
+                    { value: "All", label: `All resources (${sectionCounts.All})` },
+                    ...(sectionCounts.Pinned > 0 || filterTab === 'Pinned' ? [{ value: "Pinned", label: `Pinned (${sectionCounts.Pinned})` }] : []),
+                    ...RESOURCE_SECTIONS.filter(section => sectionCounts[section.id] > 0 || filterTab === section.id).map(section => ({ value: section.id, label: `${section.shortLabel} (${sectionCounts[section.id]})` })),
+                  ]}
+                />
               </div>
             )}
           </ActionDisclosure>

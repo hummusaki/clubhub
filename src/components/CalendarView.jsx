@@ -725,7 +725,7 @@ export default function CalendarView({
   })
 
   const selectedSearchEvent = searchTarget?.type === 'event'
-    ? enrichedEvents.find(event => String(event.id) === searchTarget.id) : null
+    ? enrichedEvents.find(event => String(event.id) === searchTarget.id) || searchTarget.publicEvent : null
 
   const calendarViews = [
     { value: 'month', label: 'Month' },

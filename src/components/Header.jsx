@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Bell, CheckCheck, Moon, Sun, LogIn, LogOut, Settings, ArrowRight, ChevronUp } from 'lucide-react'
+import { Bell, CheckCheck, LogIn, LogOut, Settings, ArrowRight, ChevronUp } from 'lucide-react'
 import {
   SearchBox,
   BubbleTag,
@@ -18,11 +18,10 @@ import { announcementKey, announcementPermalink } from '../utils/announcementLin
 export default function Header({
   searchSources,
   onSearchSelect,
+  restoreSearchKey,
   activeNav = 'overview',
   onNav,
   onOpenAnnouncement,
-  dark = false,
-  onToggleDark,
   user = null,
   userSettings = {},
   isDemo = false,
@@ -76,6 +75,18 @@ export default function Header({
     setUserMenuOpen(false)
     setSearchOpen(false)
   }, [activeNav])
+
+  useEffect(() => {
+    if (!restoreSearchKey) return
+    setSearchOpen(true)
+    const frame = requestAnimationFrame(() => {
+      const result = Array.from(searchPanel.current?.querySelectorAll('[data-search-result]') || [])
+        .find(entry => entry.dataset.searchResult === restoreSearchKey.id)
+      const target = result || searchInputRef.current
+      target?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [restoreSearchKey])
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -288,7 +299,7 @@ export default function Header({
             <div ref={searchPanel} className="workspace-search-panel">
               <WorkspaceSearchResults query={searchQuery} sources={searchSources} onSelect={(type, item) => {
                 setSearchOpen(false)
-                onSearchSelect?.(type, item)
+                onSearchSelect?.(type, item, { search: `${type}:${item.id}`, focus: searchInputRef.current })
               }} />
             </div>
           )}
@@ -370,16 +381,6 @@ export default function Header({
                 >
                   Settings
                 </Button>
-                {onToggleDark && (
-                  <Button
-                    variant="text-neutral"
-                    icon={dark ? <Sun size={16} /> : <Moon size={16} />}
-                    onClick={onToggleDark}
-                    className="w-full"
-                  >
-                    {dark ? 'Switch to light mode' : 'Switch to dark mode'}
-                  </Button>
-                )}
               </div>
 
               {(onSignOut || (isDemo && onExitDemo)) && (

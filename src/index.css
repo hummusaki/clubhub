@@ -105,6 +105,10 @@
   --radius-sm:         12px;
   --radius-xs:         8px;
   --radius-pill:       9999px;
+  --menu-radius:       14px;
+  --menu-inset:        6px;
+  --menu-item-radius:  calc(var(--menu-radius) - var(--menu-inset));
+  --menu-item-height:  36px;
 }
 
 /* ── Dark Mode (Google M3 Neutral Charcoal + Tonal Elevation + Desaturated 80-Tone Accents) ── */
@@ -457,6 +461,8 @@ html.compact-cards {
   --sidebar-width: 256px;
   --content-max-width: 1440px;
   --page-gutter: 12px;
+  --page-inset-start: max(var(--page-gutter), env(safe-area-inset-left, 0px));
+  --page-inset-end: max(var(--page-gutter), env(safe-area-inset-right, 0px));
   --page-top: 12px;
   --section-gap: 12px;
   --card-padding: 12px;
@@ -484,7 +490,8 @@ html.compact-cards {
 
 .app-content {
   --page-bottom: calc(var(--mobile-nav-clearance) + var(--section-gap));
-  padding: var(--page-top) var(--page-gutter) var(--page-bottom);
+  padding-block: var(--page-top) var(--page-bottom);
+  padding-inline: var(--page-inset-start) var(--page-inset-end);
 }
 @media (min-width: 1024px) {
   .app-content { --page-bottom: 32px; }
@@ -594,7 +601,7 @@ html.compact-cards {
   gap: 0 12px;
   height: var(--workspace-header-height);
   padding-block-start: env(safe-area-inset-top, 0px);
-  padding-inline: max(var(--page-gutter), env(safe-area-inset-left, 0px)) max(var(--page-gutter), env(safe-area-inset-right, 0px));
+  padding-inline: var(--page-inset-start) var(--page-inset-end);
   background: var(--bg);
 }
 :root { --workspace-header-height: calc(64px + env(safe-area-inset-top, 0px)); }
@@ -623,7 +630,16 @@ html.compact-cards {
 }
 .search-destination, .page-title { scroll-margin-top: calc(var(--workspace-header-height) + 14px); }
 @media (min-width: 1024px) {
-  .workspace-header { grid-template-columns: 236px minmax(0, 1fr) auto; }
+  .workspace-header {
+    /* Match the sidebar offset, centered content and inset of .app-content. */
+    grid-template-columns:
+      calc(var(--sidebar-width) + max(0px, (100% - var(--sidebar-width) - var(--content-max-width)) / 2) + var(--page-inset-start))
+      minmax(0, 1fr) auto;
+    column-gap: 0;
+    padding-inline: 0;
+  }
+  .workspace-brand { justify-self: start; margin-inline-start: var(--page-inset-start); }
+  .workspace-utilities { margin-inline: 12px var(--page-inset-end); }
 }
 @media (width < 640px) {
   :root { --workspace-header-height: calc(116px + env(safe-area-inset-top, 0px)); }
@@ -637,6 +653,7 @@ html.compact-cards {
 .club-details-toggle::-webkit-details-marker { display: none; }
 
 @media (max-width: 639px), (pointer: coarse) {
+  :root { --menu-item-height: 44px; }
   .ui-touch, .dense-controls :is(button, select) {
     min-height: 44px;
     min-width: 44px;
@@ -644,6 +661,42 @@ html.compact-cards {
 }
 
 .app-content > .view-enter { margin-block-start: 0; }
+.menu-surface {
+  border-radius: var(--menu-radius);
+  padding: var(--menu-inset);
+}
+.menu-item, .app-select.menu-select {
+  min-height: var(--menu-item-height);
+  border-radius: var(--menu-item-radius);
+}
+.menu-item { padding-inline: .75rem; }
+.menu-list > .menu-item + .menu-item { margin-block-start: 4px; }
+.menu-trigger { min-height: var(--menu-item-height); }
+.filter-popover {
+  width: 13rem;
+  padding: .75rem;
+}
+.menu-field {
+  display: grid;
+  gap: .375rem;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: .75rem;
+  font-weight: 500;
+}
+.menu-field > span { padding-inline-start: calc(.75rem + 1px); }
+.app-select.menu-select {
+  display: grid;
+  padding-inline: 0;
+}
+.menu-select > .app-select-control {
+  min-height: 0;
+  padding-inline-start: var(--menu-select-inset, .75rem);
+}
+.menu-field > .menu-select {
+  color: var(--text);
+  font-weight: 400;
+}
 @media (max-width: 639px) {
   .action-disclosure {
     position: fixed;
@@ -726,7 +779,7 @@ html.compact-cards {
 }
 .app-select-control:focus-visible { outline: none; box-shadow: none; }
 .app-select-control:disabled { cursor: not-allowed; }
-.app-select-control[aria-autocomplete] { padding-right: 3.3rem; }
+.app-select:has(> .app-select-clear:not([hidden])) > .app-select-control { padding-right: 3.3rem; }
 .app-select-control > span, input.app-select-control {
   display: block;
   overflow: hidden;
@@ -766,9 +819,7 @@ html.compact-cards {
   scrollbar-gutter: stable;
 }
 .app-select-menu {
-  padding: .25rem;
   border: 1px solid var(--border);
-  border-radius: .75rem;
   background: var(--bg-card);
   color: var(--text);
   box-shadow: var(--shadow-md);
@@ -778,9 +829,7 @@ html.compact-cards {
   display: flex;
   align-items: center;
   gap: .5rem;
-  min-height: 2.25rem;
-  padding: .4rem .6rem;
-  border-radius: .5rem;
+  padding-block: .4rem;
   line-height: 1.25;
   cursor: pointer;
 }
@@ -790,13 +839,13 @@ html.compact-cards {
 .app-select-option[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .app-select-option-check { width: 1rem; flex-shrink: 0; margin-inline-start: auto; }
 .app-select-group, .app-select-empty {
-  padding: .55rem .65rem;
+  padding: .55rem .75rem;
   color: var(--text-muted);
   font-size: .75rem;
 }
 .app-select-group { font-weight: 600; }
 @media (pointer: coarse), (max-width: 639px) {
-  .app-select, .app-select-option { min-height: 44px; }
+  .app-select { min-height: 44px; }
   input.app-select-control { font-size: 16px; }
 }
 }

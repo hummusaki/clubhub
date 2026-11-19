@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, Plus, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Button, ClubAvatar, ModalDialog, SearchBox, cleanText } from './ui'
 import { formatEventWhenLabel, recommendClubsForInterests } from '../utils/aiClubAgent'
 import { getClubSearchDocument } from '../utils/search'
 import { runGenerativeClubSearch } from '../api/aiClient'
+import { ClubPageLink } from './ClubPage'
 
 const EXAMPLES = ['Cars', 'Hiking', 'Beginner coding']
 const EXCERPT_LIMIT = 170
@@ -12,13 +13,11 @@ export function FindClubsButton({ onClick }) {
   return <Button variant="tonal" size="sm" icon={<Search size={15} />} aria-haspopup="dialog" onClick={onClick}>Find clubs</Button>
 }
 
-export default function ClubDiscoveryDialog({ open, onClose, clubs, events, userMajor, onViewClub, onViewEvent, onJoinClub }) {
+export default function ClubDiscoveryDialog({ open, onClose, clubs, events, userMajor, onViewClub, onViewEvent }) {
   const [query, setQuery] = useState('')
   const [refinements, setRefinements] = useState([])
   const [assistant, setAssistant] = useState(null)
-  const [joinPending, setJoinPending] = useState(new Set())
   const request = useRef(null)
-  const joining = useRef(new Set())
   const input = useRef(null)
   const result = useMemo(() => recommendClubsForInterests(clubs, query, {
     events, userMajor, maxResults: 16,
@@ -57,17 +56,6 @@ export default function ClubDiscoveryDialog({ open, onClose, clubs, events, user
     } finally {
       clearTimeout(timeout)
       if (request.current === controller) request.current = null
-    }
-  }
-
-  async function join(club) {
-    if (joining.current.has(club.id)) return
-    joining.current.add(club.id)
-    setJoinPending(new Set(joining.current))
-    try { await onJoinClub?.(club) }
-    finally {
-      joining.current.delete(club.id)
-      setJoinPending(new Set(joining.current))
     }
   }
 
@@ -112,7 +100,9 @@ export default function ClubDiscoveryDialog({ open, onClose, clubs, events, user
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ClubAvatar club={club} size={34} />
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold break-words">{name}</h3>
+                      <h3 className="text-sm font-semibold break-words">
+                        <ClubPageLink clubId={club.id} onOpen={onViewClub} className="ui-touch text-[var(--blue-ink)] hover:underline">{name}</ClubPageLink>
+                      </h3>
                       <p className="text-xs text-[var(--text-muted)] break-words">
                         {[club.instagram ? `@${club.instagram}` : null, club.joined ? 'Member' : null].filter(Boolean).join(' · ')}
                       </p>
@@ -129,15 +119,6 @@ export default function ClubDiscoveryDialog({ open, onClose, clubs, events, user
                       {cleanText(nextEvent.event || nextEvent.title)} · {formatEventWhenLabel(nextEvent)}
                     </Button>
                   )}
-                  <div className="flex flex-wrap gap-1">
-                    <Button variant="text" size="sm" trailingIcon={<ArrowRight size={14} />}
-                      aria-label={`View details for ${name}`} onClick={() => onViewClub(club)}>View details</Button>
-                    {!club.joined && onJoinClub && (
-                      <Button variant="outlined" size="sm" icon={<Plus size={14} />}
-                        pending={joinPending.has(club.id)} pendingLabel="Joining…"
-                        onClick={() => join(club)}>Join club</Button>
-                    )}
-                  </div>
                 </li>
               )
             })}
@@ -157,7 +138,7 @@ export default function ClubDiscoveryDialog({ open, onClose, clubs, events, user
                   <div className="mt-2 flex flex-wrap gap-1">
                     <p className="w-full">The assistant highlighted these catalog matches:</p>
                     {assistant.picks.map(club => (
-                      <Button key={club.id} size="sm" variant="text" onClick={() => onViewClub(club)}>{cleanText(club.name)}</Button>
+                      <ClubPageLink key={club.id} clubId={club.id} onOpen={onViewClub} className="ui-touch p-1.5 text-[var(--blue-ink)] hover:underline">{cleanText(club.name)}</ClubPageLink>
                     ))}
                   </div>
                 )}

@@ -1,6 +1,4 @@
-import { LogIn } from 'lucide-react'
 import { navItems } from '../data/sampleData'
-import { Button } from './ui'
 import { NavIcon } from './icons'
 
 const MOBILE_NAV_LABELS = {
@@ -15,8 +13,6 @@ const MOBILE_NAV_LABELS = {
 export default function Sidebar({
   activeNav,
   onNav,
-  isDemo = false,
-  onExitDemo,
 }) {
   return (
     <>
@@ -48,44 +44,6 @@ export default function Sidebar({
             )
           })}
 
-          <div className="my-2 mx-4 border-t border-[var(--border)]" />
-
-          <button
-            type="button"
-            aria-current={activeNav === 'settings' ? 'page' : undefined}
-            onClick={() => onNav('settings')}
-            className={`md-state-layer flex items-center gap-3.5 px-4 h-11 min-h-[44px] rounded-full
-              text-sm cursor-pointer transition-colors duration-150 border-none text-left ${
-                activeNav === 'settings'
-                  ? 'font-medium text-[var(--on-secondary-container)] bg-[var(--secondary-container)]'
-                  : 'font-medium text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent'
-              }`}
-          >
-            <NavIcon name="Settings" active={activeNav === 'settings'} size={20} />
-            <span className="truncate">Settings</span>
-          </button>
-
-          {isDemo && onExitDemo && (
-            <div className="mt-auto pt-3 px-1">
-              <div className="p-3.5 rounded-2xl bg-[var(--md-surface-container)] border border-[var(--border)] space-y-2.5">
-                <div className="text-xs font-medium text-[var(--text)]">
-                  Previewing as guest
-                </div>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                  Sign in with your UCSC account to sync clubs, tasks, and calendars.
-                </p>
-                <Button
-                  variant="tonal"
-                  size="sm"
-                  icon={<LogIn size={14} />}
-                  onClick={onExitDemo}
-                  className="w-full"
-                >
-                  Sign in
-                </Button>
-              </div>
-            </div>
-          )}
         </nav>
       </aside>
 

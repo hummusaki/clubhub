@@ -1,17 +1,18 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
-import { useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
-import { ArrowRight } from 'lucide-react'
+import { useAuth, useUser, useClerk, AuthenticateWithRedirectCallback } from '@clerk/react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatCards from './components/StatCards'
 import ClubDiscoveryDialog, { FindClubsButton } from './components/ClubDiscoveryDialog'
 import { workspaceSearchDestination } from './utils/workspaceSearch'
 import { announcementKey } from './utils/announcementLinks'
-import { getPublicDirectoryOfficers } from './utils/clubDirectory'
+import { getPublicDirectoryPeople } from './utils/clubDirectory'
 import CalendarView from './components/CalendarView'
 import AvailabilityView from './components/AvailabilityView'
 import Announcements from './components/Announcements'
 import ClubsHub from './components/ClubsHub'
+import ClubPage from './components/ClubPage'
+import { isPublicRecord } from './utils/publicRoster'
 import ClubTaskBoard from './components/ClubTaskBoard'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
@@ -21,6 +22,7 @@ import {
   getWorkspaceMe,
   updateWorkspaceProfile,
   logoutWorkspaceSession,
+  clearWorkspaceSession,
   joinWorkspaceClub,
   leaveWorkspaceClub,
   syncWorkspaceMemberships,
@@ -67,6 +69,16 @@ import {
   requestGoogleCalendarAccessToken,
   pushEventsToGoogleCalendar,
 } from './utils/googleCalendarSync'
+import {
+  PENDING_POLL_SESSION_KEY,
+  clearOAuthEntry,
+  clubPageHref,
+  readClubPage,
+  readOAuthEntry,
+  readWorkspaceDestination,
+  replaceEntryUrl,
+  startOAuthEntry,
+} from './utils/workspaceEntry'
 import { isValidClerkPublishableKey } from './utils/authValidation'
 import { buildDashboardPageTitle } from './utils/pageTitle'
 import {
@@ -76,27 +88,16 @@ import {
 
 const AUTH_USER_SESSION_KEY = 'clubhub_auth_user_session_v1'
 const ACTIVE_NAV_STORAGE_KEY = 'clubhub_active_nav_v1'
-const VALID_NAV_SECTIONS = new Set([
-  'overview',
-  'calendar',
-  'availability',
-  'clubs',
-  'tasks',
-  'links',
-  'settings',
-])
 const ACCOUNT_THEMES_STORAGE_KEY = 'clubhub_account_themes_v2'
-const GUEST_THEME_STORAGE_KEY = 'clubhub_guest_theme_mode_v1'
-const LAST_ACTIVE_ACCOUNT_KEY = 'clubhub_last_active_account_v1'
 const RSVP_STORAGE_KEY = 'clubhub_event_rsvps_v1'
 const USER_SETTINGS_STORAGE_KEY = 'clubhub_user_settings_v1'
 const JOINED_CLUBS_STORAGE_KEY = 'clubhub_joined_clubs_v1'
+const IMPORTED_MEMBERSHIPS_KEY = 'clubhub_imported_memberships_v1'
 const LOCAL_ADDED_EVENTS_KEY = 'clubhub_local_added_events_v1'
 const REMOVED_EVENT_IDS_KEY = 'clubhub_removed_event_ids_v1'
 const LOCAL_ADDED_LINKS_KEY = 'clubhub_local_added_links_v1'
 const PINNED_LINK_OVERRIDES_KEY = 'clubhub_pinned_link_overrides_v1'
 const LOCAL_CLUB_POSTS_KEY = 'clubhub_local_club_posts_v1'
-const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
 
 const VALID_THEME_MODES = new Set(['system', 'light', 'dark'])
 
@@ -111,13 +112,6 @@ function normalizeThemeMode(mode, fallback = 'system') {
 function getSystemPrefersDark() {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   return Boolean(window.matchMedia('(prefers-color-scheme: dark)').matches)
-}
-
-function resolveDarkFromThemeMode(mode) {
-  const normalized = normalizeThemeMode(mode, 'system')
-  if (normalized === 'dark') return true
-  if (normalized === 'light') return false
-  return getSystemPrefersDark()
 }
 
 function readLocalJson(key, fallback) {
@@ -170,6 +164,10 @@ function saveStoredJoinedClubIds(keys, clubIds) {
   }
 }
 
+function membershipIds(memberships) {
+  return memberships.map(item => String(item.clubId || item.club_id || '')).filter(Boolean)
+}
+
 const DEFAULT_USER_SETTINGS = {
   displayName: '',
   major: '',
@@ -189,9 +187,9 @@ const DEFAULT_USER_SETTINGS = {
   calendarSync: DEFAULT_CALENDAR_SYNC_SETTINGS,
 }
 
-function getStoredUserSettings() {
+function getStoredUserSettings(storageKey, legacyKey) {
   try {
-    const raw = localStorage.getItem(USER_SETTINGS_STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey) || (legacyKey && localStorage.getItem(legacyKey))
     if (!raw) return DEFAULT_USER_SETTINGS
     const parsed = JSON.parse(raw)
     return {
@@ -206,14 +204,6 @@ function getStoredUserSettings() {
     }
   } catch {
     return DEFAULT_USER_SETTINGS
-  }
-}
-
-function saveStoredUserSettings(nextSettings) {
-  try {
-    localStorage.setItem(USER_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
-  } catch {
-    // Ignore storage errors
   }
 }
 
@@ -307,20 +297,8 @@ function pickRandomDemoClubIds(
   return Array.from(new Set(ordered)).slice(0, desired)
 }
 
-function getStoredRsvps() {
-  try {
-    return JSON.parse(localStorage.getItem(RSVP_STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
 function getAccountThemeMap() {
-  try {
-    return JSON.parse(localStorage.getItem(ACCOUNT_THEMES_STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
+  return readLocalJson(ACCOUNT_THEMES_STORAGE_KEY, {}) || {}
 }
 
 function saveAccountThemeForKeys(keys, mode) {
@@ -336,26 +314,7 @@ function saveAccountThemeForKeys(keys, mode) {
   }
 }
 
-function getGuestThemeMode() {
-  try {
-    const raw = localStorage.getItem(GUEST_THEME_STORAGE_KEY)
-    if (isValidThemeMode(raw)) return raw
-  } catch {
-    // Ignore storage errors
-  }
-  return 'system'
-}
-
-function saveGuestThemeMode(mode) {
-  if (!isValidThemeMode(mode)) return
-  try {
-    localStorage.setItem(GUEST_THEME_STORAGE_KEY, mode)
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function persistBackendAccountTheme(_email, mode) {
+function persistBackendAccountTheme(mode) {
   if (!isValidThemeMode(mode)) return
   updateWorkspaceProfile({ themeMode: mode }).catch(() => {})
 }
@@ -567,22 +526,7 @@ function formatScheduleItem(e, index = 0, hub = null) {
   }
 }
 
-function getInitialStoredUser() {
-  try {
-    if (typeof sessionStorage === 'undefined') return null
-    const raw = sessionStorage.getItem(AUTH_USER_SESSION_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed?.authenticated) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
 function MainDashboard({
-  dark,
-  toggleDark,
   onSetExplicitThemeMode,
   userSettings,
   onUpdateSettings,
@@ -591,6 +535,7 @@ function MainDashboard({
   onExitDemo,
   onSignOut,
   hasClerkKey = false,
+  legacySettingsEmail,
 }) {
   const effectiveUser = isDemo ? null : user
   const accountEmail = (
@@ -604,6 +549,14 @@ function MainDashboard({
     if (accountEmail) return `email:${accountEmail}`
     return 'guest'
   }, [isDemo, hasClerkKey, effectiveUser?.id, accountEmail])
+  const localData = useMemo(() => {
+    const keyFor = key => `${key}:${accountKey}`
+    return {
+      read: (key, fallback) => readLocalJson(keyFor(key), legacySettingsEmail && legacySettingsEmail === accountEmail
+        ? readLocalJson(key, fallback) : fallback),
+      write: (key, value) => writeLocalJson(keyFor(key), value),
+    }
+  }, [accountEmail, accountKey, legacySettingsEmail])
   const membershipQueue = useMemo(() => ({
     tail: Promise.resolve(),
     pending: new Set(),
@@ -626,35 +579,23 @@ function MainDashboard({
   const demoLiveSeededRef = useRef(false)
   const demoUserModifiedClubsRef = useRef(false)
 
+  const [clubPage, setClubPage] = useState(() => readClubPage(window.location.hash))
   const [activeNav, setActiveNav] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const urlPoll = new URLSearchParams(window.location.search).get('poll')
-        const pendingPoll = sessionStorage.getItem(PENDING_POLL_SESSION_KEY)
-        if (urlPoll || pendingPoll) return 'availability'
-        if (!isDemo) {
-          const savedNav = localStorage.getItem(ACTIVE_NAV_STORAGE_KEY)
-          if (savedNav && VALID_NAV_SECTIONS.has(savedNav)) return savedNav
-        }
-      } catch {
-        // Ignore URL/sessionStorage/localStorage errors
-      }
-    }
-    return 'overview'
+    if (new URLSearchParams(window.location.search).has('poll')) return 'availability'
+    return clubPage ? 'clubs' : 'overview'
   })
-
-  useEffect(() => {
-    if (isDemo || typeof window === 'undefined') return
-    if (!VALID_NAV_SECTIONS.has(activeNav)) return
-    try {
-      localStorage.setItem(ACTIVE_NAV_STORAGE_KEY, activeNav)
-    } catch {
-      // Ignore storage errors
-    }
-  }, [activeNav, isDemo])
+  const [clubsVisited, setClubsVisited] = useState(activeNav === 'clubs')
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+  const [discoveryOpen, setDiscoveryOpen] = useState(false)
+  const [restoreSearchKey, setRestoreSearchKey] = useState(null)
+  const workspaceHistory = useRef(null)
+  const originViews = useRef(new Map())
+  const historySequence = useRef(0)
+  const navigation = useRef(null)
+  const visibleNav = clubPage ? 'clubs' : activeNav
   const pageSubContextRef = useRef(null)
-  const [clubsInitialSection, setClubsInitialSection] = useState(null)
-  const [clubsInitialRbacClubId, setClubsInitialRbacClubId] = useState('')
+  const [clubsInitialSection, setClubsInitialSection] = useState(clubPage ? 'discover' : null)
+  const [clubsSectionRevision, setClubsSectionRevision] = useState(0)
   const [tasksInitialClubId, setTasksInitialClubId] = useState('')
   const [settingsInitialSection, setSettingsInitialSection] = useState(null)
   const [workspaceAnnouncements, setWorkspaceAnnouncements] = useState([])
@@ -677,19 +618,23 @@ function MainDashboard({
           links: fallbackLinks,
           hub: STATIC_HUB_FALLBACK,
         })
-      : getStoredJoinedClubIds(accountKey)
+      : getStoredJoinedClubIds(
+          hasStoredJoinedClubs(accountKey) ? accountKey : `email:${accountEmail}`
+        )
   )
   const joinedClubIdsRef = useRef(joinedClubIds)
   const [linksCount] = useState(fallbackLinks.length)
-  const [rsvpMap, setRsvpMap] = useState(() => (isDemo ? {} : getStoredRsvps()))
+  const [rsvpMap, setRsvpMap] = useState(() => isDemo ? {} : localData.read(RSVP_STORAGE_KEY, {}))
   const [resetGeneration, setResetGeneration] = useState(0)
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('reduce-motion', Boolean(userSettings?.reduceMotion))
+    return () => document.documentElement.classList.remove('reduce-motion')
   }, [userSettings?.reduceMotion])
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('compact-cards', Boolean(userSettings?.compactCards))
+    return () => document.documentElement.classList.remove('compact-cards')
   }, [userSettings?.compactCards])
 
   const [toast, setToast] = useState(null)
@@ -702,56 +647,56 @@ function MainDashboard({
   const [rawEvents, setRawEvents] = useState([])
   const [localAddedEvents, setLocalAddedEvents] = useState(() => {
     if (isDemo) return []
-    const saved = readLocalJson(LOCAL_ADDED_EVENTS_KEY, [])
+    const saved = localData.read(LOCAL_ADDED_EVENTS_KEY, [])
     return Array.isArray(saved) ? saved : []
   })
   const [removedEventIds, setRemovedEventIds] = useState(() => {
     if (isDemo) return new Set()
-    const saved = readLocalJson(REMOVED_EVENT_IDS_KEY, [])
+    const saved = localData.read(REMOVED_EVENT_IDS_KEY, [])
     return new Set(Array.isArray(saved) ? saved.map(String) : [])
   })
   const [liveLinks, setLiveLinks] = useState(null)
   const [localAddedLinks, setLocalAddedLinks] = useState(() => {
     if (isDemo) return []
-    const saved = readLocalJson(LOCAL_ADDED_LINKS_KEY, [])
+    const saved = localData.read(LOCAL_ADDED_LINKS_KEY, [])
     return Array.isArray(saved) ? saved : []
   })
   const [pinnedLinkOverrides, setPinnedLinkOverrides] = useState(() => {
     if (isDemo) return {}
-    const saved = readLocalJson(PINNED_LINK_OVERRIDES_KEY, {})
+    const saved = localData.read(PINNED_LINK_OVERRIDES_KEY, {})
     return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
   })
   const [localClubPosts, setLocalClubPosts] = useState(() => {
     if (isDemo) return []
-    const saved = readLocalJson(LOCAL_CLUB_POSTS_KEY, [])
+    const saved = localData.read(LOCAL_CLUB_POSTS_KEY, [])
     return Array.isArray(saved) ? saved : []
   })
   const [liveStats, setLiveStats] = useState(null)
 
   useEffect(() => {
     if (isDemo) return
-    writeLocalJson(LOCAL_ADDED_EVENTS_KEY, localAddedEvents)
-  }, [isDemo, localAddedEvents])
+    localData.write(LOCAL_ADDED_EVENTS_KEY, localAddedEvents)
+  }, [isDemo, localAddedEvents, localData])
 
   useEffect(() => {
     if (isDemo) return
-    writeLocalJson(REMOVED_EVENT_IDS_KEY, Array.from(removedEventIds))
-  }, [isDemo, removedEventIds])
+    localData.write(REMOVED_EVENT_IDS_KEY, Array.from(removedEventIds))
+  }, [isDemo, removedEventIds, localData])
 
   useEffect(() => {
     if (isDemo) return
-    writeLocalJson(LOCAL_ADDED_LINKS_KEY, localAddedLinks)
-  }, [isDemo, localAddedLinks])
+    localData.write(LOCAL_ADDED_LINKS_KEY, localAddedLinks)
+  }, [isDemo, localAddedLinks, localData])
 
   useEffect(() => {
     if (isDemo) return
-    writeLocalJson(PINNED_LINK_OVERRIDES_KEY, pinnedLinkOverrides)
-  }, [isDemo, pinnedLinkOverrides])
+    localData.write(PINNED_LINK_OVERRIDES_KEY, pinnedLinkOverrides)
+  }, [isDemo, pinnedLinkOverrides, localData])
 
   useEffect(() => {
     if (isDemo) return
-    writeLocalJson(LOCAL_CLUB_POSTS_KEY, localClubPosts)
-  }, [isDemo, localClubPosts])
+    localData.write(LOCAL_CLUB_POSTS_KEY, localClubPosts)
+  }, [isDemo, localClubPosts, localData])
 
   const showToast = useCallback((text, options = {}) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -779,36 +724,6 @@ function MainDashboard({
     joinedClubIdsRef.current = nextIds
     setJoinedClubIds(nextIds)
   }, [])
-
-  // Sync per-account joined clubs (defaults to [] — zero clubs auto-joined for signed-in accounts)
-  useEffect(() => {
-    if (isDemo) return
-    const emailKey = accountEmail ? `email:${accountEmail}` : null
-    if (hasStoredJoinedClubs(accountKey)) {
-      applyJoinedClubIds(getStoredJoinedClubIds(accountKey))
-      return
-    }
-    if (emailKey && hasStoredJoinedClubs(emailKey)) {
-      const stored = getStoredJoinedClubIds(emailKey)
-      applyJoinedClubIds(stored)
-      saveStoredJoinedClubIds([accountKey, emailKey], stored)
-      return
-    }
-    if (hasClerkKey && Array.isArray(effectiveUser?.unsafeMetadata?.joinedClubIds)) {
-      const metaIds = effectiveUser.unsafeMetadata.joinedClubIds.map(String)
-      applyJoinedClubIds(metaIds)
-      saveStoredJoinedClubIds([accountKey, emailKey], metaIds)
-      return
-    }
-    applyJoinedClubIds([])
-  }, [
-    isDemo,
-    accountKey,
-    accountEmail,
-    hasClerkKey,
-    effectiveUser?.unsafeMetadata?.joinedClubIds,
-    applyJoinedClubIds,
-  ])
 
   const loadBackendData = useCallback(async () => {
     let [hub, anns, evts, lnks, dbStats] = await Promise.all([
@@ -914,6 +829,9 @@ function MainDashboard({
           email: resolvedEmail,
           extraEmails: emailLinks.filter(e => e !== resolvedEmail),
           website: c.website || null,
+          meetingSchedule: c.meetingSchedule || null,
+          meetingTime: c.meetingTime || null,
+          meetingLocation: c.meetingLocation || null,
           tags: [
             ...(Array.isArray(c.tags) ? c.tags : c.tags ? [c.tags] : [])
               .map(tag => typeof tag === 'string' ? { label: tag } : tag).filter(tag => tag?.label),
@@ -1049,11 +967,15 @@ function MainDashboard({
   }, [isDemo, applyJoinedClubIds])
 
   useEffect(() => {
-    loadBackendData()
+    let active = true
+    loadBackendData().catch(() => {}).finally(() => {
+      if (active) setCatalogLoaded(true)
+    })
+    return () => { active = false }
   }, [loadBackendData])
 
   // Serialize membership reads and legacy syncs with explicit joins and leaves.
-  const loadWorkspaceMemberships = useCallback(clubId => {
+  const loadWorkspaceMemberships = useCallback(() => {
     if (!effectiveUser) return
     return queueMembershipRequest(async () => {
       if (hasClerkKey && accountEmail && !effectiveUser.workspaceSynced) {
@@ -1069,30 +991,31 @@ function MainDashboard({
       if (activeMembershipQueue.current !== membershipQueue) return
       if (!meRes?.ok || !Array.isArray(meRes.memberships)) return
 
-      const dbClubIds = meRes.memberships.map(m => String(m.clubId || m.club_id || '')).filter(Boolean)
-      const dbClubKeys = new Set(dbClubIds.map(normalizeClubKey))
-      const requestedKey = normalizeClubKey(clubId)
-      const unsyncedIds = getStoredJoinedClubIds(accountKey).filter(cid => {
-        const key = normalizeClubKey(cid)
-        return key && (!requestedKey || key === requestedKey) &&
-          !dbClubKeys.has(key) && !membershipQueue.pending.has(key)
-      })
-      if (unsyncedIds.length > 0) {
-        await syncWorkspaceMemberships(unsyncedIds).catch(() => {})
+      let confirmed = membershipIds(meRes.memberships)
+      if (!localData.read(IMPORTED_MEMBERSHIPS_KEY, false)) {
+        const confirmedKeys = new Set(confirmed.map(normalizeClubKey))
+        const metadataIds = effectiveUser.unsafeMetadata?.joinedClubIds
+        const legacyIds = hasStoredJoinedClubs(accountKey) || hasStoredJoinedClubs(`email:${accountEmail}`)
+          ? joinedClubIdsRef.current
+          : Array.isArray(metadataIds) ? metadataIds : []
+        const unsynced = legacyIds.filter(id => {
+          const key = normalizeClubKey(id)
+          return key && !confirmedKeys.has(key) && !membershipQueue.pending.has(key)
+        })
+        if (unsynced.length) {
+          const sync = await syncWorkspaceMemberships(unsynced).catch(() => null)
+          if (activeMembershipQueue.current !== membershipQueue || !sync?.ok) return
+          confirmed = Array.isArray(sync.memberships) ? membershipIds(sync.memberships) : [...confirmed, ...unsynced]
+        }
+        localData.write(IMPORTED_MEMBERSHIPS_KEY, true)
       }
-      if (activeMembershipQueue.current !== membershipQueue) return
 
-      const current = joinedClubIdsRef.current
-      const joinedKeys = new Set(current.map(normalizeClubKey))
-      const additions = dbClubIds.filter(id => {
-        const key = normalizeClubKey(id)
-        if (!key || joinedKeys.has(key) || membershipQueue.pending.has(key)) return false
-        joinedKeys.add(key)
-        return true
-      })
-      applyJoinedClubIds([...current, ...additions])
+      saveStoredJoinedClubIds([accountKey, accountEmail ? `email:${accountEmail}` : null], confirmed)
+      const isPending = id => membershipQueue.pending.has(normalizeClubKey(id))
+      const pendingJoins = joinedClubIdsRef.current.filter(isPending)
+      applyJoinedClubIds([...confirmed.filter(id => !isPending(id)), ...pendingJoins])
     })
-  }, [effectiveUser, hasClerkKey, accountEmail, accountKey, membershipQueue, queueMembershipRequest, applyJoinedClubIds])
+  }, [effectiveUser, hasClerkKey, accountEmail, accountKey, membershipQueue, queueMembershipRequest, applyJoinedClubIds, localData])
 
   const loadWorkspaceState = useCallback(async () => {
     if (isDemo) {
@@ -1154,38 +1077,128 @@ function MainDashboard({
     })
   }, [isDemo, hasClerkKey, onSignOut, loadWorkspaceState, showToast])
 
-  function handleNavigate(nextNav, options = {}) {
+  function applyNavigation(nextNav, options = {}) {
     if (nextNav === 'clubs') {
-      setClubsInitialSection(options.section || null)
-      setClubsInitialRbacClubId(options.clubId || '')
-    } else {
-      setClubsInitialSection(null)
-      setClubsInitialRbacClubId('')
+      setClubsVisited(true)
+      if (options.section) {
+        setClubsInitialSection(options.section)
+        setClubsSectionRevision(revision => revision + 1)
+      }
     }
-    if (nextNav === 'tasks' && options.clubId !== undefined) {
-      setTasksInitialClubId(options.clubId || '')
-    }
-    if (nextNav === 'settings') {
-      setSettingsInitialSection(options.section || null)
-    } else {
-      setSettingsInitialSection(null)
-    }
-    if (nextNav === 'calendar') {
-      setCalendarInitialView(options.view || null)
-    } else {
-      setCalendarInitialView(null)
-    }
+    if (nextNav === 'tasks') setTasksInitialClubId(options.clubId || '')
+    if (nextNav === 'settings') setSettingsInitialSection(options.section || null)
+    if (nextNav === 'calendar') setCalendarInitialView(options.view || null)
+    if (nextNav !== activeNav) pageSubContextRef.current = null
     setActiveNav(nextNav)
-    if (nextNav === 'overview' || nextNav === 'settings') {
-      pageSubContextRef.current = null
-    }
     if (options.searchQuery !== undefined) setPageFilter(nextNav, options.searchQuery)
     setSearchTarget(options.searchTarget ? { ...options.searchTarget, revision: ++searchSequence.current } : null)
   }
 
-  function selectSearchResult(type, item) {
+  navigation.current = applyNavigation
+
+  useLayoutEffect(() => {
+    const key = workspaceHistory.current ??= crypto.randomUUID()
+    const initial = { key, id: ++historySequence.current, nav: activeNav, options: {} }
+    window.history.replaceState({ clubhub: initial }, '')
+    let last = null
+
+    function restoreNavigation() {
+      const entry = window.history.state?.clubhub
+      const snapshot = `${entry?.id || ''}:${window.location.href}`
+      if (snapshot === last) return
+      last = snapshot
+      const route = readClubPage(window.location.hash)
+      setClubPage(route)
+      setDiscoveryOpen(false)
+      if (route) {
+        if (entry?.key !== key) navigation.current('clubs', { section: 'discover' })
+        window.scrollTo(0, 0)
+        return
+      }
+
+      if (entry?.key === key) {
+        const origin = originViews.current.get(entry.id)
+        navigation.current(entry.nav, origin && entry.nav === 'clubs'
+          ? { ...entry.options, section: undefined } : entry.options)
+        if (origin?.discovery) setDiscoveryOpen(true)
+        if (origin?.search) setRestoreSearchKey(value => ({ revision: (value?.revision || 0) + 1, id: origin.search }))
+        requestAnimationFrame(() => {
+          if (origin?.discovery) {
+            const links = document.querySelectorAll('[role="dialog"][aria-label="Find clubs"] a')
+            Array.from(links).find(link => link.getAttribute('href') === origin.discovery)?.focus({ preventScroll: true })
+          } else if (!origin?.search && origin?.focus?.isConnected) {
+            origin.focus.focus({ preventScroll: true })
+          }
+          window.scrollTo(0, origin?.scrollY ?? 0)
+        })
+      } else {
+        navigation.current(new URLSearchParams(window.location.search).has('poll') ? 'availability' : 'clubs', { section: 'discover' })
+      }
+    }
+
+    window.addEventListener('popstate', restoreNavigation)
+    window.addEventListener('hashchange', restoreNavigation)
+    return () => {
+      window.removeEventListener('popstate', restoreNavigation)
+      window.removeEventListener('hashchange', restoreNavigation)
+    }
+  }, [])
+
+  function openClubPage(route, source = {}) {
+    const href = clubPageHref(route.clubId, route.section, route.personId)
+    if (window.location.hash === href) return
+    const entry = window.history.state?.clubhub
+    if (!clubPage && entry?.key === workspaceHistory.current) {
+      originViews.current.set(entry.id, {
+        focus: source.focus || document.activeElement,
+        scrollY: window.scrollY,
+        search: source.search,
+        discovery: source.discovery,
+      })
+    }
+    window.history.pushState({ clubhub: {
+      key: workspaceHistory.current,
+      id: ++historySequence.current,
+      nav: activeNav,
+      depth: clubPage ? (entry?.depth || 0) + (entry?.depth ? 1 : 0) : 1,
+    } }, '', window.location.pathname + href)
+    setDiscoveryOpen(false)
+    setClubPage(route)
+    window.scrollTo(0, 0)
+  }
+
+  function handleNavigate(nextNav, { origin, ...options } = {}) {
+    if (nextNav === 'clubs' && options.clubId) {
+      openClubPage({
+        clubId: options.clubId,
+        section: options.clubSection || 'overview',
+        personId: options.personId,
+      }, origin)
+      return
+    }
+    if (clubPage || nextNav !== activeNav || window.location.search) {
+      window.history.pushState({ clubhub: {
+        key: workspaceHistory.current, id: ++historySequence.current, nav: nextNav, options,
+      } }, '', window.location.pathname)
+      window.scrollTo(0, 0)
+    }
+    setClubPage(null)
+    applyNavigation(nextNav, options)
+  }
+
+  function openClubLink(route, focus) {
+    openClubPage(route, { focus })
+  }
+
+  function backFromClub() {
+    const depth = window.history.state?.clubhub?.depth
+    if (depth) window.history.go(-depth)
+    else handleNavigate('clubs', { section: 'discover' })
+  }
+
+  function selectSearchResult(type, item, origin) {
     const destination = workspaceSearchDestination(type, item)
-    if (destination) handleNavigate(destination.nav, destination.options)
+    if (destination) handleNavigate(destination.nav, { ...destination.options, origin })
   }
 
   function openAnnouncement(item) {
@@ -1218,7 +1231,7 @@ function MainDashboard({
         categoryLabel: c.categoryLabel || catMeta.label,
         avatarBg: c.avatarBg || catMeta.gradient,
         joined: isJoined,
-        members: (c.members || 0) + (isJoined ? 1 : 0),
+        members: c.members || 0,
       }
     })
   }, [liveClubs, clubsData, joinedClubSet, joinedClubKeySet])
@@ -1296,7 +1309,7 @@ function MainDashboard({
   function toggleJoinClub(clubId) {
     const targetId = String(clubId)
     const targetKey = normalizeClubKey(clubId)
-    if (!targetKey || membershipQueue.pending.has(targetKey)) return false
+    if (!targetKey || membershipQueue.pending.has(targetKey) || (!isDemo && !effectiveUser?.id)) return false
 
     const previousIds = joinedClubIdsRef.current
     const previousId = previousIds.find(id => normalizeClubKey(id) === targetKey)
@@ -1311,8 +1324,6 @@ function MainDashboard({
     }
     const emailKey = accountEmail ? `email:${accountEmail}` : null
     const storageKeys = [accountKey, emailKey]
-    saveStoredJoinedClubIds(storageKeys, nextIds)
-    if (!effectiveUser?.id) return true
 
     membershipQueue.pending.add(targetKey)
     return queueMembershipRequest(async () => {
@@ -1323,21 +1334,24 @@ function MainDashboard({
       const stillJoined = currentlyJoined && Array.isArray(result?.memberships) && result.memberships.some(
         membership => normalizeClubKey(membership.clubId || membership.club_id) === targetKey
       )
-      if (stillJoined || (!result?.ok && !(result?.offline && !currentlyJoined))) {
+      if (stillJoined || !result?.ok) {
         const current = joinedClubIdsRef.current
         const restored = currentlyJoined
           ? [...current, previousId]
           : current.filter(id => normalizeClubKey(id) !== targetKey)
         applyJoinedClubIds(restored)
-        saveStoredJoinedClubIds(storageKeys, restored)
         showToast(result?.error || (currentlyJoined ? 'Could not leave club.' : 'Could not join club.'), { type: 'error' })
         return false
       }
+      const stored = getStoredJoinedClubIds(accountKey).filter(id => normalizeClubKey(id) !== targetKey)
+      const confirmed = Array.isArray(result.memberships) ? membershipIds(result.memberships)
+        : currentlyJoined ? stored : [...stored, targetId]
+      saveStoredJoinedClubIds(storageKeys, confirmed)
       if (hasClerkKey && effectiveUser?.update) {
         await effectiveUser.update({
           unsafeMetadata: {
             ...(effectiveUser.unsafeMetadata || {}),
-            joinedClubIds: joinedClubIdsRef.current,
+            joinedClubIds: confirmed,
           },
         }).catch(() => {})
       }
@@ -1355,7 +1369,8 @@ function MainDashboard({
     if (!key || joinedClubIdsRef.current.some(id => normalizeClubKey(id) === key)) return
     const nextIds = [...joinedClubIdsRef.current, String(clubId)]
     applyJoinedClubIds(nextIds)
-    saveStoredJoinedClubIds([accountKey, accountEmail ? `email:${accountEmail}` : null], nextIds)
+    const stored = getStoredJoinedClubIds(accountKey)
+    saveStoredJoinedClubIds([accountKey, accountEmail ? `email:${accountEmail}` : null], [...stored, String(clubId)])
     loadWorkspaceState().catch(() => {})
   }
 
@@ -1364,7 +1379,7 @@ function MainDashboard({
       const next = { ...prev, [eventId]: isGoing }
       if (!isDemo) {
         try {
-          localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(next))
+          localData.write(RSVP_STORAGE_KEY, next)
         } catch {
           // Ignore storage errors
         }
@@ -1489,14 +1504,14 @@ function MainDashboard({
 
     const emailKey = accountEmail ? `email:${accountEmail}` : null
     try {
-      localStorage.removeItem(RSVP_STORAGE_KEY)
+      localData.write(RSVP_STORAGE_KEY, {})
       localStorage.removeItem('clubhub_availability_user_slots_v2')
       localStorage.removeItem('clubhub_custom_roster_v1')
-      localStorage.removeItem(LOCAL_ADDED_EVENTS_KEY)
-      localStorage.removeItem(REMOVED_EVENT_IDS_KEY)
-      localStorage.removeItem(LOCAL_ADDED_LINKS_KEY)
-      localStorage.removeItem(PINNED_LINK_OVERRIDES_KEY)
-      localStorage.removeItem(LOCAL_CLUB_POSTS_KEY)
+      localData.write(LOCAL_ADDED_EVENTS_KEY, [])
+      localData.write(REMOVED_EVENT_IDS_KEY, [])
+      localData.write(LOCAL_ADDED_LINKS_KEY, [])
+      localData.write(PINNED_LINK_OVERRIDES_KEY, {})
+      localData.write(LOCAL_CLUB_POSTS_KEY, [])
       localStorage.removeItem('clubhub_custom_polls_v1')
       localStorage.removeItem(ACTIVE_NAV_STORAGE_KEY)
       localStorage.removeItem(SENT_TASK_REMINDERS_LEDGER_KEY)
@@ -1517,8 +1532,7 @@ function MainDashboard({
     showToast('Reset local customizations to clean defaults.', { type: 'info' })
   }
 
-  const [discoveryOpen, setDiscoveryOpen] = useState(false)
-  const publicPeople = useMemo(() => getPublicDirectoryOfficers(hubDict), [hubDict])
+  const publicPeople = useMemo(() => getPublicDirectoryPeople(hubDict), [hubDict])
   const searchSources = useMemo(() => ({
     clubs: effectiveClubs,
     memberEvents: memberScopedSchedule,
@@ -1927,12 +1941,43 @@ function MainDashboard({
     ).length
   }, [calSyncSettings.inAppRsvpOnly, personalizedSchedule, rsvpMap])
 
+  const clubId = clubPage?.clubId
+  const profileClub = clubId ? effectiveClubs.find(club => String(club.id) === clubId) : null
+  const profileRecord = profileClub ? hubDict[profileClub.id] : null
+  const profileEvents = useMemo(() => {
+    if (!profileClub) return []
+    return (profileRecord?.events || [])
+      .filter(event => isPublicRecord(event) && event.id && event.start && isEventUpcoming(event) &&
+        !removedEventIds.has(event.id) && event.kind !== 'deadline')
+      .sort((a, b) => new Date(a.start) - new Date(b.start))
+      .map((event, index) => ({
+        ...formatScheduleItem(event, index, hubDict),
+        kind: event.kind,
+        location: event.location ? cleanText(event.location) : '',
+      }))
+  }, [profileClub, profileRecord, removedEventIds, hubDict])
+  const profilePeople = useMemo(() => publicPeople.filter(person => person.clubId === clubId), [publicPeople, clubId])
+  const profilePosts = useMemo(() => {
+    if (!profileClub) return []
+    const local = profileClub.joined ? localClubPosts.filter(post => post.clubId === clubId) : []
+    return [...local, ...(profileRecord?.posts || [])]
+      .sort((a, b) => new Date(b.postedAt || 0) - new Date(a.postedAt || 0))
+  }, [clubId, profileClub, profileRecord, localClubPosts])
+  const profileResources = useMemo(() => (liveLinks || []).filter(link =>
+    clubId && String(link.clubId) === clubId && isPublicRecord(link) &&
+    !['email', 'discord', 'instagram'].includes(link.kind)
+  ), [clubId, liveLinks])
+
+  const clubTitle = clubPage ? (profileClub ? cleanText(profileClub.name) : catalogLoaded ? 'Club unavailable' : 'Loading club…') : ''
+
   const titleInputsRef = useRef({
     activeNav,
     searchQuery,
     upcomingCount: visibleOverviewUpcomingCount,
     joinedCount,
     inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+    clubTitle,
+    clubSection: clubPage?.section,
   })
   titleInputsRef.current = {
     activeNav,
@@ -1940,6 +1985,8 @@ function MainDashboard({
     upcomingCount: visibleOverviewUpcomingCount,
     joinedCount,
     inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+    clubTitle,
+    clubSection: clubPage?.section,
   }
 
   const handlePageContextChange = useCallback(nextSubContext => {
@@ -1953,6 +2000,8 @@ function MainDashboard({
       upcomingCount: cur.upcomingCount,
       joinedCount: cur.joinedCount,
       inAppRsvpOnly: cur.inAppRsvpOnly,
+      clubTitle: cur.clubTitle,
+      clubSection: cur.clubSection,
     })
   }, [])
 
@@ -1966,6 +2015,8 @@ function MainDashboard({
       upcomingCount: visibleOverviewUpcomingCount,
       joinedCount,
       inAppRsvpOnly: calSyncSettings.inAppRsvpOnly,
+      clubTitle,
+      clubSection: clubPage?.section,
     })
   }, [
     activeNav,
@@ -1973,6 +2024,8 @@ function MainDashboard({
     visibleOverviewUpcomingCount,
     joinedCount,
     calSyncSettings.inAppRsvpOnly,
+    clubTitle,
+    clubPage?.section,
   ])
 
   return (
@@ -1981,25 +2034,14 @@ function MainDashboard({
       <ToastViewport toast={toast} onDismiss={() => setToast(null)} />
 
       {/* Fixed Left Sidebar (Desktop) & Bottom Bar (Mobile) */}
-      <Sidebar
-        activeNav={activeNav}
-        onNav={handleNavigate}
-        dark={dark}
-        onToggleDark={toggleDark}
-        user={effectiveUser}
-        userSettings={userSettings}
-        isDemo={isDemo}
-        onExitDemo={onExitDemo}
-        onSignOut={onSignOut}
-      />
+      <Sidebar activeNav={visibleNav} onNav={handleNavigate} />
 
       <Header key={`${accountKey}_${resetGeneration}`}
         searchSources={searchSources}
         onSearchSelect={selectSearchResult}
-        activeNav={activeNav}
+        restoreSearchKey={restoreSearchKey}
+        activeNav={visibleNav}
         onNav={handleNavigate}
-        dark={dark}
-        onToggleDark={toggleDark}
         user={effectiveUser}
         userSettings={userSettings}
         isDemo={isDemo}
@@ -2014,21 +2056,29 @@ function MainDashboard({
         open={discoveryOpen} onClose={() => setDiscoveryOpen(false)}
         clubs={effectiveClubs} events={memberScopedSchedule}
         userMajor={userSettings?.major}
-        onViewClub={club => {
-          setDiscoveryOpen(false)
-          selectSearchResult('club', club)
-        }}
+        onViewClub={(route, focus) => openClubPage(route, { discovery: focus?.getAttribute('href') })}
         onViewEvent={event => {
           setDiscoveryOpen(false)
           selectSearchResult('event', event)
-        }}
-        onJoinClub={async club => {
-          if (await toggleJoinClub(club.id) !== false) showToast(`Joined ${cleanText(club.name)}!`)
         }}
       />
 
       <main className="workspace-main w-full min-w-0 lg:pl-[var(--sidebar-width)]">
         <div className="app-content page-stack max-w-[var(--content-max-width)] mx-auto">
+          {clubPage && <div className="view-enter page-stack">
+            <ClubPage key={clubPage.clubId} route={clubPage} club={profileClub}
+              loading={!catalogLoaded} record={profileRecord} events={profileEvents} posts={profilePosts}
+              resources={profileResources} publishedPeople={profilePeople} user={effectiveUser}
+              use24h={userSettings?.timeFormat === '24h'}
+              onOpen={openClubLink} onBack={backFromClub} onMembershipChange={toggleJoinClub}
+              onMembershipConfirmed={rememberConfirmedMembership}
+              onEvent={event => handleNavigate('calendar', { searchTarget: { type: 'event', id: String(event.id), publicEvent: event } })}
+              onTaskBoard={id => handleNavigate('tasks', { clubId: id })}
+              onResource={resource => selectSearchResult('resource', resource)}
+              onRefreshAnnouncements={loadWorkspaceState} onNotify={showToast}
+            />
+          </div>}
+          <div hidden={Boolean(clubPage)}>
           <div key={`${activeNav}_${resetGeneration}`} className="view-enter page-stack">
           {/* ── 1. OVERVIEW ── */}
           {activeNav === 'overview' && (
@@ -2044,8 +2094,8 @@ function MainDashboard({
                 eventsCount={visibleOverviewUpcomingCount}
                 linksCount={totalLinksCount}
                 onNav={target =>
-                  target === 'clubs' && joinedCount === 0
-                    ? handleNavigate('clubs', { section: 'discover' })
+                  target === 'clubs'
+                    ? handleNavigate('clubs', { section: 'myclubs' })
                     : handleNavigate(target)
                 }
               />
@@ -2086,17 +2136,6 @@ function MainDashboard({
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-3">
-                <Button
-                  variant="text"
-                  size="sm"
-                  trailingIcon={<ArrowRight size={14} />}
-                  onClick={() => handleNavigate('availability')}
-                >
-                  Find a meeting time
-                </Button>
-              </div>
-
               <ClubsHub
                 compact={true}
                 user={effectiveUser}
@@ -2105,8 +2144,7 @@ function MainDashboard({
                 clubsData={clubsData}
                 hubDict={hubDict}
                 userSettings={userSettings}
-                onToggleJoin={toggleJoinClub}
-                onOpenClubs={opts => handleNavigate('clubs', opts)}
+                onOpenClub={openClubLink}
                 onNotify={showToast}
               />
               <LinksResources
@@ -2173,41 +2211,6 @@ function MainDashboard({
 
           {activeNav === 'settings' && <PageToolbar title="Settings" />}
 
-          {/* ── 4. CLUBS & COMMUNITY ── */}
-          {activeNav === 'clubs' && (
-            <ClubsHub
-              key={`clubs_${resetGeneration}`}
-              user={effectiveUser}
-              accountKey={accountKey}
-              isDemo={isDemo}
-              items={effectiveClubs}
-              clubsData={clubsData}
-              hubDict={hubDict}
-              events={memberScopedSchedule}
-              calendarIntegration={calendarIntegration}
-              initialSection={clubsInitialSection}
-              initialRbacClubId={clubsInitialRbacClubId}
-              userSettings={userSettings}
-              onToggleJoin={toggleJoinClub}
-              searchQuery={pageFilters.clubs || ''}
-              onSearchChange={value => setPageFilter('clubs', value)}
-              searchTarget={searchTarget}
-              publicPeople={publicPeople}
-              selectedAnnouncement={selectedAnnouncement}
-              onFindClubs={() => setDiscoveryOpen(true)}
-              onMembershipConfirmed={rememberConfirmedMembership}
-              onDismissSearchTarget={() => setSearchTarget(null)}
-              onRefresh={loadBackendData}
-              onRefreshAnnouncements={loadWorkspaceState}
-              onOpenTasks={cid => handleNavigate('tasks', { clubId: cid })}
-              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
-              localPosts={localClubPosts}
-              onAddLocalPost={handleAddLocalClubPost}
-              onPageContextChange={handlePageContextChange}
-              onNotify={showToast}
-            />
-          )}
-
           {/* ── 4B. MONDAY.COM-STYLE CLUB TASK BOARD ── */}
           {activeNav === 'tasks' && (
             <ClubTaskBoard
@@ -2222,7 +2225,7 @@ function MainDashboard({
               initialClubId={tasksInitialClubId}
               onClubJoined={loadWorkspaceState}
               onSyncMemberships={loadWorkspaceMemberships}
-              onOpenClubsRbac={cid => handleNavigate('clubs', { section: 'rbac', clubId: cid })}
+              onOpenClubsRbac={cid => handleNavigate('clubs', { clubSection: 'roles', clubId: cid })}
               onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
               onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
               onNotify={showToast}
@@ -2266,65 +2269,117 @@ function MainDashboard({
               calendarIntegration={calendarIntegration}
               onRefresh={loadBackendData}
               onResetLocalData={handleResetLocalData}
-              onSignOut={onSignOut}
-              onExitDemo={onExitDemo}
               onNotify={showToast}
             />
           )}
           </div>
+          </div>
+          {/* ── 4. CLUBS & COMMUNITY ── */}
+          {clubsVisited && (
+            <div hidden={Boolean(clubPage) || activeNav !== 'clubs'}>
+            <ClubsHub
+              key={`clubs_${resetGeneration}`}
+              accountKey={accountKey}
+              items={effectiveClubs}
+              clubsData={clubsData}
+              hubDict={hubDict}
+              initialSection={clubsInitialSection}
+              sectionRevision={clubsSectionRevision}
+              onOpenClub={openClubLink}
+              userSettings={userSettings}
+              searchQuery={pageFilters.clubs || ''}
+              onSearchChange={value => setPageFilter('clubs', value)}
+              searchTarget={searchTarget}
+              publicPeople={publicPeople}
+              selectedAnnouncement={selectedAnnouncement}
+              onFindClubs={() => setDiscoveryOpen(true)}
+              onDismissSearchTarget={() => setSearchTarget(null)}
+              onRefresh={loadBackendData}
+              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
+              localPosts={localClubPosts}
+              onAddLocalPost={handleAddLocalClubPost}
+              onPageContextChange={activeNav === 'clubs' && !clubPage ? handlePageContextChange : undefined}
+              onNotify={showToast}
+            />
+            </div>
+          )}
+
         </div>
       </main>
     </div>
   )
 }
 
-function resolveInitialThemeMode() {
-  const storedLocal = getInitialStoredUser()
+function useAccountTheme(clerkUser, localUser) {
+  const emailAddress = clerkUser ? clerkUser.primaryEmailAddress?.emailAddress : localUser?.email
+  const email = emailAddress?.trim().toLowerCase() || ''
+  const clerkKey = clerkUser?.id ? `clerk:${clerkUser.id}` : null
+  const emailKey = email ? `email:${email}` : null
+  const accountKey = clerkKey || emailKey
+  const [selection, setSelection] = useState(null)
   const map = getAccountThemeMap()
+  const emailMode = emailKey ? map[emailKey] : undefined
+  const metadataMode = clerkUser?.unsafeMetadata?.themeMode
+  const knownMode = (clerkUser
+    ? [map[clerkKey], emailMode, metadataMode]
+    : [emailMode, localUser?.themeMode]).find(isValidThemeMode)
+  const selectedMode = selection?.key === accountKey ? selection?.mode : undefined
 
-  if (storedLocal?.email) {
-    const emailKey = `email:${storedLocal.email.toLowerCase()}`
-    if (isValidThemeMode(storedLocal.themeMode)) return storedLocal.themeMode
-    if (isValidThemeMode(map[emailKey])) return map[emailKey]
-  }
-
-  try {
-    const lastAccount = localStorage.getItem(LAST_ACTIVE_ACCOUNT_KEY)
-    if (lastAccount && isValidThemeMode(map[lastAccount])) {
-      return map[lastAccount]
-    }
-  } catch {
-    // Ignore storage errors
-  }
-
-  try {
-    const rawSettings = localStorage.getItem(USER_SETTINGS_STORAGE_KEY)
-    const parsedSettings = rawSettings ? JSON.parse(rawSettings) : null
-    if (isValidThemeMode(parsedSettings?.themeMode)) {
-      return parsedSettings.themeMode
-    }
-  } catch {
-    // Ignore storage errors
-  }
-
-  return getGuestThemeMode()
-}
-
-function getInitialTheme() {
-  return resolveDarkFromThemeMode(resolveInitialThemeMode())
-}
-
-function useSystemThemeListener(themeMode, setDark) {
   useEffect(() => {
-    if (themeMode !== 'system' || typeof window === 'undefined' || !window.matchMedia) {
+    setSelection(previous => previous?.key === accountKey ? previous : null)
+  }, [accountKey])
+
+  useEffect(() => {
+    if (!accountKey || selectedMode) return
+    if (knownMode) {
+      saveAccountThemeForKeys([clerkKey, emailKey], knownMode)
+      if (clerkUser && metadataMode !== knownMode) {
+        clerkUser.update({
+          unsafeMetadata: { ...clerkUser.unsafeMetadata, themeMode: knownMode },
+        }).catch(() => {})
+      }
       return
     }
+    if (!email) return
+
+    let cancelled = false
+    getWorkspaceMe()
+      .then(({ user: profile } = {}) => {
+        if (cancelled || profile?.email?.trim().toLowerCase() !== email || !isValidThemeMode(profile.themeMode)) return
+        const saved = getAccountThemeMap()
+        if (isValidThemeMode(saved[accountKey]) || isValidThemeMode(saved[emailKey])) return
+        saveAccountThemeForKeys([clerkKey, emailKey], profile.themeMode)
+        setSelection({ key: accountKey, mode: profile.themeMode })
+        if (clerkUser) {
+          clerkUser.update({
+            unsafeMetadata: { ...clerkUser.unsafeMetadata, themeMode: profile.themeMode },
+          }).catch(() => {})
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [accountKey, clerkKey, clerkUser, email, emailKey, knownMode, metadataMode, selectedMode])
+
+  function rememberMode(mode) {
+    if (!accountKey) return
+    saveAccountThemeForKeys([clerkKey, emailKey], mode)
+    setSelection({ key: accountKey, mode })
+  }
+
+  return { mode: selectedMode || knownMode || 'system', rememberMode }
+}
+
+function usePageTheme(mode) {
+  const [systemDark, setSystemDark] = useState(getSystemPrefersDark)
+
+  useLayoutEffect(() => {
+    if (!window.matchMedia) return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const syncFromSystem = () => {
-      setDark(Boolean(mq.matches))
+      setSystemDark(Boolean(mq.matches))
     }
     const onChange = e => {
-      setDark(Boolean(e.matches))
+      setSystemDark(Boolean(e.matches))
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -2352,474 +2407,181 @@ function useSystemThemeListener(themeMode, setDark) {
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [themeMode, setDark])
-}
-
-function ClerkAppWrapper({
-  dark,
-  setDark,
-  userSettings,
-  onUpdateSettings,
-  localUser,
-  onLocalSignIn,
-  onLocalSignOut,
-  onUpdateLocalUserTheme,
-}) {
-  const { isLoaded, isSignedIn, user } = useUser()
-  const { signOut } = useClerk()
-  const [demoMode, setDemoMode] = useState(false)
-  const [demoSession, setDemoSession] = useState(0)
-  const [demoSettings, setDemoSettings] = useState(() =>
-    createDemoUserSettings(userSettings.themeMode)
-  )
-  const [loadTimedOut, setLoadTimedOut] = useState(false)
-  const syncedAccountRef = useRef(null)
-
-  useSystemThemeListener(
-    demoMode ? demoSettings.themeMode : userSettings.themeMode,
-    setDark
-  )
-
-  const handleEnterDemo = useCallback(() => {
-    setDemoSettings(createDemoUserSettings(userSettings.themeMode))
-    setDemoSession(s => s + 1)
-    setDemoMode(true)
-  }, [userSettings.themeMode])
-
-  const handleExitDemo = useCallback(() => {
-    setDemoMode(false)
-    setDark(resolveDarkFromThemeMode(userSettings.themeMode))
-  }, [userSettings.themeMode, setDark])
-
-  const handleUpdateDemoSettings = useCallback(patch => {
-    setDemoSettings(prev => ({
-      ...prev,
-      ...patch,
-      channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
-      calendarSync: patch.calendarSync
-        ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
-        : prev.calendarSync,
-    }))
   }, [])
 
-  const isOAuthCallback =
-    typeof window !== 'undefined' &&
-    (window.location.search.includes('sso-callback') ||
-      window.location.hash.includes('sso-callback') ||
-      window.location.search.includes('__clerk_') ||
-      window.location.hash.includes('__clerk_'))
+  const dark = mode === 'system' ? systemDark : mode === 'dark'
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', dark)
+    root.classList.toggle('light', !dark)
+    root.style.colorScheme = dark ? 'dark' : 'light'
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#131314' : '#F8FAFD')
+  }, [dark])
 
-  useEffect(() => {
-    if (isLoaded) {
-      setLoadTimedOut(false)
-      return
-    }
-    const timeoutMs = isOAuthCallback ? 8000 : 3500
-    const timer = setTimeout(() => setLoadTimedOut(true), timeoutMs)
-    return () => clearTimeout(timer)
-  }, [isLoaded, isOAuthCallback])
+}
 
-  useEffect(() => {
-    if (isSignedIn && user && localUser) {
-      onLocalSignOut({ silent: true })
-    }
-  }, [isSignedIn, user, localUser, onLocalSignOut])
-
-  const [oauthTimedOutNotice, setOauthTimedOutNotice] = useState('')
-
-  useEffect(() => {
-    if (isSignedIn && user && isOAuthCallback && typeof window !== 'undefined') {
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [isSignedIn, user, isOAuthCallback])
-
-  useEffect(() => {
-    if (isOAuthCallback && !isSignedIn && loadTimedOut && typeof window !== 'undefined') {
-      window.history.replaceState({}, '', window.location.pathname)
-      setOauthTimedOutNotice('Google Sign-In timed out or was interrupted. Please try again.')
-    }
-  }, [isOAuthCallback, isSignedIn, loadTimedOut])
-
-  const clerkEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || ''
-  const localEmail = localUser?.email?.toLowerCase() || ''
-  const activeAccountKey =
-    isSignedIn && user
-      ? `clerk:${user.id}`
-      : localUser && localEmail
-        ? `email:${localEmail}`
-        : 'guest'
-
-  const applyAccountThemeMode = useCallback(
-    mode => {
-      const normalized = normalizeThemeMode(mode, 'system')
-      onUpdateSettings({ themeMode: normalized })
-      setDark(resolveDarkFromThemeMode(normalized))
-    },
-    [onUpdateSettings, setDark]
-  )
-
-  // Sync theme mode automatically whenever the signed-in account changes (without page-load flash!)
-  useEffect(() => {
-    if (activeAccountKey === 'guest') {
-      if (!isLoaded && !loadTimedOut) return // Never overwrite theme before Clerk finishes loading
-      if (syncedAccountRef.current === 'guest') return
-      const wasSignedIn = Boolean(
-        syncedAccountRef.current && syncedAccountRef.current !== 'guest'
-      )
-      syncedAccountRef.current = 'guest'
-      try {
-        localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
-      } catch {
-        // Ignore storage errors
-      }
-      if (wasSignedIn) {
-        applyAccountThemeMode(getGuestThemeMode())
-      } else {
-        setDark(resolveDarkFromThemeMode(userSettings.themeMode))
-      }
-      return
-    }
-
-    if (syncedAccountRef.current === activeAccountKey) return
-    const switchedFromAnotherAccount = Boolean(
-      syncedAccountRef.current &&
-        syncedAccountRef.current !== 'guest' &&
-        syncedAccountRef.current !== activeAccountKey
-    )
-    syncedAccountRef.current = activeAccountKey
-
-    try {
-      localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, activeAccountKey)
-    } catch {
-      // Ignore storage errors
-    }
-
-    const map = getAccountThemeMap()
-
-    if (isSignedIn && user) {
-      const clerkKey = `clerk:${user.id}`
-      const emailKey = clerkEmail ? `email:${clerkEmail}` : null
-      const metaMode = user.unsafeMetadata?.themeMode
-
-      const localStoredMode = isValidThemeMode(map[clerkKey])
-        ? map[clerkKey]
-        : emailKey && isValidThemeMode(map[emailKey])
-          ? map[emailKey]
-          : undefined
-
-      if (localStoredMode) {
-        applyAccountThemeMode(localStoredMode)
-        saveAccountThemeForKeys([clerkKey, emailKey], localStoredMode)
-        if (metaMode !== localStoredMode) {
-          user
-            .update({
-              unsafeMetadata: {
-                ...(user.unsafeMetadata || {}),
-                themeMode: localStoredMode,
-              },
-            })
-            .catch(() => {})
-        }
-        return
-      }
-
-      if (isValidThemeMode(metaMode)) {
-        applyAccountThemeMode(metaMode)
-        saveAccountThemeForKeys([clerkKey, emailKey], metaMode)
-        return
-      }
-
-      if (switchedFromAnotherAccount) {
-        applyAccountThemeMode('system')
-      }
-
-      if (clerkEmail) {
-        let cancelled = false
-        getWorkspaceMe()
-          .then(meRes => {
-            if (cancelled || isValidThemeMode(getAccountThemeMap()[clerkKey])) return
-            const remoteMode = meRes?.user?.themeMode
-            if (isValidThemeMode(remoteMode)) {
-              applyAccountThemeMode(remoteMode)
-              saveAccountThemeForKeys([clerkKey, emailKey], remoteMode)
-              user
-                .update({
-                  unsafeMetadata: {
-                    ...(user.unsafeMetadata || {}),
-                    themeMode: remoteMode,
-                  },
-                })
-                .catch(() => {})
-            }
-          })
-          .catch(() => {})
-        return () => {
-          cancelled = true
-        }
-      }
-      return
-    }
-
-    if (localUser && localEmail) {
-      const emailKey = `email:${localEmail}`
-      if (isValidThemeMode(localUser.themeMode)) {
-        applyAccountThemeMode(localUser.themeMode)
-        saveAccountThemeForKeys([emailKey], localUser.themeMode)
-        return
-      }
-      if (isValidThemeMode(map[emailKey])) {
-        applyAccountThemeMode(map[emailKey])
-        return
-      }
-      if (switchedFromAnotherAccount) {
-        applyAccountThemeMode('system')
-      }
-      let cancelled = false
-      getWorkspaceMe()
-        .then(meRes => {
-          if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
-          const remoteMode = meRes?.user?.themeMode
-          if (isValidThemeMode(remoteMode)) {
-            applyAccountThemeMode(remoteMode)
-            saveAccountThemeForKeys([emailKey], remoteMode)
-          }
-        })
-        .catch(() => {})
-      return () => {
-        cancelled = true
-      }
-    }
-  }, [
-    activeAccountKey,
-    isLoaded,
-    loadTimedOut,
-    isSignedIn,
-    user,
-    clerkEmail,
-    localUser,
-    localEmail,
-    userSettings.themeMode,
-    applyAccountThemeMode,
-    setDark,
-  ])
-
-  function persistThemeMode(mode) {
-    const normalized = normalizeThemeMode(mode, 'system')
-    onUpdateSettings({ themeMode: normalized })
-    setDark(resolveDarkFromThemeMode(normalized))
-
-    if (isSignedIn && user) {
-      const clerkKey = `clerk:${user.id}`
-      const emailKey = clerkEmail ? `email:${clerkEmail}` : null
-      try {
-        localStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, clerkKey)
-      } catch {
-        // Ignore storage errors
-      }
-      saveAccountThemeForKeys([clerkKey, emailKey], normalized)
-      user
-        .update({
-          unsafeMetadata: {
-            ...(user.unsafeMetadata || {}),
-            themeMode: normalized,
-            darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : null,
-          },
-        })
-        .catch(() => {})
-      if (clerkEmail) {
-        persistBackendAccountTheme(clerkEmail, normalized)
-      }
-      return
-    }
-
-    if (localUser && localEmail) {
-      onUpdateLocalUserTheme(normalized)
-      return
-    }
-
-    saveGuestThemeMode(normalized)
-  }
-
-  function handleToggleDark() {
-    persistThemeMode(dark ? 'light' : 'dark')
-  }
-
-  function handleSetExplicitThemeMode(mode) {
-    persistThemeMode(mode)
-  }
-
-  const baseUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}`
-      : '/'
-
-  const signingOutRef = useRef(false)
-
-  async function handleClerkSignOut() {
-    if (signingOutRef.current) return
-    signingOutRef.current = true
-    try {
-      if (onLocalSignOut) {
-        onLocalSignOut()
-      } else {
-        try {
-          localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
-        } catch {
-          // Ignore storage errors
-        }
-      }
-      try {
-        await signOut({ redirectUrl: baseUrl })
-      } catch {
-        // Ignore Clerk signOut fallback errors
-      }
-    } finally {
-      signingOutRef.current = false
-    }
-  }
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
-      document.title = 'Completing Sign-In · ClubHub'
-    } else if (!isSignedIn && !localUser && !isLoaded && !loadTimedOut) {
-      document.title = 'Loading… · ClubHub'
-    }
-  }, [isOAuthCallback, isSignedIn, localUser, isLoaded, loadTimedOut])
-
-  if (isOAuthCallback && !isSignedIn && !loadTimedOut) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
-        <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-semibold text-[var(--text-muted)]">
-          Completing Google Sign-In…
-        </span>
-        <div id="clerk-captcha" />
-        <AuthenticateWithRedirectCallback
-          signInForceRedirectUrl={baseUrl}
-          signUpForceRedirectUrl={baseUrl}
-          signInFallbackRedirectUrl={baseUrl}
-          signUpFallbackRedirectUrl={baseUrl}
-          continueSignUpUrl={`${baseUrl}?sso-continue=1`}
-        />
-      </div>
-    )
-  }
-
-  if (isSignedIn && user) {
-    return (
-      <MainDashboard
-        dark={dark}
-        toggleDark={handleToggleDark}
-        onSetExplicitThemeMode={handleSetExplicitThemeMode}
-        userSettings={userSettings}
-        onUpdateSettings={onUpdateSettings}
-        user={user}
-        isDemo={false}
-        onSignOut={handleClerkSignOut}
-        hasClerkKey={true}
-      />
-    )
-  }
-
-  if (localUser) {
-    return (
-      <MainDashboard
-        dark={dark}
-        toggleDark={handleToggleDark}
-        onSetExplicitThemeMode={handleSetExplicitThemeMode}
-        userSettings={userSettings}
-        onUpdateSettings={onUpdateSettings}
-        user={localUser}
-        isDemo={false}
-        onSignOut={onLocalSignOut}
-        hasClerkKey={false}
-      />
-    )
-  }
-
-  if (!isLoaded && !loadTimedOut) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
-        <div className="w-10 h-10 border-3 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-semibold text-[var(--text-muted)]">Loading ClubHub…</span>
-      </div>
-    )
-  }
-
-  if (demoMode) {
-    return (
-      <MainDashboard
-        key={`demo_clerk_${demoSession}`}
-        dark={dark}
-        toggleDark={() => {
-          const next = !dark
-          handleUpdateDemoSettings({ themeMode: next ? 'dark' : 'light' })
-          setDark(next)
-        }}
-        onSetExplicitThemeMode={mode => {
-          const normalized = normalizeThemeMode(mode, 'system')
-          handleUpdateDemoSettings({ themeMode: normalized })
-          setDark(resolveDarkFromThemeMode(normalized))
-        }}
-        userSettings={demoSettings}
-        onUpdateSettings={handleUpdateDemoSettings}
-        user={null}
-        isDemo={true}
-        onExitDemo={handleExitDemo}
-        hasClerkKey={true}
-      />
-    )
-  }
-
+function ClerkAppWrapper(props) {
+  const { isLoaded, isSignedIn, user } = useUser()
+  const { sessionId } = useAuth()
+  const { signOut } = useClerk()
   return (
-    <SignInPage
-      dark={dark}
-      onToggleDark={handleToggleDark}
-      hasPublishableKey={true}
-      initialError={oauthTimedOutNotice}
-      onEnterDemo={handleEnterDemo}
-      onLocalSignIn={onLocalSignIn}
+    <WorkspaceEntry
+      {...props}
+      hasClerk
+      clerkLoading={!isLoaded}
+      clerkUser={isLoaded && isSignedIn && sessionId ? user : null}
+      clerkSessionId={sessionId}
+      signOutClerk={signOut}
     />
   )
 }
 
-function FallbackApp({
-  dark,
-  setDark,
-  userSettings,
-  onUpdateSettings,
+function WorkspaceEntry({
   localUser,
   onLocalSignIn,
   onLocalSignOut,
-  onUpdateLocalUserTheme,
+  legacySettingsEmail,
+  hasClerk = false,
+  clerkLoading = false,
+  clerkUser = null,
+  clerkSessionId,
+  signOutClerk,
 }) {
-  const [demoMode, setDemoMode] = useState(false)
-  const [demoSession, setDemoSession] = useState(0)
-  const [demoSettings, setDemoSettings] = useState(() =>
-    createDemoUserSettings(userSettings.themeMode)
-  )
-  const syncedAccountRef = useRef(null)
-  const localEmail = localUser?.email?.toLowerCase() || ''
-  const activeAccountKey = localUser && localEmail ? `email:${localEmail}` : 'guest'
+  const [admission, setAdmission] = useState(null)
+  const [clerkCompletion, setClerkCompletion] = useState(null)
+  const [demoSettings, setDemoSettings] = useState(createDemoUserSettings)
+  const [switchingAccount, setSwitchingAccount] = useState(false)
+  const [ignoredSession, setIgnoredSession] = useState(null)
+  const [notice, setNotice] = useState('')
+  const [entry] = useState(() => {
+    const url = new URL(window.location.href)
+    const callback = ['sso-callback', 'sso-complete', 'sso-continue'].find(key => url.searchParams.has(key))
+    const oauth = readOAuthEntry(url.searchParams.get(callback))
+    return { callback, oauth, destination: oauth?.destination || readWorkspaceDestination(url) }
+  })
+  const [callbackSettled, setCallbackSettled] = useState(false)
+  const destination = useRef(entry.destination)
+  const availableClerkUser = ignoredSession === clerkSessionId ? null : clerkUser
+  const chooseLocal = admission?.provider === 'local' || !availableClerkUser
+  const candidate = chooseLocal ? localUser : availableClerkUser
+  const identity = candidate?.id ? `${chooseLocal ? 'local' : 'clerk'}:${candidate.id}` : null
+  const admitted = Boolean(identity && admission?.identity === identity &&
+    (chooseLocal || admission.sessionId === clerkSessionId))
+  const demo = admission?.provider === 'demo'
+  const callback = callbackSettled ? null : entry.callback
+  const accountTheme = useAccountTheme(admitted && !chooseLocal ? candidate : null, admitted && chooseLocal ? candidate : null)
+  usePageTheme(admitted ? accountTheme.mode : demo ? demoSettings.themeMode : 'system')
+  const email = (candidate?.primaryEmailAddress?.emailAddress || candidate?.email || '').toLowerCase()
+  const settingsKey = admitted ? `${USER_SETTINGS_STORAGE_KEY}:${email || identity}` : null
+  const [settingsState, setSettingsState] = useState(null)
+  const userSettings = settingsState?.key === settingsKey ? settingsState.settings : settingsKey
+    ? getStoredUserSettings(settingsKey, email === legacySettingsEmail ? USER_SETTINGS_STORAGE_KEY : null)
+    : DEFAULT_USER_SETTINGS
 
-  useSystemThemeListener(
-    demoMode ? demoSettings.themeMode : userSettings.themeMode,
-    setDark
-  )
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    if (!admitted && !demo) {
+      root.classList.remove('theme-ready')
+      return
+    }
+    const frame = requestAnimationFrame(() => root.classList.add('theme-ready'))
+    return () => cancelAnimationFrame(frame)
+  }, [admitted, demo])
 
-  const handleEnterDemo = useCallback(() => {
-    setDemoSettings(createDemoUserSettings(userSettings.themeMode))
-    setDemoSession(s => s + 1)
-    setDemoMode(true)
-  }, [userSettings.themeMode])
+  function updateSettings(patch) {
+    const settings = {
+      ...userSettings,
+      ...patch,
+      channels: patch.channels ? { ...userSettings.channels, ...patch.channels } : userSettings.channels,
+      calendarSync: patch.calendarSync
+        ? normalizeCalendarSyncSettings({ ...userSettings.calendarSync, ...patch.calendarSync })
+        : userSettings.calendarSync,
+    }
+    setSettingsState({ key: settingsKey, settings })
+    writeLocalJson(settingsKey, settings)
+  }
 
-  const handleExitDemo = useCallback(() => {
-    setDemoMode(false)
-    setDark(resolveDarkFromThemeMode(userSettings.themeMode))
-  }, [userSettings.themeMode, setDark])
+  const enterWorkspace = useCallback((next, sessionId) => {
+    const target = destination.current
+    clearOAuthEntry()
+    replaceEntryUrl(target)
+    try { sessionStorage.removeItem(PENDING_POLL_SESSION_KEY) } catch { /* Optional storage. */ }
+    const provider = next.split(':')[0]
+    if (provider === 'clerk') clearWorkspaceSession()
+    setAdmission({ identity: next, sessionId, provider })
+    setCallbackSettled(true)
+  }, [])
 
-  const handleUpdateDemoSettings = useCallback(patch => {
+  useLayoutEffect(() => {
+    if (!admission || demo || admitted) return
+    if (admission.provider === 'clerk') clearWorkspaceSession()
+    setAdmission(null)
+    destination.current = ''
+    replaceEntryUrl()
+    try { sessionStorage.removeItem(PENDING_POLL_SESSION_KEY) } catch { /* Optional storage. */ }
+  }, [admission, demo, admitted])
+
+  useEffect(() => {
+    if (!clerkCompletion || clerkCompletion !== clerkSessionId || !availableClerkUser) return
+    setClerkCompletion(null)
+    if (callback && !entry.oauth) return
+    enterWorkspace(`clerk:${availableClerkUser.id}`, clerkSessionId)
+  }, [clerkCompletion, clerkSessionId, availableClerkUser, callback, entry.oauth, enterWorkspace])
+
+  useEffect(() => {
+    if (!callback) return
+    const fail = () => {
+      clearOAuthEntry()
+      replaceEntryUrl(destination.current)
+      setCallbackSettled(true)
+      setNotice('Google sign-in was interrupted. Please try again.')
+    }
+    if (!hasClerk || !entry.oauth) {
+      fail()
+      return
+    }
+    if (callback === 'sso-complete' && availableClerkUser && clerkSessionId !== entry.oauth.sessionId) {
+      enterWorkspace(`clerk:${availableClerkUser.id}`, clerkSessionId)
+      return
+    }
+    const timer = setTimeout(fail, 12000)
+    return () => clearTimeout(timer)
+  }, [availableClerkUser, callback, clerkSessionId, enterWorkspace, entry.oauth, hasClerk])
+
+  const signOut = useCallback(async ({ preserveDestination = false, silent = false } = {}) => {
+    if (switchingAccount) return
+    setSwitchingAccount(true)
+    setAdmission(null)
+    setClerkCompletion(null)
+    setCallbackSettled(true)
+    setIgnoredSession(clerkSessionId ?? null)
+    setNotice(silent ? 'Your session expired. Please sign in again.' : '')
+    clearOAuthEntry()
+    if (!preserveDestination) destination.current = ''
+    replaceEntryUrl(destination.current)
+    try { sessionStorage.removeItem(PENDING_POLL_SESSION_KEY) } catch { /* Optional storage. */ }
+    try {
+      await onLocalSignOut()
+      if (availableClerkUser) await signOutClerk({ sessionId: clerkSessionId })
+    } catch {
+      setNotice('Could not end the previous session. Please try signing in again.')
+    } finally {
+      setSwitchingAccount(false)
+    }
+  }, [availableClerkUser, clerkSessionId, onLocalSignOut, signOutClerk, switchingAccount])
+
+  function persistThemeMode(nextMode) {
+    const mode = normalizeThemeMode(nextMode)
+    accountTheme.rememberMode(mode)
+    if (!chooseLocal) {
+      candidate.update({
+        unsafeMetadata: { ...candidate.unsafeMetadata, themeMode: mode },
+      }).catch(() => {})
+    }
+    persistBackendAccountTheme(mode)
+  }
+
+  function updateDemoSettings(patch) {
     setDemoSettings(prev => ({
       ...prev,
       ...patch,
@@ -2828,128 +2590,81 @@ function FallbackApp({
         ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
         : prev.calendarSync,
     }))
-  }, [])
-
-  const applyAccountThemeMode = useCallback(
-    mode => {
-      const normalized = normalizeThemeMode(mode, 'system')
-      onUpdateSettings({ themeMode: normalized })
-      setDark(resolveDarkFromThemeMode(normalized))
-    },
-    [onUpdateSettings, setDark]
-  )
-
-  useEffect(() => {
-    if (syncedAccountRef.current === activeAccountKey) return
-    const prevAccount = syncedAccountRef.current
-    syncedAccountRef.current = activeAccountKey
-
-    if (activeAccountKey === 'guest') {
-      if (prevAccount && prevAccount !== 'guest') {
-        applyAccountThemeMode(getGuestThemeMode())
-      } else {
-        setDark(resolveDarkFromThemeMode(userSettings.themeMode))
-      }
-      return
-    }
-
-    const map = getAccountThemeMap()
-    const emailKey = `email:${localEmail}`
-    if (isValidThemeMode(localUser?.themeMode)) {
-      applyAccountThemeMode(localUser.themeMode)
-      saveAccountThemeForKeys([emailKey], localUser.themeMode)
-      return
-    }
-    if (isValidThemeMode(map[emailKey])) {
-      applyAccountThemeMode(map[emailKey])
-      return
-    }
-    if (prevAccount && prevAccount !== 'guest' && prevAccount !== activeAccountKey) {
-      applyAccountThemeMode('system')
-    }
-    let cancelled = false
-    getWorkspaceMe()
-      .then(meRes => {
-        if (cancelled || isValidThemeMode(getAccountThemeMap()[emailKey])) return
-        const remoteMode = meRes?.user?.themeMode
-        if (isValidThemeMode(remoteMode)) {
-          applyAccountThemeMode(remoteMode)
-          saveAccountThemeForKeys([emailKey], remoteMode)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [activeAccountKey, localUser, localEmail, userSettings.themeMode, applyAccountThemeMode, setDark])
-
-  function persistThemeMode(mode) {
-    const normalized = normalizeThemeMode(mode, 'system')
-    onUpdateSettings({ themeMode: normalized })
-    setDark(resolveDarkFromThemeMode(normalized))
-    if (localUser && localEmail) {
-      onUpdateLocalUserTheme(normalized)
-    } else {
-      saveGuestThemeMode(normalized)
-    }
   }
 
-  function handleToggleDark() {
-    persistThemeMode(dark ? 'light' : 'dark')
-  }
-
-  function handleSetExplicitThemeMode(mode) {
-    persistThemeMode(mode)
-  }
-
-  if (localUser) {
+  if (admitted || demo) {
     return (
       <MainDashboard
-        dark={dark}
-        toggleDark={handleToggleDark}
-        onSetExplicitThemeMode={handleSetExplicitThemeMode}
-        userSettings={userSettings}
-        onUpdateSettings={onUpdateSettings}
-        user={localUser}
-        isDemo={false}
-        onSignOut={onLocalSignOut}
-        hasClerkKey={false}
+        key={demo ? 'demo' : identity}
+        legacySettingsEmail={legacySettingsEmail}
+        onSetExplicitThemeMode={demo ? mode => updateDemoSettings({ themeMode: normalizeThemeMode(mode) }) : persistThemeMode}
+        userSettings={demo ? demoSettings : { ...userSettings, themeMode: accountTheme.mode }}
+        onUpdateSettings={demo ? updateDemoSettings : updateSettings}
+        user={admitted ? candidate : null}
+        isDemo={demo}
+        onExitDemo={demo ? () => {
+          setAdmission(null)
+          replaceEntryUrl(destination.current)
+        } : undefined}
+        onSignOut={admitted ? signOut : undefined}
+        hasClerkKey={admitted && !chooseLocal}
       />
     )
   }
 
-  if (demoMode) {
+  const baseUrl = window.location.origin + window.location.pathname
+  if (entry.oauth && (callback === 'sso-callback' || callback === 'sso-complete')) {
+    const complete = `${baseUrl}?sso-complete=${entry.oauth.nonce}`
     return (
-      <MainDashboard
-        key={`demo_fallback_${demoSession}`}
-        dark={dark}
-        toggleDark={() => {
-          const next = !dark
-          handleUpdateDemoSettings({ themeMode: next ? 'dark' : 'light' })
-          setDark(next)
-        }}
-        onSetExplicitThemeMode={mode => {
-          const normalized = normalizeThemeMode(mode, 'system')
-          handleUpdateDemoSettings({ themeMode: normalized })
-          setDark(resolveDarkFromThemeMode(normalized))
-        }}
-        userSettings={demoSettings}
-        onUpdateSettings={handleUpdateDemoSettings}
-        user={null}
-        isDemo={true}
-        onExitDemo={handleExitDemo}
-        hasClerkKey={false}
-      />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg)] text-[var(--text)] gap-3">
+        <p role="status">Completing Google sign-in…</p>
+        <Button variant="text" onClick={() => {
+          clearOAuthEntry()
+          replaceEntryUrl(destination.current)
+          setCallbackSettled(true)
+        }}>Cancel</Button>
+        {callback === 'sso-callback' && hasClerk && (
+          <AuthenticateWithRedirectCallback
+            signInForceRedirectUrl={complete}
+            signUpForceRedirectUrl={complete}
+            signInFallbackRedirectUrl={complete}
+            signUpFallbackRedirectUrl={complete}
+            continueSignUpUrl={`${baseUrl}?sso-continue=${entry.oauth.nonce}`}
+          />
+        )}
+      </div>
     )
   }
 
   return (
     <SignInPage
-      dark={dark}
-      onToggleDark={handleToggleDark}
-      hasPublishableKey={false}
-      onEnterDemo={handleEnterDemo}
-      onLocalSignIn={onLocalSignIn}
+      hasPublishableKey={hasClerk}
+      initialError={notice}
+      returningUser={switchingAccount || clerkLoading ? null : candidate}
+      switchingAccount={switchingAccount}
+      onContinue={() => identity && enterWorkspace(identity, clerkSessionId)}
+      onSwitchAccount={() => signOut({ preserveDestination: true })}
+      onEnterDemo={() => {
+        setDemoSettings(createDemoUserSettings())
+        replaceEntryUrl()
+        setAdmission({ provider: 'demo' })
+      }}
+      onLocalSignIn={profile => {
+        onLocalSignIn(profile)
+        enterWorkspace(`local:${profile.id}`)
+      }}
+      onClerkSignIn={sessionId => {
+        if (ignoredSession === sessionId) setIgnoredSession(null)
+        setClerkCompletion(sessionId)
+      }}
+      onStartOAuth={() => {
+        const nonce = startOAuthEntry(destination.current, clerkSessionId)
+        return {
+          redirectUrl: `${baseUrl}?sso-callback=${nonce}`,
+          redirectUrlComplete: `${baseUrl}?sso-complete=${nonce}`,
+        }
+      }}
+      onCancelOAuth={() => clearOAuthEntry()}
     />
   )
 }
@@ -2961,123 +2676,19 @@ const DEFAULT_CLERK_KEY = (
 ).trim()
 
 export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_CLERK_KEY) }) {
-  const [userSettings, setUserSettings] = useState(() => {
-    const stored = getStoredUserSettings()
-    const initialMode = resolveInitialThemeMode()
-    return initialMode !== stored.themeMode ? { ...stored, themeMode: initialMode } : stored
+  const [localUser, setLocalUser] = useState(null)
+  const authRevision = useRef(0)
+  const [legacySettingsEmail] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem(AUTH_USER_SESSION_KEY))?.email?.toLowerCase() || '' }
+    catch { return '' }
   })
-  const [dark, setDark] = useState(getInitialTheme)
-  const [localUser, setLocalUser] = useState(getInitialStoredUser)
-
-  // Preserve shared `?poll=<id>` invite links across login / OAuth redirects
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const pollParam = new URLSearchParams(window.location.search).get('poll')
-      if (pollParam) {
-        sessionStorage.setItem(PENDING_POLL_SESSION_KEY, pollParam)
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }, [])
-
-  // Synchronously apply dark & reduce-motion classes BEFORE paint so zero white flash can occur
-  useLayoutEffect(() => {
-    const root = document.documentElement
-    const isDark = Boolean(dark)
-    root.classList.toggle('dark', isDark)
-    root.classList.toggle('light', !isDark)
-    root.style.colorScheme = isDark ? 'dark' : 'light'
-    const metaTags = document.querySelectorAll('meta[name="theme-color"]')
-    metaTags.forEach(tag => {
-      tag.setAttribute('content', isDark ? '#131314' : '#F8FAFD')
-    })
-  }, [dark])
-
-  useLayoutEffect(() => {
-    document.documentElement.classList.toggle('reduce-motion', Boolean(userSettings.reduceMotion))
-  }, [userSettings.reduceMotion])
-
-  useLayoutEffect(() => {
-    document.documentElement.classList.toggle('compact-cards', Boolean(userSettings.compactCards))
-  }, [userSettings.compactCards])
-
-  // Enable smooth CSS theme transitions only AFTER initial frame has painted
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      document.documentElement.classList.add('theme-ready')
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [])
-
-  const handleUpdateSettings = useCallback(patch => {
-    setUserSettings(prev => {
-      const next = {
-        ...prev,
-        ...patch,
-        themeMode:
-          patch.themeMode !== undefined
-            ? normalizeThemeMode(patch.themeMode, 'system')
-            : prev.themeMode,
-        channels: patch.channels ? { ...prev.channels, ...patch.channels } : prev.channels,
-        calendarSync: patch.calendarSync
-          ? normalizeCalendarSyncSettings({ ...prev.calendarSync, ...patch.calendarSync })
-          : prev.calendarSync,
-      }
-      saveStoredUserSettings(next)
-      return next
-    })
-    if (patch.avatarBg || typeof patch.displayName === 'string') {
-      setLocalUser(prev => {
-        if (!prev) return prev
-        const updated = {
-          ...prev,
-          ...(patch.avatarBg ? { avatarBg: patch.avatarBg } : {}),
-          ...(typeof patch.displayName === 'string' && patch.displayName.trim()
-            ? { fullName: patch.displayName.trim() }
-            : {}),
-        }
-        try {
-          sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(updated))
-        } catch {
-          // Ignore storage errors
-        }
-        return updated
-      })
-    }
-  }, [])
-
-  const updateLocalUserTheme = useCallback(nextMode => {
-    const normalized = normalizeThemeMode(nextMode, 'system')
-    setLocalUser(prev => {
-      if (!prev) return prev
-      const updated = {
-        ...prev,
-        themeMode: normalized,
-        darkMode: normalized === 'dark' ? true : normalized === 'light' ? false : undefined,
-      }
-      const emailLower = (prev.email || '').toLowerCase()
-      try {
-        sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(updated))
-        if (emailLower) {
-          saveAccountThemeForKeys([`email:${emailLower}`], normalized)
-        }
-      } catch {
-        // Ignore storage errors
-      }
-      if (emailLower) {
-        persistBackendAccountTheme(emailLower, normalized)
-      }
-      return updated
-    })
-  }, [])
 
   useEffect(() => {
     let active = true
+    const revision = authRevision.current
     getWorkspaceMe()
       .then(res => {
-        if (!active) return
+        if (!active || authRevision.current !== revision) return
         if (res?.sessionExpired && !(typeof window !== 'undefined' && window.Clerk?.user?.id)) {
           setLocalUser(null)
           try {
@@ -3087,23 +2698,13 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
           }
           return
         }
-        if (!res?.user?.id) return
-        setLocalUser(prev => {
-          const merged = {
-            authenticated: true,
-            ...(prev || {}),
-            id: res.user.id,
-            email: res.user.email,
-            fullName: res.user.displayName || prev?.fullName || res.user.email,
-            avatarBg: res.user.avatarBg || prev?.avatarBg,
-            ...(isValidThemeMode(res.user.themeMode) ? { themeMode: res.user.themeMode } : {}),
-          }
-          try {
-            sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(merged))
-          } catch {
-            // Ignore storage errors
-          }
-          return merged
+        if (!res?.ok || !res.user?.id || window.Clerk?.user?.id) return
+        setLocalUser({
+          id: res.user.id,
+          email: res.user.email,
+          fullName: res.user.fullName || res.user.displayName || res.user.email,
+          avatarBg: res.user.avatarBg,
+          themeMode: res.user.themeMode,
         })
       })
       .catch(() => {})
@@ -3113,67 +2714,39 @@ export default function App({ hasClerkKey = isValidClerkPublishableKey(DEFAULT_C
   }, [])
 
   const handleLocalSignIn = useCallback(profile => {
-    const emailLower = (profile.email || '').toLowerCase()
-    const map = getAccountThemeMap()
-    const resolvedMode = isValidThemeMode(profile.themeMode)
-      ? profile.themeMode
-      : emailLower && isValidThemeMode(map[`email:${emailLower}`])
-        ? map[`email:${emailLower}`]
-        : undefined
-
-    const nextProfile = resolvedMode ? { ...profile, themeMode: resolvedMode } : profile
-
-    setLocalUser(nextProfile)
-    try {
-      sessionStorage.setItem(AUTH_USER_SESSION_KEY, JSON.stringify(nextProfile))
-      if (emailLower) {
-        sessionStorage.setItem(LAST_ACTIVE_ACCOUNT_KEY, `email:${emailLower}`)
-      }
-    } catch {
-      // Ignore storage errors
-    }
+    authRevision.current += 1
+    setLocalUser(profile)
   }, [])
 
-  const handleLocalSignOut = useCallback((opts = {}) => {
+  const handleLocalSignOut = useCallback(async () => {
+    authRevision.current += 1
     setLocalUser(null)
-    logoutWorkspaceSession().catch(() => {})
     try {
       sessionStorage.removeItem(AUTH_USER_SESSION_KEY)
       localStorage.removeItem('clubhub_auth_user_v1')
-      if (!opts?.silent) {
-        sessionStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
-        localStorage.removeItem(LAST_ACTIVE_ACCOUNT_KEY)
-      }
     } catch {
       // Ignore storage errors
     }
+    await logoutWorkspaceSession()
   }, [])
 
   if (hasClerkKey) {
     return (
       <ClerkAppWrapper
-        dark={dark}
-        setDark={setDark}
-        userSettings={userSettings}
-        onUpdateSettings={handleUpdateSettings}
+        legacySettingsEmail={legacySettingsEmail}
         localUser={localUser}
         onLocalSignIn={handleLocalSignIn}
         onLocalSignOut={handleLocalSignOut}
-        onUpdateLocalUserTheme={updateLocalUserTheme}
       />
     )
   }
 
   return (
-    <FallbackApp
-      dark={dark}
-      setDark={setDark}
-      userSettings={userSettings}
-      onUpdateSettings={handleUpdateSettings}
+    <WorkspaceEntry
+      legacySettingsEmail={legacySettingsEmail}
       localUser={localUser}
       onLocalSignIn={handleLocalSignIn}
       onLocalSignOut={handleLocalSignOut}
-      onUpdateLocalUserTheme={updateLocalUserTheme}
     />
   )
 }

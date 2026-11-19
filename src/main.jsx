@@ -42,6 +42,14 @@ const AFTER_SIGN_OUT_URL =
     ? `${window.location.origin}${window.location.pathname}`
     : './'
 
+function navigateFromClerk(destination, replace = false) {
+  const url = new URL(destination, window.location.href)
+  const callbackCompletion = url.origin === window.location.origin &&
+    (url.searchParams.has('sso-complete') || url.searchParams.has('sso-continue'))
+  if (replace || callbackCompletion) window.location.replace(url.href)
+  else window.location.assign(url.href)
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     {PUBLISHABLE_KEY ? (
@@ -49,6 +57,8 @@ createRoot(document.getElementById('root')).render(
         <ClerkProvider
           publishableKey={PUBLISHABLE_KEY}
           afterSignOutUrl={AFTER_SIGN_OUT_URL}
+          routerPush={url => navigateFromClerk(url)}
+          routerReplace={url => navigateFromClerk(url, true)}
           unsafe_disableDevelopmentModeConsoleWarning={true}
           appearance={{
             layout: {

@@ -2,6 +2,7 @@ import Select, { useAnchoredPopup } from './Select'
 import { useState, useEffect, useMemo, useRef, useId } from 'react'
 import { Calendar, Clock, ChevronDown, Check, X } from 'lucide-react'
 import { normalizeTime24h, formatClockTime } from '../utils/taskReminders'
+import { useMenuHitTarget } from './useMenuHitTarget'
 
 const HALF_HOUR_SLOTS_24H = (() => {
   const slots = []
@@ -57,6 +58,7 @@ export function TimePickerSelect({
   const triggerRef = useRef(null)
   const listRef = useRef(null)
   const popupRef = useRef(null)
+  const menuHitTarget = useMenuHitTarget()
   useAnchoredPopup(open, rootRef, popupRef, { minWidth: 260 })
   const activeOptionRef = useRef(null)
   const optionsId = useId()
@@ -165,14 +167,15 @@ export function TimePickerSelect({
           ref={popupRef}
           id={optionsId}
           popover="manual"
-          className="anchored-popup dense-controls rounded-xl bg-[var(--bg-card)] border border-[var(--border-strong)] shadow-[var(--shadow-md)]"
+          {...menuHitTarget}
+          className="anchored-popup menu-surface bg-[var(--bg-card)] border border-[var(--border)] shadow-[var(--shadow-md)]"
         >
           {/* 1. All-Day Option */}
-          <div className="p-1.5 border-b border-[var(--border-subtle)]">
+          <div className="pb-1 border-b border-[var(--border)]">
             <button
               type="button"
               onClick={() => handleSelectSlot('')}
-              className={`w-full px-2.5 py-2 rounded-lg text-xs font-semibold flex items-center justify-between cursor-pointer border-none transition-colors ${
+              className={`menu-item w-full py-1.5 text-xs font-semibold flex items-center justify-between cursor-pointer border-none transition-colors ${
                 !cleanVal
                   ? 'bg-[var(--blue-light)] text-[var(--blue-ink)]'
                   : 'bg-transparent text-[var(--text)] hover:bg-[var(--bg-surface)]'
@@ -184,7 +187,7 @@ export function TimePickerSelect({
           </div>
 
           {/* 2. Quick Scrollable Time List */}
-          <div ref={listRef} className="max-h-[208px] overflow-y-auto p-1.5 space-y-0.5">
+          <div ref={listRef} className="menu-list max-h-[208px] overflow-y-auto py-1">
             {HALF_HOUR_SLOTS_24H.map(slot => {
               const selected = cleanVal === slot
               const isScrollAnchor =
@@ -200,7 +203,7 @@ export function TimePickerSelect({
                   ref={isScrollAnchor ? activeOptionRef : null}
                   type="button"
                   onClick={() => handleSelectSlot(slot)}
-                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between cursor-pointer border-none transition-colors ${
+                  className={`menu-item w-full py-1.5 text-xs flex items-center justify-between cursor-pointer border-none transition-colors ${
                     selected
                       ? 'bg-[var(--blue-light)] text-[var(--blue-ink)] font-bold'
                       : 'bg-transparent text-[var(--text)] hover:bg-[var(--bg-surface)] font-medium'
@@ -214,7 +217,7 @@ export function TimePickerSelect({
           </div>
 
           {/* 3. Exact Custom Hour : Minute Controls */}
-          <div className="p-2 bg-[var(--bg-surface)] border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-1.5">
+          <div className="pt-1.5 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-1.5">
             <div className="flex flex-wrap items-center gap-1 min-w-0">
               <span className="text-[10.5px] font-semibold text-[var(--text-muted)] mr-0.5 shrink-0">
                 Exact:
@@ -223,7 +226,7 @@ export function TimePickerSelect({
                 aria-label="Hour"
                 value={parts.hour}
                 onValueChange={nextValue => handlePartChange({ hour: nextValue })}
-                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
+                className="menu-select [--menu-select-inset:.375rem] bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
                 options={(is24h
                   ? Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'))
                   : ['12', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
@@ -234,7 +237,7 @@ export function TimePickerSelect({
                 aria-label="Minute"
                 value={parts.minute}
                 onValueChange={nextValue => handlePartChange({ minute: nextValue })}
-                className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
+                className="menu-select [--menu-select-inset:.375rem] bg-[var(--bg-card)] text-xs font-semibold font-mono-num text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.5rem]"
                 options={minuteChoices.map(m => ({ value: m, label: String(m) }))}
               />
               {!is24h && (
@@ -242,7 +245,7 @@ export function TimePickerSelect({
                   aria-label="AM or PM"
                   value={parts.period}
                   onValueChange={nextValue => handlePartChange({ period: nextValue })}
-                  className="min-h-[28px] px-1.5 rounded-lg bg-[var(--bg-card)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.75rem]"
+                  className="menu-select [--menu-select-inset:.375rem] bg-[var(--bg-card)] text-xs font-semibold text-[var(--text)] border border-[var(--border)] cursor-pointer [--select-width:3.75rem]"
                   options={[
                     { value: "AM", label: String("AM") },
                     { value: "PM", label: String("PM") },
@@ -260,7 +263,7 @@ export function TimePickerSelect({
                 setOpen(false)
                 triggerRef.current?.focus({ preventScroll: true })
               }}
-              className="px-2.5 min-h-[28px] rounded-lg bg-[var(--blue)] text-[var(--on-blue)] text-[11px] font-medium border-none cursor-pointer shrink-0 hover:opacity-90"
+              className="menu-item bg-[var(--blue)] text-[var(--on-blue)] text-[11px] font-medium border-none cursor-pointer shrink-0 hover:opacity-90"
             >
               Done
             </button>

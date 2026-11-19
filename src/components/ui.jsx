@@ -1,5 +1,6 @@
 import { useState, useEffect, useId, useRef } from 'react'
 import { X, Check, Search, ChevronDown, MoreHorizontal, LoaderCircle, Users } from 'lucide-react'
+import { useMenuHitTarget } from './useMenuHitTarget'
 
 /**
  * Google Material Design 3 (M3) & Google Workspace UI Primitives for ClubHub.
@@ -430,6 +431,7 @@ export function ActionDisclosure({
   const [open, setOpen] = useState(false)
   const root = useRef(null)
   const id = useId()
+  const menuHitTarget = useMenuHitTarget()
 
   function close({ restoreFocus = true } = {}) {
     setOpen(false)
@@ -457,11 +459,11 @@ export function ActionDisclosure({
       }}
     >
       {iconOnly ? (
-        <IconButton variant="outlined" size="sm" selected={Boolean(count)} ariaLabel={label} title={label} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        <IconButton variant="outlined" size="sm" className="menu-trigger" selected={Boolean(count)} ariaLabel={label} title={label} aria-controls={id} aria-expanded={open} onClick={() => setOpen(value => !value)}>
           {icon || <MoreHorizontal size={18} />}
         </IconButton>
       ) : (
-        <Button variant="outlined-neutral" size="sm"
+        <Button variant="outlined-neutral" size="sm" className="menu-trigger"
           icon={pending ? <LoaderCircle size={14} className="motion-safe:animate-spin" /> : icon}
           trailingIcon={<ChevronDown size={14} />}
           reserveLabels={pendingLabel ? [label, pendingLabel] : undefined}
@@ -475,7 +477,8 @@ export function ActionDisclosure({
           )}
         </Button>
       )}
-      <div id={id} hidden={!open} className={`action-disclosure absolute right-0 top-full z-30 mt-1 min-w-44 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-[var(--shadow-md)] ${panelClassName}`}>
+      <div id={id} hidden={!open} {...menuHitTarget}
+        className={`menu-surface menu-list action-disclosure absolute right-0 top-full z-30 mt-1 min-w-44 border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-md)] ${panelClassName}`}>
         {open && children(close)}
       </div>
     </div>
@@ -486,7 +489,7 @@ export function ActionItem({ children, icon, onClick, disabled, pending, pending
   return (
     <button
       type="button"
-      className={`ui-touch flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm hover:bg-[var(--bg-subtle)] disabled:opacity-45 ${danger ? 'text-[var(--red-ink)]' : 'text-[var(--text)]'}`}
+      className={`menu-item flex w-full items-center gap-2 py-1.5 text-left text-sm hover:bg-[var(--bg-subtle)] disabled:opacity-45 ${danger ? 'text-[var(--red-ink)]' : 'text-[var(--text)]'}`}
       onClick={event => {
         if (!pending) onClick?.(event)
       }}

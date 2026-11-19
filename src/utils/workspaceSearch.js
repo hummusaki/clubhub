@@ -44,12 +44,12 @@ export function getWorkspaceSearchGroups(query, {
 export function workspaceSearchDestination(type, item) {
   const group = GROUPS[type]
   if (!group || !item?.id) return null
-  return {
-    nav: group[1],
-    options: {
-      ...(type === 'club' ? { section: 'discover' } : {}),
-      ...(type === 'person' ? { section: 'directory' } : {}),
-      searchTarget: { type, id: String(item.id) },
-    },
+  if (type === 'club') return { nav: 'clubs', options: { clubId: String(item.id) } }
+  if (type === 'person') {
+    if (!item.clubId) return null
+    return { nav: 'clubs', options: {
+      clubId: String(item.clubId), clubSection: 'members', personId: String(item.rosterId || item.id),
+    } }
   }
+  return { nav: group[1], options: { searchTarget: { type, id: String(item.id) } } }
 }

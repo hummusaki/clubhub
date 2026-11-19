@@ -135,7 +135,11 @@ test('global groups and entity routing avoid unauthorized sources and local filt
     const selected = group.items[0]
     const destination = workspaceSearchDestination(group.type, selected)
     assert.equal(destination.nav, nav)
-    assert.deepEqual(destination.options.searchTarget, { id: selected.id, type: group.type })
+    if (group.type === 'club') assert.deepEqual(destination.options, { clubId: selected.id })
+    else if (group.type === 'person') assert.deepEqual(destination.options, {
+      clubId: auto.id, clubSection: 'members', personId: selected.id,
+    })
+    else assert.deepEqual(destination.options.searchTarget, { id: selected.id, type: group.type })
     assert.equal('searchQuery' in destination.options, false)
   }
 })

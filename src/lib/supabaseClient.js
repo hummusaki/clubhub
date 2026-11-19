@@ -294,11 +294,13 @@ export async function bridgeClerkToSupabaseAuth({ clerkUserId, email, fullName =
   return inflightClerkBridgePromise
 }
 
-export async function getSupabaseAccessToken() {
+export async function getSupabaseAccessToken(expectedEmail = '') {
   if (!supabase) return ''
   try {
     const { data } = await supabase.auth.getSession()
-    return data?.session?.access_token || ''
+    const session = data?.session
+    if (expectedEmail && String(session?.user?.email || '').toLowerCase() !== expectedEmail) return ''
+    return session?.access_token || ''
   } catch {
     return ''
   }

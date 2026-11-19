@@ -4,6 +4,7 @@
 
 import crypto from 'node:crypto';
 import { Router } from 'express';
+import { isPublishedRosterPerson } from '../../src/utils/publicRoster.js';
 import { getClubById } from '../database.js';
 import {
   privQueryAll,
@@ -95,31 +96,32 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
   const clubOfficialEmail = normalizeEmail(publicClub?.email || '');
 
   // 1. Private memberships joined with users
-  const membershipRows = await privQueryAll(
+  const membershipRows = perm.isMember ? await privQueryAll(
     `SELECT m.*, u.email, u.fullName, u.major, u.gradYear, u.avatarBg, u.verifiedEdu
        FROM club_memberships m
        JOIN users u ON u.id = m.userId
       WHERE m.clubId = ?
       ORDER BY CASE m.tier WHEN 'president' THEN 0 WHEN 'board' THEN 1 ELSE 2 END, m.joinedAt ASC`,
     [clubId]
-  );
+  ) : [];
 
   // 2. Approved & pending claims for this club
-  const claimRows = await privQueryAll(
+  const claimRows = requesterUser?.id ? await privQueryAll(
     `SELECT c.*, u.fullName AS claimerName, u.email AS claimerEmail, u.verifiedEdu AS claimerVerifiedEdu
        FROM roster_claims c
        JOIN users u ON u.id = c.userId
       WHERE c.clubId = ? AND c.status IN ('approved', 'pending')
+        AND (c.userId = ? OR ? = 1 OR (? = 1 AND c.status = 'approved'))
       ORDER BY c.createdAt DESC`,
-    [clubId]
-  );
+    [clubId, requesterUser.id, Number(perm.isBoard), Number(perm.isMember)]
+  ) : [];
 
   const approvedClaimByRosterId = new Map();
   const pendingClaims = [];
   let myActiveClaim = null;
   for (const cl of claimRows) {
     if (cl.status === 'approved') {
-      approvedClaimByRosterId.set(cl.rosterId, cl);
+      approvedClaimByRosterId.set(String(cl.rosterId).toLowerCase(), cl);
       if (requesterUser?.id && cl.userId === requesterUser.id) {
         myActiveClaim = {
           id: cl.id,
@@ -139,6 +141,7 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
         requestedRole: cl.requestedRole,
         rosterName: cl.rosterName,
         claimerName: cl.claimerName,
+        isMine: cl.userId === requesterUser?.id,
         claimerEmail:
           canSeePrivateEmails || cl.userId === requesterUser?.id ? cl.claimerEmail : '',
         claimerVerifiedEdu: Boolean(cl.claimerVerifiedEdu),
@@ -185,24 +188,22 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
   const enrichedPublicRoster = [];
 
   for (const r of publicRoster) {
-    if (!r?.id) continue;
-    const isSyntheticContact = String(r.id).endsWith('_official_contact');
-    const approvedClaim = approvedClaimByRosterId.get(r.id) || null;
+    if (!isPublishedRosterPerson(r)) continue;
+    const approvedClaim = approvedClaimByRosterId.get(String(r.id).toLowerCase()) || null;
     const isClaimedByYou = Boolean(
       approvedClaim && requesterUser?.id && approvedClaim.userId === requesterUser.id
     );
 
     enrichedPublicRoster.push({
-      ...r,
-      isSyntheticContact,
+      id: r.id,
+      name: r.name,
+      role: r.role,
+      personType: r.personType,
       claimed: Boolean(approvedClaim),
       claimedByUserId: approvedClaim?.userId || null,
-      claimedByName: approvedClaim?.claimerName || null,
       claimedRole: approvedClaim?.requestedRole || r.role,
       isClaimedByYou,
     });
-
-    if (isSyntheticContact) continue;
 
     if (r.personType === 'member') {
       if (!approvedClaim) {
@@ -214,7 +215,7 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
             rosterId: r.id,
             name: r.name,
             initials: r.initials || toInitials(r.name),
-            email: r.email && normalizeEmail(r.email) !== clubOfficialEmail ? r.email : '',
+            email: '',
             roleTitle: r.role || 'Active Member',
             tier: 'member',
             major: r.major || '',
@@ -234,7 +235,7 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
           rosterId: r.id,
           name: r.name,
           initials: r.initials || toInitials(r.name),
-          email: r.email || publicClub?.email || '',
+          email: clubOfficialEmail,
           roleTitle: r.role || 'Officer',
           tier: classifyLeadershipTier(r.role || 'Officer'),
           major: r.major || '',
@@ -248,14 +249,14 @@ export async function buildClubPeopleAndShortcuts(rawClubId, requesterUser = nul
   }
 
   // 4. Club groups & their members
-  const groupRows = await privQueryAll(
+  const groupRows = perm.isMember ? await privQueryAll(
     `SELECT * FROM club_groups WHERE clubId = ? ORDER BY createdAt ASC`,
     [clubId]
-  );
-  const groupMemberRows = await privQueryAll(
+  ) : [];
+  const groupMemberRows = perm.isMember ? await privQueryAll(
     `SELECT * FROM club_group_members WHERE clubId = ? ORDER BY addedAt ASC`,
     [clubId]
-  );
+  ) : [];
 
   const membersByGroup = new Map();
   for (const gm of groupMemberRows) {
@@ -681,7 +682,7 @@ router.post('/memberships/sync', requireAuth, async (req, res) => {
 router.get('/clubs/:clubId/people', optionalAuth, async (req, res) => {
   const clubId = normalizeClubKey(req.params.clubId);
   const data = await buildClubPeopleAndShortcuts(clubId, req.user);
-  res.json(data);
+  res.set('Cache-Control', 'private, no-store').json({ ok: true, ...data });
 });
 
 router.post('/clubs/:clubId/claims', requireAuth, async (req, res) => {

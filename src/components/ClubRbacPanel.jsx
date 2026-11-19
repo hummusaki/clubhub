@@ -8,13 +8,10 @@ import {
   Trash2,
   Layers,
   Megaphone,
-  ArrowRight,
-  UserPlus,
 } from 'lucide-react'
 import { Card, BubbleTag, Avatar, SectionHeader, cleanText, Button, IconButton, FilterChip } from './ui'
 import {
   getClubPeopleAndGroups,
-  joinWorkspaceClub,
   claimClubRosterPosition,
   reviewClubRosterClaim,
   revokeClubRosterClaim,
@@ -32,37 +29,15 @@ const roleFieldClass = 'ui-touch min-w-0 min-h-10 rounded-lg bg-[var(--bg-surfac
 const GROUP_COLORS = ['blue', 'purple', 'teal', 'green', 'yellow', 'red']
 
 export default function ClubRbacPanel({
-  clubs = [],
-  selectedClubId: externalClubId = '',
+  club: activeClub,
+  publishedPeople = [],
   initialSeatId = '',
   initialRoleTitle = '',
-  onSelectClub,
   user = null,
-  isDemo = false,
   onMembershipConfirmed,
-  onOpenTasks,
   onRefreshAnnouncements,
   onNotify,
 }) {
-  const joinedClubs = useMemo(() => clubs.filter(c => c.joined), [clubs])
-  const [internalClubId, setInternalClubId] = useState(
-    () => externalClubId && externalClubId !== 'all' ? externalClubId : joinedClubs[0]?.id || clubs[0]?.id || ''
-  )
-
-  const activeClubId = externalClubId && externalClubId !== 'all' ? externalClubId : internalClubId
-  const activeClub = useMemo(
-    () => clubs.find(c => String(c.id) === String(activeClubId)) || clubs[0] || null,
-    [clubs, activeClubId]
-  )
-
-  useEffect(() => {
-    if (externalClubId && externalClubId !== 'all') {
-      setInternalClubId(externalClubId)
-    } else if (!activeClubId && (joinedClubs[0]?.id || clubs[0]?.id)) {
-      setInternalClubId(String(joinedClubs[0]?.id || clubs[0]?.id))
-    }
-  }, [externalClubId, activeClubId, joinedClubs, clubs])
-
   const [clubPeople, setClubPeople] = useState(null)
   const [loading, setLoading] = useState(false)
   const [roleChoice, setRoleChoice] = useState(() => initialSeatId || (initialRoleTitle ? OTHER_ROLE : ''))
@@ -70,6 +45,7 @@ export default function ClubRbacPanel({
   const [claimNotes, setClaimNotes] = useState('')
   const [busyAction, setBusyAction] = useState('')
   const [roleError, setRoleError] = useState('')
+  const [loadingError, setLoadingError] = useState('')
   const [submittedClaim, setSubmittedClaim] = useState(null)
   const writingClaim = useRef(false)
   const request = useRef(null)
@@ -97,10 +73,12 @@ export default function ClubRbacPanel({
     const controller = new AbortController()
     request.current = controller
     setLoading(true)
-    const res = await getClubPeopleAndGroups(activeClub.id, controller.signal)
+    setLoadingError('')
+    const res = await getClubPeopleAndGroups(activeClub.id, controller.signal).catch(error => ({ error: error.message }))
     if (controller.signal.aborted) return
     setLoading(false)
-    if (res.ok) setClubPeople(res)
+    setClubPeople(res.ok ? res : null)
+    if (!res.ok) setLoadingError(res.error || 'Could not load roles and groups.')
     return res.ok
   }, [activeClub?.id])
 
@@ -112,8 +90,8 @@ export default function ClubRbacPanel({
 
   // Re-sync live permissions immediately if board rights are revoked mid-session
   useEffect(() => {
-    return onWorkspacePermissionChange(() => {
-      refreshClubData()
+    return onWorkspacePermissionChange(detail => {
+      if (detail?.method !== 'GET') refreshClubData()
     })
   }, [refreshClubData])
 
@@ -126,16 +104,21 @@ export default function ClubRbacPanel({
     claimedRosterId: null,
   }
 
-  const rosterPositions = useMemo(() => (clubPeople?.publicRoster || [])
-    .filter(r => r.id && !r.isSyntheticContact && r.personType !== 'member')
-    .map(r => ({
-      rosterId: r.id,
-      role: r.role || 'Officer',
-      rosterName: r.name,
-      claimed: Boolean(r.claimed),
-      isClaimedByYou: Boolean(r.isClaimedByYou),
-      isPublic: !r.isPrivate && (!r.visibility || r.visibility === 'public'),
-    })), [clubPeople?.publicRoster])
+  const rosterPositions = useMemo(() => {
+    const serverRoster = new Map((clubPeople?.publicRoster || []).map(person => [person.id, person]))
+    const claimed = new Set((clubPeople?.board || []).map(person => person.rosterId?.toLowerCase()))
+    return publishedPeople.filter(person => person.isOfficer).map(person => {
+      const seat = serverRoster.get(person.rosterId)
+      return {
+        rosterId: person.rosterId,
+        role: person.role,
+        rosterName: person.name,
+        claimed: Boolean(seat?.claimed || claimed.has(person.rosterId.toLowerCase())),
+        isClaimedByYou: Boolean(seat?.isClaimedByYou),
+        isPublic: true,
+      }
+    })
+  }, [clubPeople, publishedPeople])
 
   useEffect(() => {
     if (clubPeople && initialSeatId && roleChoice === initialSeatId &&
@@ -144,30 +127,12 @@ export default function ClubRbacPanel({
     }
   }, [clubPeople, initialSeatId, initialRoleTitle, roleChoice, rosterPositions])
 
-  const myPendingClaim = (clubPeople?.pendingClaims || []).find(c => c.userId === user?.id)
+  const myPendingClaim = (clubPeople?.pendingClaims || []).find(c => c.isMine || c.userId === user?.id)
     || (submittedClaim?.clubId === activeClub?.id ? submittedClaim : null)
-
-  async function handleJoinClub() {
-    if (!activeClub?.id || busyAction || loading) return
-    if (isDemo || !user) {
-      onNotify?.('Sign in with a verified account to join clubs & claim roster positions.', { type: 'error' })
-      return
-    }
-    setBusyAction('join')
-    const res = await joinWorkspaceClub(activeClub.id)
-    setBusyAction('')
-    if (res.ok) {
-      onMembershipConfirmed?.(activeClub.id)
-      onNotify?.(`Joined ${cleanText(activeClub.name)}!`)
-      refreshClubData()
-    } else {
-      onNotify?.(res.error || 'Could not join club.', { type: 'error' })
-    }
-  }
 
   async function handleClaimSubmit(e) {
     e.preventDefault()
-    if (!activeClub?.id || !user || isDemo || loading || writingClaim.current || busyAction || myPendingClaim || perm.isBoard) return
+    if (!activeClub?.id || !user || loading || writingClaim.current || busyAction || myPendingClaim || perm.isBoard) return
     const isCustom = roleChoice === OTHER_ROLE
     const seat = isCustom ? null : rosterPositions.find(p => p.rosterId === roleChoice)
     const roleToClaim = (isCustom ? customRoleTitle : seat?.role || '').trim()
@@ -313,6 +278,15 @@ export default function ClubRbacPanel({
 
   if (!activeClub) return null
 
+  if (!clubPeople) {
+    return (
+      <Card className="section-pad space-y-2">
+        <p role={loadingError ? 'alert' : 'status'}>{loadingError || 'Loading roles and groups…'}</p>
+        {loadingError && <Button size="sm" onClick={refreshClubData}>Retry</Button>}
+      </Card>
+    )
+  }
+
   return (
     <Card animate={false} className="p-4 sm:p-6 space-y-5 border border-[var(--border)]">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 pb-4 border-b border-[var(--border)]">
@@ -323,19 +297,6 @@ export default function ClubRbacPanel({
         />
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            aria-label="Select club for governance"
-            value={activeClub.id}
-            disabled={Boolean(busyAction)}
-            onValueChange={nextValue => {
-              setInternalClubId(nextValue)
-              onSelectClub?.(nextValue)
-            }}
-            className="w-full sm:w-auto min-h-[40px] px-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-base sm:text-xs font-semibold text-[var(--text)]"
-            search
-            options={clubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
-          />
-
           {perm.isBoard && (
             <button
               type="button"
@@ -347,36 +308,13 @@ export default function ClubRbacPanel({
             </button>
           )}
 
-          {onOpenTasks && (perm.isMember || perm.isBoard || activeClub?.joined) && (
-            <button
-              type="button"
-              onClick={() => onOpenTasks(activeClub.id)}
-              className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] rounded-xl bg-[var(--blue-light)] text-[var(--blue-ink)] text-xs font-semibold border border-[var(--blue)]/25 cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <span>Task Board</span>
-              <ArrowRight size={13} />
-            </button>
-          )}
         </div>
       </div>
 
       {/* Section 1: Membership & Roster Position Claiming */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="content-tile p-4 rounded-2xl space-y-3.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--border)] pb-3">
-            <span className="text-sm font-medium">Membership</span>
-            {(perm.isMember || activeClub.joined) ? (
-              <span className="text-sm text-[var(--text-muted)]">Member</span>
-            ) : user && !isDemo ? (
-              <Button variant="outlined" size="sm" leadingIcon={<UserPlus size={14} />}
-                disabled={loading || Boolean(busyAction && busyAction !== 'join')}
-                pending={busyAction === 'join'} pendingLabel="Joining…" onClick={handleJoinClub}>
-                Join club
-              </Button>
-            ) : null}
-          </div>
-
-          {!user || isDemo ? (
+          {!user ? (
             <p className="text-sm text-[var(--text-muted)]">Sign in to join this club or request an officer role.</p>
           ) : perm.isBoard ? (
             <div className="space-y-2.5">

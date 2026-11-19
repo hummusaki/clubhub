@@ -1,3 +1,5 @@
+import { isPublicRecord } from '../../src/utils/publicRoster.js';
+
 // ── Public Static Snapshot Privacy & PII Sanitizer Guard ──
 // Ensures that `public/clubhub-data.json` (committed to GitHub Pages) contains ONLY public
 // UCSC organization catalog, public posts, public events, public links, and public club rosters —
@@ -21,6 +23,7 @@ const FORBIDDEN_TOP_LEVEL_KEYS = [
   'scheduler_responses',
   'dict',
   'dictionary_store',
+  'hub',
 ];
 
 export function sanitizePublicSnapshot(snapshot) {
@@ -35,7 +38,7 @@ export function sanitizePublicSnapshot(snapshot) {
   if (Array.isArray(clean.events)) {
     clean.events = clean.events.filter(
       e =>
-        e &&
+        isPublicRecord(e) &&
         e.clubId !== 'personal_poll' &&
         !String(e.id || '').startsWith('personal_') &&
         !String(e.id || '').startsWith('collab_evt_')
@@ -49,19 +52,19 @@ export function sanitizePublicSnapshot(snapshot) {
     ])
   );
 
+  for (const collection of ['posts', 'announcements', 'links']) {
+    if (Array.isArray(clean[collection])) clean[collection] = clean[collection].filter(isPublicRecord);
+  }
+
   if (Array.isArray(clean.roster)) {
+    const fields = ['id', 'clubId', 'clubName', 'name', 'initials', 'role', 'personType',
+      'major', 'year', 'office', 'instagram', 'color', 'source', 'sourceUrl'];
     clean.roster = clean.roster
-      .filter(r => r && !String(r.id || '').startsWith('custom_'))
+      .filter(r => isPublicRecord(r) && !String(r.id || '').startsWith('custom_'))
       .map(r => {
-        const copy = { ...r };
-        delete copy.claimedByUserId;
-        delete copy.claimedByEmail;
-        delete copy.passwordHash;
-        delete copy.tokenHash;
-        const officialEmail = officialClubEmails.get(copy.clubId) || '';
-        if (copy.email && String(copy.email).trim().toLowerCase() !== officialEmail) {
-          delete copy.email;
-        }
+        const copy = Object.fromEntries(fields.filter(field => r[field] !== undefined).map(field => [field, r[field]]));
+        const officialEmail = officialClubEmails.get(r.clubId) || '';
+        if (r.email && String(r.email).trim().toLowerCase() === officialEmail) copy.email = r.email;
         return copy;
       });
   }

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
+import { useMenuHitTarget } from './useMenuHitTarget'
 
 const normalize = value => String(value ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 const optionKey = option => option.id ?? `${typeof option.value}:${option.value}`
@@ -60,6 +61,16 @@ export function useAnchoredPopup(open, anchor, popup, { minWidth = 180, maxWidth
   }, [open, anchor, popup, minWidth, maxWidth])
 }
 
+export function MenuSelect({ label, ...props }) {
+  const labelId = useId()
+  return (
+    <div className="menu-field">
+      <span id={labelId}>{label}</span>
+      <Select menuMinWidth={208} {...props} fullWidth aria-labelledby={labelId} className="control-select menu-select" />
+    </div>
+  )
+}
+
 export default function Select({
   value = '',
   onValueChange,
@@ -96,6 +107,7 @@ export default function Select({
   const root = useRef(null)
   const control = useRef(null)
   const popup = useRef(null)
+  const menuHitTarget = useMenuHitTarget()
   const typeahead = useRef({ text: '', time: 0 })
   const [opened, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -236,7 +248,7 @@ export default function Select({
         aria-selected={Object.is(option.value, value)}
         aria-disabled={option.disabled || undefined}
         data-active={active === option || undefined}
-        className="app-select-option"
+        className="menu-item app-select-option"
         onMouseDown={event => event.preventDefault()}
         onClick={() => choose(option)}
       >
@@ -344,16 +356,17 @@ export default function Select({
       )}
       {validationMessage && <span id={errorId} className="sr-only" role="alert">{validationMessage}</span>}
       {open && (
-        <div ref={popup} popover="manual" className="app-select-menu anchored-popup">
+        <div ref={popup} popover="manual" {...menuHitTarget} className="menu-surface app-select-menu anchored-popup">
           <div
             id={listId}
             role="listbox"
+            className="menu-list"
             aria-label={ariaLabel || 'Options'}
             aria-labelledby={labelledBy}
             aria-busy={loading || undefined}
           >
             {Array.from(groups, ([group, items]) => group ? (
-              <div key={group} role="group" aria-label={group}>
+              <div key={group} role="group" className="menu-list" aria-label={group}>
                 <div aria-hidden="true" className="app-select-group">{group}</div>
                 {items.map(renderOption)}
               </div>

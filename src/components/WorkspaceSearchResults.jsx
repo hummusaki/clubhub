@@ -21,7 +21,7 @@ export default function WorkspaceSearchResults({ query, sources, onSelect }) {
   return (
     <div className="space-y-2 p-2.5">
       <p role="status" className={groups.length ? 'sr-only' : 'px-3 py-2 text-sm text-[var(--text-muted)] break-words'}>
-        {!hasQuery ? 'Search for a club, event, resource, or public officer.'
+        {!hasQuery ? 'Search for a club, event, resource, or someone in a published roster.'
           : !groups.length ? `No results for “${query.trim()}”. Try a shorter name, a club handle, or a location.`
           : `Results for “${query.trim()}” in ${groups.map(group => group.label).join(', ')}.`}
       </p>
@@ -36,7 +36,7 @@ export default function WorkspaceSearchResults({ query, sources, onSelect }) {
                 const [name, context] = display(type, item)
                 return (
                   <li key={item.id}>
-                    <button type="button" data-search-result onClick={() => onSelect(type, item)}
+                    <button type="button" data-search-result={`${type}:${item.id}`} onClick={() => onSelect(type, item)}
                       className="ui-touch w-full min-h-11 rounded-xl flex items-center gap-2.5 px-3 py-1.5 text-left cursor-pointer hover:bg-[var(--bg-subtle)] focus-visible:bg-[var(--bg-subtle)]">
                       <Icon size={17} aria-hidden="true" className="shrink-0 text-[var(--blue)]" />
                       <span className="min-w-0 flex-1 break-words">

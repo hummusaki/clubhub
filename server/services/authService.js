@@ -524,13 +524,13 @@ export async function getClubPermission(user, rawClubId) {
     [clubId, user.id]
   );
 
-  const groupRows = await privQueryAll(
+  const groupRows = membership ? await privQueryAll(
     `SELECT DISTINCT groupId
        FROM club_group_members
       WHERE clubId = ?
         AND (userId = ? OR (email != '' AND LOWER(email) = ?))`,
     [clubId, user.id, normalizeEmail(user.email)]
-  );
+  ) : [];
 
   const tier = membership?.tier || 'none';
   const isBoard = tier === 'board' || tier === 'president';

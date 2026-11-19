@@ -61,89 +61,16 @@
     </style>
     <script>
       (function () {
+        var dark = Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        root.classList.add(dark ? 'dark' : 'light');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#131314' : '#F8FAFD');
+
         try {
-          var isValidMode = function (m) {
-            return m === 'system' || m === 'light' || m === 'dark';
-          };
-
-          var reduceMotion = false;
-          var compactCards = false;
-
-          var rawSettings = localStorage.getItem('clubhub_user_settings_v1');
-          var settings = rawSettings ? JSON.parse(rawSettings) : null;
-          if (settings && settings.reduceMotion) {
-            reduceMotion = true;
-          }
-          if (settings && settings.compactCards) {
-            compactCards = true;
-          }
-
-          var rawUser = localStorage.getItem('clubhub_auth_user');
-          var parsedUser = rawUser ? JSON.parse(rawUser) : null;
-          var rawMap = localStorage.getItem('clubhub_account_themes_v2');
-          var themeMap = rawMap ? JSON.parse(rawMap) : {};
-          var lastAcct = localStorage.getItem('clubhub_last_active_account_v1');
-
-          var mode = null;
-
-          if (parsedUser && parsedUser.email) {
-            var emailKey = 'email:' + String(parsedUser.email).toLowerCase();
-            if (isValidMode(parsedUser.themeMode)) {
-              mode = parsedUser.themeMode;
-            } else if (isValidMode(themeMap[emailKey])) {
-              mode = themeMap[emailKey];
-            }
-          }
-
-          if (!mode && lastAcct && isValidMode(themeMap[lastAcct])) {
-            mode = themeMap[lastAcct];
-          }
-
-          if (!mode && settings && isValidMode(settings.themeMode)) {
-            mode = settings.themeMode;
-          }
-
-          if (!mode) {
-            var guestMode = localStorage.getItem('clubhub_guest_theme_mode_v1');
-            if (isValidMode(guestMode)) {
-              mode = guestMode;
-            }
-          }
-
-          if (!mode) {
-            mode = 'system';
-          }
-
-          var isDark =
-            mode === 'dark'
-              ? true
-              : mode === 'light'
-                ? false
-                : Boolean(
-                    window.matchMedia &&
-                      window.matchMedia('(prefers-color-scheme: dark)').matches
-                  );
-
-          var root = document.documentElement;
-          if (isDark) {
-            root.classList.add('dark');
-            root.classList.remove('light');
-            root.style.colorScheme = 'dark';
-          } else {
-            root.classList.remove('dark');
-            root.classList.add('light');
-            root.style.colorScheme = 'light';
-          }
-          var metas = document.querySelectorAll('meta[name="theme-color"]');
-          for (var i = 0; i < metas.length; i++) {
-            metas[i].setAttribute('content', isDark ? '#131314' : '#F8FAFD');
-          }
-          if (reduceMotion) {
-            root.classList.add('reduce-motion');
-          }
-          if (compactCards) {
-            root.classList.add('compact-cards');
-          }
+          var settings = JSON.parse(localStorage.getItem('clubhub_user_settings_v1'));
+          if (settings && settings.reduceMotion) root.classList.add('reduce-motion');
+          if (settings && settings.compactCards) root.classList.add('compact-cards');
         } catch (e) {
           // Ignore storage read errors
         }

@@ -9,8 +9,6 @@ import {
   Bell,
   Download,
   RotateCcw,
-  LogOut,
-  LogIn,
   Check,
   Sparkles,
   ShieldCheck,
@@ -38,7 +36,7 @@ const AVATAR_COLORS = [
 const SETTINGS_TABS = [
   { id: 'general',       label: 'Profile & Theme',   shortLabel: 'Profile',      icon: User },
   { id: 'calendar',      label: 'Calendar & Sync',   shortLabel: 'Calendar',     icon: Calendar },
-  { id: 'integrations',  label: 'Discord & Email',   shortLabel: 'Integrations', icon: Plug },
+  { id: 'integrations',  label: 'Integrations',   shortLabel: 'Integrations', icon: Plug },
   { id: 'notifications', label: 'Alerts & Account',  shortLabel: 'Account',      icon: Bell },
   { id: 'all',           label: 'All Settings',      shortLabel: 'All',          icon: Layers },
 ]
@@ -57,8 +55,6 @@ export default function SettingsView({
   calendarIntegration = null,
   onRefresh,
   onResetLocalData,
-  onSignOut,
-  onExitDemo,
   onNotify,
 }) {
   const [activeSection, setActiveSection] = useState(() =>
@@ -631,27 +627,6 @@ export default function SettingsView({
               )}
             </div>
 
-            {isDemo && onExitDemo ? (
-              <Button
-                variant="filled"
-                size="md"
-                leadingIcon={<LogIn size={15} />}
-                onClick={onExitDemo}
-                className="w-full sm:w-auto shrink-0"
-              >
-                Exit Demo &amp; Sign In
-              </Button>
-            ) : onSignOut ? (
-              <Button
-                variant="danger-tonal"
-                size="md"
-                leadingIcon={<LogOut size={15} />}
-                onClick={onSignOut}
-                className="w-full sm:w-auto shrink-0"
-              >
-                Sign Out
-              </Button>
-            ) : null}
           </div>
         </Card>
       )}

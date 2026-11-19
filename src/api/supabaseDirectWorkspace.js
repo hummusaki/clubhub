@@ -24,7 +24,6 @@ const toInitials = name =>
     .slice(0, 2)
     .toUpperCase() || 'MB'
 
-let cachedProfile = null
 let inflightProfilePromise = null
 let usersHasExternalAuthId = true
 
@@ -42,7 +41,6 @@ export function isMissingExternalAuthIdError(err) {
 }
 
 export function clearDirectUserProfileCache() {
-  cachedProfile = null
   inflightProfilePromise = null
 }
 
@@ -313,7 +311,6 @@ async function loadDirectUserProfileInternal() {
               fullName: clerkFullName,
             })
             if (resolved?.id) {
-              cachedProfile = resolved
               return resolved
             }
           }
@@ -348,7 +345,6 @@ async function loadDirectUserProfileInternal() {
           authUserId: authUser.id,
         })
         if (resolved?.id) {
-          cachedProfile = resolved
           return resolved
         }
       }
@@ -368,21 +364,21 @@ async function loadDirectUserProfileInternal() {
       fullName: clerkFullName,
     })
     if (resolved?.id) {
-      cachedProfile = resolved
       return resolved
     }
   }
 
-  return cachedProfile
+  return null
 }
 
 export async function getDirectUserProfile() {
   if (!isSupabaseConfigured()) return null
   if (inflightProfilePromise) return inflightProfilePromise
-  inflightProfilePromise = loadDirectUserProfileInternal().finally(() => {
-    inflightProfilePromise = null
+  const request = loadDirectUserProfileInternal().finally(() => {
+    if (inflightProfilePromise === request) inflightProfilePromise = null
   })
-  return inflightProfilePromise
+  inflightProfilePromise = request
+  return request
 }
 
 async function buildDirectOverview(sb, profile) {
@@ -428,32 +424,45 @@ async function buildDirectOverview(sb, profile) {
   }
 }
 
-export async function buildDirectClubPeople(clubId) {
-  const sb = getActiveSupabaseClient()
-  const cid = normalizeClub(clubId)
-  const profile = await getDirectUserProfile().catch(() => null)
+export async function readDirectClubPeople(sb, clubId, viewerId) {
+  const empty = { meRow: null, isBoard: false, memRows: [], grpRows: [], gmRows: [] }
+  if (!viewerId) return empty
 
-  const [memRes, { data: grpRows }, gmRes] = await Promise.all([
-    sb.from('club_members').select('*, users!club_members_user_id_fkey(*)').eq('club_id', cid),
-    sb.from('club_groups').select('*').eq('club_id', cid).order('created_at', { ascending: true }),
-    sb.from('group_members').select('*, users!group_members_user_id_fkey(*)').eq('club_id', cid),
+  const membershipFields = 'id,user_id,role,role_title,claimed_position,claim_status,updated_at'
+  const own = await sb.from('club_members').select(membershipFields)
+    .eq('club_id', clubId).eq('user_id', viewerId).maybeSingle()
+  if (own.error) return { error: own.error }
+  const meRow = own.data
+  if (!meRow) return empty
+
+  const isBoard = ['board', 'president'].includes(meRow.role) && meRow.claim_status === 'approved'
+  const profileFields = isBoard ? 'full_name,email' : 'full_name'
+  const [members, groups, groupMembers] = await Promise.all([
+    sb.from('club_members').select(`${membershipFields},users!club_members_user_id_fkey(${profileFields})`).eq('club_id', clubId),
+    sb.from('club_groups').select('id,name,color,description').eq('club_id', clubId).order('created_at', { ascending: true }),
+    sb.from('group_members').select('id,group_id,user_id').eq('club_id', clubId),
   ])
-  let memRows = memRes.data
-  if (memRes.error) {
-    const plainMem = await sb.from('club_members').select('*').eq('club_id', cid)
-    memRows = plainMem.data
+  const error = members.error || groups.error || groupMembers.error
+  if (error) return { error }
+  // A concurrent leave may have removed access after the first read.
+  if (!members.data?.some(row => row.user_id === viewerId)) return empty
+  const memberProfiles = new Map(members.data.map(row => [row.user_id, row.users]))
+  return {
+    meRow,
+    isBoard,
+    memRows: members.data,
+    grpRows: groups.data || [],
+    gmRows: (groupMembers.data || []).map(row => ({ ...row, users: memberProfiles.get(row.user_id) })),
   }
-  let gmRows = gmRes.data
-  if (gmRes.error) {
-    const plainGm = await sb.from('group_members').select('*').eq('club_id', cid)
-    gmRows = plainGm.data
-  }
+}
 
-  const meRow = (memRows || []).find(m => m.user_id === profile?.id)
-  const isBoard =
-    Boolean(meRow) &&
-    (meRow.role === 'board' || meRow.role === 'president') &&
-    meRow.claim_status === 'approved'
+export async function buildDirectClubPeople(clubId) {
+  const cid = normalizeClub(clubId)
+  const profile = await getDirectUserProfile()
+  const sb = getActiveSupabaseClient()
+  const scope = await readDirectClubPeople(sb, cid, profile?.id)
+  if (scope.error) return { ok: false, status: 503, error: scope.error.message }
+  const { meRow, isBoard, memRows, grpRows, gmRows } = scope
   const myGroupIds = (gmRows || [])
     .filter(gm => gm.user_id === profile?.id)
     .map(gm => gm.group_id)
@@ -465,22 +474,25 @@ export async function buildDirectClubPeople(clubId) {
 
   for (const m of memRows || []) {
     const u = m.users || {}
+    const verifiedOfficer = ['board', 'president'].includes(m.role) && m.claim_status === 'approved'
+    const roleTitle = verifiedOfficer ? m.role_title || 'Officer' : 'Member'
     const entry = {
-      id: m.claimed_position || m.id,
+      id: m.id,
+      rosterId: m.claim_status === 'approved' ? m.claimed_position : null,
       memberKey: `uid:${m.user_id}`,
       userId: m.user_id,
       name: u.full_name || 'Club Member',
       initials: toInitials(u.full_name),
       email: isBoard ? u.email || '' : '',
-      role: m.role_title || 'Member',
-      roleTitle: m.role_title || 'Member',
-      tier: m.role,
+      role: roleTitle,
+      roleTitle,
+      tier: verifiedOfficer ? m.role : 'member',
       claimedByUserId: m.claim_status === 'approved' ? m.user_id : null,
       claimedByMe: m.user_id === profile?.id && m.claim_status === 'approved',
       claimId: m.id,
       verified: m.claim_status === 'approved',
     }
-    if ((m.role === 'board' || m.role === 'president') && m.claim_status === 'approved') {
+    if (verifiedOfficer) {
       board.push(entry)
     } else {
       members.push(entry)
@@ -491,8 +503,9 @@ export async function buildDirectClubPeople(clubId) {
         clubId: cid,
         rosterId: m.claimed_position || 'officer',
         userId: m.user_id,
-        applicantName: u.full_name || 'Applicant',
-        applicantEmail: isBoard ? u.email || '' : '',
+        claimerName: u.full_name || 'Applicant',
+        isMine: m.user_id === profile?.id,
+        claimerEmail: isBoard ? u.email || '' : '',
         requestedRole: m.role_title || 'Officer',
         status: 'pending',
         createdAt: m.updated_at,
@@ -546,7 +559,7 @@ export async function buildDirectClubPeople(clubId) {
     members,
     everyone: [...board, ...members],
     unclaimedPositions: [],
-    pendingClaims: isBoard ? pendingClaims : [],
+    pendingClaims: isBoard ? pendingClaims : pendingClaims.filter(claim => claim.isMine),
     myActiveClaim: myClaims.find(c => c.status === 'approved') || null,
     myClaims,
     groups,
@@ -596,7 +609,6 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
             if (retry.data) updatedProfile = { ...retry.data, theme_mode: patch.theme_mode }
           }
         }
-        cachedProfile = updatedProfile
       }
       return buildDirectOverview(sb, updatedProfile)
     }
@@ -665,25 +677,27 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
     if (revMatch && method === 'POST') {
       const cid = normalizeClub(decodeURIComponent(revMatch[1]))
       const claimId = decodeURIComponent(revMatch[2])
-      if (revMatch[3] === 'revoke') {
-        await sb
-          .from('club_members')
-          .update({ role: 'member', role_title: 'Member', claimed_position: null, claim_status: 'revoked' })
-          .eq('id', claimId)
-      } else {
-        const approve = body.decision === 'approve'
-        const { data: row } = await sb.from('club_members').select('*').eq('id', claimId).single()
-        const role = approve
-          ? /president|captain|founder|director/i.test(row?.role_title || '')
-            ? 'president'
-            : 'board'
-          : 'member'
-        const { error } = await sb
-          .from('club_members')
-          .update({ role, claim_status: approve ? 'approved' : 'rejected' })
-          .eq('id', claimId)
-        if (error) return { ok: false, status: 409, error: error.message }
+      const clubPeople = await buildDirectClubPeople(cid)
+      if (!clubPeople.ok) return clubPeople
+      const { permission, myActiveClaim, myClaims, pendingClaims } = clubPeople
+      const revoke = revMatch[3] === 'revoke'
+      const ownClaim = myActiveClaim?.id === claimId || myClaims.some(claim => claim.id === claimId)
+      if (revoke ? !ownClaim && !permission.isPresident : !permission.isBoard || ownClaim) {
+        return { ok: false, status: 403, error: 'You do not have permission to change this claim.' }
       }
+
+      const claim = pendingClaims.find(item => item.id === claimId)
+      if (!revoke && !claim) return { ok: false, status: 409, error: 'This claim is no longer pending.' }
+
+      const approve = !revoke && body.decision === 'approve'
+      const role = approve ? /president|captain|founder|director/i.test(claim.requestedRole) ? 'president' : 'board' : 'member'
+      const patch = approve ? { role, claim_status: 'approved' } : {
+        role, role_title: 'Member', claimed_position: null, claim_status: revoke ? 'revoked' : 'rejected',
+      }
+      let update = sb.from('club_members').update(patch).eq('club_id', cid).eq('id', claimId)
+      if (!revoke) update = update.eq('claim_status', 'pending')
+      const { data, error } = await update.select('id').maybeSingle()
+      if (error || !data) return { ok: false, status: 409, error: error?.message || 'This claim has changed.' }
       return { ok: true, clubPeople: await buildDirectClubPeople(cid) }
     }
 
@@ -692,12 +706,14 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
       const profile = await getDirectUserProfile()
       const cid = normalizeClub(decodeURIComponent(grpMatch[1]))
       const gid = grpMatch[2] ? decodeURIComponent(grpMatch[2]) : null
-      if (method === 'GET') {
-        const cp = await buildDirectClubPeople(cid)
-        return { ok: true, clubId: cid, groups: cp.groups, permission: cp.permission }
+      const cp = await buildDirectClubPeople(cid)
+      if (!cp.ok) return cp
+      if (method === 'GET') return { ok: true, clubId: cid, groups: cp.groups, permission: cp.permission }
+      if (!cp.permission.isBoard) return { ok: false, status: 403, error: 'Club officer permissions required.' }
+      if (gid && !cp.groups.some(group => String(group.id) === gid)) {
+        return { ok: false, status: 404, error: 'Group not found in this club.' }
       }
       if (method === 'POST') {
-        const cp = await buildDirectClubPeople(cid)
         const people = resolveDeduplicatedTargets(cp, body.shortcutTargets, body.members)
         const { data: g, error } = await sb
           .from('club_groups')
@@ -716,13 +732,14 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
         }
         for (const mk of body.removeMemberKeys || []) {
           if (String(mk).startsWith('uid:')) {
-            await sb.from('group_members').delete().eq('group_id', gid).eq('user_id', String(mk).slice(4))
+            await sb.from('group_members').delete().eq('club_id', cid).eq('group_id', gid).eq('user_id', String(mk).slice(4))
           }
         }
         return { ok: true, clubPeople: await buildDirectClubPeople(cid) }
       }
       if (method === 'DELETE' && gid) {
-        await sb.from('club_groups').delete().eq('id', gid)
+        const { error } = await sb.from('club_groups').delete().eq('club_id', cid).eq('id', gid)
+        if (error) return { ok: false, status: 409, error: error.message }
         return { ok: true, clubPeople: await buildDirectClubPeople(cid) }
       }
     }

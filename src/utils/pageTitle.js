@@ -16,7 +16,13 @@ export function buildDashboardPageTitle({
   upcomingCount = 0,
   joinedCount = 0,
   inAppRsvpOnly = false,
+  clubTitle,
+  clubSection,
 } = {}) {
+  if (clubTitle) {
+    const section = { members: 'Members', roles: 'Roles & groups' }[clubSection]
+    return [section, truncateLabel(clubTitle, 54), 'ClubHub'].filter(Boolean).join(' · ')
+  }
   const q = truncateLabel(searchQuery, 24)
   const ctx = subContext && subContext.nav === activeNav ? subContext : null
 

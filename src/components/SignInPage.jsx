@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useClerk } from '@clerk/react'
 import {
-  Moon,
-  Sun,
   Play,
   GraduationCap,
   Mail,
@@ -143,12 +141,17 @@ function ClerkAuthBridge({ bridgeRef, onReady }) {
 }
 
 export default function SignInPage({
-  dark,
-  onToggleDark,
   hasPublishableKey,
   initialError = '',
   onEnterDemo,
   onLocalSignIn,
+  onClerkSignIn,
+  onStartOAuth,
+  onCancelOAuth,
+  returningUser,
+  onContinue,
+  onSwitchAccount,
+  switchingAccount = false,
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -190,12 +193,11 @@ export default function SignInPage({
     // If reloaded right after saving a new Clerk key with Google SSO enabled, auto-launch Google OAuth
     if (!autoLaunchHandledRef.current && window.location.search.includes('auto_google_oauth=1')) {
       autoLaunchHandledRef.current = true
-      window.history.replaceState({}, '', window.location.pathname)
       handleGoogleLoginClick()
       return
     }
 
-    if (ssoContinueHandledRef.current || !window.location.search.includes('sso-continue')) return
+    if (ssoContinueHandledRef.current || !new URLSearchParams(window.location.search).has('sso-continue')) return
     ssoContinueHandledRef.current = true
 
     const signUp = clerk?.client?.signUp
@@ -204,7 +206,7 @@ export default function SignInPage({
     try {
       if (signUp.status === 'complete' && signUp.createdSessionId) {
         await clerk.setActive({ session: signUp.createdSessionId })
-        window.history.replaceState({}, '', window.location.pathname)
+        onClerkSignIn?.(signUp.createdSessionId)
         return
       }
 
@@ -225,7 +227,7 @@ export default function SignInPage({
           const updated = await signUp.update(updatePayload)
           if (updated.status === 'complete' && updated.createdSessionId) {
             await clerk.setActive({ session: updated.createdSessionId })
-            window.history.replaceState({}, '', window.location.pathname)
+            onClerkSignIn?.(updated.createdSessionId)
           }
         }
       }
@@ -241,6 +243,7 @@ export default function SignInPage({
   function finalizeUserSession(profile, workspaceOverview = null) {
     const cleanEmail = (profile.email || '').trim().toLowerCase()
     const resolvedName = (profile.fullName || '').trim() || formatNameFromEmail(cleanEmail)
+    const themeMode = profile.themeMode ?? workspaceOverview?.user?.themeMode
     const userObj = {
       id: profile.id || workspaceOverview?.user?.id || '',
       fullName: resolvedName,
@@ -251,12 +254,7 @@ export default function SignInPage({
       provider: profile.provider || 'email',
       authenticated: true,
       verifiedEdu: cleanEmail.endsWith('.edu'),
-      themeMode:
-        profile.themeMode === 'light' ||
-        profile.themeMode === 'dark' ||
-        profile.themeMode === 'system'
-          ? profile.themeMode
-          : undefined,
+      themeMode: ['light', 'dark', 'system'].includes(themeMode) ? themeMode : undefined,
       avatarBg: profile.avatarBg || '#1A73E8',
     }
     if (onLocalSignIn) onLocalSignIn(userObj, workspaceOverview)
@@ -297,6 +295,7 @@ export default function SignInPage({
               fullName: data.name || formatNameFromEmail(data.email),
               avatarBg: '#1A73E8',
             })
+            if (!synced?.ok || !synced.user?.id) throw new Error(synced?.error || 'Could not verify your workspace session.')
             setGoogleLoading(false)
             setGoogleConfigPromptOpen(false)
             finalizeUserSession(
@@ -346,8 +345,6 @@ export default function SignInPage({
       }
 
       const clerk = clerkBridgeRef.current
-      const baseUrl = `${window.location.origin}${window.location.pathname}`
-      const redirectUrl = `${baseUrl}?sso-callback=1`
 
       if (!clerk?.client?.signIn) {
         setGoogleLoading(false)
@@ -364,14 +361,16 @@ export default function SignInPage({
           // Ignore storage errors
         }
 
+        const { redirectUrl, redirectUrlComplete } = onStartOAuth()
         await clerk.client.signIn.authenticateWithRedirect({
           strategy: 'oauth_google',
           redirectUrl,
-          redirectUrlComplete: baseUrl,
+          redirectUrlComplete,
           oidcPrompt: 'select_account',
         })
         return
       } catch (err) {
+        onCancelOAuth?.()
         setGoogleLoading(false)
         const rawMsg =
           err?.errors?.[0]?.longMessage ||
@@ -485,6 +484,7 @@ export default function SignInPage({
         if (res?.status === 'complete' && res?.createdSessionId) {
           await ensureSupabaseSessionForCredentials(email.trim().toLowerCase(), password)
           await clerk.setActive({ session: res.createdSessionId })
+          onClerkSignIn?.(res.createdSessionId)
           setSubmitting(false)
           return
         }
@@ -496,6 +496,7 @@ export default function SignInPage({
         if (res?.status === 'complete' && res?.createdSessionId) {
           await ensureSupabaseSessionForCredentials(email.trim().toLowerCase(), password)
           await clerk.setActive({ session: res.createdSessionId })
+          onClerkSignIn?.(res.createdSessionId)
           setSubmitting(false)
           return
         }
@@ -546,6 +547,7 @@ export default function SignInPage({
           if (res?.status === 'complete' && res?.createdSessionId) {
             await ensureSupabaseSessionForCredentials(cleanEmail, password)
             await clerk.setActive({ session: res.createdSessionId })
+            onClerkSignIn?.(res.createdSessionId)
             setSubmitting(false)
             return
           }
@@ -612,6 +614,7 @@ export default function SignInPage({
           if (signUpRes?.status === 'complete' && signUpRes?.createdSessionId) {
             await ensureSupabaseSessionForCredentials(cleanEmail, password)
             await clerk.setActive({ session: signUpRes.createdSessionId })
+            onClerkSignIn?.(signUpRes.createdSessionId)
             setSubmitting(false)
             return
           }
@@ -635,12 +638,10 @@ export default function SignInPage({
       const authRes = await authenticateWorkspaceEmail({
         email: cleanEmail,
         password,
-        fullName: formatNameFromEmail(cleanEmail),
-        avatarBg: '#1A73E8',
         mode: 'auto',
       })
 
-      if (!authRes?.ok) {
+      if (!authRes?.ok || !authRes.user?.id) {
         setSubmitting(false)
         setError(authRes?.error || 'Unable to sign in. Please verify your email and password.')
         return
@@ -714,7 +715,14 @@ export default function SignInPage({
 
           {/* ── Right Column: Google OAuth + Unified Email/Password Form ── */}
           <div className="lg:col-span-6 w-full lg:pt-2 space-y-5">
-            {verificationStep ? (
+            {switchingAccount ? (
+              <p role="status" className="text-sm text-[var(--text-muted)]">Ending your previous session…</p>
+            ) : returningUser && !verificationStep && !submitting && !googleLoading ? (
+              <div className="grid gap-3">
+                <Button variant="filled" onClick={onContinue}>Continue as {returningUser.fullName || returningUser.firstName || returningUser.primaryEmailAddress?.emailAddress || returningUser.email}</Button>
+                <Button variant="outlined-neutral" onClick={onSwitchAccount}>Use another account</Button>
+              </div>
+            ) : verificationStep ? (
               <form onSubmit={handleVerifyCodeSubmit} className="space-y-4">
                 <div>
                   <label
@@ -925,6 +933,7 @@ export default function SignInPage({
                       <Button
                         variant="text"
                         onClick={onEnterDemo}
+                        disabled={submitting || googleLoading}
                         icon={<Play size={14} fill="currentColor" />}
                       >
                         Preview demo
@@ -948,17 +957,7 @@ export default function SignInPage({
         </main>
 
         {/* ── Below-Card Google Account Footer Row ── */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-4 text-xs text-[var(--text-muted)]">
-          <button
-            type="button"
-            onClick={onToggleDark}
-            aria-label="Toggle color theme"
-            className="md-state-layer inline-flex items-center gap-2 px-3 h-8 rounded-lg bg-transparent border-none text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer transition-colors"
-          >
-            {dark ? <Sun size={14} /> : <Moon size={14} />}
-            <span>{dark ? 'Light theme' : 'Dark theme'}</span>
-          </button>
-
+        <footer className="flex flex-wrap justify-end gap-3 px-2 sm:px-4 text-xs text-[var(--text-muted)]">
           <div className="flex items-center gap-5">
             <a
               href={`mailto:${SUPPORT_EMAIL}`}

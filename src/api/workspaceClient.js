@@ -39,27 +39,17 @@ function notifyPermissionChange(detail) {
   }
 }
 
-let clerkAutoSyncPromise = null
+let clerkAutoSync = null
+let authGeneration = 0
 
 export async function ensureWorkspaceAuthReady(
   fallbackUser = null,
   { forceRefresh = false } = {}
 ) {
+  const generation = authGeneration
   const previousToken = getApiSessionToken()
   if (forceRefresh && previousToken) {
     setApiSessionToken('')
-  }
-
-  if (isSupabaseConfigured()) {
-    const sbToken = await getSupabaseAccessToken()
-    if (sbToken && (!forceRefresh || sbToken !== previousToken)) {
-      setApiSessionToken(sbToken)
-      return sbToken
-    }
-  }
-
-  if (!forceRefresh && previousToken) {
-    return previousToken
   }
 
   const extUser =
@@ -73,9 +63,23 @@ export async function ensureWorkspaceAuthReady(
     .trim()
     .toLowerCase()
 
+  if (isSupabaseConfigured()) {
+    const sbToken = await getSupabaseAccessToken(extEmail)
+    if (generation !== authGeneration) return ''
+    if (sbToken && (!forceRefresh || sbToken !== previousToken)) {
+      setApiSessionToken(sbToken)
+      return sbToken
+    }
+  }
+
+  if (!forceRefresh && previousToken) {
+    return previousToken
+  }
+
   if (extUser?.id && extEmail) {
-    if (!clerkAutoSyncPromise) {
-      clerkAutoSyncPromise = fetchActionJSON('/workspace/auth/sync-external', {
+    const attemptedUserId = extUser.id
+    if (clerkAutoSync?.userId !== attemptedUserId) {
+      const request = fetchActionJSON('/workspace/auth/sync-external', {
         method: 'POST',
         body: JSON.stringify({
           provider: 'clerk',
@@ -88,6 +92,8 @@ export async function ensureWorkspaceAuthReady(
         }),
       })
         .then(res => {
+          const currentClerkUser = typeof window !== 'undefined' ? window.Clerk?.user : null
+          if (generation !== authGeneration || (currentClerkUser && currentClerkUser.id !== attemptedUserId)) return ''
           if (res?.ok && res.token) {
             setApiSessionToken(res.token)
             return res.token
@@ -96,10 +102,11 @@ export async function ensureWorkspaceAuthReady(
         })
         .catch(() => '')
         .finally(() => {
-          clerkAutoSyncPromise = null
+          if (clerkAutoSync?.request === request) clerkAutoSync = null
         })
+      clerkAutoSync = { userId: attemptedUserId, request }
     }
-    return clerkAutoSyncPromise
+    return clerkAutoSync.request
   }
 
   return ''
@@ -112,10 +119,11 @@ function isMissingBackendEndpoint(res) {
 const AUTH_SKIP_PATHS = new Set(['/auth/sync-external', '/auth/session', '/auth/logout'])
 
 async function workspaceRequest(path, options = {}) {
-  const cancelled = () => options.signal?.aborted
+  const skipAuthBootstrap = AUTH_SKIP_PATHS.has(path)
+  const generation = authGeneration
+  const cancelled = () => options.signal?.aborted || (!skipAuthBootstrap && generation !== authGeneration)
   const aborted = { ok: false, aborted: true }
   if (cancelled()) return aborted
-  const skipAuthBootstrap = AUTH_SKIP_PATHS.has(path)
   if (!skipAuthBootstrap) {
     await ensureWorkspaceAuthReady()
   }
@@ -252,11 +260,12 @@ export async function authenticateWorkspaceEmail({
 }
 
 export async function syncExternalWorkspaceSession(payload) {
+  const generation = authGeneration
   const res = await workspaceRequest('/auth/sync-external', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
-  if (res.ok && res.token) {
+  if (generation === authGeneration && res.ok && res.token) {
     setApiSessionToken(res.token)
   }
   return res
@@ -281,13 +290,21 @@ export const updateWorkspaceProfile = payload =>
     body: JSON.stringify(payload),
   })
 
-export async function logoutWorkspaceSession() {
-  clearDirectUserProfileCache()
-  await signOutSupabase()
-  if (getApiSessionToken()) {
-    await workspaceRequest('/auth/logout', { method: 'POST' }).catch(() => {})
-  }
+export function clearWorkspaceSession() {
+  authGeneration += 1
+  clerkAutoSync = null
+  const token = getApiSessionToken()
   setApiSessionToken('')
+  clearDirectUserProfileCache()
+  return token
+}
+
+export async function logoutWorkspaceSession() {
+  const token = clearWorkspaceSession()
+  await Promise.all([
+    signOutSupabase(),
+    token ? workspaceRequest('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }) : null,
+  ])
 }
 
 // ── 2. Club Membership, Roster Claiming & Board Claim Review ──
