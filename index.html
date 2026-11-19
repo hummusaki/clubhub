@@ -7,7 +7,7 @@
       name="description"
       content="ClubHub — Discover UCSC student organizations, track live club events & announcements, coordinate group availability, and sync schedules to Google & Apple Calendar."
     />
-    <meta name="theme-color" content="#F8FAFD" />
+    <meta name="theme-color" content="#F1F6FE" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ClubHub" />
     <meta property="og:title" content="ClubHub — Campus Workspace" />
@@ -26,7 +26,7 @@
         html,
         body,
         #root {
-          background-color: #F8FAFD;
+          background-color: #F1F6FE;
           color: #1F1F1F;
         }
         html {
@@ -41,7 +41,7 @@
           html:not(.light),
           html:not(.light) body,
           html:not(.light) #root {
-            background-color: #131314;
+            background-color: #151A24;
             color: #E3E3E3;
           }
           html:not(.light) {
@@ -51,7 +51,7 @@
         html.dark,
         html.dark body,
         html.dark #root {
-          background-color: #131314;
+          background-color: #151A24;
           color: #E3E3E3;
         }
         html.dark {
@@ -65,7 +65,7 @@
         var root = document.documentElement;
         root.classList.add(dark ? 'dark' : 'light');
         root.style.colorScheme = dark ? 'dark' : 'light';
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#131314' : '#F8FAFD');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#151A24' : '#F1F6FE');
 
         try {
           var settings = JSON.parse(localStorage.getItem('clubhub_user_settings_v1'));

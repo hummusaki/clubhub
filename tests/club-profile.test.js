@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  clubPageHref, readClubPage, readWorkspaceDestination, startOAuthEntry, readOAuthEntry, clearOAuthEntry,
+  clubPageHref, readClubPage, readWorkspaceDestination, readWorkspaceNavigation, normalizeWorkspaceNavigation,
+  startOAuthEntry, readOAuthEntry, clearOAuthEntry,
 } from '../src/utils/workspaceEntry.js'
 import { mergeClubRoster } from '../src/utils/publicRoster.js'
+import { getClubSummary } from '../src/utils/clubCategories.js'
+import { navItems, stats } from '../src/data/sampleData.js'
 import { buildDashboardPageTitle } from '../src/utils/pageTitle.js'
 import { readDirectClubPeople } from '../src/api/supabaseDirectWorkspace.js'
 import { sanitizePublicSnapshot } from '../server/services/publicSnapshotSanitizer.js'
@@ -31,6 +34,31 @@ test('club and poll deep links are base-relative and OAuth handoffs require the 
   clearOAuthEntry(storage)
   assert.equal(readOAuthEntry(nonce, storage), null)
   assert.equal(buildDashboardPageTitle({ clubTitle: 'Astronomy Club', clubSection: 'members' }), 'Members · Astronomy Club · ClubHub')
+})
+
+test('shared polls and legacy availability entries open the Availability section of Calendar', () => {
+  const shared = readWorkspaceNavigation(new URL('https://school.github.io/clubhub/?poll=a%2Fb'))
+  assert.deepEqual(shared, { nav: 'calendar', options: { calendarSection: 'availability', pollId: 'a/b' } })
+  assert.deepEqual(normalizeWorkspaceNavigation('availability', { pollId: 'a/b' }), shared)
+  assert.deepEqual(normalizeWorkspaceNavigation('calendar', { view: 'week', date: '2027-05-12' }), {
+    nav: 'calendar', options: { calendarSection: 'schedule', view: 'week', date: '2027-05-12' },
+  })
+  assert.equal(readWorkspaceNavigation(new URL('https://school.github.io/clubhub/?poll=%00')).nav, 'overview')
+  assert.deepEqual(navItems.map(item => item.id), ['overview', 'tasks', 'calendar', 'clubs', 'links'])
+  assert.equal(stats.find(item => item.label === 'Group Polls')?.calendarSection, 'availability')
+  assert.equal(buildDashboardPageTitle({
+    activeNav: 'calendar', calendarSection: 'availability', subContext: { nav: 'calendar', label: 'May 2027' },
+  }), 'Availability · Calendar · ClubHub')
+  assert.equal(buildDashboardPageTitle({
+    activeNav: 'calendar', subContext: { nav: 'availability', label: 'Weekly sync' },
+  }), 'Calendar · ClubHub')
+})
+
+test('club directory summaries preserve source sentences and omit stand-alone links', () => {
+  const longSentence = 'We meet each Friday to talk about the design projects our members are building and to make it easier for new students to find a team working on something they want to learn more about'
+  assert.equal(getClubSummary('https://example.test', 'Learn from other students. Bring your own projects.'), 'Learn from other students.')
+  assert.equal(getClubSummary('www.example.test\n' + longSentence), longSentence)
+  assert.equal(getClubSummary('https://example.test www.example.test', ''), '')
 })
 
 test('roster merge uses stable identifiers and keeps unclaimed published entries distinct', () => {

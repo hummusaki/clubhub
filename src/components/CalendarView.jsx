@@ -1,6 +1,6 @@
 import Select from './Select'
 import SearchDestination from './SearchDestination'
-import { useState, useMemo, useEffect, useId } from 'react'
+import { useState, useMemo, useEffect, useId, useRef } from 'react'
 import {
   MapPin,
   Clock,
@@ -17,7 +17,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { Card, BubbleTag, IconBadge, Button, IconButton, PageToolbar, SearchBox, SegmentedControl, cleanText } from './ui'
+import { Card, BubbleTag, IconBadge, Button, IconButton, SearchBox, SegmentedControl, cleanText } from './ui'
 import { ScheduleEventIcon } from './icons'
 import CalendarSyncModal from './CalendarSyncModal'
 import {
@@ -85,9 +85,8 @@ export default function CalendarView({
   items,
   clubs = [],
   joinedCount = null,
-  initialView = null,
-  lastSelectedView = null,
-  onSelectView,
+  position = null,
+  visible = true,
   userSettings = {},
   onUpdateSettings,
   calendarIntegration = null,
@@ -132,14 +131,26 @@ export default function CalendarView({
     joinedCount !== null ? joinedCount > 0 : joinedClubKeySet.size > 0
   const handleBrowseClubs = onBrowseClubs || calendarIntegration?.onBrowseClubs
 
-  const [viewMode, setViewMode] = useState(
-    () => initialView || lastSelectedView || userSettings?.defaultCalendarView ||
-      (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 'agenda' : 'month')
-  ) // 'month' | 'week' | 'agenda'
+  const preferredView = useRef(null)
+  const [fallbackView] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 'agenda' : 'month'
+  )
+  const defaultView = userSettings?.defaultCalendarView || fallbackView
+  const [viewMode, setViewMode] = useState(position?.view || defaultView)
+  const previousDefaultView = useRef(defaultView)
+  const appliedPosition = useRef(null)
 
   useEffect(() => {
-    if (initialView) setViewMode(initialView)
-  }, [initialView])
+    if (previousDefaultView.current === defaultView) return
+    previousDefaultView.current = defaultView
+    preferredView.current = null
+    setViewMode(defaultView)
+  }, [defaultView])
+
+  function selectView(view) {
+    preferredView.current = view
+    setViewMode(view)
+  }
   const [agendaFilter, setAgendaFilter] = useState('upcoming') // 'upcoming' | 'past' | 'all'
   const [weekAnchor, setWeekAnchor] = useState(todayYmd)
   const [monthState, setMonthState] = useState(() => ({
@@ -153,10 +164,20 @@ export default function CalendarView({
     [weekAnchor, weekStartsOn]
   )
 
-  function selectView(nextView) {
-    setViewMode(nextView)
-    onSelectView?.(nextView)
-  }
+  useEffect(() => {
+    if (!position || appliedPosition.current === position) return
+    appliedPosition.current = position
+    if (position.view) setViewMode(position.view)
+    else if (position.usePreference) setViewMode(preferredView.current || defaultView)
+    const requestedDate = position.date
+    if (!requestedDate) return
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? parseYmdLocal(requestedDate) : new Date(requestedDate)
+    if (Number.isNaN(date.getTime())) return
+    const ymd = toLocalYmd(date)
+    setSelectedDate(ymd)
+    setWeekAnchor(ymd)
+    setMonthState({ year: date.getFullYear(), month: date.getMonth() })
+  }, [position, defaultView])
 
   // Add Event & Calendar Sync Settings modal state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -177,10 +198,12 @@ export default function CalendarView({
     }
   }, [memberClubs, eventClubId])
 
-  const baseEvents = useMemo(
-    () => (hasJoinedClubs && Array.isArray(items) ? items : []),
-    [hasJoinedClubs, items]
-  )
+  const linkedBooking = searchTarget?.bookedEvent
+  const baseEvents = useMemo(() => {
+    const scoped = hasJoinedClubs && Array.isArray(items) ? items : []
+    if (linkedBooking && !scoped.some(event => event.id === linkedBooking.id)) return [...scoped, linkedBooking]
+    return scoped
+  }, [hasJoinedClubs, items, linkedBooking])
 
   const enrichedEvents = useMemo(() => {
     const nowMs = nowRef.getTime()
@@ -212,8 +235,9 @@ export default function CalendarView({
 
   // Events after applying joined-club membership + search
   const clubAndSearchEvents = useMemo(() => {
-    if (!hasJoinedClubs || joinedClubKeySet.size === 0) return []
     return enrichedEvents.filter(ev => {
+      if (linkedBooking?.id === ev.id) return true
+      if (!hasJoinedClubs || joinedClubKeySet.size === 0) return false
       const cid = normalizeClubKey(ev.clubId)
       if (ev.isCustom || ev.isBookedCollab) {
         if (cid && !joinedClubKeySet.has(cid)) return false
@@ -228,7 +252,7 @@ export default function CalendarView({
         tertiary: [ev.description, ev.notes, ev.source],
       })
     })
-  }, [enrichedEvents, hasJoinedClubs, joinedClubKeySet, searchQuery])
+  }, [enrichedEvents, hasJoinedClubs, joinedClubKeySet, searchQuery, linkedBooking])
 
   const rsvpGoingCountInScope = useMemo(
     () => clubAndSearchEvents.filter(ev => ev.isGoing).length,
@@ -238,8 +262,8 @@ export default function CalendarView({
   // Events after applying optional in-app "Only show RSVP'd events" setting
   const scopedEvents = useMemo(() => {
     if (!inAppRsvpOnly) return clubAndSearchEvents
-    return clubAndSearchEvents.filter(ev => ev.isGoing)
-  }, [clubAndSearchEvents, inAppRsvpOnly])
+    return clubAndSearchEvents.filter(ev => ev.isGoing || linkedBooking?.id === ev.id)
+  }, [clubAndSearchEvents, inAppRsvpOnly, linkedBooking])
 
   const agendaCounts = useMemo(() => {
     let upcoming = 0
@@ -471,7 +495,8 @@ export default function CalendarView({
     const c = item.color === 'muted' || !item.color ? 'blue' : item.color
     const clubName = cleanText(item.club)
     const title = cleanText(item.event)
-    const canRemove = Boolean(item.isBookedCollab || item.isCustom) && Boolean(onDeleteEvent)
+    const canRemove = Boolean(item.isBookedCollab || item.isCustom) && Boolean(onDeleteEvent) &&
+      (linkedBooking?.id !== item.id || items.some(event => event.id === item.id))
     const postLink = resolveSchedulePostLink(item)
 
     return (
@@ -611,7 +636,7 @@ export default function CalendarView({
   const renderSyncModal = calendarIntegration ? (
     <CalendarSyncModal
       variant="modal"
-      open={showSyncModal}
+      open={visible && showSyncModal}
       onClose={() => setShowSyncModal(false)}
       syncSettings={calSyncSettings}
       onUpdateSyncSettings={handleUpdateCalendarSync}
@@ -735,21 +760,19 @@ export default function CalendarView({
 
   return (
     <div className={`page-stack ${viewMode === 'week' ? 'calendar-week-page' : ''}`}>
-      <PageToolbar title="Calendar" actions={
-        <>
-          {syncStatus}
-          {syncButton}
-          {hasJoinedClubs && onAddEvent && (
-            <Button size="sm" icon={showAddForm ? <X size={15} /> : <Plus size={15} />}
-              variant={showAddForm ? 'outlined-neutral' : 'filled'}
-              reserveLabels={['Add event', 'Close event form']}
-              aria-expanded={showAddForm} aria-controls="calendar-add-event"
-              onClick={() => setShowAddForm(prev => !prev)}>
-              {showAddForm ? 'Close event form' : 'Add event'}
-            </Button>
-          )}
-        </>
-      } />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {syncStatus}
+        {syncButton}
+        {hasJoinedClubs && onAddEvent && (
+          <Button size="sm" icon={showAddForm ? <X size={15} /> : <Plus size={15} />}
+            variant={showAddForm ? 'outlined-neutral' : 'filled'}
+            reserveLabels={['Add event', 'Close event form']}
+            aria-expanded={showAddForm} aria-controls="calendar-add-event"
+            onClick={() => setShowAddForm(prev => !prev)}>
+            {showAddForm ? 'Close event form' : 'Add event'}
+          </Button>
+        )}
+      </div>
 
       {selectedSearchEvent && (
         <SearchDestination key={searchTarget.revision} heading={cleanText(selectedSearchEvent.event || selectedSearchEvent.title)} onDismiss={onDismissSearchTarget}>
@@ -1020,13 +1043,14 @@ export default function CalendarView({
                   key={ymd}
                   type="button"
                   onClick={() => setSelectedDate(ymd)}
+                  aria-pressed={isSelected}
                   className={`py-2 px-1 rounded-xl border flex flex-col items-center gap-1 cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-[var(--blue)] text-[var(--on-blue)] border-[var(--blue)]'
+                      ? 'bg-[var(--accent-surface)] text-[var(--accent-ink)] border-[var(--accent-line)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text)] border-[var(--border)]'
                   }`}
                 >
-                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-[var(--on-blue)]/85' : 'text-[var(--text-muted)]'}`}>
+                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-[var(--accent-ink)]' : 'text-[var(--text-muted)]'}`}>
                     {dayLetter}
                   </span>
                   <span className="text-sm font-bold font-mono-num">{dayNum}</span>
@@ -1034,7 +1058,7 @@ export default function CalendarView({
                     className={`w-1.5 h-1.5 rounded-full ${
                       count > 0
                         ? isSelected
-                          ? 'bg-white'
+                          ? 'bg-[var(--accent-ink)]'
                           : 'bg-[var(--blue)]'
                         : 'bg-transparent'
                     }`}
@@ -1213,11 +1237,13 @@ export default function CalendarView({
                     key={cell.dateStr}
                     type="button"
                     onClick={() => setSelectedDate(cell.dateStr)}
+                    aria-pressed={isSelected}
+                    aria-current={isToday ? 'date' : undefined}
                     className={`min-h-[48px] sm:min-h-[108px] p-1.5 sm:p-2 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all min-w-0 ${
                       isSelected
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)] ring-1 ring-[var(--blue)]/30'
+                        ? 'bg-[var(--accent-surface)] border-[var(--accent-line)] ring-1 ring-[var(--accent-line)]'
                         : isToday
-                          ? 'bg-[var(--bg-surface)] border-[var(--blue)]/65'
+                          ? 'bg-[var(--bg-surface)] border-[var(--accent-line)]'
                           : cell.inMonth
                             ? isPastDay
                               ? 'bg-[var(--bg-surface)]/75 border-[var(--border-subtle)] hover:border-[var(--border-strong)]'

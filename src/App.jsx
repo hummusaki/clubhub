@@ -17,7 +17,7 @@ import ClubTaskBoard from './components/ClubTaskBoard'
 import LinksResources from './components/LinksResources'
 import SettingsView from './components/SettingsView'
 import SignInPage from './components/SignInPage'
-import { Button, Card, PageToolbar, ToastViewport, cleanText, cleanMultilineText } from './components/ui'
+import { Button, Card, PageToolbar, SegmentedControl, ToastViewport, cleanText, cleanMultilineText } from './components/ui'
 import {
   getWorkspaceMe,
   updateWorkspaceProfile,
@@ -76,6 +76,8 @@ import {
   readClubPage,
   readOAuthEntry,
   readWorkspaceDestination,
+  readWorkspaceNavigation,
+  normalizeWorkspaceNavigation,
   replaceEntryUrl,
   startOAuthEntry,
 } from './utils/workspaceEntry'
@@ -580,10 +582,13 @@ function MainDashboard({
   const demoUserModifiedClubsRef = useRef(false)
 
   const [clubPage, setClubPage] = useState(() => readClubPage(window.location.hash))
-  const [activeNav, setActiveNav] = useState(() => {
-    if (new URLSearchParams(window.location.search).has('poll')) return 'availability'
-    return clubPage ? 'clubs' : 'overview'
-  })
+  const [initialNavigation] = useState(() => readWorkspaceNavigation(window.location))
+  const [activeNav, setActiveNav] = useState(initialNavigation.nav)
+  const [calendarSection, setCalendarSection] = useState(initialNavigation.options.calendarSection || 'schedule')
+  const [calendarVisited, setCalendarVisited] = useState(initialNavigation.nav === 'calendar')
+  const [availabilityVisited, setAvailabilityVisited] = useState(calendarSection === 'availability')
+  const [pollRequest, setPollRequest] = useState(() => initialNavigation.options.pollId
+    ? { id: initialNavigation.options.pollId } : null)
   const [clubsVisited, setClubsVisited] = useState(activeNav === 'clubs')
   const [catalogLoaded, setCatalogLoaded] = useState(false)
   const [discoveryOpen, setDiscoveryOpen] = useState(false)
@@ -597,14 +602,17 @@ function MainDashboard({
   const [clubsInitialSection, setClubsInitialSection] = useState(clubPage ? 'discover' : null)
   const [clubsSectionRevision, setClubsSectionRevision] = useState(0)
   const [tasksInitialClubId, setTasksInitialClubId] = useState('')
+  const [demoFavoriteClubIds, setDemoFavoriteClubIds] = useState([])
   const [settingsInitialSection, setSettingsInitialSection] = useState(null)
   const [workspaceAnnouncements, setWorkspaceAnnouncements] = useState([])
-  const [calendarInitialView, setCalendarInitialView] = useState(null)
-  const [calendarSelectedView, setCalendarSelectedView] = useState(null)
-  useEffect(() => { setCalendarSelectedView(null) }, [userSettings?.defaultCalendarView, accountKey])
+  const [calendarPosition, setCalendarPosition] = useState(null)
+  const calendarVisible = activeNav === 'calendar' && !clubPage
+  const scheduleVisible = calendarVisible && calendarSection === 'schedule'
+  const availabilityVisible = calendarVisible && calendarSection === 'availability'
 
   const [pageFilters, setPageFilters] = useState({})
   const [searchTarget, setSearchTarget] = useState(null)
+  const bookedEventTargets = useRef(new Map())
   const searchSequence = useRef(0)
   const searchQuery = pageFilters[activeNav] || ''
   function setPageFilter(nav, value) {
@@ -949,9 +957,9 @@ function MainDashboard({
 
     const nextStats = dbStats
       ? [
-          { label: 'My Clubs',        value: 0,                   color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
-          { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
-          { label: 'Group Polls',     value: 1,                   color: 'green',  icon: 'Clock',    navTarget: 'availability' },
+          { label: 'My Clubs',        value: 0,                   color: 'green',  icon: 'Heart',    navTarget: 'clubs' },
+          { label: 'Upcoming Events', value: dbStats.events ?? 0, color: 'teal', icon: 'Calendar', navTarget: 'calendar' },
+          { label: 'Group Polls',     value: 1,                   color: 'teal',   icon: 'Clock',    navTarget: 'calendar', calendarSection: 'availability' },
           { label: 'Shared Links',    value: dbStats.links ?? 0,  color: 'purple', icon: 'Link',     navTarget: 'links' },
         ]
       : null
@@ -1077,7 +1085,8 @@ function MainDashboard({
     })
   }, [isDemo, hasClerkKey, onSignOut, loadWorkspaceState, showToast])
 
-  function applyNavigation(nextNav, options = {}) {
+  function applyNavigation(nav, navigationOptions = {}) {
+    const { nav: nextNav, options } = normalizeWorkspaceNavigation(nav, navigationOptions)
     if (nextNav === 'clubs') {
       setClubsVisited(true)
       if (options.section) {
@@ -1087,18 +1096,37 @@ function MainDashboard({
     }
     if (nextNav === 'tasks') setTasksInitialClubId(options.clubId || '')
     if (nextNav === 'settings') setSettingsInitialSection(options.section || null)
-    if (nextNav === 'calendar') setCalendarInitialView(options.view || null)
-    if (nextNav !== activeNav) pageSubContextRef.current = null
+    if (nextNav === 'calendar') {
+      setCalendarVisited(true)
+      setCalendarSection(options.calendarSection)
+      if (options.calendarSection === 'availability') {
+        setAvailabilityVisited(true)
+        if (options.pollId) setPollRequest({ id: options.pollId })
+      } else {
+        const date = options.date || options.searchTarget?.publicEvent?.startIso
+        if (options.view || date || options.useCalendarPreference) setCalendarPosition({
+          view: options.view, date, usePreference: options.useCalendarPreference,
+        })
+      }
+    }
+    if (nextNav !== activeNav || (nextNav === 'calendar' && options.calendarSection !== calendarSection)) {
+      pageSubContextRef.current = null
+    }
     setActiveNav(nextNav)
     if (options.searchQuery !== undefined) setPageFilter(nextNav, options.searchQuery)
-    setSearchTarget(options.searchTarget ? { ...options.searchTarget, revision: ++searchSequence.current } : null)
+    const target = options.searchTarget
+    setSearchTarget(target ? {
+      ...target,
+      bookedEvent: target.fromPoll ? bookedEventTargets.current.get(target.id) : undefined,
+      revision: ++searchSequence.current,
+    } : null)
   }
 
   navigation.current = applyNavigation
 
   useLayoutEffect(() => {
     const key = workspaceHistory.current ??= crypto.randomUUID()
-    const initial = { key, id: ++historySequence.current, nav: activeNav, options: {} }
+    const initial = { key, id: ++historySequence.current, ...initialNavigation }
     window.history.replaceState({ clubhub: initial }, '')
     let last = null
 
@@ -1132,7 +1160,12 @@ function MainDashboard({
           window.scrollTo(0, origin?.scrollY ?? 0)
         })
       } else {
-        navigation.current(new URLSearchParams(window.location.search).has('poll') ? 'availability' : 'clubs', { section: 'discover' })
+        const destination = readWorkspaceNavigation(window.location)
+        if (entry?.nav === 'availability' && destination.nav === 'overview') {
+          navigation.current('availability')
+        } else {
+          navigation.current(destination.nav, destination.options)
+        }
       }
     }
 
@@ -1167,7 +1200,8 @@ function MainDashboard({
     window.scrollTo(0, 0)
   }
 
-  function handleNavigate(nextNav, { origin, ...options } = {}) {
+  function handleNavigate(nav, { origin, ...navigationOptions } = {}) {
+    const { nav: nextNav, options } = normalizeWorkspaceNavigation(nav, navigationOptions)
     if (nextNav === 'clubs' && options.clubId) {
       openClubPage({
         clubId: options.clubId,
@@ -1176,7 +1210,8 @@ function MainDashboard({
       }, origin)
       return
     }
-    if (clubPage || nextNav !== activeNav || window.location.search) {
+    if (clubPage || nextNav !== activeNav ||
+        (nextNav === 'calendar' && (options.calendarSection !== calendarSection || options.searchTarget || options.pollId))) {
       window.history.pushState({ clubhub: {
         key: workspaceHistory.current, id: ++historySequence.current, nav: nextNav, options,
       } }, '', window.location.pathname)
@@ -1184,6 +1219,23 @@ function MainDashboard({
     }
     setClubPage(null)
     applyNavigation(nextNav, options)
+  }
+
+  function openBookedEvent(event, pollId) {
+    const entry = window.history.state?.clubhub
+    const pollOptions = { calendarSection: 'availability', pollId }
+    if (entry?.key === workspaceHistory.current && entry.nav === 'calendar' &&
+        entry.options?.calendarSection === 'availability' && !window.location.hash) {
+      window.history.replaceState({ clubhub: { ...entry, options: pollOptions } }, '')
+    } else {
+      window.history.pushState({ clubhub: {
+        key: workspaceHistory.current, id: ++historySequence.current, nav: 'calendar', options: pollOptions,
+      } }, '', window.location.pathname)
+    }
+    const displayEvent = formatScheduleItem(event)
+    const id = String(displayEvent.id)
+    bookedEventTargets.current.set(id, displayEvent)
+    handleNavigate('calendar', { view: 'month', date: displayEvent.startIso, searchTarget: { type: 'event', id, fromPoll: true } })
   }
 
   function openClubLink(route, focus) {
@@ -1198,7 +1250,9 @@ function MainDashboard({
 
   function selectSearchResult(type, item, origin) {
     const destination = workspaceSearchDestination(type, item)
-    if (destination) handleNavigate(destination.nav, { ...destination.options, origin })
+    if (destination) handleNavigate(destination.nav, {
+      ...destination.options, origin, ...(type === 'event' && { date: item.startIso }),
+    })
   }
 
   function openAnnouncement(item) {
@@ -1431,6 +1485,7 @@ function MainDashboard({
   }
 
   function handleRemoveLocalCollabEvent(eventId) {
+    bookedEventTargets.current.delete(String(eventId))
     setRemovedEventIds(prev => new Set(prev).add(eventId))
     setLocalAddedEvents(prev => prev.filter(e => e.id !== eventId))
   }
@@ -1497,6 +1552,8 @@ function MainDashboard({
       setLocalAddedLinks([])
       setPinnedLinkOverrides({})
       setLocalClubPosts([])
+      setDemoFavoriteClubIds([])
+      bookedEventTargets.current.clear()
       setResetGeneration(g => g + 1)
       showToast('Reset demo workspace with a fresh random sample of clubs.', { type: 'info' })
       return
@@ -1528,6 +1585,7 @@ function MainDashboard({
     setLocalAddedLinks([])
     setPinnedLinkOverrides({})
     setLocalClubPosts([])
+    bookedEventTargets.current.clear()
     setResetGeneration(g => g + 1)
     showToast('Reset local customizations to clean defaults.', { type: 'info' })
   }
@@ -1972,6 +2030,7 @@ function MainDashboard({
 
   const titleInputsRef = useRef({
     activeNav,
+    calendarSection,
     searchQuery,
     upcomingCount: visibleOverviewUpcomingCount,
     joinedCount,
@@ -1981,6 +2040,7 @@ function MainDashboard({
   })
   titleInputsRef.current = {
     activeNav,
+    calendarSection,
     searchQuery,
     upcomingCount: visibleOverviewUpcomingCount,
     joinedCount,
@@ -1995,6 +2055,7 @@ function MainDashboard({
     const cur = titleInputsRef.current
     document.title = buildDashboardPageTitle({
       activeNav: cur.activeNav,
+      calendarSection: cur.calendarSection,
       subContext: nextSubContext,
       searchQuery: cur.searchQuery,
       upcomingCount: cur.upcomingCount,
@@ -2010,6 +2071,7 @@ function MainDashboard({
     if (typeof document === 'undefined') return
     document.title = buildDashboardPageTitle({
       activeNav,
+      calendarSection,
       subContext: pageSubContextRef.current,
       searchQuery,
       upcomingCount: visibleOverviewUpcomingCount,
@@ -2022,6 +2084,7 @@ function MainDashboard({
     activeNav,
     searchQuery,
     visibleOverviewUpcomingCount,
+    calendarSection,
     joinedCount,
     calSyncSettings.inAppRsvpOnly,
     clubTitle,
@@ -2034,7 +2097,8 @@ function MainDashboard({
       <ToastViewport toast={toast} onDismiss={() => setToast(null)} />
 
       {/* Fixed Left Sidebar (Desktop) & Bottom Bar (Mobile) */}
-      <Sidebar activeNav={visibleNav} onNav={handleNavigate} />
+      <Sidebar activeNav={visibleNav}
+        onNav={target => handleNavigate(target, target === 'calendar' ? { useCalendarPreference: true } : undefined)} />
 
       <Header key={`${accountKey}_${resetGeneration}`}
         searchSources={searchSources}
@@ -2093,10 +2157,10 @@ function MainDashboard({
                 joinedCount={joinedCount}
                 eventsCount={visibleOverviewUpcomingCount}
                 linksCount={totalLinksCount}
-                onNav={target =>
+                onNav={(target, options) =>
                   target === 'clubs'
                     ? handleNavigate('clubs', { section: 'myclubs' })
-                    : handleNavigate(target)
+                    : handleNavigate(target, options)
                 }
               />
 
@@ -2120,7 +2184,7 @@ function MainDashboard({
                   userSettings={userSettings}
                   onUpdateSettings={onUpdateSettings}
                   calendarIntegration={calendarIntegration}
-                  onPageContextChange={handlePageContextChange}
+                  onPageContextChange={!clubPage ? handlePageContextChange : undefined}
                   rsvpMap={rsvpMap}
                   onToggleRsvp={handleToggleRsvp}
                   onDeleteEvent={handleDeleteCalendarEvent}
@@ -2162,53 +2226,6 @@ function MainDashboard({
             </div>
           )}
 
-          {/* ── 2. CALENDAR ── */}
-          {activeNav === 'calendar' && (
-            <CalendarView
-              key={`cal_${resetGeneration}`}
-              items={memberScopedSchedule}
-              clubs={effectiveClubs}
-              joinedCount={joinedCount}
-              initialView={calendarInitialView}
-              lastSelectedView={calendarSelectedView}
-              onSelectView={setCalendarSelectedView}
-              userSettings={userSettings}
-              onUpdateSettings={onUpdateSettings}
-              calendarIntegration={calendarIntegration}
-              onPageContextChange={handlePageContextChange}
-              searchQuery={pageFilters.calendar || ''}
-              onSearchChange={value => setPageFilter('calendar', value)}
-              searchTarget={searchTarget}
-              onDismissSearchTarget={() => setSearchTarget(null)}
-              rsvpMap={rsvpMap}
-              onToggleRsvp={handleToggleRsvp}
-              onAddEvent={handleAddCalendarEvent}
-              onDeleteEvent={handleDeleteCalendarEvent}
-              onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
-              onNotify={showToast}
-            />
-          )}
-
-          {/* ── 3. AVAILABILITY ── */}
-          {activeNav === 'availability' && (
-            <AvailabilityView
-              key={`avail_${resetGeneration}`}
-              user={effectiveUser}
-              accountKey={accountKey}
-              isDemo={isDemo}
-              clubs={effectiveClubs}
-              userSettings={userSettings}
-              events={combinedRawEvents}
-              onEventBooked={loadBackendData}
-              onAddLocalEvent={handleAddLocalCollabEvent}
-              onRemoveLocalEvent={handleRemoveLocalCollabEvent}
-              onOpenCalendar={() => handleNavigate('calendar')}
-              onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
-              onPageContextChange={handlePageContextChange}
-              onNotify={showToast}
-            />
-          )}
-
           {activeNav === 'settings' && <PageToolbar title="Settings" />}
 
           {/* ── 4B. MONDAY.COM-STYLE CLUB TASK BOARD ── */}
@@ -2222,6 +2239,8 @@ function MainDashboard({
               isDemo={isDemo}
               clubs={effectiveClubs}
               joinedClubIds={joinedClubIds}
+              demoFavoriteClubIds={demoFavoriteClubIds}
+              onDemoFavoritesChange={setDemoFavoriteClubIds}
               initialClubId={tasksInitialClubId}
               onClubJoined={loadWorkspaceState}
               onSyncMemberships={loadWorkspaceMemberships}
@@ -2274,6 +2293,61 @@ function MainDashboard({
           )}
           </div>
           </div>
+          {calendarVisited && (
+            <div key={`calendar_${accountKey}_${resetGeneration}`} hidden={!calendarVisible}>
+              <div className="view-enter page-stack destination-accent" data-accent="calendar">
+                <PageToolbar title="Calendar" />
+                <SegmentedControl ariaLabel="Calendar section" value={calendarSection}
+                  options={[{ value: 'schedule', label: 'Schedule' }, { value: 'availability', label: 'Availability' }]}
+                  onChange={section => {
+                    if (section !== calendarSection) handleNavigate('calendar', { calendarSection: section })
+                  }} />
+                <div hidden={!scheduleVisible}>
+                  <CalendarView
+                    visible={scheduleVisible}
+                    items={memberScopedSchedule}
+                    clubs={effectiveClubs}
+                    joinedCount={joinedCount}
+                    position={calendarPosition}
+                    userSettings={userSettings}
+                    onUpdateSettings={onUpdateSettings}
+                    calendarIntegration={calendarIntegration}
+                    onPageContextChange={scheduleVisible ? handlePageContextChange : undefined}
+                    searchQuery={pageFilters.calendar || ''}
+                    onSearchChange={value => setPageFilter('calendar', value)}
+                    searchTarget={scheduleVisible && !removedEventIds.has(searchTarget?.id) ? searchTarget : null}
+                    onDismissSearchTarget={() => setSearchTarget(null)}
+                    rsvpMap={rsvpMap}
+                    onToggleRsvp={handleToggleRsvp}
+                    onAddEvent={handleAddCalendarEvent}
+                    onDeleteEvent={handleDeleteCalendarEvent}
+                    onBrowseClubs={() => handleNavigate('clubs', { section: 'discover' })}
+                    onNotify={showToast}
+                  />
+                </div>
+                {availabilityVisited && <div hidden={!availabilityVisible}>
+                  <AvailabilityView
+                    visible={availabilityVisible}
+                    pollRequest={pollRequest}
+                    user={effectiveUser}
+                    accountKey={accountKey}
+                    isDemo={isDemo}
+                    clubs={effectiveClubs}
+                    userSettings={userSettings}
+                    events={combinedRawEvents}
+                    onEventBooked={loadBackendData}
+                    onAddLocalEvent={handleAddLocalCollabEvent}
+                    onRemoveLocalEvent={handleRemoveLocalCollabEvent}
+                    onOpenCalendar={openBookedEvent}
+                    onOpenSettings={() => handleNavigate('settings', { section: 'integrations' })}
+                    onPageContextChange={availabilityVisible ? handlePageContextChange : undefined}
+                    onNotify={showToast}
+                  />
+                </div>}
+              </div>
+            </div>
+          )}
+
           {/* ── 4. CLUBS & COMMUNITY ── */}
           {clubsVisited && (
             <div hidden={Boolean(clubPage) || activeNav !== 'clubs'}>
@@ -2415,7 +2489,7 @@ function usePageTheme(mode) {
     root.classList.toggle('dark', dark)
     root.classList.toggle('light', !dark)
     root.style.colorScheme = dark ? 'dark' : 'light'
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#131314' : '#F8FAFD')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#151A24' : '#F1F6FE')
   }, [dark])
 
 }

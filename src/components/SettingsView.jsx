@@ -167,7 +167,7 @@ export default function SettingsView({
   const showAll = activeSection === 'all'
 
   return (
-    <div className={`max-w-4xl ${isCompact ? 'space-y-4' : 'space-y-5'}`}>
+    <div className={`destination-accent max-w-4xl ${isCompact ? 'space-y-4' : 'space-y-5'}`} data-accent="settings">
       {/* ── Focused Settings Section Navigation Bar ── */}
       <Card className={isCompact ? 'p-2 sm:p-2.5' : 'p-2 sm:p-3'} delay={0}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

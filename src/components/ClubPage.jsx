@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, ChevronLeft, MapPin } from 'lucide-react'
 import ClubRbacPanel from './ClubRbacPanel'
-import { Button, Card, ClubAvatar, PageToolbar, cleanText, cleanMultilineText } from './ui'
+import { Button, Card, ClubAvatar, ClubCategoryChip, PageToolbar, cleanText, cleanMultilineText } from './ui'
 import { getClubPeopleAndGroups, onWorkspacePermissionChange } from '../api/workspaceClient'
 import { normalizeExternalPostUrl } from '../utils/calendarSync'
 import { isPublicRecord, mergeClubRoster } from '../utils/publicRoster'
@@ -203,7 +203,7 @@ export default function ClubPage({
     <div className="page-stack">
       {breadcrumb}
       <div ref={heading}>
-        <PageToolbar title={title} context={<span className="flex items-center gap-2"><ClubAvatar club={club} size={32} />{club.categoryLabel}</span>} actions={
+        <PageToolbar title={title} context={<span className="flex items-center gap-2"><ClubAvatar club={club} size={42} /><ClubCategoryChip club={club} /></span>} actions={
           <Button variant={club.joined ? 'outlined-neutral' : 'filled'} pending={inFlight} pendingLabel={membershipAction}
             onClick={changeMembership}>{club.joined ? 'Leave club' : 'Join club'}</Button>
         } />

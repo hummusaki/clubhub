@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useRef } from 'react'
 import { X, Check, Search, ChevronDown, MoreHorizontal, LoaderCircle, Users } from 'lucide-react'
 import { useMenuHitTarget } from './useMenuHitTarget'
+import { getClubCategoryMeta } from '../utils/clubCategories'
 
 /**
  * Google Material Design 3 (M3) & Google Workspace UI Primitives for ClubHub.
@@ -173,6 +174,7 @@ export function Button({
       title={title}
       aria-label={ariaLabel}
       aria-busy={pending || undefined}
+      data-button-variant={variant}
       data-button-padding={labelSpinner && size !== 'sm' && !variant.startsWith('text') ? 'wide' : undefined}
       aria-disabled={pending || undefined}
       className={`ui-touch md-state-layer inline-flex items-center justify-center rounded-full font-medium tracking-[0.01em] select-none shrink-0 transition-[box-shadow,border-color,background-color,color] duration-150 ${
@@ -662,9 +664,15 @@ export function IconBadge({
 }
 
 // ── Official Club Logo Avatar (Clean Flat Fallback — Zero Glossy Bevels) ──
+export function ClubCategoryChip({ club }) {
+  const category = getClubCategoryMeta(club?.category || club)
+  return <span className="club-category-chip" data-tone={category.color}>{category.label}</span>
+}
+
 export function ClubAvatar({ club, size = 40, className = '' }) {
-  const bg = club?.avatarBg || '#1A73E8'
-  const iconSize = Math.round(size * 0.54)
+  const category = getClubCategoryMeta(club?.category || club)
+  const words = cleanText(club?.name || '').split(/\s+/).filter(Boolean)
+  const initials = words.slice(0, 2).map(word => Array.from(word)[0]).join('').toLocaleUpperCase()
   const rawUrl =
     club?.discordIconUrl ||
     club?.logoUrl ||
@@ -685,24 +693,22 @@ export function ClubAvatar({ club, size = 40, className = '' }) {
 
   return (
     <div
-      className={`rounded-xl overflow-hidden flex items-center justify-center text-white shrink-0 select-none border border-[var(--border)] ${className}`}
-      style={{
-        width: size,
-        height: size,
-        background: bg,
-      }}
+      className={`club-avatar rounded-xl overflow-hidden flex items-center justify-center shrink-0 select-none border border-[var(--border)] ${className}`}
+      data-tone={category.color}
+      aria-hidden="true"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.31) }}
     >
       {effectiveSrc ? (
         <img
           src={effectiveSrc}
-          alt={cleanText(club?.name || 'Club logo')}
+          alt=""
           referrerPolicy="no-referrer"
           loading="lazy"
           onError={() => setImgStage(prev => prev + 1)}
           className="w-full h-full object-cover rounded-[inherit]"
         />
       ) : (
-        <Users size={iconSize} aria-hidden="true" />
+        initials || <Users size={Math.round(size * 0.5)} />
       )}
     </div>
   )

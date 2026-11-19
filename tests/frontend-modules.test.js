@@ -201,7 +201,7 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
     // Joined-clubs-only visibility & selector enforcement
     assert.match(boardCode, /const memberClubs = useMemo/);
     assert.match(boardCode, /memberClubs\.length === 0/);
-    assert.match(boardCode, /memberClubs\.map\(c =>/);
+    assert.match(boardCode, /<TaskClubSwitcher clubs=\{memberClubs\}/);
     assert.equal(
       boardCode.includes('{clubs.map(c =>'),
       false,
@@ -370,6 +370,7 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
       'email:alice@ucsc.edu',
       {
         selectedClubId: 'solar_car',
+        favoriteClubIds: [' @Solar_Car ', 'solar_car', ' Astronomy ', '', null],
         focusTab: 'personal',
         viewTiersByClub: { solar_car: 'board' },
         searchQuery: 'fairing',
@@ -394,6 +395,11 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
 
     const restoredAlice = readTaskBoardPrefs('email:alice@ucsc.edu', mockStorage);
     assert.equal(restoredAlice.selectedClubId, 'solar_car');
+    assert.deepEqual(restoredAlice.favoriteClubIds, ['solar_car', 'astronomy']);
+    writeTaskBoardPrefs('email:alice@ucsc.edu', { hideDone: false }, mockStorage);
+    assert.deepEqual(readTaskBoardPrefs('email:alice@ucsc.edu', mockStorage).favoriteClubIds, ['solar_car', 'astronomy']);
+    writeTaskBoardPrefs('demo', { favoriteClubIds: ['astronomy'] }, mockStorage);
+    assert.deepEqual(readTaskBoardPrefs('demo', mockStorage).favoriteClubIds, []);
     assert.equal(restoredAlice.focusTab, 'personal');
     assert.equal(restoredAlice.viewTiersByClub.solar_car, 'board');
     assert.equal(restoredAlice.searchQuery, 'fairing');
@@ -411,6 +417,7 @@ describe('Frontend JSX/ESM AST Validation, Import Resolution & Client Shortcut D
 
     const restoredBob = readTaskBoardPrefs('email:bob@ucsc.edu', mockStorage);
     assert.equal(restoredBob.focusTab, 'all');
+    assert.deepEqual(restoredBob.favoriteClubIds, []);
     assert.equal(restoredBob.hideDone, false);
 
     clearTaskBoardPrefsForAccount('email:alice@ucsc.edu', mockStorage);

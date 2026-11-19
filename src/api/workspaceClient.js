@@ -447,12 +447,19 @@ export const checkDueTaskReminders = (payload = {}) =>
 // ── 6. Poll Action Helpers (Returning Structured Errors / RBAC Status) ──
 
 async function schedulerActionRequest(path, options = {}, fallbackUser = null) {
+  const generation = authGeneration
+  const cancelled = () => options.signal?.aborted || generation !== authGeneration
+  const aborted = { ok: false, aborted: true }
+  if (cancelled()) return aborted
   await ensureWorkspaceAuthReady(fallbackUser)
+  if (cancelled()) return aborted
   let res = await fetchActionJSON(path, options)
+  if (cancelled()) return aborted
 
   // Transparently refresh stale in-memory Express sessions (`ch_sess_...`) after server restarts
   if (!res.ok && res.status === 401) {
     const refreshed = await ensureWorkspaceAuthReady(fallbackUser, { forceRefresh: true })
+    if (cancelled()) return aborted
     if (refreshed) {
       res = await fetchActionJSON(path, options)
     } else {
@@ -461,6 +468,7 @@ async function schedulerActionRequest(path, options = {}, fallbackUser = null) {
     }
   }
 
+  if (cancelled()) return aborted
   // Serverless GitHub Pages / standalone fallback: talk directly to Supabase Cloud!
   if (isMissingBackendEndpoint(res) && isSupabaseConfigured()) {
     const directRes = await handleDirectPollAction(path, options)
@@ -473,6 +481,7 @@ async function schedulerActionRequest(path, options = {}, fallbackUser = null) {
     }
   }
 
+  if (cancelled()) return aborted
   if (!res.ok) {
     if (res.status === 403) {
       notifyPermissionChange({
@@ -528,12 +537,13 @@ export const inviteShortcutsToPoll = (pollId, payload, fallbackUser = null) =>
     fallbackUser
   )
 
-export const submitVerifiedPollResponse = (pollId, payload, fallbackUser = null) =>
+export const submitVerifiedPollResponse = (pollId, payload, fallbackUser = null, signal) =>
   schedulerActionRequest(
     `/scheduler/polls/${encodeURIComponent(pollId)}/respond`,
     {
       method: 'POST',
       body: JSON.stringify(payload),
+      signal,
     },
     fallbackUser
   )

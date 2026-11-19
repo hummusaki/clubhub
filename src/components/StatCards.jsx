@@ -27,7 +27,7 @@ export default function StatCards({
         return (
           <li key={stat.label} className="min-w-0">
             <Element
-              {...(interactive ? { type: 'button', onClick: () => onNav(stat.navTarget) } : {})}
+              {...(interactive ? { type: 'button', onClick: () => onNav(stat.navTarget, stat.calendarSection ? { calendarSection: stat.calendarSection } : undefined) } : {})}
               className={`flex h-full w-full items-center gap-2 px-2 py-2 sm:px-3 text-left ${interactive ? 'ui-touch md-state-layer hover:bg-[var(--bg-subtle)] focus-visible:outline-offset-[-3px]' : ''}`}
             >
               <IconBadge color={stat.color} size={26} radius={9999}>

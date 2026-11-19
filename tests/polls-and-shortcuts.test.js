@@ -1,5 +1,6 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { createPollResponseQueue } from '../src/utils/pollResponseQueue.js';
 import { privExecute } from '../server/privateDb.js';
 import { expandShortcutTargets } from '../server/routes/workspace.js';
 import {
@@ -8,6 +9,58 @@ import {
   apiRequest,
   registerUser,
 } from './helpers/testServer.js';
+
+it('debounces poll responses independently, serializes updates and retries failed saves', async () => {
+  const writes = [];
+  const statuses = [];
+  let releaseFirst;
+  const queue = createPollResponseQueue({
+    delay: 10_000,
+    save: (id, slots) => {
+      writes.push([id, slots]);
+      if (id === 'alpha' && writes.length === 1) return new Promise(resolve => { releaseFirst = resolve; });
+      if (id === 'beta') return { ok: writes.filter(([poll]) => poll === id).length > 1 };
+      return { ok: true };
+    },
+    onStatus: (id, status) => statuses.push([id, status]),
+  });
+  try {
+    queue.schedule('alpha', ['9:00']);
+    queue.schedule('alpha', ['9:30']);
+    const first = queue.flush('alpha');
+    await Promise.resolve();
+    queue.schedule('alpha', ['10:00']);
+    const latest = queue.flush('alpha');
+    queue.schedule('beta', ['14:00']);
+
+    assert.equal(await queue.flush('beta'), false);
+    assert.deepEqual(statuses.at(-1), ['beta', 'error']);
+    assert.equal(await queue.flush('beta'), true);
+    assert.deepEqual(statuses.at(-1), ['beta', 'saved']);
+    assert.deepEqual(writes, [['alpha', ['9:30']], ['beta', ['14:00']], ['beta', ['14:00']]]);
+
+    releaseFirst({ ok: true });
+    await first;
+    assert.equal(await latest, true);
+    assert.deepEqual(writes.at(-1), ['alpha', ['10:00']]);
+    assert.deepEqual(statuses.filter(([id, status]) => id === 'alpha' && status === 'saved'), [['alpha', 'saved']]);
+  } finally {
+    queue.dispose();
+  }
+});
+
+it('drops pending poll writes when their workspace account is closed', async () => {
+  const writes = [];
+  const queue = createPollResponseQueue({
+    delay: 0,
+    save: id => { writes.push(id); return { ok: true }; },
+    onStatus: () => {},
+  });
+  queue.schedule('alpha', ['9:30']);
+  queue.dispose();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(writes, []);
+});
 
 describe('Phase 2 & 3: Real-User Availability Polls, Sub-Groups & Shortcut Deduplication', () => {
   let ctx;

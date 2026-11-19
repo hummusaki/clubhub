@@ -1,5 +1,7 @@
 // ── Task Board Persistent Preferences, Time-Aware Due Dates & Reminder Engine ──
 
+import { normalizeClubKey } from './calendarSync.js'
+
 export const TASK_BOARD_PREFS_KEY_PREFIX = 'clubhub_task_board_prefs_v1'
 export const SENT_TASK_REMINDERS_LEDGER_KEY = 'clubhub_sent_task_reminders_v1'
 
@@ -33,6 +35,7 @@ export const DEFAULT_REMINDER_PREFS = {
 
 export const DEFAULT_TASK_BOARD_PREFS = {
   selectedClubId: '',
+  favoriteClubIds: [],
   focusTab: 'all',
   viewTiersByClub: {},
   searchQuery: '',
@@ -68,6 +71,11 @@ function sanitizeTierMap(obj) {
     if (v === 'board' || v === 'member') out[k] = v
   }
   return out
+}
+
+export function normalizeFavoriteClubIds(ids) {
+  if (!Array.isArray(ids)) return []
+  return [...new Set(ids.filter(id => typeof id === 'string').map(normalizeClubKey).filter(Boolean))]
 }
 
 export function normalizeReminderPrefs(raw = {}) {
@@ -115,6 +123,7 @@ export function readTaskBoardPrefs(accountKey = 'guest', storage = globalThis?.l
     }
     return {
       selectedClubId: typeof parsed.selectedClubId === 'string' ? parsed.selectedClubId : '',
+      favoriteClubIds: normalizeFavoriteClubIds(parsed.favoriteClubIds),
       focusTab: VALID_FOCUS_TABS.has(parsed.focusTab) ? parsed.focusTab : 'all',
       viewTiersByClub: sanitizeTierMap(parsed.viewTiersByClub),
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery.slice(0, 120) : '',
@@ -150,6 +159,7 @@ export function writeTaskBoardPrefs(
     const merged = {
       ...prev,
       ...prefs,
+      favoriteClubIds: normalizeFavoriteClubIds(prefs.favoriteClubIds ?? prev.favoriteClubIds),
       // Preserve last non-empty selectedClubId if caller hasn't hydrated memberClubs yet
       selectedClubId:
         prefs.selectedClubId !== undefined && prefs.selectedClubId !== ''

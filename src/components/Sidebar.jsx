@@ -5,7 +5,6 @@ const MOBILE_NAV_LABELS = {
   overview: 'Overview',
   tasks: 'Tasks',
   calendar: 'Calendar',
-  availability: 'Polls',
   clubs: 'Clubs',
   links: 'Links',
 }
@@ -28,13 +27,14 @@ export default function Sidebar({
             return (
               <button
                 key={item.id}
+                data-accent={item.id}
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => onNav(item.id)}
                 className={`md-state-layer flex items-center gap-3.5 px-4 h-11 min-h-[44px] rounded-full
                   text-sm cursor-pointer transition-colors duration-150 border-none text-left ${
                     isActive
-                      ? 'font-medium text-[var(--on-secondary-container)] bg-[var(--secondary-container)]'
+                      ? 'font-medium text-[var(--accent-ink)] bg-[var(--accent-surface)] nav-selected'
                       : 'font-medium text-[var(--text-muted)] hover:text-[var(--text)] bg-transparent'
                   }`}
               >
@@ -52,13 +52,14 @@ export default function Sidebar({
         aria-label="Mobile navigation"
         className="mobile-nav lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--md-surface-container)] border-t border-[var(--border)] select-none"
       >
-        <div className="grid grid-cols-6 items-center gap-0.5">
+        <div className="grid grid-cols-5 items-center gap-0.5">
           {navItems.map(item => {
             const isActive = activeNav === item.id
             const mobileLabel = MOBILE_NAV_LABELS[item.id] || item.label
             return (
               <button
                 key={item.id}
+                data-accent={item.id}
                 type="button"
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => onNav(item.id)}
@@ -67,7 +68,7 @@ export default function Sidebar({
                 <span
                   className={`md-state-layer w-[min(100%,48px)] sm:w-16 h-7 rounded-full flex items-center justify-center transition-colors duration-150 ${
                     isActive
-                      ? 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)]'
+                      ? 'bg-[var(--accent-surface)] text-[var(--accent-ink)]'
                       : 'bg-transparent text-[var(--text-muted)] group-hover:text-[var(--text)]'
                   }`}
                 >

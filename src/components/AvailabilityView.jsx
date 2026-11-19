@@ -1,5 +1,5 @@
 import Select from './Select'
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Clock,
   Users,
@@ -20,7 +20,7 @@ import {
   X,
   Mail,
 } from 'lucide-react'
-import { Card, BubbleTag, Avatar, cleanText, Button, IconButton, ActionDisclosure, ActionItem, ModalDialog, PageToolbar, SegmentedControl } from './ui'
+import { Card, BubbleTag, Avatar, cleanText, Button, IconButton, ActionDisclosure, ActionItem, ModalDialog, SegmentedControl } from './ui'
 import { PlatformIcon } from './icons'
 import {
   getSchedulerPolls,
@@ -38,6 +38,7 @@ import {
   archiveVerifiedPoll,
   deleteVerifiedPoll,
 } from '../api/workspaceClient'
+import { createPollResponseQueue } from '../utils/pollResponseQueue'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import {
   dispatchDiscordNotification,
@@ -46,7 +47,6 @@ import {
 
 const BASE_MONDAY = '2026-11-16'
 const DEFAULT_TZ = 'America/Los_Angeles'
-const PENDING_POLL_SESSION_KEY = 'clubhub_pending_poll_id'
 
 const RESPONDER_GRADIENTS = [
   '#1A73E8', // Google Blue
@@ -209,20 +209,11 @@ const EMPTY_POLL_TEMPLATE = {
   calendarEvents: [],
 }
 
-function getInitialRequestedPollId() {
-  if (typeof window === 'undefined') return null
-  try {
-    const urlPoll = new URLSearchParams(window.location.search).get('poll')
-    if (urlPoll) return urlPoll
-    return sessionStorage.getItem(PENDING_POLL_SESSION_KEY) || null
-  } catch {
-    return null
-  }
-}
-
 export default function AvailabilityView({
   user = null,
   accountKey = 'guest',
+  visible = true,
+  pollRequest = null,
   isDemo = false,
   userSettings = {},
   clubs = [],
@@ -256,8 +247,12 @@ export default function AvailabilityView({
     '#1A73E8'
 
   const [polls, setPolls] = useState([])
+  const pollsRef = useRef(polls)
+  pollsRef.current = polls
   const [pollsLoading, setPollsLoading] = useState(true)
-  const [selectedPollId, setSelectedPollId] = useState(() => getInitialRequestedPollId() || '')
+  const [selectedPollId, setSelectedPollId] = useState(pollRequest?.id || '')
+  const [unavailablePollId, setUnavailablePollId] = useState('')
+  const pollLoadRevision = useRef(0)
   const [weekAnchorDate, setWeekAnchorDate] = useState(BASE_MONDAY)
   const [mobileDay, setMobileDay] = useState(BASE_MONDAY)
 
@@ -288,7 +283,7 @@ export default function AvailabilityView({
   const slotsByPollRef = useRef(slotsByPoll)
   slotsByPollRef.current = slotsByPoll
   const [dragUiState, setDragUiState] = useState(null)
-  const [autoSaveState, setAutoSaveState] = useState('saved')
+  const [saveStatusByPoll, setSaveStatusByPoll] = useState({})
 
   // Hovered or clicked slot & contiguous window range for full-block grid highlighting
   const [hoveredSlotIso, setHoveredSlotIso] = useState(null)
@@ -317,7 +312,9 @@ export default function AvailabilityView({
   const [pollActionBusy, setPollActionBusy] = useState('')
   const [confirmDeletePollId, setConfirmDeletePollId] = useState(null)
 
-  const saveTimerRef = useRef(null)
+  const responseQueue = useRef(null)
+  const responseUser = useRef(effectiveUser)
+  responseUser.current = effectiveUser
 
   const activePolls = useMemo(() => polls.filter(p => !p.archived), [polls])
   const archivedPolls = useMemo(() => polls.filter(p => Boolean(p.archived)), [polls])
@@ -325,11 +322,9 @@ export default function AvailabilityView({
   const activePoll = useMemo(() => {
     const explicit = selectedPollId ? polls.find(p => p.id === selectedPollId) : null
     if (explicit) return explicit
-    return (
-      activePolls[0] ||
-      EMPTY_POLL_TEMPLATE
-    )
-  }, [polls, selectedPollId, activePolls])
+    if (unavailablePollId || (pollsLoading && pollRequest?.id)) return EMPTY_POLL_TEMPLATE
+    return activePolls[0] || EMPTY_POLL_TEMPLATE
+  }, [polls, selectedPollId, activePolls, unavailablePollId, pollsLoading, pollRequest])
 
   const hasActivePoll = Boolean(activePoll.id)
   const isActivePollArchived = Boolean(hasActivePoll && activePoll.archived)
@@ -414,46 +409,47 @@ export default function AvailabilityView({
   )
 
   const loadPolls = useCallback(async () => {
+    const revision = ++pollLoadRevision.current
+    const requestedPollId = pollRequest?.id
     setPollsLoading(true)
-    const requestedPollId = getInitialRequestedPollId()
+    setUnavailablePollId('')
     if (requestedPollId) {
-      try {
-        sessionStorage.removeItem(PENDING_POLL_SESSION_KEY)
-      } catch {
-        // Ignore sessionStorage errors
+      setSelectedPollId(requestedPollId)
+      if (pollsRef.current.some(poll => poll.id === requestedPollId)) {
+        setPollsLoading(false)
+        return
       }
     }
 
-    if (isAuthenticated) {
-      await ensureWorkspaceAuthReady(effectiveUser)
-    }
-
-    const data = await getSchedulerPolls({ includeArchived: '1' })
-    let list = Array.isArray(data) ? data : []
-    if (requestedPollId && !list.some(p => p.id === requestedPollId)) {
-      const directPoll = await getSchedulerPoll(requestedPollId)
-      if (directPoll?.id) {
-        list = [directPoll, ...list]
+    let list = []
+    try {
+      if (isAuthenticated) await ensureWorkspaceAuthReady(effectiveUser)
+      const data = await getSchedulerPolls({ includeArchived: '1' })
+      list = Array.isArray(data) ? data : []
+      if (requestedPollId && !list.some(poll => poll.id === requestedPollId)) {
+        const directPoll = await getSchedulerPoll(requestedPollId)
+        if (directPoll?.id === requestedPollId) list = [directPoll, ...list]
       }
+    } catch {
+      // A requested poll that could not be loaded is shown as unavailable.
     }
+    if (revision !== pollLoadRevision.current) return
+    const requestedMatch = list.find(poll => poll.id === requestedPollId)
     setPolls(list)
-    if (list.length > 0) {
-      const requestedMatch = requestedPollId ? list.find(p => p.id === requestedPollId) : null
-      setSelectedPollId(prev => {
-        if (requestedMatch) return requestedMatch.id
-        if (prev && list.some(p => p.id === prev)) return prev
-        const firstActive = list.find(p => !p.archived)
-        return firstActive ? firstActive.id : ''
-      })
-    } else {
-      setSelectedPollId('')
-    }
+    setUnavailablePollId(requestedPollId && !requestedMatch ? requestedPollId : '')
+    setSelectedPollId(prev => {
+      if (requestedMatch) return requestedMatch.id
+      if (requestedPollId) return ''
+      if (list.some(poll => poll.id === prev)) return prev
+      return list.find(poll => !poll.archived)?.id || ''
+    })
     setPollsLoading(false)
-  }, [isAuthenticated, effectiveUser])
+  }, [isAuthenticated, effectiveUser, pollRequest])
 
   useEffect(() => {
-    loadPolls()
-  }, [loadPolls, signedInUserId, workspaceUserId])
+    void loadPolls()
+    return () => { pollLoadRevision.current += 1 }
+  }, [loadPolls])
 
   // Sync displayed week whenever the user switches to a poll with its own target week
   useEffect(() => {
@@ -498,34 +494,34 @@ export default function AvailabilityView({
     activePoll.id,
   ])
 
-  // Sync authenticated user's availability directly to the database (zero localStorage PII)
-  const persistPollUserSlots = useCallback(
-    (nextByPoll, targetPollId, targetUserId) => {
-      if (!targetPollId || !targetUserId) return
-      setAutoSaveState('saving')
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = setTimeout(async () => {
-        const freeArr = Array.from(nextByPoll?.[targetPollId]?.[targetUserId] || [])
-        const res = await submitVerifiedPollResponse(
-          targetPollId,
-          {
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
-            freeSlots: freeArr,
-            busySlots: [],
-          },
-          effectiveUser
-        )
-        const updatedPoll = res?.data?.id ? res.data : res?.poll?.id ? res.poll : res?.id ? res : null
-        if (res?.ok && updatedPoll?.id) {
-          setPolls(prev => prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p)))
-        } else if (!res?.ok && onNotify) {
-          onNotify(res?.error || 'Could not save poll response.', { type: 'error' })
+  useLayoutEffect(() => {
+    const queue = createPollResponseQueue({
+      save: (pollId, freeSlots, signal) => submitVerifiedPollResponse(pollId, {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ,
+        freeSlots,
+        busySlots: [],
+      }, responseUser.current, signal),
+      onStatus: (pollId, status, result) => {
+        setSaveStatusByPoll(prev => ({ ...prev, [pollId]: status }))
+        const updatedPoll = result?.data || result?.poll || result
+        if (status === 'saved' && Array.isArray(updatedPoll?.responses)) {
+          setPolls(prev => prev.map(poll => poll.id === pollId ? { ...poll, responses: updatedPoll.responses } : poll))
         }
-        setAutoSaveState('saved')
-      }, 350)
-    },
-    [onNotify, effectiveUser]
-  )
+      },
+    })
+    responseQueue.current = queue
+    return () => {
+      queue.dispose()
+      responseQueue.current = null
+    }
+  }, [accountKey])
+
+  const persistPollUserSlots = useCallback((pollId, slots) => {
+    responseQueue.current?.schedule(pollId, Array.from(slots))
+  }, [])
+
+  const autoSaveState = saveStatusByPoll[activePoll.id] ||
+    ((activePoll.responses || []).some(response => isMyUserId(response.userId)) ? 'saved' : '')
 
   const commitUserSet = useCallback(
     (updatedSet, targetPollId = activePoll.id, targetUserId = currentUserId) => {
@@ -555,7 +551,7 @@ export default function AvailabilityView({
       }
       slotsByPollRef.current = nextByPoll
       setSlotsByPoll(nextByPoll)
-      persistPollUserSlots(nextByPoll, targetPollId, targetUserId)
+      persistPollUserSlots(targetPollId, updatedSet)
     },
     [activePoll.id, currentUserId, isAuthenticated, onNotify, persistPollUserSlots, polls]
   )
@@ -663,7 +659,7 @@ export default function AvailabilityView({
     }
     slotsByPollRef.current = nextByPoll
     setSlotsByPoll(nextByPoll)
-    persistPollUserSlots(nextByPoll, session.pollId, session.userId)
+    persistPollUserSlots(session.pollId, session.latestSet)
 
     setTimeout(() => {
       handledByPointerDownRef.current = false
@@ -671,6 +667,10 @@ export default function AvailabilityView({
   }, [persistPollUserSlots])
 
   useEffect(() => {
+    if (!visible) {
+      finishActiveDrag()
+      return
+    }
     function handleWindowPointerMove(e) {
       const session = dragRef.current
       if (!session || !session.active) return
@@ -709,9 +709,8 @@ export default function AvailabilityView({
       window.removeEventListener('mouseup', finishActiveDrag)
       window.removeEventListener('pointercancel', finishActiveDrag)
       window.removeEventListener('blur', finishActiveDrag)
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [updateDragSelection, finishActiveDrag])
+  }, [visible, updateDragSelection, finishActiveDrag])
 
   // Strictly real authenticated poll responders (plus live in-flight edits for the signed-in user)
   const allParticipants = useMemo(() => {
@@ -1335,11 +1334,8 @@ export default function AvailabilityView({
     nextArchived = !targetPoll?.archived
   ) {
     if (!targetPoll?.id || pollActionBusy) return
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
     setPollActionBusy('archive')
+    await responseQueue.current?.flush(targetPoll.id)
     const res = await archiveVerifiedPoll(targetPoll.id, nextArchived, effectiveUser)
       .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
       .finally(() => setPollActionBusy(''))
@@ -1379,10 +1375,6 @@ export default function AvailabilityView({
 
   async function handleDeletePoll(targetPoll = activePoll) {
     if (!targetPoll?.id || pollActionBusy) return
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
     setPollActionBusy('delete')
     const res = await deleteVerifiedPoll(targetPoll.id, effectiveUser)
       .catch(() => ({ ok: false, error: 'Could not confirm the poll change. Check the poll and try again.' }))
@@ -1396,6 +1388,7 @@ export default function AvailabilityView({
     }
 
     const deletedId = targetPoll.id
+    responseQueue.current?.forget(deletedId)
     const titleText = cleanText(targetPoll.title)
     setConfirmDeletePollId(null)
     setSpotlightUserId(null)
@@ -1404,18 +1397,6 @@ export default function AvailabilityView({
     delete nextByPoll[deletedId]
     slotsByPollRef.current = nextByPoll
     setSlotsByPoll(nextByPoll)
-
-    if (typeof window !== 'undefined') {
-      try {
-        const url = new URL(window.location.href)
-        if (url.searchParams.get('poll') === deletedId) {
-          url.searchParams.delete('poll')
-          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
-        }
-      } catch {
-        // Ignore history state errors
-      }
-    }
 
     if (Array.isArray(res?.removedEventIds) && res.removedEventIds.length > 0) {
       if (onEventBooked) await onEventBooked()
@@ -1467,7 +1448,9 @@ export default function AvailabilityView({
     })
     setBookingBusy(false)
 
+    let bookedEvent
     if (res && res.booked && res.poll) {
+      bookedEvent = res.poll.calendarEvents?.find(event => event.id === res.eventId || event.id === eventId)
       setPolls(prev => prev.map(p => (p.id === res.poll.id ? res.poll : p)))
       if (onEventBooked) await onEventBooked()
     } else if (res?.error) {
@@ -1484,6 +1467,7 @@ export default function AvailabilityView({
         location: activePoll.location || 'TBD',
         isBookedCollab: true,
       }
+      bookedEvent = localEv
       setPolls(prev =>
         prev.map(p =>
           p.id === activePoll.id
@@ -1504,8 +1488,8 @@ export default function AvailabilityView({
           day: 'numeric',
         })}`,
         {
-          actionLabel: onOpenCalendar ? 'Open Calendar' : undefined,
-          onAction: onOpenCalendar,
+          actionLabel: bookedEvent && onOpenCalendar ? 'View in calendar' : undefined,
+          onAction: bookedEvent && onOpenCalendar ? () => onOpenCalendar(bookedEvent, activePoll.id) : undefined,
         }
       )
     }
@@ -1557,17 +1541,25 @@ export default function AvailabilityView({
   }, [timeRows, gridSlots, mobileDay, myFreeSlots])
 
 
+  const newPollButton = (
+    <Button size="sm" variant={showNewPollForm ? 'outlined-neutral' : 'filled'}
+      icon={showNewPollForm ? <X size={14} /> : <Plus size={14} />}
+      reserveLabels={['New poll', 'Close poll form']}
+      aria-expanded={showNewPollForm} aria-controls="create-availability-poll"
+      onClick={() => setShowNewPollForm(prev => !prev)}>
+      {showNewPollForm ? 'Close poll form' : 'New poll'}
+    </Button>
+  )
+
   return (
     <div className="page-stack">
-      <PageToolbar title="Group availability" actions={
-        <Button size="sm" variant={showNewPollForm ? 'outlined-neutral' : 'filled'}
-          icon={showNewPollForm ? <X size={14} /> : <Plus size={14} />}
-          reserveLabels={['New poll', 'Close poll form']}
-          aria-expanded={showNewPollForm} aria-controls="create-availability-poll"
-          onClick={() => setShowNewPollForm(prev => !prev)}>
-          {showNewPollForm ? 'Close poll form' : 'New poll'}
-        </Button>
-      } />
+      <div className="flex flex-wrap justify-end">{newPollButton}</div>
+      {unavailablePollId && (
+        <div className="content-tile rounded-xl section-pad space-y-1" role="status">
+          <p className="font-medium">Poll unavailable</p>
+          <p className="text-sm text-[var(--text-muted)]">This poll may have expired, been deleted, or require access from its organizer.</p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 dense-controls">
         <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
@@ -1577,6 +1569,7 @@ export default function AvailabilityView({
               aria-label="Select poll"
               value={activePoll.id || ''}
               onValueChange={nextValue => {
+                setUnavailablePollId('')
                 setSelectedPollId(nextValue)
                 setSpotlightUserId(null)
                 setConfirmDeletePollId(null)
@@ -1644,7 +1637,7 @@ export default function AvailabilityView({
         )}
       </div>
 
-      {isActivePollCreator && confirmDeletePollId === activePoll.id && (
+      {visible && isActivePollCreator && confirmDeletePollId === activePoll.id && (
         <ModalDialog title="Delete poll?" onClose={() => setConfirmDeletePollId(null)} footer={
           <>
             <Button variant="text" onClick={() => setConfirmDeletePollId(null)}>Cancel</Button>
@@ -1840,10 +1833,14 @@ export default function AvailabilityView({
                     </>
                   )}
                 </ActionDisclosure>
-                <span className="text-xs text-[var(--text-muted)]" role="status">
+                <span className={`text-xs ${autoSaveState === 'error' ? 'text-[var(--red-ink)]' : 'text-[var(--text-muted)]'}`} role="status">
                   {dragUiState ? (dragUiState.mode === 'remove' ? 'Deselecting…' : 'Selecting…') :
-                    (autoSaveState === 'saving' ? 'Saving…' : 'Saved')}
+                    { saving: 'Saving…', saved: 'Saved', error: 'Response could not be saved' }[autoSaveState]}
                 </span>
+                {autoSaveState === 'error' && (
+                  <Button variant="outlined-neutral" size="sm"
+                    onClick={() => void responseQueue.current?.flush(activePoll.id)}>Retry</Button>
+                )}
               </>
             )}
           </div>
@@ -1943,14 +1940,14 @@ export default function AvailabilityView({
                     rowStyle =
                       'bg-[var(--red-light)] text-[var(--red-ink)] border-[var(--red)]/50'
                   } else if (isMine) {
-                    rowStyle = 'bg-[var(--green)] text-white border-[var(--green)] shadow-2xs'
+                    rowStyle = 'bg-[var(--teal)] text-[var(--on-teal)] border-[var(--teal)] shadow-2xs'
                   } else if (otherCount > 0) {
                     rowStyle =
-                      'bg-[var(--green)]/22 text-[var(--green-ink)] border-[var(--green)]/42'
+                      'bg-[var(--teal-light)] text-[var(--teal-ink)] border-[var(--teal)]'
                   }
                 } else if (count > 0) {
                   rowStyle =
-                    'bg-[var(--green-light)] text-[var(--green-ink)] border-[var(--green)]/40'
+                    'bg-[var(--teal-light)] text-[var(--teal-ink)] border-[var(--teal)]'
                 }
 
                 return (
@@ -2062,7 +2059,7 @@ export default function AvailabilityView({
                             </span>
                             {dayMarkedCount > 0 && (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-[var(--green)]"
+                                className="w-1.5 h-1.5 rounded-full bg-[var(--teal)]"
                                 title={
                                   gridMode === 'mine'
                                     ? `${formatHoursFromSlots(dayMarkedCount)} marked free`
@@ -2141,18 +2138,18 @@ export default function AvailabilityView({
                               bg = 'var(--red-light)'
                               textColor = 'var(--red-ink)'
                             } else if (isMine) {
-                              bg = 'var(--green)'
-                              textColor = '#ffffff'
+                              bg = 'var(--teal)'
+                              textColor = 'var(--on-teal)'
                             } else if (otherCount > 0) {
                               const otherRatio = otherCount / Math.max(1, allParticipants.length)
                               const otherPct = Math.round((0.22 + otherRatio * 0.20) * 100)
-                              bg = `color-mix(in srgb, var(--green) ${otherPct}%, transparent)`
-                              textColor = 'var(--green-ink)'
+                              bg = `color-mix(in srgb, var(--teal-light) ${otherPct}%, var(--bg-card))`
+                              textColor = 'var(--teal-ink)'
                             }
                           } else if (count > 0) {
-                            const pct = Math.round((0.18 + ratio * 0.74) * 100)
-                            bg = `color-mix(in srgb, var(--green) ${pct}%, transparent)`
-                            textColor = ratio >= 0.55 ? '#ffffff' : 'var(--text)'
+                            const tint = Math.round((0.35 + ratio * 0.65) * 100)
+                            bg = ratio === 1 ? 'var(--teal)' : `color-mix(in srgb, var(--teal-light) ${tint}%, var(--bg-card))`
+                            textColor = ratio === 1 ? 'var(--on-teal)' : 'var(--teal-ink)'
                           }
 
                           const conflictNote = campusConflict
@@ -2207,7 +2204,7 @@ export default function AvailabilityView({
                                   : isRemoveRectOutline
                                     ? 'ring-1 ring-inset ring-[var(--border-strong)] z-10'
                                     : isAddPreview
-                                      ? 'ring-1.5 ring-inset ring-white/75 z-10'
+                                      ? 'ring-1.5 ring-inset ring-[var(--on-teal)] z-10'
                                       : isInHoveredWindow || isSpotlit
                                         ? 'ring-2 ring-inset ring-[var(--blue)] z-10'
                                         : isPinned && gridMode === 'group'
@@ -2256,12 +2253,12 @@ export default function AvailabilityView({
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
               <div className="flex flex-wrap items-center gap-3.5">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-[var(--green)] inline-block" />
+                  <span className="w-3 h-3 rounded bg-[var(--teal)] inline-block" />
                   <span>{gridMode === 'mine' ? 'You are free (✓)' : 'Group overlap'}</span>
                 </span>
                 {gridMode === 'mine' && (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-[var(--green-light)] border border-[var(--green)]/40 inline-block" />
+                    <span className="w-3 h-3 rounded bg-[var(--teal-light)] border border-[var(--teal)] inline-block" />
                     <span>Teammates free</span>
                   </span>
                 )}
@@ -2501,11 +2498,11 @@ export default function AvailabilityView({
                                 type="button"
                                 onClick={e => {
                                   e.stopPropagation()
-                                  onOpenCalendar()
+                                  onOpenCalendar(win.scheduledEvent, activePoll.id)
                                 }}
                                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--blue-ink)] hover:underline bg-transparent border-none cursor-pointer"
                               >
-                                <span>Calendar</span>
+                                <span>View in calendar</span>
                                 <ArrowRight size={11} />
                               </button>
                             )}

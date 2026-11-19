@@ -571,7 +571,7 @@ export default function LinksResources({
   const filterCount = Number(filterTab !== 'All') + Number(clubFilter !== 'all') + Number(groupMode !== 'category')
 
   return (
-    <div className="page-stack">
+    <div className="page-stack destination-accent" data-accent="links">
       <PageToolbar title="Shared resources" actions={
         <>
           {onSearchChange && <div className="w-full sm:w-48 min-w-0">

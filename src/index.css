@@ -6,15 +6,15 @@
 
 /* ═══════════════════════════════════════════════════════════════════════
    ClubHub — Google Material Design 3 & Google Workspace Token System
-   Light Mode: Cool Workspace Shell (#F8FAFD) + Pure Surface (#FFFFFF)
-   Dark Mode:  Neutral Charcoal (#131314) + Tonal Surface Elevation
+   Light Mode: Blue-tinted shell and white reading surfaces
+   Dark Mode: Blue-charcoal shell and elevated reading surfaces
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
   color-scheme: light;
 
   /* M3 Surface Hierarchy */
-  --md-surface-shell:             #F8FAFD;
+  --md-surface-shell:             #F1F6FE;
   --md-surface:                   #FFFFFF;
   --md-surface-container-lowest:  #FFFFFF;
   --md-surface-container-low:     #F8FAFD;
@@ -46,7 +46,7 @@
   --bg-tile-hover:     #F0F4F9;
   --bg-surface:        var(--md-surface-container);
   --bg-subtle:         var(--md-surface-container-high);
-  --bg-glass:          rgba(248, 250, 253, 0.94);
+  --bg-glass:          rgba(239, 246, 255, 0.96);
   --switch-thumb:      #FFFFFF;
 
   --border:            var(--md-outline-variant);
@@ -115,8 +115,8 @@
 .dark {
   color-scheme: dark;
 
-  --md-surface-shell:             #131314;
-  --md-surface:                   #1E1F20;
+  --md-surface-shell:             #151A24;
+  --md-surface:                   #202632;
   --md-surface-container-lowest:  #0E0E0F;
   --md-surface-container-low:     #1E1F20;
   --md-surface-container:         #282A2C;
@@ -143,7 +143,7 @@
   --bg-tile-hover:     var(--md-surface-container-high);
   --bg-surface:        var(--md-surface-container);
   --bg-subtle:         var(--md-surface-container-highest);
-  --bg-glass:          rgba(19, 19, 20, 0.94);
+  --bg-glass:          rgba(21, 26, 36, 0.96);
   --switch-thumb:      #062E6F;
 
   --border:            var(--md-outline-variant);
@@ -382,6 +382,11 @@ html.reduce-motion .view-enter {
     background-color: transparent;
     border: 1px solid var(--md-outline);
     overflow: hidden;
+  }
+
+  .segmented-track > button:focus-visible {
+    z-index: 1;
+    outline-offset: -3px;
   }
 
   .segmented-track > button {
@@ -731,7 +736,7 @@ html.compact-cards {
   .poll-week-grid { display: none !important; }
 }
 .poll-week-grid td:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--accent-line, var(--blue));
   outline-offset: -2px;
   z-index: 10;
 }
@@ -899,4 +904,321 @@ html.compact-cards {
 @media (prefers-reduced-motion: reduce) {
   .modal-viewport.fade-in { animation: none; }
   .task-completion-mark { transition: none; }
+}
+
+/* Workspace destinations and club categories use the same paired accent tokens. */
+:is([data-accent], [data-tone="blue"]) {
+  --accent-fill: var(--blue);
+  --accent-on-fill: var(--on-blue);
+  --accent-line: var(--blue);
+  --accent-ink: var(--blue-ink);
+  --accent-surface: var(--blue-light);
+}
+
+:is([data-accent="calendar"], [data-tone="teal"]) {
+  --accent-fill: var(--teal);
+  --accent-on-fill: var(--on-teal);
+  --accent-line: var(--teal);
+  --accent-ink: var(--teal-ink);
+  --accent-surface: var(--teal-light);
+}
+
+:is([data-accent="tasks"], [data-accent="links"], [data-tone="purple"]) {
+  --accent-fill: var(--purple);
+  --accent-on-fill: var(--on-purple);
+  --accent-line: var(--purple);
+  --accent-ink: var(--purple-ink);
+  --accent-surface: var(--purple-light);
+}
+
+:is([data-accent="clubs"], [data-tone="green"]) {
+  --accent-fill: var(--green);
+  --accent-on-fill: var(--on-green);
+  --accent-line: var(--green);
+  --accent-ink: var(--green-ink);
+  --accent-surface: var(--green-light);
+}
+
+[data-tone="red"] {
+  --accent-ink: var(--red-ink);
+  --accent-surface: var(--red-light);
+}
+
+[data-tone="yellow"] {
+  --accent-ink: var(--yellow-ink);
+  --accent-surface: var(--yellow-light);
+}
+
+.nav-selected {
+  box-shadow: inset 3px 0 0 var(--accent-line);
+}
+
+.destination-accent [data-button-variant="filled"] {
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+}
+
+.destination-accent :is(.segmented-track > [aria-pressed="true"], [data-button-variant="tonal"]) {
+  background: var(--accent-surface);
+  color: var(--accent-ink);
+}
+
+:is(.destination-accent, [data-accent]) :focus-visible,
+button[data-accent]:focus-visible {
+  outline-color: var(--accent-line);
+}
+
+.club-category-chip,
+.club-avatar {
+  background: var(--accent-surface);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.club-category-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  padding: .25rem .65rem;
+  font-size: .75rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.club-directory-grid,
+.club-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 1rem;
+}
+
+.club-preview-grid,
+.club-directory-compact {
+  gap: .625rem;
+}
+
+.club-card {
+  min-inline-size: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+
+.club-card:hover,
+.club-card:focus-visible {
+  border-color: var(--accent-line, var(--blue));
+  box-shadow: var(--shadow-xs);
+}
+
+.club-card:focus-visible {
+  outline: 2px solid var(--accent-line, var(--blue));
+  outline-offset: 2px;
+}
+
+.club-directory-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  align-items: start;
+  row-gap: .625rem;
+  padding: clamp(.875rem, 2vw, 1.125rem);
+}
+
+.club-directory-compact .club-directory-card {
+  row-gap: .375rem;
+  padding: .75rem;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .club-directory-card {
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+  }
+}
+
+.club-card-preview {
+  display: flex;
+  min-block-size: 3rem;
+  align-items: center;
+  gap: .625rem;
+  padding: .4rem .65rem;
+}
+
+.club-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .625rem;
+  justify-content: space-between;
+}
+
+.club-card-name {
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.club-card-summary {
+  color: var(--text-muted);
+  font-size: .875rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.club-card-cue {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: .35rem;
+  color: var(--accent-ink, var(--blue-ink));
+  font-size: .8125rem;
+  font-weight: 600;
+}
+
+.club-card:hover .club-card-cue,
+.club-card:focus-visible .club-card-cue {
+  text-decoration: underline;
+}
+
+.task-switcher {
+  position: relative;
+  inline-size: min(100%, 23rem);
+}
+
+.task-club-trigger {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  inline-size: 100%;
+  max-inline-size: 23rem;
+  min-block-size: 3.25rem;
+  padding: .35rem .65rem;
+  border: 1px solid var(--purple);
+  border-radius: var(--radius-sm);
+  background: var(--purple-light);
+  color: var(--purple-ink);
+}
+
+button.task-club-trigger {
+  cursor: pointer;
+}
+
+button.task-club-trigger:hover,
+button.task-club-trigger[aria-expanded="true"] {
+  box-shadow: inset 0 0 0 1px var(--purple);
+}
+
+.task-switcher-panel[open] {
+  position: absolute;
+  inset: auto;
+  inset-block-start: calc(100% + .4rem);
+  inset-inline-start: 0;
+  z-index: 35;
+  inline-size: min(24rem, calc(100vw - 2 * var(--page-gutter)));
+  max-block-size: min(53dvh, 30rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.task-switcher-search {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .5rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.task-switcher-search input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 2.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  padding-inline: .65rem;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.task-club-list {
+  margin: 0;
+  padding: .35rem .5rem .5rem;
+  list-style: none;
+}
+
+.task-club-group {
+  margin-block: .5rem .25rem;
+  padding-inline: .5rem;
+  color: var(--text-muted);
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.task-club-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-radius: var(--radius-xs);
+}
+
+.task-club-row[data-current] {
+  background: var(--purple-light);
+  color: var(--purple-ink);
+}
+
+.task-club-option,
+.task-club-star {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-block-size: 2.75rem;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.task-club-option {
+  padding: .35rem .5rem;
+  text-align: start;
+  font-size: .875rem;
+}
+
+.task-club-star {
+  justify-content: center;
+  min-inline-size: 2.75rem;
+  margin-inline-start: auto;
+}
+
+.task-club-star[aria-pressed="true"] {
+  color: var(--yellow-ink);
+}
+
+.task-club-option:hover,
+.task-club-star:hover {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.task-switcher-panel::backdrop {
+  background: rgb(10 17 33 / .56);
+}
+
+@media (max-width: 639px) {
+  .task-switcher-panel[open] {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    max-block-size: min(75dvh, 34rem);
+  }
 }

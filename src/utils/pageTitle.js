@@ -11,6 +11,7 @@ function truncateLabel(str, maxLen = 34) {
 
 export function buildDashboardPageTitle({
   activeNav = 'overview',
+  calendarSection = 'schedule',
   subContext = null,
   searchQuery = '',
   upcomingCount = 0,
@@ -24,9 +25,11 @@ export function buildDashboardPageTitle({
     return [section, truncateLabel(clubTitle, 54), 'ClubHub'].filter(Boolean).join(' · ')
   }
   const q = truncateLabel(searchQuery, 24)
-  const ctx = subContext && subContext.nav === activeNav ? subContext : null
+  const availability = activeNav === 'availability' || (activeNav === 'calendar' && calendarSection === 'availability')
+  const contextNav = availability ? 'availability' : activeNav
+  const ctx = subContext?.nav === contextNav ? subContext : null
 
-  switch (activeNav) {
+  switch (contextNav) {
     case 'overview': {
       if (ctx?.modal === 'sync') return 'Calendar Sync Settings · ClubHub'
       if (q) return `"${q}" — Overview · ClubHub`
@@ -52,9 +55,9 @@ export function buildDashboardPageTitle({
     }
 
     case 'availability': {
-      if (ctx?.modal === 'new_poll') return 'New Poll — Availability · ClubHub'
-      if (ctx?.label) return `${truncateLabel(ctx.label, 30)} — Availability · ClubHub`
-      return 'Group Availability · ClubHub'
+      if (ctx?.modal === 'new_poll') return 'New Poll — Calendar · ClubHub'
+      if (ctx?.label) return `${truncateLabel(ctx.label, 30)} — Availability · Calendar · ClubHub`
+      return 'Availability · Calendar · ClubHub'
     }
 
     case 'clubs': {

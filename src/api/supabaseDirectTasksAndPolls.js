@@ -813,10 +813,12 @@ export async function handleDirectPollAction(path, options = {}) {
 
     const respMatch = pathname.match(/^\/scheduler\/polls\/([^/]+)\/respond$/)
     if (respMatch && method === 'POST') {
+      if (options.signal?.aborted) return { ok: false, aborted: true }
       const profile = await getDirectUserProfile()
       if (!profile) return { ok: false, status: 401, error: 'Sign in required.' }
       const pollId = decodeURIComponent(respMatch[1])
       const { data: existing } = await sb.from('polls').select('*').eq('id', pollId).single()
+      if (options.signal?.aborted) return { ok: false, aborted: true }
       if (!existing) return { ok: false, status: 404, error: 'Poll not found.' }
       if (existing.archived) {
         return {
@@ -828,11 +830,12 @@ export async function handleDirectPollAction(path, options = {}) {
       const freeSlots = Array.isArray(body.freeSlots) ? body.freeSlots : []
       const busySlots = Array.isArray(body.busySlots) ? body.busySlots : []
       if (freeSlots.length === 0 && busySlots.length === 0 && !body.rawTextInput) {
-        await sb
+        const { error } = await sb
           .from('poll_responses')
           .delete()
           .eq('poll_id', pollId)
           .eq('user_id', profile.id)
+        if (error) return { ok: false, status: 403, error: error.message }
       } else {
         const { error } = await sb.from('poll_responses').upsert(
           {

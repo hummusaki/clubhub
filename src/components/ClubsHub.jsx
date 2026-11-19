@@ -26,6 +26,7 @@ import {
   SearchBox,
   ActionDisclosure,
   ClubAvatar,
+  ClubCategoryChip,
   BubbleTag,
   IconBadge,
   cleanText,
@@ -44,6 +45,7 @@ import {
   CLUB_CATEGORIES,
   categorizeClub,
   getClubCategoryMeta,
+  getClubSummary,
 } from '../utils/clubCategories'
 import { filterAndRankBySearch, matchesSearchQuery, parseSearchQuery, rankClubSearch } from '../utils/search'
 import { ClubPageLink } from './ClubPage'
@@ -1110,27 +1112,38 @@ export default function ClubsHub({
   }
 
   function renderClubCard(club) {
-    const description = cleanText(club.description || club.bio || '')
+    const name = cleanText(club.name)
+    const source = hubDict?.[club.id] || club
+    const description = compact ? '' : getClubSummary(
+      cleanMultilineText(source.description), cleanMultilineText(source.bio), cleanMultilineText(source.directoryDescription)
+    )
     return (
-      <article key={club.id} className="content-tile rounded-[var(--radius-sm)] px-2 py-2 sm:px-3 min-w-0">
-        <div className="flex items-start gap-2">
-          <ClubAvatar club={club} size={32} />
-          <div className="min-w-0 flex-1">
-            <ClubPageLink clubId={club.id} onOpen={onOpenClub}
-              className="ui-touch inline-flex min-h-8 items-center text-sm font-medium leading-snug break-words text-[var(--text)] hover:text-[var(--blue)] hover:underline">
-              {cleanText(club.name)}
-            </ClubPageLink>
-            <p className="text-xs text-[var(--text-muted)]">{club.categoryLabel}</p>
-          </div>
-        </div>
-        {description && !compact && <p className="mt-2 line-clamp-2 break-words text-sm text-[var(--text-muted)]">{description}</p>}
-      </article>
+      <ClubPageLink key={club.id} clubId={club.id} onOpen={onOpenClub} aria-label={`View ${name}`}
+        className={compact ? 'club-card club-card-preview' : 'club-card club-directory-card'}>
+        {compact ? (
+          <>
+            <ClubAvatar club={club} size={32} />
+            <span className="text-sm font-medium wrap-anywhere">{name}</span>
+            <ArrowRight aria-hidden="true" size={16} className="club-card-cue shrink-0 ml-auto" />
+          </>
+        ) : (
+          <>
+            <div className="club-card-meta">
+              <ClubAvatar club={club} size={42} />
+              <ClubCategoryChip club={club} />
+            </div>
+            <h3 className="club-card-name font-display">{name}</h3>
+            <div className="club-card-summary">
+              {description && <p>{description}</p>}
+            </div>
+            <span className="club-card-cue">View club <ArrowRight aria-hidden="true" size={15} /></span>
+          </>
+        )}
+      </ClubPageLink>
     )
   }
 
-  const clubGridClasses = isCompactDensity
-    ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2'
-    : 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2.5'
+  const clubGridClasses = `club-directory-grid${isCompactDensity ? ' club-directory-compact' : ''}`
 
   // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
   if (compact) {
@@ -1142,7 +1155,7 @@ export default function ClubsHub({
           <h2 className="font-display text-base font-medium">My clubs</h2>
         </div>
         {previewClubs.length > 0 ? (
-          <div className={clubGridClasses}>{previewClubs.map(club => renderClubCard(club))}</div>
+          <div className="club-preview-grid">{previewClubs.map(club => renderClubCard(club))}</div>
         ) : (
           <p className="text-sm text-[var(--text-muted)]">
             {joinedClubs.length > 0 ? 'No joined clubs match your search.' : 'Your joined clubs will appear here.'}
@@ -1175,64 +1188,65 @@ export default function ClubsHub({
   const showClubFilters = (section === 'myclubs' || section === 'discover') &&
     (filteredClubs.length > 6 || categoryFilters.length > 1)
 
-  return (
-    <div className="page-stack">
-      <PageToolbar title="Clubs" />
-      <div className="min-w-0">
-        <Select
-          aria-label="Community section"
-          className="control-select ui-touch sm:hidden flex-1 [--select-width:14rem]"
-          value={section}
-          onValueChange={selectCommunitySection}
-          options={communitySections.map(tab => ({ value: tab.id, label: tab.label }))}
-        />
-        <nav aria-label="Community sections" className="hidden sm:flex flex-wrap items-center gap-1">
-          {communitySections.map(tab => (
-            <Button key={tab.id} size="sm" variant={section === tab.id ? 'tonal' : 'text-neutral'}
-              aria-current={section === tab.id ? 'page' : undefined}
-              onClick={() => selectCommunitySection(tab.id)}>
-              {tab.label}
-            </Button>
-          ))}
-        </nav>
-      </div>
+  const categoryOptions = categoryFilters.map(cat => ({ value: cat.value, label: `${cat.label} (${cat.count})` }))
+  const layoutOptions = [
+    { value: 'grouped', label: 'By category' },
+    { value: 'grid', label: 'Grid view' },
+  ]
+  const effectiveLayout = category !== 'All' ? 'grid' : clubLayout
+  const showLayout = filteredClubs.length > 6 || category !== 'All'
 
-      <div className="flex min-h-11 min-w-0 items-center gap-1.5 sm:gap-2">
+  function selectLayout(value) {
+    setClubLayout(value)
+    if (value === 'grouped') setCategory('All')
+  }
+
+  return (
+    <div className="page-stack destination-accent" data-accent="clubs">
+      <PageToolbar title="Clubs" />
+      <nav aria-label="Community sections" className="flex flex-wrap items-center gap-1">
+        {communitySections.map(tab => (
+          <Button key={tab.id} size="sm" variant={section === tab.id ? 'tonal' : 'text-neutral'}
+            aria-current={section === tab.id ? 'page' : undefined}
+            className="!px-2.5 sm:!px-4"
+            onClick={() => selectCommunitySection(tab.id)}>
+            {tab.label}
+          </Button>
+        ))}
+      </nav>
+
+      <div className="flex flex-wrap min-h-11 min-w-0 items-center gap-1.5 sm:gap-2">
         {onSearchChange && sectionFilterLabel && (
           <div className="w-44 min-w-0 shrink">
             <SearchBox className="community-filter-field" placeholder={sectionFilterLabel} value={searchQuery} onChange={onSearchChange} />
           </div>
         )}
         {showClubFilters && (
-          <ActionDisclosure label="Filters" iconOnly icon={<SlidersHorizontal size={15} />} count={Number(category !== 'All')} panelClassName="filter-popover">
-            {() => (
-              <div className="grid gap-3">
-                {categoryFilters.length > 1 && (
-                  <MenuSelect
-                    label="Category"
-                    value={category}
-                    onValueChange={setCategory}
-                    search="auto"
-                    options={categoryFilters.map(cat => ({ value: cat.value, label: `${cat.label} (${cat.count})` }))}
-                  />
-                )}
-                {(filteredClubs.length > 6 || category !== 'All') && (
-                  <MenuSelect
-                    label="Layout"
-                    value={clubLayout === 'grid' || category !== 'All' ? 'grid' : 'grouped'}
-                    onValueChange={nextValue => {
-                      setClubLayout(nextValue)
-                      if (nextValue === 'grouped') setCategory('All')
-                    }}
-                    options={[
-                      { value: "grouped", label: "By category" },
-                      { value: "grid", label: "Grid view" },
-                    ]}
-                  />
-                )}
-              </div>
-            )}
-          </ActionDisclosure>
+          <>
+            <div className="hidden sm:flex flex-wrap items-center gap-2">
+              {categoryOptions.length > 1 && (
+                <Select aria-label="Category" className="control-select [--select-width:12rem]" value={category}
+                  onValueChange={setCategory} options={categoryOptions} search="auto" />
+              )}
+              {showLayout && (
+                <Select aria-label="Layout" className="control-select [--select-width:8rem]" value={effectiveLayout}
+                  onValueChange={selectLayout} options={layoutOptions} />
+              )}
+            </div>
+            <ActionDisclosure label="Filters" iconOnly icon={<SlidersHorizontal size={15} />}
+              count={Number(category !== 'All')} className="sm:!hidden" panelClassName="filter-popover">
+              {() => (
+                <div className="grid gap-3">
+                  {categoryOptions.length > 1 && (
+                    <MenuSelect label="Category" value={category} onValueChange={setCategory} options={categoryOptions} search="auto" />
+                  )}
+                  {showLayout && (
+                    <MenuSelect label="Layout" value={effectiveLayout} onValueChange={selectLayout} options={layoutOptions} />
+                  )}
+                </div>
+              )}
+            </ActionDisclosure>
+          </>
         )}
         <>
           {section === 'discover' && onFindClubs && <FindClubsButton onClick={onFindClubs} />}

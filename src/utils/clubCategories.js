@@ -222,3 +222,17 @@ export function getClubCategoryMeta(categoryOrClub) {
 
   return CLUB_CATEGORY_MAP[catId] || CLUB_CATEGORY_MAP.community
 }
+
+const clubSentenceSegmenter = new Intl.Segmenter('en', { granularity: 'sentence' })
+
+export function getClubSummary(...sources) {
+  for (const source of sources) {
+    if (typeof source !== 'string') continue
+    const text = source.split(/\r?\n/).map(line => line.trim()).filter(line =>
+      line && !/^(?:(?:https?:\/\/|www\.)\S+\s*)+$/i.test(line)
+    ).join(' ').replace(/\s+/g, ' ')
+    if (!text) continue
+    return clubSentenceSegmenter.segment(text).containing(0).segment.trim()
+  }
+  return ''
+}

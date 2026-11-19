@@ -1,5 +1,6 @@
 import { applyTaskPatch, createTaskBoardWrites, reconcileTask } from '../utils/taskBoardWrites'
 import Select from './Select'
+import TaskClubSwitcher from './TaskClubSwitcher'
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, useReducer } from 'react'
 import {
   Plus,
@@ -31,7 +32,6 @@ import {
   Card,
   BubbleTag,
   Avatar,
-  ClubAvatar,
   IconBadge,
   cleanText,
   Button,
@@ -530,6 +530,8 @@ function TaskBoard({
   isDemo = false,
   clubs = [],
   joinedClubIds = [],
+  demoFavoriteClubIds,
+  onDemoFavoritesChange,
   initialClubId = '',
   onClubJoined,
   onSyncMemberships,
@@ -551,7 +553,16 @@ function TaskBoard({
     []
   )
   const savedClubPrefRef = useRef(initialPrefs.selectedClubId || '')
-  const hydratedAccountRef = useRef(prefsAccountKey)
+  const [hydratedAccount, setHydratedAccount] = useState(prefsAccountKey)
+  const [savedFavorites, setSavedFavorites] = useState(initialPrefs.favoriteClubIds)
+  const favoriteClubIds = isDemo ? demoFavoriteClubIds || [] : savedFavorites
+
+  function toggleFavorite(id) {
+    const key = normalizeClubId(id)
+    const update = values => values.includes(key) ? values.filter(value => value !== key) : [...values, key]
+    if (isDemo) onDemoFavoritesChange?.(update)
+    else setSavedFavorites(update)
+  }
 
   // Strictly restrict selectable & visible clubs to clubs the user is actually a member of
   const joinedKeySet = useMemo(
@@ -585,7 +596,7 @@ function TaskBoard({
   }, [initialClubId, memberClubs, resolveMemberClubMatch])
 
   const [selectedClubId, setSelectedClubId] = useState(defaultClubId)
-  const lastAppliedInitialRef = useRef(initialClubId)
+  const lastAppliedInitialRef = useRef(resolveMemberClubMatch(initialClubId) ? initialClubId : '')
 
   // View & Filter state (initialized from persisted preferences!)
   const [viewTiersByClub, setViewTiersByClub] = useState(
@@ -618,10 +629,11 @@ function TaskBoard({
 
   // Re-hydrate cleanly if `accountKey` transitions after Clerk/Supabase session loads
   useEffect(() => {
-    if (hydratedAccountRef.current === prefsAccountKey) return
-    hydratedAccountRef.current = prefsAccountKey
+    if (hydratedAccount === prefsAccountKey) return
+    setHydratedAccount(prefsAccountKey)
     const nextPrefs = readTaskBoardPrefs(prefsAccountKey)
     savedClubPrefRef.current = nextPrefs.selectedClubId || ''
+    setSavedFavorites(nextPrefs.favoriteClubIds)
     setViewTiersByClub(nextPrefs.viewTiersByClub || {})
     setFocusTab(nextPrefs.focusTab || 'all')
     setCollapsedSections(nextPrefs.collapsedSections || {})
@@ -635,21 +647,21 @@ function TaskBoard({
     setPriorityFilter(nextPrefs.priorityFilter || 'all')
     setGroupFilter(nextPrefs.groupFilter || 'all')
     setReminderDefaults(nextPrefs.reminderDefaults)
-    if (!initialClubId && nextPrefs.selectedClubId) {
-      const matched = resolveMemberClubMatch(nextPrefs.selectedClubId)
-      if (matched) setSelectedClubId(matched.id)
-    }
-  }, [prefsAccountKey, initialClubId, resolveMemberClubMatch])
+    setSelectedClubId(resolveMemberClubMatch(initialClubId)?.id ||
+      resolveMemberClubMatch(nextPrefs.selectedClubId)?.id || memberClubs[0]?.id || '')
+  }, [prefsAccountKey, hydratedAccount, initialClubId, resolveMemberClubMatch, memberClubs])
 
   useEffect(() => {
+    if (hydratedAccount !== prefsAccountKey) return
+    if (!initialClubId) lastAppliedInitialRef.current = ''
     if (memberClubs.length === 0) {
       if (selectedClubId !== '') setSelectedClubId('')
       return
     }
     if (initialClubId && initialClubId !== lastAppliedInitialRef.current) {
-      lastAppliedInitialRef.current = initialClubId
       const matched = resolveMemberClubMatch(initialClubId)
       if (matched) {
+        lastAppliedInitialRef.current = initialClubId
         savedClubPrefRef.current = matched.id
         setSelectedClubId(matched.id)
         return
@@ -663,13 +675,14 @@ function TaskBoard({
     } else {
       savedClubPrefRef.current = stillMember.id
     }
-  }, [initialClubId, defaultClubId, selectedClubId, memberClubs, resolveMemberClubMatch])
+  }, [initialClubId, defaultClubId, selectedClubId, memberClubs, resolveMemberClubMatch, hydratedAccount, prefsAccountKey])
 
   // Persist filters, selected server, view tiers, and reminder preferences across page loads
   useEffect(() => {
-    if (isDemo || hydratedAccountRef.current !== prefsAccountKey) return
+    if (isDemo || hydratedAccount !== prefsAccountKey) return
     writeTaskBoardPrefs(prefsAccountKey, {
       selectedClubId: selectedClubId || savedClubPrefRef.current || '',
+      favoriteClubIds,
       focusTab,
       viewTiersByClub,
       searchQuery,
@@ -687,6 +700,8 @@ function TaskBoard({
   }, [
     isDemo,
     prefsAccountKey,
+    hydratedAccount,
+    favoriteClubIds,
     selectedClubId,
     focusTab,
     viewTiersByClub,
@@ -2281,7 +2296,7 @@ function TaskBoard({
 
   return (
     <div className="page-stack">
-      <div className="space-y-2 dense-controls">
+      <div className="space-y-2 dense-controls destination-accent" data-accent="tasks">
         <PageToolbar title="Task board" actions={
           <>
             <ActionDisclosure label="Task settings" icon={<SlidersHorizontal size={14} />}>
@@ -2326,22 +2341,8 @@ function TaskBoard({
         } />
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 w-full sm:w-auto sm:max-w-full min-w-0">
-            <ClubAvatar club={selectedClub} size={28} />
-            {memberClubs.length > 1 ? (
-              <Select
-                value={selectedClub?.id || selectedClubId}
-                onValueChange={setSelectedClubId}
-                aria-label="Task board club"
-                className="control-select min-w-0 max-w-full flex-1 sm:max-w-72"
-                search
-                searchPlaceholder="Search clubs…"
-                options={memberClubs.map(c => ({ value: c.id, label: cleanText(c.name) }))}
-              />
-            ) : (
-              <span className="text-sm font-medium break-words min-w-0">{cleanText(selectedClub?.name)}</span>
-            )}
-          </div>
+          <TaskClubSwitcher clubs={memberClubs} selectedClub={selectedClub} favoriteClubIds={favoriteClubIds}
+            onSelect={setSelectedClubId} onToggleFavorite={toggleFavorite} />
           <div className="flex items-center flex-wrap gap-x-2 text-xs text-[var(--text-muted)]">
             <span>{openPersonalCount} open personal · {openClubCount} open club</span>
             {boardData?.permission && (

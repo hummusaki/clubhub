@@ -28,8 +28,32 @@ export function readClubPage(hash) {
 export function readWorkspaceDestination(location) {
   const club = readClubPage(location.hash)
   if (club) return clubPageHref(club.clubId, club.section, club.personId)
+  const poll = readSharedPollId(location)
+  return poll ? '?' + new URLSearchParams({ poll }) : ''
+}
+
+export function readSharedPollId(location) {
   const poll = new URLSearchParams(location.search).get('poll')
-  return poll && !/[\x00-\x1f]/.test(poll) ? '?' + new URLSearchParams({ poll }) : ''
+  return poll?.trim() && !/[\x00-\x1f]/.test(poll) ? poll : ''
+}
+
+export function normalizeWorkspaceNavigation(nav, options = {}) {
+  if (nav === 'availability') {
+    return { nav: 'calendar', options: { ...options, calendarSection: 'availability' } }
+  }
+  if (nav === 'calendar') {
+    return {
+      nav,
+      options: { ...options, calendarSection: options.calendarSection === 'availability' ? 'availability' : 'schedule' },
+    }
+  }
+  return { nav, options }
+}
+
+export function readWorkspaceNavigation(location) {
+  if (readClubPage(location.hash)) return { nav: 'clubs', options: { section: 'discover' } }
+  const pollId = readSharedPollId(location)
+  return pollId ? normalizeWorkspaceNavigation('availability', { pollId }) : { nav: 'overview', options: {} }
 }
 
 export function startOAuthEntry(destination, sessionId, storage = sessionStorage) {

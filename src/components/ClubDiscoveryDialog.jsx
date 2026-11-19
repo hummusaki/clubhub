@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
-import { Button, ClubAvatar, ModalDialog, SearchBox, cleanText } from './ui'
+import { Button, ClubAvatar, ClubCategoryChip, ModalDialog, SearchBox, cleanText } from './ui'
 import { formatEventWhenLabel, recommendClubsForInterests } from '../utils/aiClubAgent'
 import { getClubSearchDocument } from '../utils/search'
 import { runGenerativeClubSearch } from '../api/aiClient'
@@ -99,10 +99,11 @@ export default function ClubDiscoveryDialog({ open, onClose, clubs, events, user
                 <li key={club.id} className="content-tile rounded-xl p-3 space-y-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ClubAvatar club={club} size={34} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 space-y-1">
                       <h3 className="text-sm font-semibold break-words">
                         <ClubPageLink clubId={club.id} onOpen={onViewClub} className="ui-touch text-[var(--blue-ink)] hover:underline">{name}</ClubPageLink>
                       </h3>
+                      <ClubCategoryChip club={club} />
                       <p className="text-xs text-[var(--text-muted)] break-words">
                         {[club.instagram ? `@${club.instagram}` : null, club.joined ? 'Member' : null].filter(Boolean).join(' · ')}
                       </p>

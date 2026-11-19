@@ -340,9 +340,9 @@ export const links = [
 export const memberActivity = []
 
 export const stats = [
-  { label: 'My Clubs',        value: 0,  color: 'blue',   icon: 'Heart',    navTarget: 'clubs' },
-  { label: 'Upcoming Events', value: 6,  color: 'yellow', icon: 'Calendar', navTarget: 'calendar' },
-  { label: 'Group Polls',     value: 0,  color: 'green',  icon: 'Clock',    navTarget: 'availability' },
+  { label: 'My Clubs',        value: 0,  color: 'green',  icon: 'Heart',    navTarget: 'clubs' },
+  { label: 'Upcoming Events', value: 6,  color: 'teal',   icon: 'Calendar', navTarget: 'calendar' },
+  { label: 'Group Polls',     value: 0,  color: 'teal',   icon: 'Clock',    navTarget: 'calendar', calendarSection: 'availability' },
   { label: 'Shared Links',    value: 5,  color: 'purple', icon: 'Link',     navTarget: 'links' },
 ]
 
@@ -350,7 +350,6 @@ export const navItems = [
   { id: 'overview',     label: 'Overview',     icon: 'LayoutGrid' },
   { id: 'tasks',        label: 'Task Board',   icon: 'Tasks' },
   { id: 'calendar',     label: 'Calendar',     icon: 'Calendar' },
-  { id: 'availability', label: 'Availability', icon: 'Clock' },
   { id: 'clubs',        label: 'Clubs',        icon: 'Heart' },
   { id: 'links',        label: 'Resources',    icon: 'Link' },
 ]

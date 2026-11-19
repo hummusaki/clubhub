@@ -22,7 +22,7 @@ function boot(systemDark, readStorage) {
 }
 
 test('the sign-in shell follows the system even with an opposite cached account preference', () => {
-  for (const [system, cached, color] of [['light', 'dark', '#F8FAFD'], ['dark', 'light', '#131314']]) {
+  for (const [system, cached, color] of [['light', 'dark', '#F1F6FE'], ['dark', 'light', '#151A24']]) {
     const storage = {
       clubhub_user_settings_v1: JSON.stringify({ themeMode: cached, reduceMotion: true, compactCards: true }),
       clubhub_guest_theme_mode_v1: cached,
@@ -36,5 +36,39 @@ test('the sign-in shell follows the system even with an opposite cached account 
 
 test('the system theme is applied before reading browser storage', () => {
   const result = boot(true, () => { throw new Error('Storage disabled') })
-  assert.deepEqual(result, { classes: new Set(['dark']), scheme: 'dark', color: '#131314' })
+  assert.deepEqual(result, { classes: new Set(['dark']), scheme: 'dark', color: '#151A24' })
+})
+
+test('destination controls and category chips keep their contrast in both themes', () => {
+  const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+  const tokenBlock = selector => Object.fromEntries(
+    [...css.match(new RegExp(selector + ' \\{([\\s\\S]*?)\\}'))[1].matchAll(/--([\w-]+):\s*(#[\da-f]{6});/gi)]
+      .map(([, token, color]) => [token, color])
+  )
+  function luminance(color) {
+    const channels = color.slice(1).match(/../g).map(byte => parseInt(byte, 16) / 255)
+    const [red, green, blue] = channels.map(value => value <= 0.04045
+      ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const light = tokenBlock(':root')
+  const dark = { ...light, ...tokenBlock('\\.dark') }
+  for (const tokens of [light, dark]) {
+    function check(foreground, background, minimum) {
+      const [darkest, lightest] = [luminance(tokens[foreground]), luminance(tokens[background])].sort((a, b) => a - b)
+      assert.ok((lightest + 0.05) / (darkest + 0.05) >= minimum, foreground + ' on ' + background)
+    }
+    for (const color of ['blue', 'green', 'purple', 'teal', 'red', 'yellow']) {
+      check(color + '-ink', color + '-light', 4.5)
+      check(color + '-ink', 'md-surface', 4.5)
+    }
+    for (const color of ['blue', 'green', 'purple', 'teal']) {
+      check('on-' + color, color, 4.5)
+      check(color, color + '-light', 3)
+      check(color, 'md-surface', 3)
+    }
+    check('yellow-ink', 'purple-light', 4.5)
+    check('md-outline', 'md-surface', 3)
+    check('md-on-surface-variant', 'md-surface-shell', 4.5)
+  }
 })
