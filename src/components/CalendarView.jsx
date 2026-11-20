@@ -28,18 +28,34 @@ import {
 } from '../utils/calendarSync'
 import { matchesSearchQuery, parseSearchQuery } from '../utils/search'
 
-function toLocalYmd(dateInput) {
-  const dt = dateInput instanceof Date ? dateInput : new Date(dateInput)
-  if (Number.isNaN(dt.getTime())) return ''
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const d = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
+import { allDayEventDates, calendarEventDate, calendarEventRange, parseYmdLocal, toLocalYmd } from '../utils/calendarDates'
+import { isPersonalCalendarEvent } from '../utils/clubSubscriptions'
 
-function parseYmdLocal(ymd) {
-  const [y, m, d] = String(ymd).split('-').map(Number)
-  return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0)
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const dateHeading = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+const dateAccessible = new Intl.DateTimeFormat('en-US', { dateStyle: 'full' })
+
+function ScheduleRows({ events, use24h, onOpenEvent }) {
+  return <ul className="divide-y divide-[var(--border)]">
+    {events.map(item => {
+      const postLink = resolveSchedulePostLink(item)
+      const rawLocation = cleanText(item.location || '')
+      const online = /(?:^online\b|zoom|meet\.google\.com|teams\.microsoft\.com|^virtual$)/i.test(rawLocation)
+      const location = online ? 'Online' : !rawLocation || /^(?:tbd|campus \/ (?:see post|tbd)|location pending)$/i.test(rawLocation)
+        ? 'Location pending' : `Location: ${rawLocation}`
+      return <li key={item.id} className="dashboard-event-row py-2">
+        <span className="text-xs font-medium tabular-nums text-[var(--text-muted)]">{calendarEventRange(item, use24h)}</span>
+        <div className="min-w-0 wrap-anywhere">
+          <button type="button" className="text-left text-sm font-semibold hover:underline" onClick={() => onOpenEvent(item)}>
+            {cleanText(item.event || item.title)}
+          </button>
+          <p className="text-xs text-[var(--text-muted)]">{cleanText(item.club || item.clubName)} · {location}</p>
+          {postLink && <a href={postLink.url} target="_blank" rel="noreferrer"
+            className="text-xs text-[var(--blue-ink)] hover:underline">{postLink.label}</a>}
+        </div>
+      </li>
+    })}
+  </ul>
 }
 
 function addDaysYmd(ymd, delta) {
@@ -62,7 +78,7 @@ function getWeekStartOfDate(ymd, weekStartsOn = 'sunday') {
 
 function formatEventBadgeTime(item, use24h = false) {
   if (!item.startIso) return item.time
-  const dt = new Date(item.startIso)
+  const dt = item.allDay ? parseYmdLocal(calendarEventDate(item)) : new Date(item.startIso)
   if (Number.isNaN(dt.getTime())) return item.time
   if (item.allDay) {
     return `${dt.toLocaleDateString('en-US', {
@@ -96,7 +112,10 @@ export default function CalendarView({
   searchTarget,
   onDismissSearchTarget,
   compact = false,
+  miniCalendar = false,
   onOpenCalendar,
+  onOpenDate,
+  onOpenEvent,
   onBrowseClubs,
   onAddEvent,
   onDeleteEvent,
@@ -200,10 +219,10 @@ export default function CalendarView({
 
   const linkedBooking = searchTarget?.bookedEvent
   const baseEvents = useMemo(() => {
-    const scoped = hasJoinedClubs && Array.isArray(items) ? items : []
+    const scoped = Array.isArray(items) ? items : []
     if (linkedBooking && !scoped.some(event => event.id === linkedBooking.id)) return [...scoped, linkedBooking]
     return scoped
-  }, [hasJoinedClubs, items, linkedBooking])
+  }, [items, linkedBooking])
 
   const enrichedEvents = useMemo(() => {
     const nowMs = nowRef.getTime()
@@ -219,15 +238,17 @@ export default function CalendarView({
             : !rsvpMap[ev.id] && ev.rsvp
               ? -1
               : 0
-      const dateKey = ev.startIso ? toLocalYmd(ev.startIso) : ''
+      const dateKey = calendarEventDate(ev)
       const startMs = ev.startIso ? new Date(ev.startIso).getTime() : nowMs
-      const isPast = ev.allDay ? Boolean(dateKey && dateKey < todayYmd) : startMs < nowMs
+      const allDayDates = ev.allDay ? allDayEventDates(ev) : null
+      const isPast = allDayDates ? allDayDates.end <= todayYmd : startMs < nowMs
       return {
         ...ev,
         isGoing,
         isPast,
         startMs,
         attendeeCount: Math.max(0, baseCount + delta),
+        allDayDates,
         dateKey,
       }
     })
@@ -237,10 +258,9 @@ export default function CalendarView({
   const clubAndSearchEvents = useMemo(() => {
     return enrichedEvents.filter(ev => {
       if (linkedBooking?.id === ev.id) return true
-      if (!hasJoinedClubs || joinedClubKeySet.size === 0) return false
       const cid = normalizeClubKey(ev.clubId)
-      if (ev.isCustom || ev.isBookedCollab) {
-        if (cid && !joinedClubKeySet.has(cid)) return false
+      if (isPersonalCalendarEvent(ev)) {
+        if (cid && cid !== 'personal_poll' && !joinedClubKeySet.has(cid)) return false
       } else if (!cid || !joinedClubKeySet.has(cid)) {
         return false
       }
@@ -252,7 +272,7 @@ export default function CalendarView({
         tertiary: [ev.description, ev.notes, ev.source],
       })
     })
-  }, [enrichedEvents, hasJoinedClubs, joinedClubKeySet, searchQuery, linkedBooking])
+  }, [enrichedEvents, joinedClubKeySet, searchQuery, linkedBooking])
 
   const rsvpGoingCountInScope = useMemo(
     () => clubAndSearchEvents.filter(ev => ev.isGoing).length,
@@ -296,8 +316,15 @@ export default function CalendarView({
     const map = {}
     for (const ev of scopedEvents) {
       if (!ev.dateKey) continue
-      if (!map[ev.dateKey]) map[ev.dateKey] = []
-      map[ev.dateKey].push(ev)
+      const endValue = ev.endIso || ev.end
+      const endDate = ev.allDayDates ? addDaysYmd(ev.allDayDates.end, -1)
+        : endValue ? toLocalYmd(Date.parse(endValue) - 1) : ev.dateKey
+      const last = endDate > ev.dateKey ? endDate : ev.dateKey
+      // Multi-day events occupy each covered day, capped to protect against malformed imports.
+      for (let day = ev.dateKey, count = 0; day <= last && count < 366; day = addDaysYmd(day, 1), count += 1) {
+        if (!map[day]) map[day] = []
+        map[day].push(ev)
+      }
     }
     return map
   }, [scopedEvents])
@@ -334,7 +361,7 @@ export default function CalendarView({
   }, [monthState, weekStartsOn])
 
   function handlePrev() {
-    if (viewMode === 'month') {
+    if (miniCalendar || viewMode === 'month') {
       const dt = new Date(monthState.year, monthState.month - 1, 1, 12, 0, 0)
       setMonthState({ year: dt.getFullYear(), month: dt.getMonth() })
       setSelectedDate(toLocalYmd(dt))
@@ -348,7 +375,7 @@ export default function CalendarView({
   }
 
   function handleNext() {
-    if (viewMode === 'month') {
+    if (miniCalendar || viewMode === 'month') {
       const dt = new Date(monthState.year, monthState.month + 1, 1, 12, 0, 0)
       setMonthState({ year: dt.getFullYear(), month: dt.getMonth() })
       setSelectedDate(toLocalYmd(dt))
@@ -671,74 +698,76 @@ export default function CalendarView({
     <span className="text-xs text-[var(--green-ink)]">Google connected</span>
   )
 
-  // ── 1. COMPACT OVERVIEW MODE ──────────────────────────────────────
-  if (compact) {
-    const preview = filtered.slice(0, isCompactDensity ? 6 : 4)
-    return (
-      <Card
-        className="section-pad"
-        delay={1}
-      >
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-medium font-display text-[var(--text)]">Upcoming Schedule</h2>
-              <BubbleTag label={`${filtered.length}`} color="blue" size="sm" />
-              {inAppRsvpOnly && (
-                <BubbleTag label="RSVP'd Only" color="green" size="sm" dot />
-              )}
-            </div>
-
-          {onOpenCalendar && (
-              <Button
-                variant="text"
-                size="sm"
-                trailingIcon={<ArrowRight size={13} />}
-                onClick={onOpenCalendar}
-              >
-                View calendar
-              </Button>
-            )}
+  if (miniCalendar) {
+    const month = new Date(monthState.year, monthState.month, 1)
+    const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    const dayEvents = eventsByDate[selectedDate] || []
+    const weekdays = weekStartsOn === 'monday' ? [...WEEKDAYS.slice(1), WEEKDAYS[0]] : WEEKDAYS
+    return <Card className="section-pad space-y-2">
+      <div className="dashboard-card-header">
+        <h2 className="font-display text-base font-medium">Mini calendar</h2>
+        <Button variant="text" size="sm" onClick={handleToday}>Today</Button>
+      </div>
+      <div className="dashboard-mini-calendar">
+        <div className="mini-calendar-month">
+          <div className="flex items-center justify-between gap-1">
+            <IconButton size="sm" ariaLabel="Previous month" onClick={handlePrev}><ChevronLeft size={16} /></IconButton>
+            <p className="text-sm font-semibold" aria-live="polite">{monthLabel}</p>
+            <IconButton size="sm" ariaLabel="Next month" onClick={handleNext}><ChevronRight size={16} /></IconButton>
           </div>
-
-          {preview.length > 0 ? (
-            <div className={`flex flex-col ${isCompactDensity ? 'gap-2' : 'gap-3'}`}>
-              {preview.map((item, idx) => renderEventRow(item, idx === preview.length - 1))}
-            </div>
-          ) : !hasJoinedClubs ? (
-            <p className="text-sm text-[var(--text-muted)]">Events appear here after you join a club.</p>
-          ) : (
-            <div className="py-7 text-center text-sm text-[var(--text-muted)] space-y-2">
-              <div>
-                {inAppRsvpOnly
-                  ? "No RSVP'd upcoming events yet."
-                  : searchQuery.trim()
-                    ? 'No matching events in your joined clubs.'
-                    : 'No upcoming events scheduled across your joined clubs yet.'}
-              </div>
-              {inAppRsvpOnly && onUpdateSettings && (
-                <Button
-                  variant="outlined-neutral"
-                  size="sm"
-                  onClick={() => handleUpdateCalendarSync({ inAppRsvpOnly: false })}
-                >
-                  Show all upcoming events
-                </Button>
-              )}
-            </div>
-          )}
+          <div className="grid grid-cols-7 gap-0.5 text-center" role="group" aria-label={monthLabel}>
+            {weekdays.map(day => <span key={day} className="py-1 text-xs text-[var(--text-muted)]">{day}</span>)}
+            {monthCells.map(cell => {
+              const count = (eventsByDate[cell.dateStr] || []).length
+              return <button key={cell.dateStr} type="button" title={dateAccessible.format(parseYmdLocal(cell.dateStr))}
+                aria-label={`${dateAccessible.format(parseYmdLocal(cell.dateStr))}, ${count} ${count === 1 ? 'event' : 'events'}`}
+                aria-current={cell.dateStr === todayYmd ? 'date' : undefined}
+                aria-pressed={cell.dateStr === selectedDate}
+                className={`mini-calendar-day ${cell.inMonth ? '' : 'text-[var(--text-muted)]'}`}
+                onClick={() => setSelectedDate(cell.dateStr)}>
+                {cell.dayNum}<span aria-hidden="true" className={count ? 'mini-calendar-dot' : ''} />
+              </button>
+            })}
+          </div>
         </div>
-
-        {calendarIntegration && (
-          <div className="mt-2 pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-end gap-2">
-            {syncStatus}
-            {syncButton}
+        <div className="mini-calendar-agenda">
+          <div className="dashboard-card-header">
+            <h3 className="text-sm font-semibold">{dateHeading.format(parseYmdLocal(selectedDate))}</h3>
+            <Button variant="text" size="sm" onClick={() => onOpenDate(selectedDate)}>Open in calendar</Button>
           </div>
-        )}
+          {dayEvents.length > 0 ? <ScheduleRows events={dayEvents} use24h={use24h} onOpenEvent={event => onOpenEvent({ ...event, dateKey: selectedDate })} />
+            : <p className="text-sm text-[var(--text-muted)]">No events scheduled.</p>}
+        </div>
+      </div>
+    </Card>
+  }
 
-        {renderSyncModal}
-      </Card>
-    )
+  if (compact) {
+    const groups = new Map()
+    for (const event of filtered.slice(0, 3)) {
+      const date = event.dateKey
+      if (!date) continue
+      if (!groups.has(date)) groups.set(date, [])
+      groups.get(date).push(event)
+    }
+    return <Card className="section-pad space-y-3">
+      <div className="dashboard-card-header">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-display text-base font-medium">Upcoming schedule</h2>
+          <BubbleTag label={String(filtered.length)} color="blue" size="sm" />
+        </div>
+        <Button variant="text" size="sm" trailingIcon={<ArrowRight size={13} />} onClick={onOpenCalendar}>View calendar</Button>
+      </div>
+      {groups.size > 0 ? [...groups].map(([date, events]) => <div key={date}>
+        <h3 className="border-b border-[var(--border)] pb-1 text-xs font-semibold">{dateHeading.format(parseYmdLocal(date))}</h3>
+        <ScheduleRows events={events} use24h={use24h} onOpenEvent={onOpenEvent} />
+      </div>) : !hasJoinedClubs ? <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm text-[var(--text-muted)]">Join a club to see its schedule here.</p>
+        <Button variant="text" size="sm" onClick={handleBrowseClubs}>Browse clubs</Button>
+      </div> : <p className="text-sm text-[var(--text-muted)]">
+        {inAppRsvpOnly ? 'No upcoming events you’ve RSVP’d to.' : 'No upcoming events.'}
+      </p>}
+    </Card>
   }
 
   // ── 2. FULL CALENDAR PAGE MODE ────────────────────────────────────

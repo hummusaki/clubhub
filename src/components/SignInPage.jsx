@@ -149,11 +149,12 @@ export default function SignInPage({
   onStartOAuth,
   onCancelOAuth,
   returningUser,
+  lastAccount,
   onContinue,
   onSwitchAccount,
   switchingAccount = false,
 }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => lastAccount?.email || '')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [verificationStep, setVerificationStep] = useState(null) // null | 'signup_code' | 'signin_code'
@@ -161,6 +162,8 @@ export default function SignInPage({
   const [error, setError] = useState(() => initialError || '')
   const [submitting, setSubmitting] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const rememberedName = email.trim().toLowerCase() === lastAccount?.email?.toLowerCase() ? lastAccount?.name : ''
+  const loginLabel = rememberedName ? `Log in as ${rememberedName}` : 'Continue'
 
   useEffect(() => {
     if (initialError) setError(initialError)
@@ -719,7 +722,7 @@ export default function SignInPage({
               <p role="status" className="text-sm text-[var(--text-muted)]">Ending your previous session…</p>
             ) : returningUser && !verificationStep && !submitting && !googleLoading ? (
               <div className="grid gap-3">
-                <Button variant="filled" onClick={onContinue}>Continue as {returningUser.fullName || returningUser.firstName || returningUser.primaryEmailAddress?.emailAddress || returningUser.email}</Button>
+                <Button variant="filled" onClick={onContinue}>Log in as {returningUser.fullName || returningUser.firstName || returningUser.primaryEmailAddress?.emailAddress || returningUser.email}</Button>
                 <Button variant="outlined-neutral" onClick={onSwitchAccount}>Use another account</Button>
               </div>
             ) : verificationStep ? (
@@ -947,7 +950,7 @@ export default function SignInPage({
                       variant="filled"
                       disabled={submitting || googleLoading}
                     >
-                      {submitting ? <Loader2 size={16} className="animate-spin" /> : 'Continue'}
+                      {submitting ? <Loader2 size={16} className="animate-spin" /> : loginLabel}
                     </Button>
                   </div>
                 </form>

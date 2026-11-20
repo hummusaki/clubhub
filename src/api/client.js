@@ -2,6 +2,8 @@
 // Clean frontend client for the SQLite database, Collector API & Multi-Source Sync.
 // Automatically operates in zero-error static mode on GitHub Pages when no backend API is configured.
 
+import { isPublicRecord } from '../utils/publicRoster.js';
+import { mergePersonalFeed } from '../utils/clubSubscriptions.js';
 import { isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { handleDirectPollAction } from './supabaseDirectTasksAndPolls.js';
 
@@ -263,6 +265,21 @@ export async function getStaticSnapshot({ forceRefresh = false } = {}) {
   })();
 
   return cachedSnapshotPromise;
+}
+
+// Static hosts combine public catalog records with rows authorized by the workspace adapter.
+export function mergeWorkspaceFeed(workspace, catalog, joined, subscriptions, localEvents = [], useDemo = false) {
+  const useCatalog = workspace?.usePublicSnapshot || useDemo;
+  const events = useCatalog
+    ? [...(workspace?.workspaceEvents || []), ...(catalog.events || []).filter(isPublicRecord)]
+    : workspace?.events || [];
+  const announcements = useCatalog
+    ? [...(workspace?.workspaceAnnouncements || []), ...(catalog.announcements || []).filter(isPublicRecord)]
+    : workspace?.announcements || [];
+  return {
+    events: mergePersonalFeed([...localEvents, ...events], 'events', joined, subscriptions),
+    announcements: mergePersonalFeed(announcements, 'announcements', joined, subscriptions),
+  };
 }
 
 const withQuery = (base, params = {}) => {

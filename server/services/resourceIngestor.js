@@ -11,7 +11,7 @@ import {
   getDictionary,
   deleteDictEntry,
 } from '../database.js';
-import { classify, extractPost, filterActualEvents } from '../../collector/src/extract.js';
+import { classify, extractPost, filterActualEvents, isCancellationNotice } from '../../collector/src/extract.js';
 
 export function upsertDataSource({ clubId, platform, identifier, isActive = true, config = {} }) {
   const cid = normalizeClubId(clubId);
@@ -106,6 +106,7 @@ export function ingestResourceItem({
   const info = {
     ...rawInfo,
     type: resolvedType,
+    important: Boolean(rawInfo.important) || isCancellationNotice(fullText),
     events: validEvents,
   };
 
@@ -121,13 +122,13 @@ export function ingestResourceItem({
   // Discord #announcements, club Email newsletters, and Instagram Story Mentions should always
   // surface in Announcements even when they also contain an event date/time.
   const shouldCreateAnnouncement =
-    forceAnnouncement !== null
+    isCancellationNotice(fullText) || (forceAnnouncement !== null
       ? Boolean(forceAnnouncement)
       : source === 'discord' ||
         source === 'email' ||
         source === 'instagram_story' ||
         info.type === 'announcement' ||
-        Boolean(info.important);
+        Boolean(info.important));
 
   const payload = {
     collectedAt: new Date().toISOString(),

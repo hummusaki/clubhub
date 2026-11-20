@@ -1,3 +1,6 @@
+import { allDayEventDates } from './calendarDates.js'
+import { isEventInPersonalFeed, isPersonalCalendarEvent, normalizeClubKey } from './clubSubscriptions.js'
+
 // ── Shared Calendar Integration, Filtering & RFC 5545 iCalendar (.ics) Engine ──
 // Pure ES module shared across the React frontend, Express API server, and Vite dev feed.
 
@@ -27,12 +30,7 @@ export function sanitizeCalText(str) {
     .trim()
 }
 
-export function normalizeClubKey(id) {
-  return String(id || '')
-    .trim()
-    .replace(/^@+/, '')
-    .toLowerCase()
-}
+export { normalizeClubKey } from './clubSubscriptions.js'
 
 export function normalizeCalendarSyncSettings(raw = {}) {
   const src = raw && typeof raw === 'object' ? raw : {}
@@ -94,15 +92,13 @@ export function filterEventsForCalendarSync(
     joinedClubIds = [],
     rsvpIds = [],
     rsvpMap = null,
+    subscriptions = {},
     settings: rawSettings = {},
     now = new Date(),
   } = {}
 ) {
   const settings = normalizeCalendarSyncSettings(rawSettings)
   const joinedSet = new Set((joinedClubIds || []).map(normalizeClubKey).filter(Boolean))
-  if (joinedSet.size === 0) {
-    return []
-  }
   const goingSet = extractGoingEventIds(rsvpMap, events, rsvpIds)
 
   const nowDt = now instanceof Date ? now : new Date(now)
@@ -124,11 +120,7 @@ export function filterEventsForCalendarSync(
     const startMs = startDt.getTime()
     if (Number.isNaN(startMs)) continue
 
-    const isCustomOrPoll =
-      Boolean(ev.isCustom) ||
-      Boolean(ev.isBookedCollab) ||
-      idStr.startsWith('collab_evt_') ||
-      idStr.startsWith('custom_evt_')
+    const isCustomOrPoll = isPersonalCalendarEvent(ev)
 
     if (!isCustomOrPoll && String(ev.kind || '').toLowerCase() === 'deadline') {
       continue
@@ -154,15 +146,7 @@ export function filterEventsForCalendarSync(
 
     const isGoing = idStr ? goingSet.has(idStr) : Boolean(ev.isGoing || ev.rsvp)
 
-    // 2. Club membership filter (must belong to a joined club)
-    const cid = normalizeClubKey(ev.clubId)
-    if (isCustomOrPoll) {
-      if (cid && !joinedSet.has(cid)) {
-        continue
-      }
-    } else if (!cid || !joinedSet.has(cid)) {
-      continue
-    }
+    if (!isEventInPersonalFeed(ev, joinedSet, subscriptions)) continue
 
     // 3. RSVP-only filter ("only make events that you RSVP'd to show up on the calendar")
     if (settings.rsvpOnly && !isGoing) {
@@ -230,18 +214,6 @@ export function formatIcsUtcTimestamp(isoOrDate) {
   const dt = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate)
   if (Number.isNaN(dt.getTime())) return ''
   return dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
-}
-
-function formatIcsDateOnly(isoOrDate, addDays = 0) {
-  const dt = isoOrDate instanceof Date ? new Date(isoOrDate.getTime()) : new Date(isoOrDate)
-  if (Number.isNaN(dt.getTime())) return ''
-  if (addDays !== 0) {
-    dt.setUTCDate(dt.getUTCDate() + addDays)
-  }
-  const y = dt.getUTCFullYear()
-  const m = String(dt.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(dt.getUTCDate()).padStart(2, '0')
-  return `${y}${m}${d}`
 }
 
 function formatReminderTrigger(minutes) {
@@ -335,16 +307,9 @@ export function buildIcsCalendar(
     lines.push(`DTSTAMP:${nowStamp}`)
 
     if (isAllDay) {
-      const startYmd = formatIcsDateOnly(startDt, 0)
-      const endYmd = formatIcsDateOnly(startDt, 1)
-      if (!startYmd || !endYmd) {
-        lines.pop()
-        lines.pop()
-        lines.pop()
-        return
-      }
-      lines.push(`DTSTART;VALUE=DATE:${startYmd}`)
-      lines.push(`DTEND;VALUE=DATE:${endYmd}`)
+      const dates = allDayEventDates(ev)
+      lines.push(`DTSTART;VALUE=DATE:${dates.start.replaceAll('-', '')}`)
+      lines.push(`DTEND;VALUE=DATE:${dates.end.replaceAll('-', '')}`)
     } else {
       const startUtc = formatIcsUtcTimestamp(startDt)
       const endRaw = ev.endIso || ev.end
@@ -400,7 +365,8 @@ export function buildGoogleCalendarTemplateUrl(ev, { titlePrefixClub = true } = 
 
   let datesParam = ''
   if (ev.allDay) {
-    datesParam = `${formatIcsDateOnly(safeStart, 0)}/${formatIcsDateOnly(safeStart, 1)}`
+    const dates = allDayEventDates({ ...ev, startIso: Number.isNaN(+startDt) ? safeStart.toISOString() : ev.startIso || ev.start })
+    datesParam = `${dates.start.replaceAll('-', '')}/${dates.end.replaceAll('-', '')}`
   } else {
     const endRaw = ev.endIso || ev.end
     let endDt = endRaw ? new Date(endRaw) : null

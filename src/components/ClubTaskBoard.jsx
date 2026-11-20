@@ -1,5 +1,5 @@
 import { applyTaskPatch, createTaskBoardWrites, reconcileTask } from '../utils/taskBoardWrites'
-import Select from './Select'
+import Select, { MenuSelect } from './Select'
 import TaskClubSwitcher from './TaskClubSwitcher'
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, useReducer } from 'react'
 import {
@@ -68,6 +68,7 @@ import {
 } from '../utils/directIntegrations'
 import {
   readTaskBoardPrefs,
+  moveFavoriteClub,
   writeTaskBoardPrefs,
   REMINDER_OFFSET_OPTIONS,
   normalizeTime24h,
@@ -557,11 +558,18 @@ function TaskBoard({
   const [savedFavorites, setSavedFavorites] = useState(initialPrefs.favoriteClubIds)
   const favoriteClubIds = isDemo ? demoFavoriteClubIds || [] : savedFavorites
 
-  function toggleFavorite(id) {
-    const key = normalizeClubId(id)
-    const update = values => values.includes(key) ? values.filter(value => value !== key) : [...values, key]
+  function updateFavorites(update) {
     if (isDemo) onDemoFavoritesChange?.(update)
     else setSavedFavorites(update)
+  }
+
+  function toggleFavorite(id) {
+    const key = normalizeClubId(id)
+    updateFavorites(values => values.includes(key) ? values.filter(value => value !== key) : [...values, key])
+  }
+
+  function reorderFavorite(id, beforeId) {
+    updateFavorites(values => moveFavoriteClub(values, id, beforeId))
   }
 
   // Strictly restrict selectable & visible clubs to clubs the user is actually a member of
@@ -615,9 +623,6 @@ function TaskBoard({
   )
   const [hideDone, setHideDone] = useState(() => Boolean(initialPrefs.hideDone))
   const [kpiQuickFilter, setKpiQuickFilter] = useState(() => initialPrefs.kpiQuickFilter || '')
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(() =>
-    Boolean(initialPrefs.showAdvancedFilters)
-  )
   const [statusFilter, setStatusFilter] = useState(() => initialPrefs.statusFilter || 'all')
   const [priorityFilter, setPriorityFilter] = useState(
     () => initialPrefs.priorityFilter || 'all'
@@ -642,7 +647,6 @@ function TaskBoard({
     setOnlyAssignedToMe(Boolean(nextPrefs.onlyAssignedToMe))
     setHideDone(Boolean(nextPrefs.hideDone))
     setKpiQuickFilter(nextPrefs.kpiQuickFilter || '')
-    setShowAdvancedFilters(Boolean(nextPrefs.showAdvancedFilters))
     setStatusFilter(nextPrefs.statusFilter || 'all')
     setPriorityFilter(nextPrefs.priorityFilter || 'all')
     setGroupFilter(nextPrefs.groupFilter || 'all')
@@ -689,7 +693,6 @@ function TaskBoard({
       onlyAssignedToMe,
       hideDone,
       kpiQuickFilter,
-      showAdvancedFilters,
       statusFilter,
       priorityFilter,
       groupFilter,
@@ -709,7 +712,6 @@ function TaskBoard({
     onlyAssignedToMe,
     hideDone,
     kpiQuickFilter,
-    showAdvancedFilters,
     statusFilter,
     priorityFilter,
     groupFilter,
@@ -2340,9 +2342,9 @@ function TaskBoard({
           </>
         } />
 
+        <TaskClubSwitcher clubs={memberClubs} selectedClub={selectedClub} favoriteClubIds={favoriteClubIds}
+          onSelect={setSelectedClubId} onToggleFavorite={toggleFavorite} onReorderFavorite={reorderFavorite} />
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <TaskClubSwitcher clubs={memberClubs} selectedClub={selectedClub} favoriteClubIds={favoriteClubIds}
-            onSelect={setSelectedClubId} onToggleFavorite={toggleFavorite} />
           <div className="flex items-center flex-wrap gap-x-2 text-xs text-[var(--text-muted)]">
             <span>{openPersonalCount} open personal · {openClubCount} open club</span>
             {boardData?.permission && (
@@ -2647,122 +2649,40 @@ function TaskBoard({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  aria-expanded={showAdvancedFilters}
-                  aria-controls="task-board-filters"
-                  onKeyDown={e => {
-                    if (e.key === 'Escape' && showAdvancedFilters) {
-                      e.stopPropagation()
-                      setShowAdvancedFilters(false)
-                    }
-                  }}
-                  onClick={() => setShowAdvancedFilters(v => !v)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                    showAdvancedFilters || advancedFilterCount > 0
-                      ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <SlidersHorizontal size={12} />
-                  <span>Filters</span>
-                  <span className={`min-w-[2ch] px-1.5 rounded-full tabular-nums bg-[var(--secondary-container)] text-[var(--on-secondary-container)] text-[10px] ${filterCount ? '' : 'invisible'}`}>
-                    {filterCount}
-                  </span>
-                </button>
-
+                <ActionDisclosure label="Filters" count={filterCount} icon={<SlidersHorizontal size={14} />}
+                  panelClassName="filter-popover task-filter-popover">
+                  {() => (
+                    <div className="grid gap-3">
+                      <MenuSelect label="Status" value={statusFilter} onValueChange={setStatusFilter} options={[
+                        { value: 'all', label: 'All statuses' },
+                        ...Object.entries(TASK_STATUS_META).map(([value, meta]) => ({ value, label: meta.label })),
+                      ]} />
+                      <MenuSelect label="Priority" value={priorityFilter} onValueChange={setPriorityFilter} options={[
+                        { value: 'all', label: 'All priorities' },
+                        ...Object.entries(TASK_PRIORITY_META).map(([value, meta]) => ({ value, label: meta.label })),
+                      ]} />
+                      {(boardData.groups || []).length > 0 && (
+                        <MenuSelect label="Sub-group" value={groupFilter} onValueChange={setGroupFilter} search="auto" options={[
+                          { value: 'all', label: 'All sub-groups' },
+                          ...(boardData.groups || []).map(group => ({ value: group.id, label: cleanText(group.name) })),
+                        ]} />
+                      )}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {showClubZone && (assignedToMeCount > 0 || onlyAssignedToMe) && (
+                          <Button size="sm" variant={onlyAssignedToMe ? 'tonal' : 'outlined-neutral'}
+                            aria-pressed={onlyAssignedToMe} onClick={() => setOnlyAssignedToMe(value => !value)}>
+                            Assigned to me ({assignedToMeCount})
+                          </Button>
+                        )}
+                        <Button size="sm" variant={hideDone ? 'tonal' : 'outlined-neutral'}
+                          aria-pressed={hideDone} onClick={() => setHideDone(value => !value)}>Hide done</Button>
+                        {hasAnyActiveFilter && <Button size="sm" variant="text" onClick={resetAllFilters}>Reset</Button>}
+                      </div>
+                    </div>
+                  )}
+                </ActionDisclosure>
               </div>
             </div>
-
-            {showAdvancedFilters && (
-              <div id="task-board-filters" className="section-pad bg-[var(--bg-card)] rounded-xl border border-[var(--border)] space-y-2"
-                onKeyDown={e => {
-                  if (e.key !== 'Escape') return
-                  e.stopPropagation()
-                  e.currentTarget.previousElementSibling?.querySelector('[aria-controls="task-board-filters"]')?.focus()
-                  setShowAdvancedFilters(false)
-                }}>
-                <div className="flex flex-wrap items-center gap-2">
-                {showClubZone && (assignedToMeCount > 0 || onlyAssignedToMe) && (
-                  <button
-                    type="button"
-                    aria-pressed={onlyAssignedToMe}
-                    onClick={() => setOnlyAssignedToMe(v => !v)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                      onlyAssignedToMe
-                        ? 'bg-[var(--blue-light)] border-[var(--blue)] text-[var(--blue-ink)]'
-                        : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    <span>Assigned to Me</span>
-                    <span className="font-mono-num text-[10.5px] opacity-80">({assignedToMeCount})</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  aria-pressed={hideDone}
-                  onClick={() => setHideDone(v => !v)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 min-h-[36px] rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
-                    hideDone
-                      ? 'bg-[var(--teal-light)] border-[var(--teal)] text-[var(--teal-ink)]'
-                      : 'bg-[var(--bg-surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <span>Hide Done</span>
-                </button>
-
-                {hasAnyActiveFilter && (
-                  <button
-                    type="button"
-                    onClick={resetAllFilters}
-                    className="px-2 min-h-[34px] rounded-lg bg-transparent text-xs font-semibold text-[var(--blue-ink)] hover:underline border-none cursor-pointer"
-                  >
-                    Reset
-                  </button>
-                )}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Select
-                  value={statusFilter}
-                  onValueChange={setStatusFilter}
-                  aria-label="Filter by status"
-                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)] [--select-width:10rem]"
-                  options={[
-                    { value: "all", label: "All Statuses" },
-                    ...Object.entries(TASK_STATUS_META).map(([k, m]) => ({ value: k, label: m.label })),
-                  ]}
-                />
-                <Select
-                  value={priorityFilter}
-                  onValueChange={setPriorityFilter}
-                  aria-label="Filter by priority"
-                  className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)] [--select-width:10rem]"
-                  options={[
-                    { value: "all", label: "All Priorities" },
-                    ...Object.entries(TASK_PRIORITY_META).map(([k, m]) => ({ value: k, label: m.label })),
-                  ]}
-                />
-                {(boardData.groups || []).length > 0 ? (
-                  <Select
-                    value={groupFilter}
-                    onValueChange={setGroupFilter}
-                    aria-label="Filter by sub-group"
-                    className="min-h-[38px] px-3 rounded-xl bg-[var(--bg-surface)] text-base sm:text-xs font-medium text-[var(--text)] border border-[var(--border)]"
-                    search
-                    options={[
-                      { value: "all", label: "All Sub-Groups" },
-                      ...boardData.groups || [].map(g => ({ value: g.id, label: cleanText(g.name) })),
-                    ]}
-                  />
-                ) : (
-                  <div className="hidden sm:flex items-center px-3 text-[11px] text-[var(--text-light)]">
-                    No sub-groups created on this server yet
-                  </div>
-                )}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

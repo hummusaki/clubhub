@@ -11,6 +11,7 @@ import {
   isJwtSignatureError,
   bridgeClerkToSupabaseAuth,
 } from '../lib/supabaseClient.js'
+import { mergePersonalFeed, normalizeAuthoredEvent, subscriptionMap, SUBSCRIPTION_CHANNELS, SUBSCRIPTION_MODES } from '../utils/clubSubscriptions.js'
 import { resolveDeduplicatedTargets } from '../utils/leadershipShortcuts.js'
 
 const normalizeClub = id => String(id || '').trim().replace(/^@+/, '').toLowerCase()
@@ -744,49 +745,55 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
       }
     }
 
-    if (path === '/announcements' && method === 'GET') {
+    if (['/announcements', '/feed'].includes(path) && method === 'GET') {
       const profile = await getDirectUserProfile()
-      if (!profile) {
-        return { ok: true, announcements: [] }
+      if (!profile) return { ok: false, status: 401, error: 'Sign in to load your club feed.' }
+      return await readDirectPersonalFeed(sb, profile.id, path === '/feed')
+    }
+
+    const subscriptionMatch = path.match(/^\/clubs\/([^/]+)\/subscriptions\/([^/]+)$/)
+    if (subscriptionMatch && method === 'PUT') {
+      const clubId = normalizeClub(decodeURIComponent(subscriptionMatch[1]))
+      const channel = subscriptionMatch[2]
+      if (!SUBSCRIPTION_CHANNELS.includes(channel) || !SUBSCRIPTION_MODES.includes(body.mode)) {
+        return { ok: false, status: 400, error: 'Invalid subscription channel or mode.' }
       }
-      const { data: memberships } = await sb
-        .from('club_members')
-        .select('club_id')
-        .eq('user_id', profile.id)
-      const joinedIds = Array.from(
-        new Set((memberships || []).map(m => normalizeClub(m.club_id)).filter(Boolean))
-      )
-      if (joinedIds.length === 0) {
-        return { ok: true, announcements: [] }
+      const profile = await getDirectUserProfile()
+      if (!profile) return { ok: false, status: 401, error: 'Sign in to change subscriptions.' }
+      const { error } = await sb.rpc('set_club_subscription', { club: clubId, channel, mode: body.mode })
+      if (isMissingFeedSchema(error)) {
+        return await saveBrowserSubscription(sb, profile.id, clubId, channel, body.mode)
       }
-      const { data } = await sb
-        .from('announcements')
-        .select('*')
-        .in('club_id', joinedIds)
-        .order('created_at', { ascending: false })
-        .limit(50)
-      return {
-        ok: true,
-        announcements: (data || []).map(a => ({
-          id: a.id,
-          clubId: a.club_id,
-          clubName: a.club_id,
-          title: a.title,
-          body: a.body,
-          type: a.type,
-          visibility: a.visibility,
-          createdAt: a.created_at,
-        })),
-      }
+      if (error) return { ok: false, status: error.status, error: error.message }
+      clearBrowserSubscription(profile.id, clubId, channel)
+      return { ok: true, clubId, channel, mode: body.mode }
+    }
+
+    const eventMatch = path.match(/^\/clubs\/([^/]+)\/events$/)
+    if (eventMatch && method === 'POST') {
+      const profile = await getDirectUserProfile()
+      const clubId = normalizeClub(decodeURIComponent(eventMatch[1]))
+      const event = normalizeAuthoredEvent(body)
+      if (!event) return { ok: false, status: 400, error: 'Enter a title and valid start and end dates.' }
+      const { data, error } = await sb.from('club_events').insert({
+        club_id: clubId, title: event.title, start_at: event.start, end_at: event.end,
+        all_day: event.allDay, location: event.location, important: event.important, author_id: profile?.id,
+      }).select('*').single()
+      if (error) return { ok: false, status: error.status, error: error.message }
+      return { ok: true, event: mapDirectClubEvent(data) }
     }
 
     const annPostMatch = path.match(/^\/clubs\/([^/]+)\/announcements$/)
     if (annPostMatch && method === 'POST') {
       const profile = await getDirectUserProfile()
       const cid = normalizeClub(decodeURIComponent(annPostMatch[1]))
+      const shortcuts = body.shortcutTargets || []
       const grpIds = (body.targetGroupIds || []).concat(
         (body.shortcutTargets || []).filter(s => String(s).startsWith('group:')).map(s => String(s).slice(6))
       )
+      let visibility = body.visibility || 'members'
+      if (visibility === 'members' && shortcuts.length === 1 && shortcuts[0] === 'all_board') visibility = 'board'
+      else if (visibility === 'members' && grpIds.length > 0 && !shortcuts.includes('all_members')) visibility = 'group'
       const { data, error } = await sb
         .from('announcements')
         .insert({
@@ -794,8 +801,10 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
           title: body.title,
           body: body.body || '',
           type: body.type || 'Update',
-          visibility: body.visibility || 'members',
-          target_group_ids: grpIds,
+          visibility,
+          important: body.important === true,
+          permalink: String(body.permalink || '').trim().slice(0, 400),
+          target_group_ids: [...new Set(grpIds)],
           author_id: profile?.id,
         })
         .select('*')
@@ -812,5 +821,115 @@ export async function handleDirectWorkspaceAction(path, options = {}) {
       ...(err.code ? { code: err.code } : {}),
       error: err.message || 'Supabase request failed.',
     }
+  }
+}
+
+async function readAllDirectRows(query) {
+  const rows = []
+  const pageSize = 100
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await query().range(offset, offset + pageSize - 1)
+    if (error) throw Object.assign(new Error(error.message), error)
+    rows.push(...(data || []))
+    if (!data || data.length < pageSize) return rows
+  }
+}
+
+function isMissingFeedSchema(error) {
+  return ['PGRST205', 'PGRST202', '42P01', '42883'].includes(error?.code)
+}
+
+async function readOptionalFeedRows(query) {
+  try {
+    return await readAllDirectRows(query)
+  } catch (error) {
+    if (isMissingFeedSchema(error)) return null
+    throw error
+  }
+}
+
+const subscriptionStorageKey = userId => `clubhub_direct_subscriptions_v1:${userId}`
+
+function readBrowserSubscriptions(userId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(subscriptionStorageKey(userId)) || '{}')
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  } catch {
+    return {}
+  }
+}
+
+async function saveBrowserSubscription(sb, userId, clubId, channel, mode) {
+  const { data, error } = await sb.from('club_members').select('club_id')
+    .eq('user_id', userId).eq('club_id', clubId).maybeSingle()
+  if (error) return { ok: false, status: error.status, error: error.message }
+  if (!data) return { ok: false, status: 403, code: 'NOT_CLUB_MEMBER', error: 'Join the club to change its subscriptions.' }
+  const saved = readBrowserSubscriptions(userId)
+  const current = Object.hasOwn(saved, clubId) ? saved[clubId] : {}
+  localStorage.setItem(subscriptionStorageKey(userId), JSON.stringify({ ...saved, [clubId]: { ...current, [channel]: mode } }))
+  return { ok: true, clubId, channel, mode, subscriptionsBrowserOnly: true }
+}
+
+function clearBrowserSubscription(userId, clubId, channel) {
+  try {
+    const saved = readBrowserSubscriptions(userId)
+    if (!Object.hasOwn(saved, clubId)) return
+    delete saved[clubId][channel]
+    if (!Object.keys(saved[clubId]).length) delete saved[clubId]
+    if (Object.keys(saved).length) localStorage.setItem(subscriptionStorageKey(userId), JSON.stringify(saved))
+    else localStorage.removeItem(subscriptionStorageKey(userId))
+  } catch {
+    // The server save already succeeded.
+  }
+}
+
+function mapDirectClubEvent(row) {
+  return {
+    id: row.id, clubId: row.club_id, clubName: row.club_id, title: row.title,
+    start: row.start_at, end: row.end_at, allDay: row.all_day, location: row.location,
+    important: row.important, source: 'workspace', visibility: 'members', kind: 'event',
+  }
+}
+
+export async function readDirectPersonalFeed(sb, userId, includeFeed = true) {
+  const memberships = await readAllDirectRows(() =>
+    sb.from('club_members').select('club_id,role,claim_status').eq('user_id', userId).order('club_id'))
+  const joinedIds = [...new Set(memberships.map(row => normalizeClub(row.club_id)).filter(Boolean))]
+  const [notices, eventRows, preferenceRows, ownedPolls] = await Promise.all([
+    joinedIds.length ? readAllDirectRows(() => sb.from('announcements').select('*').in('club_id', joinedIds)
+      .order('created_at', { ascending: false }).order('id')) : [],
+    includeFeed && joinedIds.length ? readOptionalFeedRows(() => sb.from('club_events').select('*').in('club_id', joinedIds)
+      .order('start_at').order('id')) : [],
+    includeFeed ? readOptionalFeedRows(() => sb.from('club_subscriptions').select('*').eq('user_id', userId)
+      .order('club_id')) : [],
+    includeFeed ? readAllDirectRows(() => sb.from('polls').select('id,booked_events').eq('created_by', userId).order('id')) : [],
+  ])
+  // RLS controls each announcement's audience before it is returned by PostgREST.
+  const workspaceAnnouncements = notices.map(row => ({
+    id: row.id, clubId: row.club_id, clubName: row.club_id, title: row.title, body: row.body,
+    type: row.type, visibility: row.visibility, important: row.important ?? String(row.type || '').toLowerCase() === 'urgent', createdAt: row.created_at,
+    targetGroupIds: row.target_group_ids, permalink: row.permalink, source: 'workspace',
+  }))
+  if (!includeFeed) return { ok: true, announcements: workspaceAnnouncements }
+  const bookings = ownedPolls.flatMap(poll => Array.isArray(poll.booked_events) ? poll.booked_events : [])
+    .filter(event => event?.id && event.start)
+    .map(event => ({ ...event, isBookedCollab: true, source: 'scheduler' }))
+  const workspaceEvents = [...(eventRows || []).map(mapDirectClubEvent), ...bookings]
+  const saved = subscriptionMap((preferenceRows || []).map(row => ({ ...row, clubId: row.club_id })))
+  const browserSubscriptions = Object.entries(readBrowserSubscriptions(userId))
+    .filter(([id]) => joinedIds.includes(id))
+  const subscriptions = subscriptionMap(Object.entries({
+    ...saved,
+    ...Object.fromEntries(browserSubscriptions.map(([id, modes]) => [id, { ...saved[id], ...modes }])),
+  }).map(([clubId, modes]) => ({ clubId, ...modes })))
+  const joined = new Set(joinedIds)
+  return {
+    ok: true, subscriptions, workspaceAnnouncements, workspaceEvents,
+    subscriptionsBrowserOnly: preferenceRows === null || browserSubscriptions.length > 0,
+    boardClubIds: eventRows === null ? [] : memberships.filter(row => ['board', 'president'].includes(row.role) && row.claim_status === 'approved')
+      .map(row => normalizeClub(row.club_id)),
+    events: mergePersonalFeed(workspaceEvents, 'events', joined, subscriptions),
+    announcements: mergePersonalFeed(workspaceAnnouncements, 'announcements', joined, subscriptions),
+    usePublicSnapshot: true,
   }
 }

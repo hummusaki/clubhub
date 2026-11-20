@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, ChevronLeft, MapPin } from 'lucide-react'
 import ClubRbacPanel from './ClubRbacPanel'
+import ClubSubscriptions from './ClubSubscriptions'
+import ClubEventModal from './ClubEventModal'
+import SearchDestination from './SearchDestination'
+import { announcementKey } from '../utils/announcementLinks'
 import { Button, Card, ClubAvatar, ClubCategoryChip, PageToolbar, cleanText, cleanMultilineText } from './ui'
 import { getClubPeopleAndGroups, onWorkspacePermissionChange } from '../api/workspaceClient'
 import { normalizeExternalPostUrl } from '../utils/calendarSync'
+import { calendarEventDate, parseYmdLocal } from '../utils/calendarDates'
 import { isPublicRecord, mergeClubRoster } from '../utils/publicRoster'
 import { clubPageHref } from '../utils/workspaceEntry'
 
@@ -23,7 +28,7 @@ export function ClubPageLink({ clubId, section, personId, onOpen, children, ...p
 const linkClass = 'ui-touch inline-flex min-h-9 items-center gap-1 text-sm text-[var(--blue-ink)] hover:underline'
 
 function formatEventTime(event, use24h) {
-  const date = new Date(event.startIso)
+  const date = event.allDay ? parseYmdLocal(calendarEventDate(event)) : new Date(event.startIso)
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     ...(event.allDay ? {} : { timeStyle: 'short', hour12: !use24h }),
@@ -134,10 +139,13 @@ function ClubMembers({ club, user, membershipChanging, publishedPeople, personId
 
 export default function ClubPage({
   route, club, loading, record, events, posts, resources, publishedPeople, user, use24h,
+  announcements = [], selectedNoticeId, onDismissNotice,
+  subscription, subscriptionReady, subscriptionLoadError, subscriptionBrowserOnly, onReloadSubscriptions, onSaveSubscription, canPublishEvent,
   onOpen, onBack, onMembershipChange, onMembershipConfirmed, onEvent, onTaskBoard,
   onResource, onRefreshAnnouncements, onNotify,
 }) {
   const heading = useRef(null)
+  const [showEventForm, setShowEventForm] = useState(false)
   const [membershipAction, setMembershipAction] = useState('')
   const [membershipError, setMembershipError] = useState(false)
   const [actionsVersion, setActionsVersion] = useState(0)
@@ -196,6 +204,7 @@ export default function ClubPage({
   const nextEvent = events[0]
   const nextMeeting = events.find(event => event.kind === 'meeting')
   const recentPosts = posts.filter(isPublicRecord).slice(0, 3)
+  const selectedNotice = announcements.find(notice => announcementKey(notice) === selectedNoticeId)
   const overview = route.section === 'overview'
   const members = route.section === 'members'
 
@@ -222,6 +231,14 @@ export default function ClubPage({
 
       {overview ? (
         <div className="page-stack">
+          {selectedNotice && <SearchDestination key={selectedNoticeId} heading={cleanText(selectedNotice.title)} onDismiss={onDismissNotice}>
+            <p className="whitespace-pre-wrap break-words text-sm">{cleanMultilineText(selectedNotice.body || selectedNotice.summary || '')}</p>
+          </SearchDestination>}
+          {club.joined && !inFlight && <ClubSubscriptions value={subscription} ready={subscriptionReady}
+            loadError={subscriptionLoadError} browserOnly={subscriptionBrowserOnly} onReload={onReloadSubscriptions}
+            onSave={(channel, mode) => onSaveSubscription(club.id, channel, mode)} />}
+          {showEventForm && canPublishEvent && club.joined && <ClubEventModal clubId={club.id}
+            onClose={() => setShowEventForm(false)} onPublished={onRefreshAnnouncements} />}
           <Card className="section-pad space-y-3">
             {description && <p className="whitespace-pre-line break-words">{description}</p>}
             <div className="space-y-1">
@@ -242,14 +259,21 @@ export default function ClubPage({
 
           {(nextEvent || club.joined || resources.length > 0) && (
             <Card className="section-pad space-y-3">
-              {nextEvent && <div className="space-y-1">
-                <h2 className="font-display text-lg">Next event</h2>
-                <Button variant="text" size="sm" icon={<CalendarDays size={16} />} onClick={() => onEvent(nextEvent)}>
-                  {nextEvent.event}
-                </Button>
-                <p className="text-sm text-[var(--text-muted)]">{formatEventTime(nextEvent, use24h)}</p>
-                {nextEvent.location && <p className="flex items-center gap-1 text-sm text-[var(--text-muted)]"><MapPin size={14} />{nextEvent.location}</p>}
-              </div>}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-display text-lg">Upcoming events</h2>
+                  {canPublishEvent && club.joined && (
+                    <Button size="sm" variant="outlined-neutral" onClick={() => setShowEventForm(true)}>Publish club event</Button>
+                  )}
+                </div>
+                {nextEvent ? <ul className="divide-y divide-[var(--border)]">
+                  {events.map(event => <li key={event.id} className="py-2">
+                    <Button variant="text" size="sm" icon={<CalendarDays size={15} />} onClick={() => onEvent(event)}>{event.event}</Button>
+                    <p className="text-sm text-[var(--text-muted)]">{formatEventTime(event, use24h)}</p>
+                    {event.location && <p className="flex items-center gap-1 text-sm text-[var(--text-muted)]"><MapPin size={14} />{event.location}</p>}
+                  </li>)}
+                </ul> : <p className="text-sm text-[var(--text-muted)]">No upcoming events.</p>}
+              </div>
               {resources.length > 0 && <div className="space-y-1">
                 <h2 className="font-display text-lg">Resources</h2>
                 <ul>
@@ -278,6 +302,15 @@ export default function ClubPage({
               })}
             </ul> : <p className="text-sm text-[var(--text-muted)]">No published updates yet.</p>}
           </Card>
+          {announcements.length > 0 && <Card className="section-pad space-y-3">
+            <h2 className="font-display text-lg">Club announcements</h2>
+            <ul className="divide-y divide-[var(--border)]">
+              {announcements.map(notice => <li key={announcementKey(notice)} className="py-2">
+                <p className="text-sm font-medium">{cleanText(notice.title)}{notice.important ? ' · Important' : ''}</p>
+                <p className="whitespace-pre-line break-words text-sm text-[var(--text-muted)]">{cleanMultilineText(notice.body || notice.summary || '')}</p>
+              </li>)}
+            </ul>
+          </Card>}
         </div>
       ) : members || !user ? (
         <ClubMembers club={club} user={user} membershipChanging={inFlight} publishedPeople={publishedPeople} personId={route.personId} />

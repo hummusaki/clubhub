@@ -8,6 +8,8 @@ import { announcementKey, announcementPermalink } from '../utils/announcementLin
 export default function Announcements({
   items,
   joinedCount = 0,
+  full = false,
+  onBrowseClubs,
   userSettings = {},
   searchQuery = '',
   onNav,
@@ -35,6 +37,8 @@ export default function Announcements({
   }, [base, channels, searchQuery])
 
   const isCompact = Boolean(userSettings?.compactCards)
+  const titleClass = `${isCompact ? 'text-[13px]' : 'text-sm'} font-medium text-[var(--text)]`
+  const previewTitleClass = full ? '' : 'min-w-0 line-clamp-2 wrap-anywhere'
 
   return (
     <Card
@@ -42,7 +46,7 @@ export default function Announcements({
       delay={2}
     >
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
+        <div className={full ? "flex flex-wrap items-center justify-between gap-1 mb-2" : "dashboard-card-header mb-2"}>
           <div className="flex items-center gap-2">
             <h2 className="font-display text-base font-medium text-[var(--text)]">Announcements</h2>
             <BubbleTag label={`${announcements.length}`} color="blue" size="sm" />
@@ -61,13 +65,14 @@ export default function Announcements({
         </div>
 
         {announcements.length > 0 ? (
-          <div className={`flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}`}>
-            {announcements.slice(0, isCompact ? 7 : 5).map(item => {
+          <div className={full ? `flex flex-col ${isCompact ? 'gap-2.5' : 'gap-3'}` : 'dashboard-announcement-preview'}>
+            {(full ? announcements : announcements.slice(0, 3)).map(item => {
               const color = item.color || 'blue'
               const isDiscord = item.source === 'discord'
               const isStory = item.source === 'instagram_story'
               const isEmail = item.source === 'email'
               const permalink = announcementPermalink(item)
+              const title = cleanText(item.title)
 
               return (
                 <div
@@ -104,36 +109,26 @@ export default function Announcements({
                         href={permalink}
                         target="_blank"
                         rel="noreferrer"
-                        className={`inline-flex items-center gap-1 ${
-                          isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-medium text-[var(--text)] hover:text-[var(--blue)] no-underline`}
+                        className={`inline-flex items-center gap-1 ${titleClass} hover:text-[var(--blue)] no-underline`}
                       >
-                        <span>{cleanText(item.title)}</span>
+                        <span className={previewTitleClass}>{title}</span>
                         <ExternalLink size={12} className="shrink-0 opacity-60" />
                       </a>
                     ) : onOpenAnnouncement ? (
                       <button
                         type="button"
                         onClick={() => onOpenAnnouncement(item)}
-                        className={`text-left ${
-                          isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-medium text-[var(--text)] hover:text-[var(--blue)] bg-transparent border-none p-0 cursor-pointer`}
+                        className={`${full ? '' : 'block w-full max-h-[2lh]'} text-left ${titleClass} hover:text-[var(--blue)] bg-transparent border-none p-0 cursor-pointer`}
                       >
-                        {cleanText(item.title)}
+                        <span className={previewTitleClass}>{title}</span>
                       </button>
                     ) : (
-                      <p
-                        className={`${
-                          isCompact ? 'text-[13px]' : 'text-sm'
-                        } font-medium text-[var(--text)]`}
-                      >
-                        {cleanText(item.title)}
-                      </p>
+                      <p className={`${titleClass} ${previewTitleClass}`}>{title}</p>
                     )}
 
                     <p
                       className={`text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed ${
-                        isCompact ? 'line-clamp-1' : ''
+                        full ? (isCompact ? 'line-clamp-2' : '') : 'truncate'
                       }`}
                     >
                       {cleanText(item.description)}
@@ -144,9 +139,12 @@ export default function Announcements({
             })}
           </div>
         ) : joinedCount === 0 ? (
-          <p className="text-sm text-[var(--text-muted)]">No club updates yet.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-[var(--text-muted)]">Join a club to receive announcements.</p>
+            {onBrowseClubs && <Button variant="text" size="sm" onClick={onBrowseClubs}>Browse clubs</Button>}
+          </div>
         ) : (
-          <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+          <div className={`text-sm text-[var(--text-muted)] ${full ? 'py-8 text-center' : ''}`}>
             {searchQuery.trim()
               ? 'No matching announcements in your joined clubs.'
               : 'No announcements from your joined clubs yet.'}

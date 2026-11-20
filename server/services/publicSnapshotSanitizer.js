@@ -18,6 +18,9 @@ const FORBIDDEN_TOP_LEVEL_KEYS = [
   'club_tasks',
   'tasks',
   'club_polls',
+  'club_subscriptions',
+  'subscriptions',
+  'club_events_private',
   'polls',
   'scheduler_polls',
   'scheduler_responses',
@@ -41,7 +44,8 @@ export function sanitizePublicSnapshot(snapshot) {
         isPublicRecord(e) &&
         e.clubId !== 'personal_poll' &&
         !String(e.id || '').startsWith('personal_') &&
-        !String(e.id || '').startsWith('collab_evt_')
+        !String(e.id || '').startsWith('collab_evt_') &&
+        !String(e.id || '').startsWith('custom_evt_') && !e.isCustom
     );
   }
 

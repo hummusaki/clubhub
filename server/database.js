@@ -9,9 +9,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { categorizeClub } from '../collector/src/categorize.js';
 import {
+  applyEventCancellations,
   extractPost,
+  hasEventImportanceEvidence,
   filterActualEvents,
   isActualClubEvent,
+  isCancellationNotice,
 } from '../collector/src/extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -189,7 +192,9 @@ function initSchema(db) {
       allDay      INTEGER NOT NULL DEFAULT 0,
       recurring   TEXT,
       location    TEXT,
-      source      TEXT DEFAULT 'instagram'
+      source      TEXT DEFAULT 'instagram',
+      important   INTEGER NOT NULL DEFAULT 0,
+      cancelled   INTEGER NOT NULL DEFAULT 0
     );
 
     -- 4. ANNOUNCEMENTS (links to clubs.id via clubId)
@@ -289,6 +294,11 @@ function initSchema(db) {
     ['directoryDescription', 'TEXT'],
   ]) {
     if (!clubCols.has(col)) db.exec(`ALTER TABLE clubs ADD COLUMN ${col} ${def}`);
+  }
+
+  const eventCols = new Set(db.prepare('PRAGMA table_info(events)').all().map(c => c.name));
+  for (const column of ['important', 'cancelled']) {
+    if (!eventCols.has(column)) db.exec(`ALTER TABLE events ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
   }
 
   // Purge any legacy user-scoped tables or dictionary keys so public clubhub.db stays 100% PII-free.
@@ -399,8 +409,8 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
   const upsertEventStmt = db.stmt(`
     INSERT INTO events (
       id, clubId, clubName, postId, permalink, title,
-      kind, start, end, allDay, recurring, location, source
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      kind, start, end, allDay, recurring, location, source, important, cancelled
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       clubId    = excluded.clubId,
       clubName  = COALESCE(excluded.clubName, events.clubName),
@@ -413,7 +423,9 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
       allDay    = excluded.allDay,
       recurring = excluded.recurring,
       location  = excluded.location,
-      source    = excluded.source
+      source    = excluded.source,
+      important = excluded.important,
+      cancelled = excluded.cancelled
   `);
 
   const upsertAnnouncementStmt = db.stmt(`
@@ -599,7 +611,9 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
         e.allDay ? 1 : 0,
         e.recurring || null,
         e.location || null,
-        e.source || 'instagram'
+        e.source || 'instagram',
+        Number(hasEventImportanceEvidence({ ...e, source: e.source || postCtx?.source }, postCtx?.caption || '')),
+        e.cancelled ? 1 : 0
       );
       counts.events++;
     }
@@ -657,6 +671,19 @@ export function upsertCollectorData(data = {}, { replaceRosterForClubs = false }
         r.sourceUrl || null
       );
       counts.roster++;
+    }
+
+    const cancellationPosts = posts.filter(post => isCancellationNotice(post.caption))
+      .map(post => ({ ...post, clubId: normalizeClubId(post.clubId) }));
+    if (cancellationPosts.length) {
+      const clubs = [...new Set(cancellationPosts.map(post => post.clubId).filter(Boolean))];
+      const candidates = db.stmt(
+        `SELECT * FROM events WHERE clubId IN (SELECT value FROM json_each(?))`
+      ).all(JSON.stringify(clubs)).map(formatEventRow);
+      const markCancelled = db.stmt('UPDATE events SET cancelled = 1 WHERE id = ?');
+      for (const ev of applyEventCancellations(candidates, cancellationPosts)) {
+        if (ev.cancelled) markCancelled.run(ev.id);
+      }
     }
 
     // Sync every affected club's full record into dictionary_store
@@ -752,8 +779,8 @@ export function pruneNonEventsFromDb({ reextractRulePosts = false } = {}) {
       const insertEventStmt = db.stmt(`
         INSERT OR REPLACE INTO events (
           id, clubId, clubName, postId, permalink, title,
-          kind, start, end, allDay, recurring, location, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          kind, start, end, allDay, recurring, location, source, important, cancelled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const upsertAnnStmt = db.stmt(`
         INSERT INTO announcements (
@@ -807,7 +834,9 @@ export function pruneNonEventsFromDb({ reextractRulePosts = false } = {}) {
             ev.allDay ? 1 : 0,
             ev.recurring || null,
             ev.location || null,
-            p.source || 'instagram'
+            p.source || 'instagram',
+            Number(hasEventImportanceEvidence(ev, p.caption || '')),
+            0
           );
         });
 
@@ -829,19 +858,19 @@ export function pruneNonEventsFromDb({ reextractRulePosts = false } = {}) {
     }
 
     const postsById = new Map(
-      db.prepare('SELECT id, caption, postedAt, source FROM posts').all().map(p => [String(p.id), p])
+      db.prepare('SELECT id, clubId, caption, postedAt, source FROM posts').all().map(p => [String(p.id), p])
     );
     const allEvents = db
       .prepare('SELECT * FROM events ORDER BY start ASC')
       .all()
       .map(formatEventRow);
 
-    const keptEvents = filterActualEvents(allEvents, { postsById });
+    const keptEvents = applyEventCancellations(filterActualEvents(allEvents, { postsById }), postsById.values());
     const keptById = new Map(keptEvents.map(ev => [String(ev.id), ev]));
 
     const deleteEventStmt = db.stmt('DELETE FROM events WHERE id = ?');
     const updateEventFieldsStmt = db.stmt(`
-      UPDATE events SET title = ?, location = ? WHERE id = ?
+      UPDATE events SET title = ?, location = ?, important = ?, cancelled = ? WHERE id = ?
     `);
 
     for (const orig of allEvents) {
@@ -852,9 +881,10 @@ export function pruneNonEventsFromDb({ reextractRulePosts = false } = {}) {
         if (orig.clubId) affectedClubs.add(orig.clubId);
       } else if (
         (kept.location || null) !== (orig.location || null) ||
-        kept.title !== orig.title
+        kept.title !== orig.title ||
+        Boolean(kept.important) !== orig.important || Boolean(kept.cancelled) !== orig.cancelled
       ) {
-        updateEventFieldsStmt.run(kept.title, kept.location || null, orig.id);
+        updateEventFieldsStmt.run(kept.title, kept.location || null, Number(Boolean(kept.important)), Number(Boolean(kept.cancelled)), orig.id);
         updated++;
         if (orig.clubId) affectedClubs.add(orig.clubId);
       }
@@ -1181,7 +1211,7 @@ export function formatPostRow(row) {
 }
 
 export function formatEventRow(row) {
-  return row ? { ...row, allDay: Boolean(row.allDay), source: row.source || 'instagram' } : null;
+  return row ? { ...row, allDay: Boolean(row.allDay), important: Boolean(row.important), cancelled: Boolean(row.cancelled), source: row.source || 'instagram' } : null;
 }
 
 export function formatAnnouncementRow(row) {

@@ -237,6 +237,30 @@ function ResourceGlyph({ iconKey, size = 18 }) {
   return <Globe size={size} />
 }
 
+function deduplicatedResources(records, clubById) {
+  const seen = new Set()
+  return records.map(raw => classifyResource(raw, clubById)).filter(item => {
+    const key = `${item.clubId || item.clubName}::${item.url.toLowerCase()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function matchesResourceClub(link, filter, joined) {
+  if (filter === 'all') return true
+  if (filter === 'myclubs') return !joined.size || String(link.id || '').startsWith('link_') || joined.has(String(link.clubId))
+  return String(link.clubId || '') === String(filter)
+}
+
+export function countDefaultResources(items, localAdded, clubs) {
+  const base = items?.length ? items : defaultLinks
+  const clubById = new Map(clubs.map(club => [String(club.id), club]))
+  const joined = new Set(clubs.filter(club => club.joined).map(club => String(club.id)))
+  return deduplicatedResources([...localAdded, ...base], clubById)
+    .filter(link => matchesResourceClub(link, joined.size ? 'myclubs' : 'all', joined)).length
+}
+
 export default function LinksResources({
   items,
   compact = false,
@@ -302,46 +326,14 @@ export default function LinksResources({
 
   const baseLinks = items && items.length > 0 ? items : defaultLinks
 
-  // Deduplicate & enrich all links
-  const allLinks = useMemo(() => {
-    const seen = new Set()
-    const enriched = []
+  const allLinks = useMemo(() => deduplicatedResources([...localAdded, ...baseLinks], clubById)
+    .map(item => ({ ...item, isPinned: pinnedOverrides[item.id] ?? Boolean(item.pinned) }))
+    .sort((a, b) => Number(b.isPinned) - Number(a.isPinned)),
+  [localAdded, baseLinks, clubById, pinnedOverrides])
 
-    for (const raw of [...localAdded, ...baseLinks]) {
-      const item = classifyResource(raw, clubById)
-      const dedupeKey = `${item.clubId || item.clubName}::${item.url.toLowerCase()}`
-      if (seen.has(dedupeKey)) continue
-      seen.add(dedupeKey)
-
-      const isPinned =
-        pinnedOverrides[item.id] !== undefined
-          ? pinnedOverrides[item.id]
-          : Boolean(item.pinned)
-
-      enriched.push({
-        ...item,
-        isPinned,
-      })
-    }
-
-    return enriched.sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
-  }, [localAdded, baseLinks, clubById, pinnedOverrides])
-
-  // Apply Club scope + Search query first so category tab badges show accurate counts!
+  // Apply club scope before category and search.
   const scopedLinks = useMemo(() => {
-    const clubFiltered = allLinks.filter(link => {
-      const isUserAdded = String(link.id || '').startsWith('link_')
-      if (clubFilter === 'myclubs' && joinedClubIdSet.size > 0) {
-        if (!isUserAdded && (!link.clubId || !joinedClubIdSet.has(String(link.clubId)))) {
-          return false
-        }
-      } else if (clubFilter !== 'all' && clubFilter !== 'myclubs') {
-        if (String(link.clubId || '') !== String(clubFilter)) {
-          return false
-        }
-      }
-      return true
-    })
+    const clubFiltered = allLinks.filter(link => matchesResourceClub(link, clubFilter, joinedClubIdSet))
 
     return filterAndRankBySearch(clubFiltered, searchQuery, link => ({
       primary: [link.displayLabel, link.rawLabel, link.title],
@@ -520,6 +512,7 @@ export default function LinksResources({
   function renderResourceCard(link, { hideClubName = false } = {}) {
     const isCopied = copiedId === link.id
     const isEmailLink = /^mailto:/i.test(link.url)
+    const details = [hideClubName ? null : link.clubName, link.sectionLabel, compact ? null : link.sourceDomain].filter(Boolean).join(' · ')
 
     return (
       <article key={link.id} className="content-tile flex min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 sm:px-3">
@@ -529,11 +522,12 @@ export default function LinksResources({
         <div className="min-w-0 flex-1">
           <a href={link.url} target={isEmailLink ? undefined : '_blank'}
             rel={isEmailLink ? undefined : 'noreferrer'}
-            className="block text-sm font-medium leading-snug break-words text-[var(--text)] hover:text-[var(--blue)] hover:underline">
+            title={compact ? link.displayLabel : undefined}
+            className={`block text-sm font-medium leading-snug text-[var(--text)] hover:text-[var(--blue)] hover:underline ${compact ? 'line-clamp-2 wrap-anywhere' : 'break-words'}`}>
             {link.displayLabel}
           </a>
-          <div className="text-xs text-[var(--text-muted)] break-words">
-            {[hideClubName ? null : link.clubName, link.sectionLabel, link.sourceDomain].filter(Boolean).join(' · ')}
+          <div title={compact ? details : undefined} className={`text-xs text-[var(--text-muted)] ${compact ? 'truncate' : 'break-words'}`}>
+            {details}
           </div>
         </div>
         <div className="flex items-center shrink-0">
@@ -556,11 +550,11 @@ export default function LinksResources({
     const preview = [...scopedLinks].sort((a, b) => Number(b.isPinned) - Number(a.isPinned)).slice(0, 4)
     return (
       <Card className="section-pad space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-1">
+        <div className="dashboard-card-header">
           <h2 className="font-display text-base font-medium">Resources</h2>
           <Button variant="text" size="sm" onClick={onOpenResources}>View resources</Button>
         </div>
-        {preview.length > 0 ? <div className={cardGridClass}>{preview.map(link => renderResourceCard(link))}</div>
+        {preview.length > 0 ? <div className="dashboard-resource-grid">{preview.map(link => renderResourceCard(link))}</div>
           : <p className="text-sm text-[var(--text-muted)]">No matching resources.</p>}
       </Card>
     )

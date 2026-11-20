@@ -79,3 +79,42 @@ export function clearOAuthEntry(storage = sessionStorage) {
 export function replaceEntryUrl(destination = '') {
   window.history.replaceState(null, '', window.location.pathname + destination)
 }
+
+const WORKSPACE_ADMISSION_KEY = 'clubhub_workspace_admission_v1'
+export const WORKSPACE_ADMISSION_MS = 12 * 60 * 60 * 1000
+
+export function workspaceAdmission(identity, sessionId, profile, now = Date.now()) {
+  const provider = identity.startsWith('clerk:') ? 'clerk' : 'local'
+  const email = profile?.primaryEmailAddress?.emailAddress || profile?.email || ''
+  return {
+    identity, provider, sessionId: provider === 'clerk' ? sessionId : null,
+    email, name: profile?.fullName || profile?.firstName || email,
+    expiresAt: now + WORKSPACE_ADMISSION_MS,
+  }
+}
+
+export function readWorkspaceAdmission(storage = globalThis.sessionStorage) {
+  try {
+    const record = JSON.parse(storage?.getItem(WORKSPACE_ADMISSION_KEY) || 'null')
+    if (!record || !['local', 'clerk'].includes(record.provider) ||
+        !String(record.identity || '').startsWith(record.provider + ':') ||
+        !Number.isFinite(record.expiresAt)) return null
+    return record
+  } catch {
+    return null
+  }
+}
+
+export function storeWorkspaceAdmission(record, storage = globalThis.sessionStorage) {
+  try {
+    if (record) storage?.setItem(WORKSPACE_ADMISSION_KEY, JSON.stringify(record))
+    else storage?.removeItem(WORKSPACE_ADMISSION_KEY)
+  } catch {
+    // A storage restriction only disables refresh persistence.
+  }
+}
+
+export function canResumeWorkspace(record, identity, sessionId, now = Date.now()) {
+  return Boolean(identity && record?.identity === identity && record.expiresAt > now &&
+    (record.provider === 'local' || (sessionId && record.sessionId === sessionId)))
+}

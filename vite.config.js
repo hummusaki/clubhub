@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { subscriptionMap } from './src/utils/clubSubscriptions.js'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -46,6 +47,7 @@ function clubhubCalendarFeedPlugin() {
           try {
             const body = rawBody ? JSON.parse(rawBody) : {}
             const payload = {
+              subscriptions: subscriptionMap(Object.entries(body.subscriptions || {}).map(([clubId, modes]) => ({ ...modes, clubId }))),
               joinedClubIds: Array.isArray(body.joinedClubIds) ? body.joinedClubIds.map(String) : [],
               rsvpIds: Array.isArray(body.rsvpIds) ? body.rsvpIds.map(String) : [],
               customEvents: Array.isArray(body.customEvents) ? body.customEvents : [],
@@ -102,14 +104,19 @@ function clubhubCalendarFeedPlugin() {
         })
 
         const removedSet = new Set((stored.removedEventIds || []).map(String))
-        const pool = [
+        const byId = new Map()
+        for (const event of [
           ...(stored.customEvents || []),
-          ...(stored.fallbackEvents || []),
           ...loadSnapshotEvents(),
-        ].filter(ev => ev && ev.id && !removedSet.has(String(ev.id)))
+          ...(stored.fallbackEvents || []),
+        ]) {
+          if (event?.id && !removedSet.has(String(event.id)) && !byId.has(String(event.id))) byId.set(String(event.id), event)
+        }
+        const pool = [...byId.values()]
 
         const filtered = filterEventsForCalendarSync(pool, {
           joinedClubIds,
+          subscriptions: stored.subscriptions,
           rsvpIds,
           settings,
         })

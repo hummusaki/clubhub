@@ -64,7 +64,7 @@ export default function Header({
     return items.filter(i => {
       if (readIds[announcementKey(i)] || i.unread === false) return false
       if (userSettings?.urgentOnlyBadge) {
-        return String(i.type || '').toLowerCase() === 'urgent' || i.color === 'red'
+        return Boolean(i.important)
       }
       return true
     }).length

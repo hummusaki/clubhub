@@ -380,6 +380,17 @@ export const deleteClubGroup = (clubId, groupId) =>
 // ── 4. Targeted Club Announcements ──
 
 export const getWorkspaceAnnouncements = () => workspaceRequest('/announcements')
+export const getWorkspaceFeed = () => workspaceRequest('/feed')
+
+export const setClubSubscription = (clubId, channel, mode) =>
+  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/subscriptions/${encodeURIComponent(channel)}`, {
+    method: 'PUT', body: JSON.stringify({ mode }),
+  })
+
+export const createClubEvent = (clubId, payload) =>
+  workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/events`, {
+    method: 'POST', body: JSON.stringify(payload),
+  })
 
 export const createClubAnnouncement = (clubId, payload) =>
   workspaceRequest(`/clubs/${encodeURIComponent(clubId)}/announcements`, {

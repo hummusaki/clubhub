@@ -1,7 +1,7 @@
 // Optional: uses Claude to read the caption AND the post image (flyers often have the date/time/room
 // only in the picture). Falls back to the rule-based extractor if no key is set or a call fails.
 
-import { classify, extractLinks, filterActualEvents, makeTitle } from './extract.js'
+import { classify, extractLinks, filterActualEvents, isCancellationNotice, makeTitle } from './extract.js'
 
 const SYSTEM = `You extract structured club info from a UCSC student club's Instagram post.
 Return ONLY a JSON object, no prose, with this shape:
@@ -107,7 +107,7 @@ ${post.caption || '(no caption)'}`,
 
   return {
     type: resolvedType,
-    important: Boolean(json.important),
+    important: Boolean(json.important) || isCancellationNotice(post.caption),
     title: json.title || makeTitle(post.caption || ''),
     summary: json.summary || '',
     events: filteredEvents,

@@ -47,6 +47,15 @@ const RECAP_POST_RE = /\b(thanks?\s+(?:so\s+much\s+)?(?:for\s+coming|to\s+everyo
 
 const CANCELLATION_CLAUSE_RE = /\b(no\s+(?:gbm|meeting|general\s+meeting|practice|rehearsal|office\s+hours|session|workshop)\b|won[’']?t\s+be\s+meeting|will\s+not\s+be\s+meeting|meetings?\s+(?:is|are|will\s+be)\s+cancel+ed|next\s+two\s+meetings\s+will\s+be\s+cancel+ed|(?:event|gbm|workshop|practice|session)\s+(?:is|has\s+been|will\s+be)\s+cancel+ed|\[cancel+ed\]|^cancel+ed\s*:)\b/i
 
+function isCancellationClause(text) {
+  return CANCELLATION_CLAUSE_RE.test(text) ||
+    /(?:^\s*\[?cancel+ed(?:\]|:)|\b(?:is|has been|will be) cancel+ed\b)/i.test(text)
+}
+
+export function isCancellationNotice(caption) {
+  return String(caption || '').split(/\n|[.!?]\s+/).some(isCancellationClause)
+}
+
 const PAST_CLAUSE_RE = /\b(was\s+(?:founded|signed|adopted|held)|celebrated\s+\d+|came\s+out\s+to|showed\s+up\s+to|joined\s+us\s+(?:at|for|last|yesterday)|made\s+today\s+so\s+special|yesterday|last\s+(?:night|week|month|year|quarter))\b/i
 
 const GREETING_ONLY_LINE_RE = /^(?:hey+|hi+|hello+|hola+|yo+|greetings|dear|good\s+(?:morning|afternoon|evening)|happy\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week\s*\d+))\b[^.!?]{0,32}[!,.:~♡⭐️✨]*$/i
@@ -392,7 +401,7 @@ export function extractEvents(caption, postedAt, { title, location } = {}) {
     }
 
     // 2. Filter out canceled meetings/events ("won't be meeting this week", "next two meetings will be canceled")
-    if (CANCELLATION_CLAUSE_RE.test(clauseAround) || /\bnext\s+two\s+meetings\s+will\s+be\s+cancel+ed\b/i.test(text)) {
+    if (isCancellationClause(clauseAround) || /\bnext\s+two\s+meetings\s+will\s+be\s+cancel+ed\b/i.test(text)) {
       continue
     }
 
@@ -454,7 +463,7 @@ export function extractEvents(caption, postedAt, { title, location } = {}) {
   }
 
   // "Meetings every Tuesday at 6pm" with no specific date: use the next occurrence (unless post is a non-event).
-  if (!candidates.length && recurring && !isRecapPost && !CANCELLATION_CLAUSE_RE.test(text)) {
+  if (!candidates.length && recurring && !isRecapPost && !isCancellationClause(text)) {
     const start = nextWeekday(ref, recurring)
     let end = null
     const t = timeOnly[0]
@@ -607,6 +616,14 @@ export function isActualClubEvent(event, context = {}) {
     return false
   }
 
+  if (isCancellationClause(title) || (
+    caption && caption.split(/\n|[.!?]\s+/).some(clause => isCancellationClause(clause) &&
+      chrono.parse(clause, new Date(context.postedAt || context.post?.postedAt || event.start)).some(date =>
+        (date.start.isCertain('day') || date.start.isCertain('weekday')) &&
+        chronoDateKey(date.start) === (event.allDay ? String(event.start).slice(0, 10) : toPacificDateKey(event.start)))
+    )
+  )) return false
+
   // 10. Recap / thank-you posts: drop all-day stubs ("see you next week!") or dates on/before postedAt
   if (caption && RECAP_POST_RE.test(caption)) {
     if (!hasTime && !hasLocation) return false
@@ -643,10 +660,57 @@ export function isActualClubEvent(event, context = {}) {
   return true
 }
 
-/**
- * Filters a list of candidate events down to actual attendable events and removes cross-post duplicates
- * (e.g. identical 3-tile Instagram grid posts announcing the exact same event at the exact same time).
- */
+const EVENT_CHANGE_RE = /\b(?:rescheduled|reschedule confirmed|room change|venue change|new (?:room|venue|location)|moved to)\b/i
+
+export function hasEventImportanceEvidence(event, caption = '') {
+  if (event.important === true || event.important === 1) return true
+  if (/^(?:manual|workspace)$/.test(event.source || '')) return false
+  if (!caption) return EVENT_CHANGE_RE.test(event.title || '')
+  const eventDay = event.allDay ? String(event.start).slice(0, 10) : toPacificDateKey(event.start)
+  const title = cleanText(event.title || '').toLowerCase()
+  return String(caption).split(/\n|;|[.!?]\s+|\b(?:and|but|while)\b/i).some(clause => {
+    if (!EVENT_CHANGE_RE.test(clause) || isCancellationClause(clause)) return false
+    const ref = new Date(event.start)
+    if (!Number.isFinite(+ref)) return false
+    const dated = chrono.parse(clause, ref).filter(date => date.start.isCertain('day'))
+    if (dated.length) return dated.some(date => chronoDateKey(date.start) === eventDay)
+    return title.length >= 6 && !EVENT_CHANGE_RE.test(title) && clause.toLowerCase().includes(title)
+  })
+}
+
+function chronoDateKey(component) {
+  return [component.get('year'), component.get('month'), component.get('day')]
+    .map((part, index) => String(part).padStart(index === 0 ? 4 : 2, '0')).join('-')
+}
+
+export function applyEventCancellations(events, posts) {
+  const cancelled = new Set()
+  for (const post of posts) {
+    if (!post.caption || !post.postedAt || !post.clubId) continue
+    const reference = new Date(post.postedAt)
+    if (!Number.isFinite(+reference)) continue
+    for (const clause of post.caption.split(/\n|[.!?]\s+/)) {
+      if (!isCancellationClause(clause)) continue
+      for (const date of chrono.parse(clause, reference, { forwardDate: true })) {
+        if (!date.start.isCertain('day') && !date.start.isCertain('weekday')) continue
+        const day = chronoDateKey(date.start)
+        const matches = events.filter(event => event.clubId === post.clubId && event.postId !== post.id &&
+          !event.isCustom && !event.isBookedCollab && !/^(?:manual|workspace|scheduler)$/.test(event.source || '') &&
+          (event.allDay ? String(event.start).slice(0, 10) : toPacificDateKey(event.start)) === day &&
+          (!MEETING_WORDS.test(clause) || event.kind === 'meeting'))
+        const named = matches.filter(event => {
+          const title = cleanText(event.title || '').toLowerCase()
+          return title.length >= 6 && clause.toLowerCase().includes(title)
+        })
+        const target = named.length === 1 ? named[0] : matches.length === 1 ? matches[0] : null
+        if (target) cancelled.add(target.id)
+      }
+    }
+  }
+  return events.map(event => cancelled.has(event.id) ? { ...event, cancelled: true } : event)
+}
+
+/** Keep attendable events and consolidate equivalent collector records. */
 export function filterActualEvents(events = [], { postsById = null, defaultCaption = '', defaultPostedAt = null } = {}) {
   const valid = []
   const indexByClubStart = new Map()
@@ -670,6 +734,7 @@ export function filterActualEvents(events = [], { postsById = null, defaultCapti
     const normalizedEvent = {
       ...ev,
       location: cleanedLoc,
+      important: hasEventImportanceEvidence(ev, caption),
     }
 
     // Deduplicate identical (clubId + exact start timestamp) across carousel tiles or GCal + IG cross-posts,
@@ -692,12 +757,22 @@ export function filterActualEvents(events = [], { postsById = null, defaultCapti
           ...normalizedEvent,
           title: prev.source === 'google_calendar' && prev.title ? prev.title : normalizedEvent.title,
           location: normalizedEvent.location || prev.location,
+          important: normalizedEvent.important || prev.important,
+          cancelled: normalizedEvent.cancelled || prev.cancelled,
         }
       } else if (prevIsDirectPost && !currIsDirectPost && normalizedEvent.source === 'google_calendar') {
         valid[existingIdx] = {
           ...prev,
           title: normalizedEvent.title || prev.title,
           location: prev.location || normalizedEvent.location,
+          important: normalizedEvent.important || prev.important,
+          cancelled: normalizedEvent.cancelled || prev.cancelled,
+        }
+      } else {
+        valid[existingIdx] = {
+          ...prev,
+          important: normalizedEvent.important || prev.important,
+          cancelled: normalizedEvent.cancelled || prev.cancelled,
         }
       }
       continue
@@ -738,7 +813,7 @@ export function extractPost(post, profile) {
   const summary = cleanText(caption.replace(/#[\w]+/g, ''))
   return {
     type: classify(caption, events),
-    important: IMPORTANT_WORDS.test(caption),
+    important: IMPORTANT_WORDS.test(caption) || isCancellationNotice(caption),
     title,
     summary: summary.length > 300 ? summary.slice(0, 297).trimEnd() + '...' : summary,
     events,

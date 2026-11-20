@@ -43,6 +43,68 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
     }
   }
 
+  function tokenExpiry(session) {
+    if (session.expires_at) return Number(session.expires_at)
+    try {
+      const encoded = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+      return Number(JSON.parse(atob(encoded)).exp) || 0
+    } catch {
+      return 0
+    }
+  }
+
+  function makeSession(data, user) {
+    return {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Number(data.expires_at) || (data.expires_in ? Date.now() / 1000 + Number(data.expires_in) : undefined),
+      user,
+    }
+  }
+
+  let refreshing = null
+
+  async function currentSession() {
+    const session = getStoredSession()
+    if (!session?.refresh_token || options.auth?.autoRefreshToken !== true) return session
+    const expiresAt = tokenExpiry(session)
+    if (!expiresAt || expiresAt > Date.now() / 1000 + 60) return session
+    if (refreshing?.token === session.refresh_token) return refreshing.request
+
+    const request = (async () => {
+      const keepIfCurrent = () => getStoredSession()?.refresh_token === session.refresh_token
+      try {
+        const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: session.refresh_token }),
+        })
+        const data = await response.json().catch(() => null)
+        if (!keepIfCurrent()) return getStoredSession()
+        if (response.ok && data?.access_token && data?.refresh_token) {
+          const renewed = makeSession(data, data.user || session.user)
+          setStoredSession(renewed)
+          notifyAuthChange('TOKEN_REFRESHED', renewed)
+          return renewed
+        }
+        if ([400, 401, 403].includes(response.status)) {
+          setStoredSession(null)
+          notifyAuthChange('SIGNED_OUT', null)
+          return null
+        }
+      } catch {
+        // A temporary network failure shouldn't erase the refresh token.
+      }
+      return keepIfCurrent() ? session : getStoredSession()
+    })()
+    refreshing = { token: session.refresh_token, request }
+    try {
+      return await request
+    } finally {
+      if (refreshing?.request === request) refreshing = null
+    }
+  }
+
   async function buildHeaders(custom = {}) {
     let token = null
     if (!custom.Authorization && accessTokenFn) {
@@ -52,8 +114,8 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         token = null
       }
     }
-    if (!token) {
-      const sess = getStoredSession()
+    if (!token && !custom.Authorization && !extraHeaders.Authorization) {
+      const sess = await currentSession()
       token = sess?.access_token || apiKey
     }
     return {
@@ -66,7 +128,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
 
   const auth = {
     async getSession() {
-      const session = getStoredSession()
+      const session = await currentSession()
       return { data: { session }, error: null }
     },
 
@@ -99,11 +161,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
             error: { message: data.error_description || data.msg || data.message || 'Invalid login credentials' },
           }
         }
-        const session = {
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
-          user: data.user || null,
-        }
+        const session = makeSession(data, data.user || null)
         setStoredSession(session)
         notifyAuthChange('SIGNED_IN', session)
         return { data: { user: data.user || null, session }, error: null }
@@ -132,7 +190,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         }
         const user = data.user || (data.id ? data : null)
         const session = data.access_token
-          ? { access_token: data.access_token, refresh_token: data.refresh_token, user }
+          ? makeSession(data, user)
           : null
         if (session) {
           setStoredSession(session)
@@ -271,6 +329,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
       filters: [],
       orders: [],
       limitVal: null,
+      offsetVal: null,
       body: null,
       upsertOpts: null,
       singleMode: null, // 'single' | 'maybeSingle' | null
@@ -291,6 +350,7 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         } else if (state.singleMode === 'maybeSingle' && state.method === 'GET') {
           params.push('limit=1')
         }
+        if (state.offsetVal != null) params.push(`offset=${state.offsetVal}`)
         if (state.upsertOpts?.onConflict) {
           params.push(`on_conflict=${encodeURIComponent(state.upsertOpts.onConflict)}`)
         }
@@ -425,6 +485,11 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
         state.limitVal = Number(n)
         return builder
       },
+      range(from, to) {
+        state.offsetVal = from
+        state.limitVal = to - from + 1
+        return builder
+      },
       single() {
         state.singleMode = 'single'
         return execute()
@@ -445,6 +510,21 @@ export function createClient(supabaseUrl, supabaseKey, options = {}) {
     auth,
     storage: storageApi,
     from,
+    async rpc(name, args) {
+      try {
+        const response = await fetch(`${baseUrl}/rest/v1/rpc/${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: await buildHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(args),
+        })
+        const data = await response.json().catch(() => null)
+        return response.ok
+          ? { data, error: null }
+          : { data: null, error: { ...data, status: response.status } }
+      } catch (error) {
+        return { data: null, error: { message: error.message } }
+      }
+    },
   }
 }
 

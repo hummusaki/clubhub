@@ -5,7 +5,7 @@ import { BubbleTag, ModalDialog, cleanText, Button } from './ui'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import { createClubAnnouncement } from '../api/workspaceClient'
 
-const ANNOUNCEMENT_TYPES = ['Update', 'Event', 'Urgent']
+const ANNOUNCEMENT_TYPES = ['Update', 'Event']
 
 export default function TargetedAnnouncementModal({
   clubId,
@@ -18,6 +18,7 @@ export default function TargetedAnnouncementModal({
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [type, setType] = useState('Update')
+  const [important, setImportant] = useState(false)
   const [visibility, setVisibility] = useState('members')
   const [selectedShortcuts, setSelectedShortcuts] = useState(['everyone'])
   const [permalink, setPermalink] = useState('')
@@ -64,6 +65,7 @@ export default function TargetedAnnouncementModal({
         title: title.trim(),
         body: body.trim(),
         type,
+        important,
         visibility,
         targetGroupIds,
         shortcutTargets: selectedShortcuts,
@@ -155,6 +157,11 @@ export default function TargetedAnnouncementModal({
               />
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={important} onChange={event => setImportant(event.target.checked)} />
+            Mark as important
+          </label>
 
           <div>
             <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1.5">

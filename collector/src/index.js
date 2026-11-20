@@ -13,7 +13,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fetchClub, isRateLimitError } from './instagram.js'
 import { scrapePersonalClubs } from './instagramFallback.js'
-import { classify, extractPost, extractLinks, filterActualEvents } from './extract.js'
+import { applyEventCancellations, classify, extractPost, extractLinks, filterActualEvents } from './extract.js'
 import { extractWithClaude, llmEnabled } from './llm.js'
 import {
   unpackBioWebsite,
@@ -447,7 +447,7 @@ async function analyze(post, profile, prevSnapshot = null) {
     prevPost.extractedBy === 'claude'
   ) {
     const rawCachedEvents = (prevSnapshot.eventsByPostId?.get(post.id) || []).map(
-      ({ title, kind, start, end, allDay, recurring, location }) => ({
+      ({ title, kind, start, end, allDay, recurring, location, important, cancelled }) => ({
         title,
         kind,
         start,
@@ -455,6 +455,8 @@ async function analyze(post, profile, prevSnapshot = null) {
         allDay,
         recurring,
         location,
+        important,
+        cancelled,
       })
     )
     const cachedEvents = filterActualEvents(rawCachedEvents, {
@@ -984,7 +986,7 @@ export async function collect({
   for (const p of out.posts) {
     if (p?.id) allPostsById.set(p.id, p)
   }
-  out.events = filterActualEvents(out.events, { postsById: allPostsById })
+  out.events = applyEventCancellations(filterActualEvents(out.events, { postsById: allPostsById }), out.posts)
 
   out.events.sort((a, b) => a.start.localeCompare(b.start))
   out.announcements.sort((a, b) => b.postedAt.localeCompare(a.postedAt))

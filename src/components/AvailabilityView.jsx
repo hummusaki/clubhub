@@ -1,4 +1,5 @@
 import Select from './Select'
+import HorizontalSwitcher from './HorizontalSwitcher'
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Clock,
@@ -38,6 +39,7 @@ import {
   archiveVerifiedPoll,
   deleteVerifiedPoll,
 } from '../api/workspaceClient'
+import { isPersonalCalendarEvent } from '../utils/clubSubscriptions'
 import { createPollResponseQueue } from '../utils/pollResponseQueue'
 import LeadershipShortcutBar, { resolveDeduplicatedTargets } from './LeadershipShortcutBar'
 import {
@@ -251,6 +253,7 @@ export default function AvailabilityView({
   pollsRef.current = polls
   const [pollsLoading, setPollsLoading] = useState(true)
   const [selectedPollId, setSelectedPollId] = useState(pollRequest?.id || '')
+  const [pollFilter, setPollFilter] = useState('active')
   const [unavailablePollId, setUnavailablePollId] = useState('')
   const pollLoadRevision = useRef(0)
   const [weekAnchorDate, setWeekAnchorDate] = useState(BASE_MONDAY)
@@ -323,8 +326,8 @@ export default function AvailabilityView({
     const explicit = selectedPollId ? polls.find(p => p.id === selectedPollId) : null
     if (explicit) return explicit
     if (unavailablePollId || (pollsLoading && pollRequest?.id)) return EMPTY_POLL_TEMPLATE
-    return activePolls[0] || EMPTY_POLL_TEMPLATE
-  }, [polls, selectedPollId, activePolls, unavailablePollId, pollsLoading, pollRequest])
+    return (pollFilter === 'archived' ? archivedPolls[0] : activePolls[0]) || EMPTY_POLL_TEMPLATE
+  }, [polls, selectedPollId, activePolls, archivedPolls, pollFilter, unavailablePollId, pollsLoading, pollRequest])
 
   const hasActivePoll = Boolean(activePoll.id)
   const isActivePollArchived = Boolean(hasActivePoll && activePoll.archived)
@@ -415,7 +418,9 @@ export default function AvailabilityView({
     setUnavailablePollId('')
     if (requestedPollId) {
       setSelectedPollId(requestedPollId)
-      if (pollsRef.current.some(poll => poll.id === requestedPollId)) {
+      const knownPoll = pollsRef.current.find(poll => poll.id === requestedPollId)
+      if (knownPoll) {
+        setPollFilter(knownPoll.archived ? 'archived' : 'active')
         setPollsLoading(false)
         return
       }
@@ -436,12 +441,13 @@ export default function AvailabilityView({
     if (revision !== pollLoadRevision.current) return
     const requestedMatch = list.find(poll => poll.id === requestedPollId)
     setPolls(list)
+    if (requestedMatch) setPollFilter(requestedMatch.archived ? 'archived' : 'active')
     setUnavailablePollId(requestedPollId && !requestedMatch ? requestedPollId : '')
     setSelectedPollId(prev => {
       if (requestedMatch) return requestedMatch.id
       if (requestedPollId) return ''
       if (list.some(poll => poll.id === prev)) return prev
-      return list.find(poll => !poll.archived)?.id || ''
+      return ''
     })
     setPollsLoading(false)
   }, [isAuthenticated, effectiveUser, pollRequest])
@@ -462,6 +468,7 @@ export default function AvailabilityView({
     setShowExistingInviteShortcuts(false)
     setExistingInviteShortcuts([])
     setConfirmDeletePollId(null)
+    setSpotlightUserId(null)
   }, [activePoll?.id])
 
   const pollLocalMap = useMemo(
@@ -793,7 +800,8 @@ export default function AvailabilityView({
   const { scheduledEventsBySlot, campusEventsBySlot } = useMemo(() => {
     const bookedBySlot = {}
     const campusBySlot = {}
-    const allEvs = [...(activePoll.calendarEvents || []), ...(Array.isArray(events) ? events : [])]
+    const ownBookings = (activePoll.calendarEvents || []).filter(isPersonalCalendarEvent)
+    const allEvs = [...ownBookings, ...(Array.isArray(events) ? events : [])]
     const seen = new Set()
 
     for (const ev of allEvs) {
@@ -1315,6 +1323,7 @@ export default function AvailabilityView({
     }
 
     setPolls(prev => [pollObj, ...prev.filter(p => p.id !== pollObj.id)])
+    setPollFilter('active')
     setSelectedPollId(pollObj.id)
     setWeekAnchorDate(startDay)
     setMobileDay(startDay)
@@ -1349,16 +1358,11 @@ export default function AvailabilityView({
     }
 
     setConfirmDeletePollId(null)
-    setPolls(prev => {
-      const nextList = prev.map(p => (p.id === updatedPoll.id ? updatedPoll : p))
-      if (nextArchived) {
-        const nextActive = nextList.find(p => !p.archived)
-        setSelectedPollId(nextActive ? nextActive.id : '')
-      } else {
-        setSelectedPollId(updatedPoll.id)
-      }
-      return nextList
-    })
+    setPolls(prev => prev.map(p => p.id === updatedPoll.id ? updatedPoll : p))
+    if (activePoll.id === updatedPoll.id || !nextArchived) {
+      setPollFilter(nextArchived ? 'archived' : 'active')
+      setSelectedPollId(updatedPoll.id)
+    }
 
     if (onNotify) {
       const titleText = cleanText(updatedPoll.title || targetPoll.title)
@@ -1405,19 +1409,8 @@ export default function AvailabilityView({
       }
     }
 
-    setPolls(prev => {
-      const remaining = prev.filter(p => p.id !== deletedId)
-      const remainingActive = remaining.filter(p => !p.archived)
-      const remainingArchived = remaining.filter(p => p.archived)
-      if (selectedPollId === deletedId || !selectedPollId) {
-        const fallback =
-          remainingActive[0]?.id ||
-          (targetPoll.archived ? remainingArchived[0]?.id : '') ||
-          ''
-        setSelectedPollId(fallback)
-      }
-      return remaining
-    })
+    setPolls(prev => prev.filter(p => p.id !== deletedId))
+    setSelectedPollId(current => current === deletedId ? '' : current)
 
     if (onNotify) {
       onNotify(`Deleted poll "${titleText}".`, { type: 'info' })
@@ -1553,7 +1546,6 @@ export default function AvailabilityView({
 
   return (
     <div className="page-stack">
-      <div className="flex flex-wrap justify-end">{newPollButton}</div>
       {unavailablePollId && (
         <div className="content-tile rounded-xl section-pad space-y-1" role="status">
           <p className="font-medium">Poll unavailable</p>
@@ -1561,43 +1553,18 @@ export default function AvailabilityView({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 dense-controls">
-        <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
-          {(activePolls.length > 0 || archivedPolls.length > 0) && (
-            <Select
-              className="control-select w-full sm:w-auto sm:max-w-80 [--select-width:19rem]"
-              aria-label="Select poll"
-              value={activePoll.id || ''}
-              onValueChange={nextValue => {
-                setUnavailablePollId('')
-                setSelectedPollId(nextValue)
-                setSpotlightUserId(null)
-                setConfirmDeletePollId(null)
-              }}
-              search="auto"
-              options={[
-                ...(!hasActivePoll ? [{ value: "", label: "Select a poll", disabled: true }] : []),
-                ...(activePolls.length > 0 ? activePolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Active polls" })) : []),
-                ...(archivedPolls.length > 0 ? archivedPolls.map(poll => ({ value: poll.id, label: cleanText(poll.title), group: "Archived polls" })) : []),
-              ]}
-            />
-          )}
-          {hasActivePoll && activePoll.location && (
-            <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] min-w-0 break-words">
-              <MapPin size={14} className="shrink-0" />
-              {cleanText(activePoll.location)}
-            </span>
-          )}
-          {isActivePollArchived && <BubbleTag label="Archived · responses are read-only" color="yellow" />}
-          {!hasActivePoll && !showNewPollForm && (
-            <span className="text-xs text-[var(--text-muted)]" role="status">
-              {pollsLoading ? 'Loading polls…' : 'No active polls'}
-            </span>
-          )}
-        </div>
-        {(hasActivePoll || isActivePollCreator) && (
-          <div className="flex items-center gap-2 ml-auto">
-            {!isActivePollArchived && (
+      <div className="min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SegmentedControl size="sm" ariaLabel="Poll status" value={pollFilter}
+            options={[{ value: 'active', label: 'Active' }, { value: 'archived', label: 'Archived' }]}
+            onChange={value => {
+              setPollFilter(value)
+              setSelectedPollId('')
+              setUnavailablePollId('')
+            }} />
+          <div className="flex flex-wrap items-center gap-2">
+            {newPollButton}
+            {hasActivePoll && !isActivePollArchived && (
               <ActionDisclosure label="Share poll" pending={Boolean(shareBusy)} pendingLabel="Sharing…" icon={<Share2 size={14} />}>
                 {() => (
                   <>
@@ -1634,7 +1601,35 @@ export default function AvailabilityView({
               </ActionDisclosure>
             )}
           </div>
-        )}
+        </div>
+        <HorizontalSwitcher label="Availability polls" selectedId={activePoll.id}>
+          {(pollFilter === 'archived' ? archivedPolls : activePolls).map(poll => (
+            <button key={poll.id} type="button" className="switcher-chip"
+              aria-pressed={activePoll.id === poll.id} title={cleanText(poll.title)}
+              onClick={() => { setUnavailablePollId(''); setSelectedPollId(poll.id) }}>
+              <span className="min-w-0">
+                <span className="block truncate">{cleanText(poll.title)}</span>
+                <span className="block text-xs text-[var(--text-muted)]">
+                  {poll.archived ? 'Archived' : 'Active'}{poll.dates?.[0] ? ` · ${poll.dates[0]}` : ''}
+                </span>
+              </span>
+            </button>
+          ))}
+        </HorizontalSwitcher>
+        <div className="flex flex-wrap items-center gap-2">
+          {hasActivePoll && activePoll.location && (
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] min-w-0 break-words">
+              <MapPin size={14} className="shrink-0" />
+              {cleanText(activePoll.location)}
+            </span>
+          )}
+          {isActivePollArchived && <BubbleTag label="Archived · responses are read-only" color="yellow" />}
+          {!hasActivePoll && !showNewPollForm && (
+            <span className="text-xs text-[var(--text-muted)]" role="status">
+              {pollsLoading ? 'Loading polls…' : pollFilter === 'archived' ? 'No archived polls' : 'No active polls'}
+            </span>
+          )}
+        </div>
       </div>
 
       {visible && isActivePollCreator && confirmDeletePollId === activePoll.id && (
@@ -1815,35 +1810,37 @@ export default function AvailabilityView({
             />
 
             {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
-              <>
-                <ActionDisclosure label="Fill week">
-                  {close => (
-                    <>
-                      <ActionItem onClick={() => {
-                        handleToggleWeekdayPreset(9, 12, 'mornings (9 AM–12 PM)')
-                        close()
-                      }}>{morningsAllSelected ? 'Clear mornings' : 'Mark mornings free'}</ActionItem>
-                      <ActionItem onClick={() => {
-                        handleToggleWeekdayPreset(13, 17, 'afternoons (1–5 PM)')
-                        close()
-                      }}>{afternoonsAllSelected ? 'Clear afternoons' : 'Mark afternoons free'}</ActionItem>
-                      {myWeekFreeCount > 0 && (
-                        <ActionItem onClick={() => { handleClearWeekTimes(); close() }}>Clear week</ActionItem>
-                      )}
-                    </>
-                  )}
-                </ActionDisclosure>
-                <span className={`text-xs ${autoSaveState === 'error' ? 'text-[var(--red-ink)]' : 'text-[var(--text-muted)]'}`} role="status">
-                  {dragUiState ? (dragUiState.mode === 'remove' ? 'Deselecting…' : 'Selecting…') :
-                    { saving: 'Saving…', saved: 'Saved', error: 'Response could not be saved' }[autoSaveState]}
-                </span>
-                {autoSaveState === 'error' && (
-                  <Button variant="outlined-neutral" size="sm"
-                    onClick={() => void responseQueue.current?.flush(activePoll.id)}>Retry</Button>
+              <ActionDisclosure label="Fill week" className="ml-auto" panelClassName="availability-fill-menu">
+                {close => (
+                  <>
+                    <ActionItem onClick={() => {
+                      handleToggleWeekdayPreset(9, 12, 'mornings (9 AM–12 PM)')
+                      close()
+                    }}>{morningsAllSelected ? 'Clear mornings' : 'Mark mornings free'}</ActionItem>
+                    <ActionItem onClick={() => {
+                      handleToggleWeekdayPreset(13, 17, 'afternoons (1–5 PM)')
+                      close()
+                    }}>{afternoonsAllSelected ? 'Clear afternoons' : 'Mark afternoons free'}</ActionItem>
+                    {myWeekFreeCount > 0 && (
+                      <ActionItem onClick={() => { handleClearWeekTimes(); close() }}>Clear week</ActionItem>
+                    )}
+                  </>
                 )}
-              </>
+              </ActionDisclosure>
             )}
           </div>
+          {gridMode === 'mine' && hasActivePoll && isAuthenticated && !isActivePollArchived && (
+            <div className="flex min-h-8 flex-wrap items-center gap-2">
+              <span className={`text-xs ${autoSaveState === 'error' ? 'text-[var(--red-ink)]' : 'text-[var(--text-muted)]'}`} role="status">
+                {dragUiState ? (dragUiState.mode === 'remove' ? 'Deselecting…' : 'Selecting…') :
+                  { saving: 'Saving…', saved: 'Saved', error: 'Response could not be saved' }[autoSaveState]}
+              </span>
+              {autoSaveState === 'error' && (
+                <Button variant="outlined-neutral" size="sm"
+                  onClick={() => void responseQueue.current?.flush(activePoll.id)}>Retry</Button>
+              )}
+            </div>
+          )}
 
           {/* Clear Contextual Instruction / Active Identity Banner */}
           <div className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs text-[var(--text-muted)]">

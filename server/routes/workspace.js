@@ -5,7 +5,9 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { isPublishedRosterPerson } from '../../src/utils/publicRoster.js';
-import { getClubById } from '../database.js';
+import { formatAnnouncementRow, formatEventRow, getClubById, getDb } from '../database.js';
+import { mergePersonalFeed, normalizeAuthoredEvent, SUBSCRIPTION_CHANNELS, SUBSCRIPTION_MODES } from '../../src/utils/clubSubscriptions.js';
+import { getFeedSubscriptions, getOwnedPollEvents, getWorkspaceClubEvents } from '../services/personalFeed.js';
 import {
   privQueryAll,
   privQueryGet,
@@ -2375,23 +2377,15 @@ router.delete('/clubs/:clubId/tasks/:taskId', requireAuth, async (req, res) => {
 
 // ── 6. Board-Verified Club Announcements with Audience Shortcuts ──────
 
-router.get('/announcements', optionalAuth, async (req, res) => {
-  if (!req.user) {
-    return res.json({ announcements: [] });
-  }
-
-  const overview = await getUserWorkspaceOverview(req.user);
-  const perms = overview?.permissionsByClub || {};
-  const joinedClubKeys = Object.keys(perms).filter(cid => perms[cid]?.isMember);
-  if (joinedClubKeys.length === 0) {
-    return res.json({ announcements: [] });
-  }
-
+async function readWorkspaceAnnouncements(perms, clubIds) {
+  if (!clubIds.length) return [];
   const rows = await privQueryAll(
-    `SELECT * FROM club_announcements_private ORDER BY createdAt DESC LIMIT 100`
+    `SELECT * FROM club_announcements_private
+     WHERE clubId IN (SELECT value FROM json_each(?)) ORDER BY createdAt DESC`,
+    [JSON.stringify(clubIds)]
   );
 
-  const visible = rows
+  return rows
     .filter(r => {
       const p = perms[r.clubId];
       if (!p || !p.isMember) return false;
@@ -2410,6 +2404,8 @@ router.get('/announcements', optionalAuth, async (req, res) => {
       title: r.title,
       body: r.body,
       type: r.type || 'Update',
+      source: 'workspace',
+      important: Boolean(r.important),
       visibility: r.visibility || 'members',
       targetGroupIds: parseJsonSafe(r.targetGroupIdsJson, []),
       recipientsSummary: r.recipientsSummary || '',
@@ -2419,7 +2415,73 @@ router.get('/announcements', optionalAuth, async (req, res) => {
       createdAt: r.createdAt,
     }));
 
-  res.json({ announcements: visible });
+}
+
+router.get('/announcements', optionalAuth, async (req, res) => {
+  if (!req.user) return res.json({ announcements: [] });
+  const perms = (await getUserWorkspaceOverview(req.user))?.permissionsByClub || {};
+  const clubIds = Object.keys(perms).filter(id => perms[id].isMember);
+  res.json({ announcements: await readWorkspaceAnnouncements(perms, clubIds) });
+});
+
+router.get('/feed', requireAuth, async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const perms = (await getUserWorkspaceOverview(req.user))?.permissionsByClub || {};
+  const clubIds = Object.keys(perms).filter(id => perms[id].isMember);
+  const joined = new Set(clubIds);
+  const subscriptions = await getFeedSubscriptions(req.user.id);
+  const [workspaceAnnouncements, authoredEvents, bookings] = await Promise.all([
+    readWorkspaceAnnouncements(perms, clubIds),
+    getWorkspaceClubEvents(clubIds),
+    getOwnedPollEvents(req.user.id),
+  ]);
+  const workspaceEvents = [...authoredEvents, ...bookings];
+  const scope = 'WHERE lower(clubId) IN (SELECT value FROM json_each(?))';
+  const db = getDb();
+  const params = JSON.stringify(clubIds);
+  const events = db.prepare(`SELECT * FROM events ${scope}`).all(params).map(formatEventRow);
+  const notices = db.prepare(`SELECT * FROM announcements ${scope}`).all(params).map(formatAnnouncementRow);
+  res.json({
+    subscriptions,
+    boardClubIds: clubIds.filter(id => perms[id].isBoard),
+    events: mergePersonalFeed([...workspaceEvents, ...events], 'events', joined, subscriptions),
+    announcements: mergePersonalFeed([...workspaceAnnouncements, ...notices], 'announcements', joined, subscriptions),
+    workspaceAnnouncements,
+    workspaceEvents,
+  });
+});
+
+router.put('/clubs/:clubId/subscriptions/:channel', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const { channel } = req.params;
+  const { mode } = req.body || {};
+  if (!SUBSCRIPTION_CHANNELS.includes(channel) || !SUBSCRIPTION_MODES.includes(mode)) {
+    return res.status(400).json({ error: 'Invalid subscription channel or mode.' });
+  }
+  const write = await privExecute(
+    `INSERT INTO club_subscriptions (userId, clubId, ${channel})
+     SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM club_memberships WHERE userId = ? AND clubId = ?)
+     ON CONFLICT (userId, clubId) DO UPDATE SET ${channel} = excluded.${channel}`,
+    [req.user.id, clubId, mode, req.user.id, clubId]
+  );
+  if (!write.changes) return res.status(403).json({ code: 'NOT_CLUB_MEMBER', error: 'Join this club to manage subscriptions.' });
+  res.json({ ok: true, clubId, channel, mode });
+});
+
+router.post('/clubs/:clubId/events', requireAuth, async (req, res) => {
+  const clubId = normalizeClubKey(req.params.clubId);
+  const perm = await getClubPermission(req.user, clubId);
+  if (!perm.isBoard) return res.status(403).json({ error: 'Only verified board members can publish club events.' });
+  const event = normalizeAuthoredEvent(req.body);
+  if (!event) return res.status(400).json({ error: 'Enter a title and valid start and end dates.' });
+  const id = crypto.randomUUID();
+  const clubName = getClubById(clubId)?.name || clubId;
+  await privExecute(
+    `INSERT INTO club_events_private (id, clubId, clubName, title, start, end, allDay, location, important, authorUserId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, clubId, clubName, event.title, event.start, event.end, Number(event.allDay), event.location, Number(event.important), req.user.id]
+  );
+  res.status(201).json({ ok: true, event: { ...event, id, clubId, clubName, source: 'workspace', visibility: 'members' } });
 });
 
 router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
@@ -2435,6 +2497,7 @@ router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
     title,
     body = '',
     type = 'Update',
+    important = false,
     visibility: rawVisibility = 'members',
     targetGroupIds = [],
     shortcutTargets = [],
@@ -2476,10 +2539,10 @@ router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
 
   await privExecute(
     `INSERT INTO club_announcements_private (
-       id, clubId, clubName, title, body, type, visibility,
+       id, clubId, clubName, title, body, type, important, visibility,
        targetGroupIdsJson, recipientsSummary, permalink,
        authorUserId, authorName, authorRole, createdAt
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       clubId,
@@ -2487,6 +2550,7 @@ router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
       cleanTitle,
       String(body || '').trim().slice(0, 2000),
       String(type || 'Update').slice(0, 32),
+      Number(important === true),
       visibility,
       JSON.stringify(Array.from(grpIds)),
       recipientsSummary,
@@ -2507,6 +2571,7 @@ router.post('/clubs/:clubId/announcements', requireAuth, async (req, res) => {
       title: cleanTitle,
       body: String(body || '').trim(),
       type,
+      important: important === true,
       visibility,
       targetGroupIds: Array.from(grpIds),
       recipientsSummary,

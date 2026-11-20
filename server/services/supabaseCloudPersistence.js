@@ -23,6 +23,8 @@ const PERSISTED_TABLES = [
   'club_polls',
   'club_poll_responses',
   'club_announcements_private',
+  'club_subscriptions',
+  'club_events_private',
   'calendar_sync_profiles',
 ];
 
@@ -203,6 +205,7 @@ export async function syncSnapshotToSupabase(sqliteDb) {
     ...(snapshot.club_groups || []).map(r => r.clubId),
     ...(snapshot.club_tasks || []).map(r => r.clubId),
     ...(snapshot.club_announcements_private || []).map(r => r.clubId),
+    ...(snapshot.club_events_private || []).map(r => r.clubId),
     ...(snapshot.club_polls || []).map(r => r.hostClubId).filter(Boolean),
   ]);
   if (clubIds.size > 0) {
@@ -312,12 +315,21 @@ export async function syncSnapshotToSupabase(sqliteDb) {
     await admin.from('poll_responses').upsert(respRows, { onConflict: 'poll_id,user_id' });
   }
 
+  const eventRows = (snapshot.club_events_private || []).filter(e => userUuidByLocalId.has(e.authorUserId)).map(e => ({
+    id: toDeterministicUuid(e.id), club_id: e.clubId, title: e.title, start_at: e.start,
+    end_at: e.end, all_day: Boolean(e.allDay), location: e.location || '', important: Boolean(e.important),
+    author_id: userUuidByLocalId.get(e.authorUserId),
+  }));
+  if (eventRows.length) await admin.from('club_events').upsert(eventRows, { onConflict: 'id' });
+
   const annRows = (snapshot.club_announcements_private || []).map(a => ({
     id: toDeterministicUuid(a.id),
     club_id: a.clubId,
     title: a.title,
     body: a.body || '',
     type: a.type || 'Update',
+    important: Boolean(a.important),
+    created_at: a.createdAt,
     visibility: ['public', 'members', 'group', 'board'].includes(a.visibility)
       ? a.visibility
       : 'members',

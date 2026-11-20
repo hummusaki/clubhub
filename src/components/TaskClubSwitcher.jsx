@@ -1,8 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { Check, ChevronsUpDown, Star, X } from 'lucide-react'
+import { Check, ChevronDown, Star, X } from 'lucide-react'
 import { normalizeClubKey } from '../utils/calendarSync'
 import { matchesSearchQuery, parseSearchQuery } from '../utils/search'
-import { ClubAvatar, cleanText } from './ui'
+import { Button, ClubAvatar, IconButton, cleanText } from './ui'
+import FavoriteClubStrip from './FavoriteClubStrip'
 
 const clubNameCollator = new Intl.Collator(undefined, { sensitivity: 'base' })
 
@@ -16,8 +17,9 @@ function FavoriteButton({ club, favorite, onToggle, buttonRef }) {
   )
 }
 
-export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds, onSelect, onToggleFavorite }) {
+export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds, onSelect, onToggleFavorite, onReorderFavorite }) {
   const panelId = useId()
+  const root = useRef(null)
   const trigger = useRef(null)
   const panel = useRef(null)
   const search = useRef(null)
@@ -31,16 +33,28 @@ export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds,
   const matches = clubs.filter(club => matchesSearchQuery(searchTerms, {
     primary: [cleanText(club.name)], secondary: [club.instagram, club.id],
   })).sort((a, b) => clubNameCollator.compare(a.name, b.name) || String(a.id).localeCompare(String(b.id)))
-  const favoriteMatches = matches.filter(club => favorites.has(normalizeClubKey(club.id)))
+  const byId = new Map(clubs.map(club => [normalizeClubKey(club.id), club]))
+  const starred = favoriteClubIds.map(id => byId.get(id)).filter(Boolean)
+  const matchingIds = new Set(matches.map(club => normalizeClubKey(club.id)))
+  const favoriteMatches = starred.filter(club => matchingIds.has(normalizeClubKey(club.id)))
   const otherMatches = matches.filter(club => !favorites.has(normalizeClubKey(club.id)))
   const firstMatch = favoriteMatches[0] || otherMatches[0]
-  const singleClub = clubs.length === 1 ? clubs[0] : null
 
   function close(restoreFocus = true) {
     panel.current?.close()
     setOpen(false)
     setQuery('')
     if (restoreFocus) trigger.current?.focus({ preventScroll: true })
+  }
+
+  function positionMenu() {
+    if (!trigger.current || !panel.current?.open || window.matchMedia('(max-width: 639px)').matches) return
+    const container = root.current.getBoundingClientRect()
+    const button = trigger.current.getBoundingClientRect()
+    const width = panel.current.offsetWidth
+    const left = Math.min(container.width - width, button.right - container.left - width)
+    panel.current.style.setProperty('--club-menu-left', `${Math.max(0, left)}px`)
+    panel.current.style.setProperty('--club-menu-top', `${button.bottom - container.top}px`)
   }
 
   useLayoutEffect(() => {
@@ -51,15 +65,25 @@ export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds,
       if (dialog.open) dialog.close()
       if (mobile.matches) dialog.showModal()
       else dialog.show()
+      positionMenu()
       search.current?.focus({ preventScroll: true })
     }
     show()
     mobile.addEventListener('change', show)
+    const observer = new ResizeObserver(positionMenu)
+    observer.observe(root.current)
+    window.addEventListener('resize', positionMenu)
     return () => {
       mobile.removeEventListener('change', show)
+      observer.disconnect()
+      window.removeEventListener('resize', positionMenu)
       if (dialog.open) dialog.close()
     }
-  }, [open, singleClub])
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (open) positionMenu()
+  }, [open, starred.length])
 
   useEffect(() => {
     if (!open) return
@@ -84,10 +108,6 @@ export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds,
     refocusId.current = null
     stars.current.get(id)?.focus()
   }, [favoriteClubIds])
-
-  useEffect(() => {
-    if (singleClub && open) close(false)
-  }, [singleClub, open])
 
   function select(club) {
     onSelect(club.id)
@@ -121,28 +141,34 @@ export default function TaskClubSwitcher({ clubs, selectedClub, favoriteClubIds,
     ]
   }
 
-  if (singleClub) {
-    return (
-      <div className="task-club-trigger">
-        <ClubAvatar club={singleClub} size={34} />
-        <span className="text-sm font-semibold wrap-anywhere">{cleanText(singleClub.name)}</span>
-        <FavoriteButton club={singleClub} favorite={favorites.has(normalizeClubKey(singleClub.id))} onToggle={onToggleFavorite} />
-      </div>
-    )
+  const menuProps = {
+    ref: trigger,
+    'aria-expanded': open,
+    'aria-haspopup': 'dialog',
+    'aria-controls': panelId,
+    onClick: () => open ? close() : setOpen(true),
   }
 
   return (
-    <div className="task-switcher">
-      <button type="button" ref={trigger} className="task-club-trigger"
-        aria-expanded={open} aria-haspopup="dialog" aria-controls={panelId}
-        onClick={() => open ? close() : setOpen(true)}>
-        <ClubAvatar club={selectedClub} size={34} />
-        <span className="text-left min-w-0">
-          <span className="block text-xs font-medium">Switch club</span>
-          <span className="block text-sm font-semibold wrap-anywhere">{cleanText(selectedClub?.name || 'Choose a club')}</span>
-        </span>
-        <ChevronsUpDown size={17} aria-hidden="true" className="ml-auto shrink-0" />
-      </button>
+    <div className="task-switcher" ref={root}>
+      {starred.length > 0 && (
+        <div className="task-favorite-controls">
+          <FavoriteClubStrip clubs={starred} selectedId={selectedId} onSelect={onSelect} onReorder={onReorderFavorite} />
+          <IconButton size="sm" variant="outlined" title="All clubs" {...menuProps}>
+            <ChevronDown size={17} aria-hidden="true" />
+          </IconButton>
+        </div>
+      )}
+      <div className="task-selected-club">
+        {selectedClub && <>
+          <ClubAvatar club={selectedClub} size={30} />
+          <h2 className="min-w-0 wrap-anywhere font-semibold">{cleanText(selectedClub.name)}</h2>
+          <FavoriteButton club={selectedClub} favorite={favorites.has(selectedId)} onToggle={onToggleFavorite} />
+        </>}
+        {starred.length === 0 && <Button size="sm" variant="outlined-neutral" className="shrink-0" {...menuProps}>
+          All clubs
+        </Button>}
+      </div>
       <dialog id={panelId} ref={panel} className="task-switcher-panel" aria-label="Switch club"
         onCancel={event => { event.preventDefault(); close() }}
         onKeyDown={event => {

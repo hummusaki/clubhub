@@ -1,5 +1,8 @@
 // ── Announcements API Routes (id, clubId, title, summary, important, postedAt, permalink) ──
 import { Router } from 'express';
+import { optionalAuth } from '../middleware/auth.js';
+import { getClubPermission } from '../services/authService.js';
+import { hasImportantFlag } from '../../src/utils/clubSubscriptions.js';
 import {
   getDb,
   formatAnnouncementRow,
@@ -39,17 +42,27 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/announcements — upsert an announcement by id
-router.post('/', (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
   const ann = req.body || {};
   const clubId = normalizeClubId(ann.clubId || ann.club_id);
   if (!clubId || !ann.title) {
     return res.status(400).json({ error: 'clubId and title are required' });
   }
   const id = String(ann.id || `${clubId}_ann_${Date.now()}`);
+  const existing = getDb().stmt('SELECT clubId, important FROM announcements WHERE id = ?').get(id);
+  if (hasImportantFlag(ann.important) || existing?.important) {
+    const ids = new Set([clubId, existing?.clubId].filter(Boolean));
+    for (const target of ids) {
+      if (!(await getClubPermission(req.user, target)).isBoard) {
+        return res.status(403).json({ error: 'Only verified board members can update important announcements.' });
+      }
+    }
+  }
   upsertCollectorData({
     announcements: [
       {
         ...ann,
+        important: hasImportantFlag(ann.important),
         id,
         clubId,
         postedAt: ann.postedAt || new Date().toISOString(),
@@ -60,7 +73,11 @@ router.post('/', (req, res) => {
 });
 
 // DELETE /api/announcements/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', optionalAuth, async (req, res) => {
+  const existing = getDb().stmt('SELECT clubId, important FROM announcements WHERE id = ?').get(req.params.id);
+  if (existing?.important && !(await getClubPermission(req.user, existing.clubId)).isBoard) {
+    return res.status(403).json({ error: 'Only verified board members can delete important announcements.' });
+  }
   res.json(deleteRecord('announcements', req.params.id));
 });
 

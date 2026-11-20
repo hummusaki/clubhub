@@ -207,6 +207,26 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_priv_poll_resp_poll ON club_poll_responses(pollId)`,
 
+  `CREATE TABLE IF NOT EXISTS club_subscriptions (
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    clubId TEXT NOT NULL,
+    events TEXT NOT NULL DEFAULT 'all' CHECK (events IN ('all', 'important', 'off')),
+    announcements TEXT NOT NULL DEFAULT 'all' CHECK (announcements IN ('all', 'important', 'off')),
+    PRIMARY KEY (userId, clubId)
+  )`,
+  `CREATE TABLE IF NOT EXISTS club_events_private (
+    id TEXT PRIMARY KEY,
+    clubId TEXT NOT NULL,
+    clubName TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start TEXT NOT NULL,
+    end TEXT,
+    allDay INTEGER NOT NULL DEFAULT 0,
+    location TEXT NOT NULL DEFAULT '',
+    important INTEGER NOT NULL DEFAULT 0,
+    authorUserId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_priv_events_club ON club_events_private(clubId, start)`,
   `CREATE TABLE IF NOT EXISTS club_announcements_private (
     id                 TEXT PRIMARY KEY,
     clubId             TEXT NOT NULL,
@@ -214,6 +234,7 @@ export const PRIVATE_SCHEMA_STATEMENTS = [
     title              TEXT NOT NULL,
     body               TEXT NOT NULL DEFAULT '',
     type               TEXT NOT NULL DEFAULT 'Update',
+    important          INTEGER NOT NULL DEFAULT 0,
     visibility         TEXT NOT NULL DEFAULT 'members',
     targetGroupIdsJson TEXT NOT NULL DEFAULT '[]',
     recipientsSummary  TEXT NOT NULL DEFAULT '',
@@ -384,15 +405,22 @@ export async function ensurePrivateSchema() {
         turso,
         PRIVATE_SCHEMA_STATEMENTS.map(sql => ({ sql, params: [] }))
       );
-      const [tableInfo, userTableInfo, taskTableInfo] = await runTursoPipeline(turso, [
+      const [tableInfo, userTableInfo, taskTableInfo, announcementTableInfo] = await runTursoPipeline(turso, [
         { sql: 'PRAGMA table_info(club_polls)', params: [] },
         { sql: 'PRAGMA table_info(users)', params: [] },
         { sql: 'PRAGMA table_info(club_tasks)', params: [] },
+        { sql: 'PRAGMA table_info(club_announcements_private)', params: [] },
       ]);
       const colNames = new Set((tableInfo?.rows || []).map(r => r.name));
       const userColNames = new Set((userTableInfo?.rows || []).map(r => r.name));
       const taskColNames = new Set((taskTableInfo?.rows || []).map(r => r.name));
       const migrations = [];
+      if (!(announcementTableInfo?.rows || []).some(row => row.name === 'important')) {
+        migrations.push(
+          { sql: 'ALTER TABLE club_announcements_private ADD COLUMN important INTEGER NOT NULL DEFAULT 0', params: [] },
+          { sql: "UPDATE club_announcements_private SET important = 1 WHERE lower(type) = 'urgent'", params: [] }
+        );
+      }
       if (!colNames.has('archived')) {
         migrations.push({
           sql: 'ALTER TABLE club_polls ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
@@ -431,6 +459,10 @@ export async function ensurePrivateSchema() {
     const db = getLocalPrivateDb();
     for (const sql of PRIVATE_SCHEMA_STATEMENTS) {
       db.exec(sql);
+    }
+    if (!db.prepare('PRAGMA table_info(club_announcements_private)').all().some(row => row.name === 'important')) {
+      db.exec(`ALTER TABLE club_announcements_private ADD COLUMN important INTEGER NOT NULL DEFAULT 0;
+        UPDATE club_announcements_private SET important = 1 WHERE lower(type) = 'urgent'`);
     }
     const pollCols = new Set(
       db

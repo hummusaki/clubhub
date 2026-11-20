@@ -7,6 +7,7 @@ export default function StatCards({
   joinedCount = 0,
   eventsCount = 6,
   linksCount = 5,
+  pollsCount = 0,
   onNav,
 }) {
   const stats =
@@ -15,6 +16,7 @@ export default function StatCards({
       : defaultStats.map(s => {
           if (s.label === 'My Clubs') return { ...s, value: joinedCount }
           if (s.label === 'Upcoming Events') return { ...s, value: eventsCount }
+          if (s.label === 'Group Polls') return { ...s, value: pollsCount }
           if (s.label === 'Shared Links') return { ...s, value: linksCount }
           return s
         })

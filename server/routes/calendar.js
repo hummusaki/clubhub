@@ -8,7 +8,10 @@ import {
   getDb,
   formatEventRow,
 } from '../database.js';
-import { privQueryGet, privExecute } from '../privateDb.js';
+import { privQueryAll, privQueryGet, privExecute } from '../privateDb.js';
+import { optionalAuth } from '../middleware/auth.js';
+import { getFeedSubscriptions, getOwnedPollEvents, getWorkspaceClubEvents } from '../services/personalFeed.js';
+import { normalizeClubKey, subscriptionMap } from '../../src/utils/clubSubscriptions.js';
 import {
   DEFAULT_CALENDAR_SYNC_SETTINGS,
   normalizeCalendarSyncSettings,
@@ -56,13 +59,15 @@ async function savePrivateCalendarSyncProfile(token, payload = {}, accountKey = 
      ON CONFLICT(token) DO UPDATE SET
        accountHash = COALESCE(excluded.accountHash, calendar_sync_profiles.accountHash),
        payload = excluded.payload,
-       updatedAt = excluded.updatedAt`,
+       updatedAt = excluded.updatedAt
+     WHERE json_extract(calendar_sync_profiles.payload, '$.ownerUserId') IS NULL
+        OR json_extract(calendar_sync_profiles.payload, '$.ownerUserId') = json_extract(excluded.payload, '$.ownerUserId')`,
     [cleanToken, accountHash, JSON.stringify(payload), nowIso]
   );
   return getPrivateCalendarSyncProfile(cleanToken);
 }
 
-function loadMergedEventsForProfile(profilePayload = {}) {
+async function loadMergedEventsForProfile(profilePayload = {}, joinedClubIds = []) {
   const db = getDb();
   const rows = db
     .prepare(
@@ -91,7 +96,10 @@ function loadMergedEventsForProfile(profilePayload = {}) {
     : [];
 
   // Merge custom events, live SQLite events (taking priority on matching IDs), and client schedule events
-  const basePool = [...customEvents, ...rows, ...fallbackEvents];
+  const [workspaceEvents, bookings] = profilePayload.ownerUserId
+    ? await Promise.all([getWorkspaceClubEvents(joinedClubIds), getOwnedPollEvents(profilePayload.ownerUserId)])
+    : [[], []];
+  const basePool = [...customEvents, ...workspaceEvents, ...bookings, ...rows, ...fallbackEvents];
   const seen = new Set();
   const merged = [];
 
@@ -100,14 +108,29 @@ function loadMergedEventsForProfile(profilePayload = {}) {
     const idStr = String(ev.id);
     if (removedSet.has(idStr) || seen.has(idStr)) continue;
     seen.add(idStr);
-    merged.push(ev);
+    if (!ev.cancelled) merged.push(ev);
   }
 
   return merged;
 }
 
+function readSavedSubscriptions(input) {
+  return subscriptionMap(Object.entries(input || {}).map(([clubId, modes]) => ({ ...modes, clubId })));
+}
+
+async function getFeedScope(profile, fallbackClubs) {
+  if (!profile.ownerUserId) {
+    return { joinedClubIds: fallbackClubs, subscriptions: readSavedSubscriptions(profile.subscriptions) };
+  }
+  const [memberships, subscriptions] = await Promise.all([
+    privQueryAll('SELECT clubId FROM club_memberships WHERE userId = ?', [profile.ownerUserId]),
+    getFeedSubscriptions(profile.ownerUserId),
+  ]);
+  return { joinedClubIds: memberships.map(row => normalizeClubKey(row.clubId)), subscriptions };
+}
+
 // GET /api/calendar/profile/:token — inspect stored sync profile metadata
-router.get('/profile/:rawToken', async (req, res) => {
+router.get('/profile/:rawToken', optionalAuth, async (req, res) => {
   const cleanToken = String(req.params.rawToken || '').replace(/\.ics$/i, '').trim();
   const record = await getPrivateCalendarSyncProfile(cleanToken);
   if (!record) {
@@ -117,21 +140,26 @@ router.get('/profile/:rawToken', async (req, res) => {
       settings: DEFAULT_CALENDAR_SYNC_SETTINGS,
     });
   }
+  const { ownerUserId, ...metadata } = record.payload;
+  if (ownerUserId && ownerUserId !== req.user?.id) return res.sendStatus(404);
+  res.setHeader('Cache-Control', 'private, no-store');
   res.json({
     exists: true,
     token: record.token,
     updatedAt: record.updatedAt,
-    ...record.payload,
+    ...metadata,
   });
 });
 
 // PUT /api/calendar/profile/:token — live-sync joined clubs, RSVPs, and calendar preferences
-router.put('/profile/:rawToken', async (req, res) => {
+router.put('/profile/:rawToken', optionalAuth, async (req, res) => {
   const cleanToken = String(req.params.rawToken || '').replace(/\.ics$/i, '').trim();
   if (!cleanToken) {
     return res.status(400).json({ error: 'Sync token is required' });
   }
 
+  const existing = await getPrivateCalendarSyncProfile(cleanToken);
+  if (existing?.payload?.ownerUserId && existing.payload.ownerUserId !== req.user?.id) return res.sendStatus(404);
   const body = req.body || {};
   const settings = normalizeCalendarSyncSettings(body.settings);
   const joinedClubIds = Array.isArray(body.joinedClubIds)
@@ -145,21 +173,24 @@ router.put('/profile/:rawToken', async (req, res) => {
   const safeDisplayName = rawDisplayName.includes('@') ? rawDisplayName.split('@')[0] : rawDisplayName;
 
   const payload = {
+    ownerUserId: req.user?.id || null,
+    subscriptions: req.user ? undefined : readSavedSubscriptions(body.subscriptions),
     joinedClubIds,
     rsvpIds,
-    customEvents: Array.isArray(body.customEvents) ? body.customEvents.slice(0, 200) : [],
-    fallbackEvents: Array.isArray(body.fallbackEvents) ? body.fallbackEvents.slice(0, 200) : [],
+    customEvents: Array.isArray(body.customEvents) ? body.customEvents : [],
+    fallbackEvents: Array.isArray(body.fallbackEvents) ? body.fallbackEvents.filter(event => event && event.source !== 'workspace' && (!req.user || event.source !== 'scheduler')) : [],
     removedEventIds: Array.isArray(body.removedEventIds) ? body.removedEventIds.map(String) : [],
     settings,
     displayName: safeDisplayName,
     updatedAt: new Date().toISOString(),
   };
 
-  await savePrivateCalendarSyncProfile(cleanToken, payload, body.accountKey || null);
-
-  const mergedEvents = loadMergedEventsForProfile(payload);
+  const saved = await savePrivateCalendarSyncProfile(cleanToken, payload, body.accountKey || null);
+  if (saved?.payload?.ownerUserId !== payload.ownerUserId) return res.sendStatus(404);
+  const scope = await getFeedScope(payload, joinedClubIds);
+  const mergedEvents = await loadMergedEventsForProfile(payload, scope.joinedClubIds);
   const filtered = filterEventsForCalendarSync(mergedEvents, {
-    joinedClubIds,
+    ...scope,
     rsvpIds,
     settings,
   });
@@ -169,7 +200,7 @@ router.put('/profile/:rawToken', async (req, res) => {
     token: cleanToken,
     feedPath: `/api/calendar/feed/${encodeURIComponent(cleanToken)}.ics`,
     syncedCount: filtered.length,
-    joinedCount: joinedClubIds.length,
+    joinedCount: scope.joinedClubIds.length,
     updatedAt: payload.updatedAt,
   });
 });
@@ -195,7 +226,7 @@ async function handleServeIcsFeed(req, res) {
           .filter(Boolean)
       : null;
 
-  const joinedClubIds = queryClubs ?? (Array.isArray(stored.joinedClubIds) ? stored.joinedClubIds : []);
+  const scope = await getFeedScope(stored, queryClubs ?? (Array.isArray(stored.joinedClubIds) ? stored.joinedClubIds : []));
   const rsvpIds = queryRsvps ?? (Array.isArray(stored.rsvpIds) ? stored.rsvpIds : []);
 
   const settings = normalizeCalendarSyncSettings({
@@ -212,9 +243,9 @@ async function handleServeIcsFeed(req, res) {
       : {}),
   });
 
-  const mergedEvents = loadMergedEventsForProfile(stored);
+  const mergedEvents = await loadMergedEventsForProfile(stored, scope.joinedClubIds);
   const filteredEvents = filterEventsForCalendarSync(mergedEvents, {
-    joinedClubIds,
+    ...scope,
     rsvpIds,
     settings,
   });
@@ -222,7 +253,7 @@ async function handleServeIcsFeed(req, res) {
   const icsBody = buildIcsCalendar(filteredEvents, {
     settings,
     rsvpIds,
-    joinedCount: joinedClubIds.length,
+    joinedCount: scope.joinedClubIds.length,
   });
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');

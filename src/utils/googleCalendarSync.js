@@ -1,3 +1,5 @@
+import { allDayEventDates } from './calendarDates.js'
+
 // ── Direct Google Calendar API v3 Live Sync (Browser OAuth via Google Identity Services) ──
 // Creates and keeps a dedicated "ClubHub" calendar updated in the user's Google Calendar
 // whenever their joined clubs, RSVPs, or Calendar Sync settings change.
@@ -196,12 +198,9 @@ function buildGoogleEventPayload(ev, settings) {
   let startObj
   let endObj
   if (ev.allDay) {
-    const startYmd = startDt.toISOString().slice(0, 10)
-    const nextDt = new Date(startDt.getTime())
-    nextDt.setUTCDate(nextDt.getUTCDate() + 1)
-    const endYmd = nextDt.toISOString().slice(0, 10)
-    startObj = { date: startYmd }
-    endObj = { date: endYmd }
+    const dates = allDayEventDates(ev)
+    startObj = { date: dates.start }
+    endObj = { date: dates.end }
   } else {
     const endRaw = ev.endIso || ev.end
     let endDt = endRaw ? new Date(endRaw) : null
@@ -288,19 +287,21 @@ export async function pushEventsToGoogleCalendar({
     calendarId = createdCal.id
   }
 
-  const listResp = await gcalFetch(
-    accessToken,
-    `/calendars/${encodeURIComponent(calendarId)}/events?maxResults=250&singleEvents=false`
-  )
-  const remoteItems = Array.isArray(listResp?.items) ? listResp.items.filter(i => i.status !== 'cancelled') : []
-
   const remoteByClubhubId = new Map()
-  for (const item of remoteItems) {
-    const chId = item?.extendedProperties?.private?.clubhubEventId
-    if (chId) {
-      remoteByClubhubId.set(String(chId), item)
+  const remoteItems = []
+  let pageToken
+  do {
+    const query = new URLSearchParams({ maxResults: '250', singleEvents: 'false' })
+    if (pageToken) query.set('pageToken', pageToken)
+    const page = await gcalFetch(accessToken, `/calendars/${encodeURIComponent(calendarId)}/events?${query}`)
+    for (const item of page?.items || []) {
+      const id = item.extendedProperties?.private?.clubhubEventId
+      if (!id || item.status === 'cancelled') continue
+      remoteItems.push(item)
+      if (!remoteByClubhubId.has(String(id))) remoteByClubhubId.set(String(id), item)
     }
-  }
+    pageToken = page?.nextPageToken
+  } while (pageToken)
 
   const desiredById = new Map()
   for (const ev of events || []) {
@@ -337,13 +338,14 @@ export async function pushEventsToGoogleCalendar({
     }
   }
 
-  for (const [chId, remoteItem] of remoteByClubhubId.entries()) {
-    if (!desiredById.has(chId)) {
+  for (const remoteItem of remoteItems) {
+    const id = String(remoteItem.extendedProperties.private.clubhubEventId)
+    if (!desiredById.has(id) || remoteByClubhubId.get(id)?.id !== remoteItem.id) {
       await gcalFetch(
         accessToken,
         `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(remoteItem.id)}`,
         { method: 'DELETE' }
-      ).catch(() => {})
+      )
       removed += 1
     }
   }

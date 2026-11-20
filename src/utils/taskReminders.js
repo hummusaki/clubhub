@@ -78,6 +78,17 @@ export function normalizeFavoriteClubIds(ids) {
   return [...new Set(ids.filter(id => typeof id === 'string').map(normalizeClubKey).filter(Boolean))]
 }
 
+export function moveFavoriteClub(ids, clubId, beforeId) {
+  const source = ids.indexOf(clubId)
+  const target = beforeId == null ? ids.length : ids.indexOf(beforeId)
+  if (source < 0 || target < 0 || source === target || source + 1 === target) return ids
+
+  const reordered = ids.slice()
+  reordered.splice(source, 1)
+  reordered.splice(source < target ? target - 1 : target, 0, clubId)
+  return reordered
+}
+
 export function normalizeReminderPrefs(raw = {}) {
   const input = raw && typeof raw === 'object' ? raw : {}
   const rawChannels = Array.isArray(input.defaultChannels)

@@ -1,5 +1,6 @@
 import Select, { MenuSelect } from './Select'
 import SearchDestination from './SearchDestination'
+import Announcements from './Announcements'
 import { FindClubsButton } from './ClubDiscoveryDialog'
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import {
@@ -722,7 +723,10 @@ export default function ClubsHub({
   onDismissSearchTarget,
   publicPeople = [],
   selectedAnnouncement,
+  personalAnnouncements = [],
+  onOpenAnnouncement,
   onFindClubs,
+  onViewJoined,
   compact = false,
   onRefresh,
   onOpenSettings,
@@ -1123,7 +1127,7 @@ export default function ClubsHub({
         {compact ? (
           <>
             <ClubAvatar club={club} size={32} />
-            <span className="text-sm font-medium wrap-anywhere">{name}</span>
+            <span className="min-w-0 line-clamp-2 text-sm font-medium wrap-anywhere">{name}</span>
             <ArrowRight aria-hidden="true" size={16} className="club-card-cue shrink-0 ml-auto" />
           </>
         ) : (
@@ -1151,14 +1155,16 @@ export default function ClubsHub({
     const previewClubs = rankClubSearch(joinedClubs, searchQuery, { limit: previewLimit })
     return (
       <Card className="section-pad space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-1">
+        <div className="dashboard-card-header">
           <h2 className="font-display text-base font-medium">My clubs</h2>
+          {joinedClubs.length > 0 && onViewJoined && <Button size="sm" variant="text" onClick={onViewJoined}>View all</Button>}
         </div>
         {previewClubs.length > 0 ? (
           <div className="club-preview-grid">{previewClubs.map(club => renderClubCard(club))}</div>
         ) : (
           <p className="text-sm text-[var(--text-muted)]">
             {joinedClubs.length > 0 ? 'No joined clubs match your search.' : 'Your joined clubs will appear here.'}
+            {!joinedClubs.length && onFindClubs && <Button variant="text" size="sm" onClick={onFindClubs}>Browse clubs</Button>}
           </p>
         )}
       </Card>
@@ -1387,6 +1393,9 @@ export default function ClubsHub({
       {/* ── SECTION 3: CLUB FEED / UPDATES ── */}
       {section === 'updates' && (
         <div className="space-y-4">
+          <Announcements full items={personalAnnouncements} joinedCount={joinedClubs.length}
+            userSettings={userSettings} searchQuery={searchQuery} onOpenAnnouncement={onOpenAnnouncement}
+            onBrowseClubs={onFindClubs} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="mobile-pill-rail w-full sm:w-auto pb-0.5 sm:pb-0">
               {SOURCE_FILTERS.map(src => {
