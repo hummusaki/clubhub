@@ -236,7 +236,7 @@
     "category": "tech & science",
     "email": null,
     "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
-    "discord": "https://discord.com/invite/zxexESCz8N",
+    "discord": "https://discord.gg/fhzvdq8c5E",
     "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
     "discordFollowable": false,
@@ -1005,7 +1005,7 @@
     "category": "tech & science",
     "email": null,
     "description": "Girls Who Code — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.com/invite/ZhfPbNssF6",
+    "discord": "https://discord.gg/ZhfPbNssF6",
     "discordGuildId": "1143345399508238436",
     "discordServerName": "UCSC Girls Who Code",
     "discordFollowable": true,
@@ -1057,7 +1057,7 @@
     "category": "tech & science",
     "email": null,
     "description": "Check out Google Developer Groups GDG on Campus University of California Santa Cruz - Santa Cruz, United States events, learn more or contact this organizer.",
-    "discord": "http://discord.gg/6Ac3rPt",
+    "discord": "https://discord.gg/6Ac3rPt",
     "discordGuildId": "765439019122163733",
     "discordServerName": "Google DGC at UCSC!",
     "discordFollowable": false,
@@ -1277,7 +1277,11 @@
     "iconUrl": "https://scontent-ord5-2.cdninstagram.com/v/t51.82787-19/658865775_18125289511587314_8275312503287167030_n.jpg?stp=dst-webp&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xNTAuYzIifQ&_nc_ht=scontent-ord5-2.cdninstagram.com&_nc_cat=102&_nc_oc=Q6cZ2gGkCysXJ1ax9QwFhGFo-O52zJZK__6JMmFndFMdJxU8mChxVg6hYerssASytFzvqDQ&_nc_ohc=G2UomqQzAkUQ7kNvwEXxJkO&_nc_gid=vMg8Xt-yI1mLXbvOiSdjXA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GG9_RSfyDcrS2mRAADa4x5Pg0NdybmNDAQAB0w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSi8zcuLv3cE-9Q_Mnkm0c0X8J4NcgXuQDMLlMPaI1pcg&oe=6B07A0CD&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discord": "https://discord.gg/ahK66W9",
+    "discordGuildId": "761756818648596500",
+    "discordServerName": "JK Family Kazoku Gajok",
+    "discordFollowable": false
   },
   {
     "id": "noig_john_r_lewis_college_student_senate",
@@ -1622,7 +1626,7 @@
     "category": "tech & science",
     "email": null,
     "description": "NeurotechSC — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.com/invite/xq8q8wrAEc",
+    "discord": "https://discord.gg/xq8q8wrAEc",
     "discordGuildId": "848248845418758185",
     "discordServerName": "NeuroTechSC",
     "discordFollowable": true,
@@ -1777,7 +1781,7 @@
     "category": "service & advocacy",
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
-    "discord": "https://discord.com/invite/xMkchjNS7M",
+    "discord": "https://discord.gg/vZYKafSQB4",
     "discordGuildId": "695571084325421137",
     "discordServerName": "Porter Activities",
     "discordFollowable": true,
@@ -2121,9 +2125,9 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-    "discord": "https://discord.gg/aTeeAAH",
+    "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
-    "discordServerName": "Slug Anime & Manga Association",
+    "discordServerName": "All Star",
     "discordFollowable": true,
     "discordMemberCount": 2256,
     "discordOnlineCount": 340,
@@ -2333,7 +2337,7 @@
     "category": "tech & science",
     "email": null,
     "description": "SlugSat — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.com/invite/Tt6Aa3P",
+    "discord": "https://discord.gg/Tt6Aa3P",
     "discordGuildId": "713234185204138065",
     "discordServerName": "SlugSat",
     "discordFollowable": false,
@@ -2764,7 +2768,7 @@
     "category": "media & arts",
     "email": null,
     "description": "UCSC Amateur Radio Club — Baskin Engineering student organization at UC Santa Cruz.",
-    "discord": "https://discord.com/invite/yGrXvgUX9H",
+    "discord": "https://discord.gg/yGrXvgUX9H",
     "discordGuildId": "1159590773885513799",
     "discordServerName": "UCSC Amateur Radio Club",
     "discordFollowable": false,
@@ -3333,14 +3337,16 @@
     "category": "cultural",
     "email": null,
     "description": "University of California, Santa Cruz",
-    "discord": "https://discord.gg/stk8waSPX7",
-    "discordServerName": "UCSC Muay Thai Club Discord",
+    "discord": "https://discord.gg/stk",
+    "discordServerName": "STK",
     "discordOnlineCount": 0,
     "website": "https://goslugs.com/sports/2025/7/22/scmuaythai.aspx",
     "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/f2/f27iN4olgOoYey6ACBZbf9QjoXiQHwNR8Pfdx5nb.jpg",
     "sources": [
       "sport_clubs"
-    ]
+    ],
+    "discordGuildId": "1406971523339911248",
+    "discordFollowable": true
   },
   {
     "name": "UCSC Musicians",
@@ -3565,7 +3571,11 @@
     "iconUrl": "https://scontent-ord5-2.cdninstagram.com/v/t51.2885-19/439117871_7469942593100356_6074038394311344400_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby40NDYuYzIifQ&_nc_ht=scontent-ord5-2.cdninstagram.com&_nc_cat=104&_nc_oc=Q6cZ2gFk1nzc6N7cWXFN8-tlqIOEVveE2sWAsj2dzlun2tNHzUNA4nzjgzkgx-V2MxVNp8s&_nc_ohc=r7X6eaaF7j8Q7kNvwHXSrRj&_nc_gid=_P9MmH4sjuszxJl0bJy_FQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GC9oLBpEGsGK34kaABABA_28UUtUbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSh-NJqoskymtVYG63S40NuDZo8nqPaD_NKFKnOjKaFhg&oe=6B07A5C0&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discord": "https://discord.gg/ZxAGN6x45Y",
+    "discordGuildId": "1231356027778371594",
+    "discordServerName": "UCSC Herp Club",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Startup Club",
@@ -3579,7 +3589,9 @@
     "iconUrl": "https://scontent-ord5-2.cdninstagram.com/v/t51.82787-19/539627434_18166389898363671_1847657010547869878_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-ord5-2.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2gFk1nzc6N7cWXFN8-tlqIOEVveE2sWAsj2dzlun2tNHzUNA4nzjgzkgx-V2MxVNp8s&_nc_ohc=V-EFpFxh6IUQ7kNvwFrkeKn&_nc_gid=_P9MmH4sjuszxJl0bJy_FQ&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GKoPKiAXQ75APIpAALZIdwRDMqQZbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQQ-2atas5UCj9iI76bw4tmgLWnWLFP1J7K6lS5Um9d54A&oe=6B07BC8A&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discordGuildId": "1283196066727989268",
+    "discordFollowable": true
   },
   {
     "name": "UCSC Student Union Assembly",
