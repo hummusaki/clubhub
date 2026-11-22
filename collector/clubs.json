@@ -236,7 +236,7 @@
     "category": "tech & science",
     "email": null,
     "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
-    "discord": "https://discord.gg/zxexESCz8N",
+    "discord": "https://discord.gg/fhzvdq8c5E",
     "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
     "discordFollowable": false,
@@ -1764,7 +1764,7 @@
     "category": "service & advocacy",
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
-    "discord": "https://discord.gg/xMkchjNS7M",
+    "discord": "https://discord.gg/vZYKafSQB4",
     "discordGuildId": "695571084325421137",
     "discordServerName": "Porter Activities",
     "discordFollowable": true,
@@ -2108,9 +2108,9 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-    "discord": "https://discord.gg/aTeeAAH",
+    "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
-    "discordServerName": "Slug Anime & Manga Association",
+    "discordServerName": "All Star",
     "discordFollowable": true,
     "discordMemberCount": 2256,
     "discordOnlineCount": 340,
@@ -3605,7 +3605,9 @@
     "iconUrl": "https://scontent-ord5-2.cdninstagram.com/v/t51.2885-19/461424810_513199681423731_1153380301282584391_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4zMjAuYzIifQ&_nc_ht=scontent-ord5-2.cdninstagram.com&_nc_cat=103&_nc_oc=Q6cZ2gHSDzzbflozJbWrJ2RJ7Jc1kiQPwk25QgyoELKxDT9Bw7B32fazBn_t_5IHied-htw&_nc_ohc=l93G6iCdiasQ7kNvwFt1RAh&_nc_gid=tIQSQo9P73l8bDOr124BHA&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GKrIgBtzybWcwNIBAEen4exFoQEQbkULAAAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQRb6s60B2VGivGMpEU5_qFdEpCF7AErE4gfAciQ_rg_wQ&oe=6B0912E2&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discordGuildId": "870472615054180413",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Tae Kwon Do Club",
@@ -3669,7 +3671,9 @@
     "iconUrl": "https://storage.googleapis.com/dse_reccenter2_ucsc_public/image/aK/aKnB7I7p4nVUQrR3apuF3m8GTzVFPldlC1WvcHba.jpg",
     "sources": [
       "sport_clubs"
-    ]
+    ],
+    "discordGuildId": "975158756319068231",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Turkish Student Association",
@@ -3683,7 +3687,9 @@
     "iconUrl": "https://scontent-ord5-1.cdninstagram.com/v/t51.82787-19/557423821_17891140284346590_754040756381415281_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_nc_ht=scontent-ord5-1.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2gGAUEXGna2bIB1YGf1loBh4dp-sBTXcNrK_KhL2DDNZ3lTwoKYhL3uNz6TjuIrfGC0&_nc_ohc=iPNQiiHU2f0Q7kNvwFPpNGK&_nc_gid=kBrKYWJ7yBycUeTx5F6cig&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GM2cOSHecEa15Y8-AHH3R6YS5HYKbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQREdfpxH7VnSdGLkQWvEwYPbGK4GZo03-KaRh5if0j9-A&oe=6B090A44&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discordGuildId": "1159766304039915541",
+    "discordFollowable": true
   },
   {
     "name": "UCSC Undergrad Neuro Club",
