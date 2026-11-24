@@ -236,7 +236,7 @@
     "category": "tech & science",
     "email": null,
     "description": "We are a student run organization that strives to create a supportive and inclusive community for people of all backgrounds and skill levels who are passionate about computer science to learn and network.",
-    "discord": "https://discord.gg/zxexESCz8N",
+    "discord": "https://discord.gg/fhzvdq8c5E",
     "discordGuildId": "893648956372971552",
     "discordServerName": "UCSC ACM",
     "discordFollowable": false,
@@ -324,7 +324,7 @@
   },
   {
     "name": "Bhakti Yoga Club (FKA BEATS)",
-    "instagram": "bhaktiyogaucsc",
+    "instagram": "ucscbpshi",
     "category": "faith",
     "email": "bhaktiucsc@gmail.com",
     "description": "A community that shares and deepens the understanding of spirituality through the timeless wisdom found in the literature.",
@@ -1784,9 +1784,9 @@
     "category": "service & advocacy",
     "email": "portersenatechair@ucsc.edu",
     "description": "Porter Student Senate : All Porter students are welcome. Senate funds creative projects and events, and offers additional grants through the Creative & Innovative Project Grant.",
-    "discord": "https://discord.gg/xMkchjNS7M",
+    "discord": "https://discord.gg/vZYKafSQB4",
     "discordGuildId": "695571084325421137",
-    "discordServerName": "Porter Senate",
+    "discordServerName": "Porter Activities",
     "discordFollowable": true,
     "discordMemberCount": 172,
     "discordOnlineCount": 5,
@@ -2128,9 +2128,9 @@
     "category": "media & arts",
     "email": "sluganime@ucsc.edu",
     "description": "The Slug Anime and Manga Association (SAMA) is UCSC’s anime club! Our goal is to create a warm, fun space for anybody with an interest in Japanese media. We also aim to promote artists creating inspired original works and host events quarterly where artists can showcase their work!",
-    "discord": "https://discord.gg/aTeeAAH",
+    "discord": "https://discord.gg/allstar",
     "discordGuildId": "710745950380884009",
-    "discordServerName": "Slug Anime & Manga Association",
+    "discordServerName": "All Star",
     "discordFollowable": true,
     "discordMemberCount": 2256,
     "discordOnlineCount": 340,
@@ -3608,7 +3608,11 @@
     "iconUrl": "https://scontent-sjc6-1.cdninstagram.com/v/t51.82787-19/902949105_18378762463245791_1674877261064932987_n.jpg?stp=dst-webp_s240x240&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45MjQuYzIifQ&_nc_ht=scontent-sjc6-1.cdninstagram.com&_nc_cat=111&_nc_oc=Q6cZ2gFWa1z3BF1zpijqdmE-xzJq6gIDheq8GGcqoC9If0FxCvCEGYdBi2kJEvGysHkSLGM&_nc_ohc=gmOKEby5ywgQ7kNvwFr76mc&_nc_gid=wBQc7w_A-6VRvHJXXmjUTw&edm=APs17CUBAAAA&ccb=7-5&ig_cache_key=GPHo0TXfdQgYY0tBAHuOJ7z_Wz4XbmNDAQAB2402400w-ccb7-5&_nc_ct=RQAsPBUCFQIAAAA&oh=00_AQSWtBdgDAK7QT2ojeH3wP4bn40F7AaX5kDvCYgUqAK7_g&oe=6B0A9E17&_nc_sid=10d13b",
     "sources": [
       "instagram_discovery"
-    ]
+    ],
+    "discord": "https://discord.gg/3GsKWBVSNV",
+    "discordGuildId": "1573313900621996113",
+    "discordServerName": "UCSC SUA",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Student Workers Union",
@@ -3813,7 +3817,11 @@
     "sources": [
       "sport_clubs",
       "instagram_discovery"
-    ]
+    ],
+    "discord": "https://discord.gg/VHZeaBSaWf",
+    "discordGuildId": "887853750604140614",
+    "discordServerName": "UCSC Volleyball Open Gym",
+    "discordFollowable": false
   },
   {
     "name": "UCSC Women's Club Water Polo",
